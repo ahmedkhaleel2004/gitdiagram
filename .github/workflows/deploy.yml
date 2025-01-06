@@ -10,7 +10,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    if: github.repository_owner == 'ahmedkhaleel2004'
     # Add concurrency to prevent multiple deployments running at once
     concurrency:
       group: production
