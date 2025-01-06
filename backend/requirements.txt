@@ -48,3 +48,4 @@ uvloop==0.21.0
 watchfiles==1.0.3
 websockets==14.1
 wrapt==1.17.0
+openai==1.58.1
