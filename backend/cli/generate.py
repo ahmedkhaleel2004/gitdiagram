@@ -3,7 +3,7 @@ import argparse
 from app.services.openai_service import OpenAIService
 from app.prompts import SYSTEM_FIRST_PROMPT, SYSTEM_SECOND_PROMPT, SYSTEM_THIRD_PROMPT, ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT
 import sys
-from cli import build_file_tree, get_readme
+from cli import build_file_tree, get_readme, print_stat
 
 
 def main():
@@ -14,6 +14,11 @@ def main():
         "--instructions", help="Instructions for diagram generation", default=None)
     parser.add_argument(
         "--output", help="Output file for the Mermaid diagram", default="diagram.mmd")
+    parser.add_argument(
+        "--stat",
+        help="Only outputs the file list and statistics",
+        action="store_true"
+    )
 
     args = parser.parse_args()
 
@@ -26,6 +31,10 @@ def main():
         sys.exit(1)
 
     openai_service = OpenAIService()
+
+    if (args.stat):
+        print_stat(repo_path)
+        return
 
     # Build file tree and get README
     file_tree = build_file_tree(repo_path)

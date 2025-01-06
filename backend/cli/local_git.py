@@ -1,19 +1,19 @@
 import os
+from collections import Counter
 
 
 def build_file_tree(repo_path):
     """
-    Traverse the local repository and build a file tree string.
-    Excludes specified patterns similar to GitHubService.
+    Traverse the local repository and build a file tree list.
     """
     excluded_patterns = [
         'node_modules', 'vendor', 'venv',
-        '.min.', '.pyc', '.pyo', '.pyd', '.so', '.dll', '.class',
+        '.min.', '.pyc', '.pyo', '.pyd', '.so', '.dll', '.class', ".o",
         '.jpg', '.jpeg', '.png', '.gif', '.ico', '.svg', '.ttf', '.woff', '.webp',
-        '.pdf', '.xml', '.wav', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+        '.pdf', '.xml', '.wav', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', ".txt", ".log",
         '__pycache__', '.cache', '.tmp',
-        'yarn.lock', 'poetry.lock', '*.log',
-        '.vscode', '.idea', '.git'
+        'yarn.lock', 'poetry.lock',
+        '.vscode', '.idea', '.git', "test", "activate"
     ]
 
     file_paths = []
@@ -28,7 +28,7 @@ def build_file_tree(repo_path):
                 # For Windows compatibility
                 file_paths.append(relative_path.replace("\\", "/"))
 
-    return "\n".join(file_paths)
+    return file_paths  # Return as list instead of string for easier processing
 
 
 def get_readme(repo_path):
@@ -40,3 +40,37 @@ def get_readme(repo_path):
         with open(readme_path, 'r', encoding='utf-8') as f:
             return f.read()
     return ""
+
+
+def analyze_extension_percentage(file_paths):
+    """
+    Analyze the percentage distribution of file extensions in the provided file list.
+
+    Args:
+        file_paths (list): List of file paths.
+
+    Returns:
+        dict: Dictionary mapping file extensions to their percentage occurrence.
+    """
+    extensions = [os.path.splitext(file)[1].lower()
+                  for file in file_paths if os.path.splitext(file)[1]]
+    total = len(extensions)
+    if total == 0:
+        return {}
+    counts = Counter(extensions)
+    percentages = {ext: (count / total) * 100 for ext, count in counts.items()}
+
+    sorted_percentages = dict(
+        sorted(percentages.items(), key=lambda item: item[1], reverse=True))
+    return sorted_percentages
+
+
+def print_stat(repo_path):
+    file_list = build_file_tree(repo_path)
+    for f in file_list:
+        print(f)
+    extension_percentages = analyze_extension_percentage(file_list)
+
+    print("File Extension Percentage Distribution:")
+    for ext, percent in extension_percentages.items():
+        print(f"{ext or 'No Extension'}: {percent:.2f}%")
