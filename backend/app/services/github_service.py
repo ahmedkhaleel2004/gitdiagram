@@ -43,8 +43,7 @@ class GitHubService:
 
         jwt_token = self._generate_jwt()
         response = requests.post(
-            f"https://api.github.com/app/installations/{
-                self.installation_id}/access_tokens",
+            f"https://api.github.com/app/installations/{self.installation_id}/access_tokens",
             headers={
                 "Authorization": f"Bearer {jwt_token}",
                 "Accept": "application/vnd.github+json"
@@ -120,8 +119,7 @@ class GitHubService:
         # Try to get the default branch first
         branch = self.get_default_branch(username, repo)
         if branch:
-            api_url = f"https://api.github.com/repos/{
-                username}/{repo}/git/trees/{branch}?recursive=1"
+            api_url = f"https://api.github.com/repos/{username}/{repo}/git/trees/{branch}?recursive=1"
             response = requests.get(api_url, headers=self._get_headers())
 
             if response.status_code == 200:
@@ -134,8 +132,7 @@ class GitHubService:
 
         # If default branch didn't work or wasn't found, try common branch names
         for branch in ['main', 'master']:
-            api_url = f"https://api.github.com/repos/{
-                username}/{repo}/git/trees/{branch}?recursive=1"
+            api_url = f"https://api.github.com/repos/{username}/{repo}/git/trees/{branch}?recursive=1"
             response = requests.get(api_url, headers=self._get_headers())
 
             if response.status_code == 200:
@@ -166,8 +163,7 @@ class GitHubService:
         if response.status_code == 404:
             raise ValueError("Repository not found.")
         elif response.status_code != 200:
-            raise Exception(f"Failed to fetch README: {
-                            response.status_code}, {response.json()}")
+            raise Exception(f"Failed to fetch README: {response.status_code}, {response.json()}")
 
         data = response.json()
         readme_content = requests.get(data['download_url']).text
