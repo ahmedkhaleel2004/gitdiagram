@@ -31,10 +31,18 @@ async def modify(request: Request, body: ModifyRequest):
         # Check instructions length
         if not body.instructions or not body.current_diagram:
             return {"error": "Instructions and/or current diagram are required"}
-        elif len(body.instructions) > 1000 or len(body.current_diagram) > 100000:  # just being safe
+        elif (
+            len(body.instructions) > 1000 or len(body.current_diagram) > 100000
+        ):  # just being safe
             return {"error": "Instructions exceed maximum length of 1000 characters"}
 
-        if body.repo in ["fastapi", "streamlit", "flask", "api-analytics", "monkeytype"]:
+        if body.repo in [
+            "fastapi",
+            "streamlit",
+            "flask",
+            "api-analytics",
+            "monkeytype",
+        ]:
             return {"error": "Example repos cannot be modified"}
 
         modified_mermaid_code = claude_service.call_claude_api(
@@ -42,8 +50,8 @@ async def modify(request: Request, body: ModifyRequest):
             data={
                 "instructions": body.instructions,
                 "explanation": body.explanation,
-                "diagram": body.current_diagram
-            }
+                "diagram": body.current_diagram,
+            },
         )
 
         # Check for BAD_INSTRUCTIONS response
@@ -54,7 +62,7 @@ async def modify(request: Request, body: ModifyRequest):
     except RateLimitError as e:
         raise HTTPException(
             status_code=429,
-            detail="Service is currently experiencing high demand. Please try again in a few minutes."
+            detail="Service is currently experiencing high demand. Please try again in a few minutes.",
         )
     except Exception as e:
         return {"error": str(e)}

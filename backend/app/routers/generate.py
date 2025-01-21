@@ -3,8 +3,12 @@ from dotenv import load_dotenv
 from app.services.github_service import GitHubService
 from app.services.claude_service import ClaudeService
 from app.core.limiter import limiter
-import os
-from app.prompts import SYSTEM_FIRST_PROMPT, SYSTEM_SECOND_PROMPT, SYSTEM_THIRD_PROMPT, ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT
+from app.prompts import (
+    SYSTEM_FIRST_PROMPT,
+    SYSTEM_SECOND_PROMPT,
+    SYSTEM_THIRD_PROMPT,
+    ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT,
+)
 from anthropic._exceptions import RateLimitError
 from pydantic import BaseModel
 from functools import lru_cache
@@ -29,11 +33,7 @@ def get_cached_github_data(username: str, repo: str):
     file_tree = github_service.get_github_file_paths_as_list(username, repo)
     readme = github_service.get_github_readme(username, repo)
 
-    return {
-        "default_branch": default_branch,
-        "file_tree": file_tree,
-        "readme": readme
-    }
+    return {"default_branch": default_branch, "file_tree": file_tree, "readme": readme}
 
 
 class ApiRequest(BaseModel):
@@ -51,7 +51,13 @@ async def generate(request: Request, body: ApiRequest):
         if len(body.instructions) > 1000:
             return {"error": "Instructions exceed maximum length of 1000 characters"}
 
-        if body.repo in ["fastapi", "streamlit", "flask", "api-analytics", "monkeytype"]:
+        if body.repo in [
+            "fastapi",
+            "streamlit",
+            "flask",
+            "api-analytics",
+            "monkeytype",
+        ]:
             return {"error": "Example repos cannot be regenerated"}
 
         # Get cached github data
@@ -71,7 +77,7 @@ async def generate(request: Request, body: ApiRequest):
             return {
                 "error": f"File tree and README combined exceeds token limit (50,000). Current size: {token_count} tokens. This GitHub repository is too large for my wallet, but you can continue by providing your own Anthropic API key.",
                 "token_count": token_count,
-                "requires_api_key": True
+                "requires_api_key": True,
             }
         elif token_count > 200000:
             return {
@@ -82,10 +88,12 @@ async def generate(request: Request, body: ApiRequest):
         first_system_prompt = SYSTEM_FIRST_PROMPT
         third_system_prompt = SYSTEM_THIRD_PROMPT
         if body.instructions:
-            first_system_prompt = first_system_prompt + \
-                "\n" + ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT
-            third_system_prompt = third_system_prompt + \
-                "\n" + ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT
+            first_system_prompt = (
+                first_system_prompt + "\n" + ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT
+            )
+            third_system_prompt = (
+                third_system_prompt + "\n" + ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT
+            )
 
         # get the explanation for sysdesign from claude
         explanation = claude_service.call_claude_api(
@@ -93,9 +101,9 @@ async def generate(request: Request, body: ApiRequest):
             data={
                 "file_tree": file_tree,
                 "readme": readme,
-                "instructions": body.instructions
+                "instructions": body.instructions,
             },
-            api_key=body.api_key
+            api_key=body.api_key,
         )
 
         # Check for BAD_INSTRUCTIONS response
@@ -104,18 +112,14 @@ async def generate(request: Request, body: ApiRequest):
 
         full_second_response = claude_service.call_claude_api(
             system_prompt=SYSTEM_SECOND_PROMPT,
-            data={
-                "explanation": explanation,
-                "file_tree": file_tree
-            }
+            data={"explanation": explanation, "file_tree": file_tree},
         )
 
         # Extract component mapping from the response
         start_tag = "<component_mapping>"
         end_tag = "</component_mapping>"
         component_mapping_text = full_second_response[
-            full_second_response.find(start_tag):
-            full_second_response.find(end_tag)
+            full_second_response.find(start_tag) : full_second_response.find(end_tag)
         ]
 
         # get mermaid.js code from claude
@@ -124,8 +128,8 @@ async def generate(request: Request, body: ApiRequest):
             data={
                 "explanation": explanation,
                 "component_mapping": component_mapping_text,
-                "instructions": body.instructions
-            }
+                "instructions": body.instructions,
+            },
         )
 
         # Check for BAD_INSTRUCTIONS response
@@ -134,18 +138,14 @@ async def generate(request: Request, body: ApiRequest):
 
         # Process click events to include full GitHub URLs
         processed_diagram = process_click_events(
-            mermaid_code,
-            body.username,
-            body.repo,
-            default_branch
+            mermaid_code, body.username, body.repo, default_branch
         )
 
-        return {"diagram": processed_diagram,
-                "explanation": explanation}
+        return {"diagram": processed_diagram, "explanation": explanation}
     except RateLimitError as e:
         raise HTTPException(
             status_code=429,
-            detail="Service is currently experiencing high demand. Please try again in a few minutes."
+            detail="Service is currently experiencing high demand. Please try again in a few minutes.",
         )
     except Exception as e:
         return {"error": str(e)}
@@ -184,12 +184,13 @@ def process_click_events(diagram: str, username: str, repo: str, branch: str) ->
     Process click events in Mermaid diagram to include full GitHub URLs.
     Detects if path is file or directory and uses appropriate URL format.
     """
+
     def replace_path(match):
         # Extract the path from the click event
-        path = match.group(2).strip('"\'')
+        path = match.group(2).strip("\"'")
 
         # Determine if path is likely a file (has extension) or directory
-        is_file = '.' in path.split('/')[-1]
+        is_file = "." in path.split("/")[-1]
 
         # Construct GitHub URL
         base_url = f"https://github.com/{username}/{repo}"

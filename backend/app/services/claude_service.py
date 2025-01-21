@@ -8,7 +8,9 @@ class ClaudeService:
     def __init__(self):
         self.default_client = Anthropic()
 
-    def call_claude_api(self, system_prompt: str, data: dict, api_key: str | None = None) -> str:
+    def call_claude_api(
+        self, system_prompt: str, data: dict, api_key: str | None = None
+    ) -> str:
         """
         Makes an API call to Claude and returns the response.
 
@@ -32,40 +34,30 @@ class ClaudeService:
             temperature=0,
             system=system_prompt,
             messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": user_message
-                        }
-                    ]
-                }
-            ]
+                {"role": "user", "content": [{"type": "text", "text": user_message}]}
+            ],
         )
         return message.content[0].text  # type: ignore
 
-    # autopep8: off
     def _format_user_message(self, data: dict[str, str]) -> str:
         """Helper method to format the data into a user message"""
         parts = []
         for key, value in data.items():
-            if key == 'file_tree':
+            if key == "file_tree":
                 parts.append(f"<file_tree>\n{value}\n</file_tree>")
-            elif key == 'readme':
+            elif key == "readme":
                 parts.append(f"<readme>\n{value}\n</readme>")
-            elif key == 'explanation':
+            elif key == "explanation":
                 parts.append(f"<explanation>\n{value}\n</explanation>")
-            elif key == 'component_mapping':
+            elif key == "component_mapping":
                 parts.append(f"<component_mapping>\n{value}\n</component_mapping>")
-            elif key == 'instructions' and value != "":
+            elif key == "instructions" and value != "":
                 parts.append(f"<instructions>\n{value}\n</instructions>")
-            elif key == 'diagram':
+            elif key == "diagram":
                 parts.append(f"<diagram>\n{value}\n</diagram>")
-            elif key == 'explanation':
+            elif key == "explanation":
                 parts.append(f"<explanation>\n{value}\n</explanation>")
         return "\n\n".join(parts)
-    # autopep8: on
 
     def count_tokens(self, prompt: str) -> int:
         """
@@ -79,9 +71,6 @@ class ClaudeService:
         """
         response = self.default_client.messages.count_tokens(
             model="claude-3-5-sonnet-latest",
-            messages=[{
-                "role": "user",
-                "content": prompt
-            }]
+            messages=[{"role": "user", "content": prompt}],
         )
         return response.input_tokens

@@ -6,7 +6,6 @@ import Loading from "~/components/loading";
 import MermaidChart from "~/components/mermaid-diagram";
 import { useDiagram } from "~/hooks/useDiagram";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
-import { Button } from "~/components/ui/button";
 import { ApiKeyButton } from "~/components/api-key-button";
 
 export default function Repo() {
