@@ -49,3 +49,4 @@ watchfiles==1.0.3
 websockets==14.1
 wrapt==1.17.0
 openai==1.58.1
+pathspec==0.12.1

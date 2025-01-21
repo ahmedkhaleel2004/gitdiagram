@@ -1,4 +1,5 @@
 import os
+import pathspec
 from collections import Counter
 
 
@@ -7,28 +8,72 @@ def build_file_tree(repo_path):
     Traverse the local repository and build a file tree list.
     """
     excluded_patterns = [
-        'node_modules', 'vendor', 'venv',
-        '.min.', '.pyc', '.pyo', '.pyd', '.so', '.dll', '.class', ".o",
-        '.jpg', '.jpeg', '.png', '.gif', '.ico', '.svg', '.ttf', '.woff', '.webp',
-        '.pdf', '.xml', '.wav', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', ".txt", ".log",
-        '__pycache__', '.cache', '.tmp',
-        'yarn.lock', 'poetry.lock',
-        '.vscode', '.idea', '.git', "test", "activate"
+        'node_modules/',
+        'vendor/',
+        'venv/',
+        '__pycache__/',
+        '.cache/',
+        '.tmp/',
+        '.vscode/',
+        '.idea/',
+        '.git/',
+        'test/',
+        '*.min.*',
+        '*.pyc',
+        '*.pyo',
+        '*.pyd',
+        '*.so',
+        '*.dll',
+        '*.class',
+        '*.o',
+        '*.jpg',
+        '*.jpeg',
+        '*.png',
+        '*.gif',
+        '*.ico',
+        '*.svg',
+        '*.ttf',
+        '*.woff',
+        '*.webp',
+        '*.pdf',
+        '*.xml',
+        '*.wav',
+        '*.doc',
+        '*.docx',
+        '*.xls',
+        '*.xlsx',
+        '*.ppt',
+        '*.pptx',
+        '*.txt',
+        '*.log',
+        'yarn.lock',
+        'poetry.lock',
     ]
+
+    gitignore_path = os.path.join(repo_path, '.gitignore')
+    if os.path.exists(gitignore_path):
+        with open(gitignore_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    excluded_patterns.append(line)
+
+    spec = pathspec.PathSpec.from_lines('gitwildmatch', excluded_patterns)
 
     file_paths = []
     for root, dirs, files in os.walk(repo_path):
-        # Modify dirs in-place to skip excluded directories
-        dirs[:] = [d for d in dirs if not any(
-            excl in d.lower() for excl in excluded_patterns)]
+        dirs[:] = [
+            d for d in dirs
+            if not spec.match_file(os.path.relpath(os.path.join(root, d), repo_path) + '/')
+        ]
+
         for file in files:
             file_path = os.path.join(root, file)
-            relative_path = os.path.relpath(file_path, repo_path)
-            if not any(excl in relative_path.lower() for excl in excluded_patterns):
-                # For Windows compatibility
-                file_paths.append(relative_path.replace("\\", "/"))
+            rel_path = os.path.relpath(file_path, repo_path).replace("\\", "/")
+            if not spec.match_file(rel_path):
+                file_paths.append(rel_path)
 
-    return file_paths  # Return as list instead of string for easier processing
+    return file_paths
 
 
 def get_readme(repo_path):
