@@ -1,12 +1,13 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import MainCard from "~/components/main-card";
+import { ApiKeyButton } from "~/components/api-key-button";
+import { ApiKeyDialog } from "~/components/api-key-dialog";
+import DiagramCode from "~/components/diagram-code";
 import Loading from "~/components/loading";
+import MainCard from "~/components/main-card";
 import MermaidChart from "~/components/mermaid-diagram";
 import { useDiagram } from "~/hooks/useDiagram";
-import { ApiKeyDialog } from "~/components/api-key-dialog";
-import { ApiKeyButton } from "~/components/api-key-button";
+import { useParams } from "next/navigation";
 import { useState } from "react";
 
 export default function Repo() {
@@ -48,6 +49,7 @@ export default function Repo() {
         />
       </div>
       <div className="mt-8 flex w-full flex-col items-center gap-8">
+        {!loading && !error && <DiagramCode code={state.diagram} />}
         {loading ? (
           <Loading
             cost={cost}
@@ -63,10 +65,10 @@ export default function Repo() {
             </p>
             {(error?.includes("API key") ||
               state.error?.includes("API key")) && (
-              <div className="mt-8 flex flex-col items-center gap-2">
-                <ApiKeyButton onClick={handleOpenApiKeyDialog} />
-              </div>
-            )}
+                <div className="mt-8 flex flex-col items-center gap-2">
+                  <ApiKeyButton onClick={handleOpenApiKeyDialog} />
+                </div>
+              )}
           </div>
         ) : (
           <div className="flex w-full justify-center px-4">
