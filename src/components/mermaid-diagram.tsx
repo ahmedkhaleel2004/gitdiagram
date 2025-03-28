@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+
+import DiagramCode from "./diagram-code";
 import mermaid from "mermaid";
-// Remove the direct import
-// import svgPanZoom from "svg-pan-zoom";
 
 interface MermaidChartProps {
   chart: string;
   zoomingEnabled?: boolean;
+  rawDiagram?: string;
 }
 
-const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
+const MermaidChart = ({ chart, zoomingEnabled = true, rawDiagram }: MermaidChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,6 +38,7 @@ const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
           filter: brightness(0.85);
         }
       `,
+      
     });
 
     const initializePanZoom = async () => {
@@ -84,6 +86,8 @@ const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
       ref={containerRef}
       className={`w-full max-w-full p-4 ${zoomingEnabled ? "h-[600px]" : ""}`}
     >
+
+      {!chart && <DiagramCode code={rawDiagram} />}
       <div
         key={`${chart}-${zoomingEnabled}`}
         className={`mermaid h-full ${

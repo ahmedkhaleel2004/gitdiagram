@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   cacheDiagramAndExplanation,
   getCachedDiagram,
 } from "~/app/_actions/cache";
+
 import { getLastGeneratedDate } from "~/app/_actions/repo";
-import { getCostOfGeneration } from "~/lib/fetch-backend";
 import { exampleRepos } from "~/lib/exampleRepos";
+import { getCostOfGeneration } from "~/lib/fetch-backend";
 
 interface StreamState {
   status:
@@ -64,7 +65,7 @@ export function useDiagram(username: string, repo: string) {
 
       try {
         const baseUrl =
-          process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
+        process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
         const response = await fetch(`${baseUrl}/generate/stream`, {
           method: "POST",
           headers: {

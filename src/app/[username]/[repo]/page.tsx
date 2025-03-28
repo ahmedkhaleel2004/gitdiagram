@@ -2,7 +2,6 @@
 
 import { ApiKeyButton } from "~/components/api-key-button";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
-import DiagramCode from "~/components/diagram-code";
 import Loading from "~/components/loading";
 import MainCard from "~/components/main-card";
 import MermaidChart from "~/components/mermaid-diagram";
@@ -30,6 +29,7 @@ export default function Repo() {
     state,
   } = useDiagram(params.username.toLowerCase(), params.repo.toLowerCase());
 
+
   return (
     <div className="flex flex-col items-center p-4">
       <div className="flex w-full justify-center pt-8">
@@ -49,7 +49,6 @@ export default function Repo() {
         />
       </div>
       <div className="mt-8 flex w-full flex-col items-center gap-8">
-        {!loading && !error && <DiagramCode code={state.diagram} />}
         {loading ? (
           <Loading
             cost={cost}
@@ -71,8 +70,9 @@ export default function Repo() {
               )}
           </div>
         ) : (
-          <div className="flex w-full justify-center px-4">
-            <MermaidChart chart={diagram} zoomingEnabled={zoomingEnabled} />
+          <div className="flex flex-col w-full justify-center px-4">
+            <MermaidChart rawDiagram={state.diagram} chart={diagram} zoomingEnabled={zoomingEnabled} />
+
           </div>
         )}
       </div>
