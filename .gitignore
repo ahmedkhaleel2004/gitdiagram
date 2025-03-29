@@ -20,6 +20,7 @@ next-env.d.ts
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
@@ -51,3 +52,9 @@ venv
 
 # vscode
 .vscode/
+
+# plasmo
+.plasmo
+
+# typescript
+.tsbuildinfo
