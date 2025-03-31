@@ -1,14 +1,21 @@
 # Use Python 3.12 slim image for smaller size
 FROM python:3.12-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV POETRY_CACHE_DIR=/app/.cache
+
+RUN pip install --upgrade pip \
+    && pip install poetry
+
 # Set working directory
 WORKDIR /app
 
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
+# Copy pyproject.toml and poetry.lock first to leverage Docker cache
+COPY pyproject.toml poetry.lock* /app/
 
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN poetry install --no-interaction --no-ansi --no-root
 
 # Copy application code
 COPY . .
