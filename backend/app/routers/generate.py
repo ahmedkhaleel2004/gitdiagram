@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from app.services.github_service import GitHubService
 from app.services.o3_mini_openai_service import OpenAIo3Service
+
 from app.prompts import (
     SYSTEM_FIRST_PROMPT,
     SYSTEM_SECOND_PROMPT,
@@ -17,6 +18,7 @@ import json
 import asyncio
 
 # from app.services.claude_service import ClaudeService
+# from app.services.o3_mini_azure_openai_service import AzureOpenAIo3Service
 # from app.core.limiter import limiter
 
 load_dotenv()
@@ -26,6 +28,7 @@ router = APIRouter(prefix="/generate", tags=["Claude"])
 # Initialize services
 # claude_service = ClaudeService()
 o3_service = OpenAIo3Service()
+# o3_service = AzureOpenAIo3Service()
 
 
 # cache github data to avoid double API calls from cost and generate
