@@ -105,6 +105,7 @@ export default function MainCard({
             required
           />
           <Button
+            tabIndex={0}
             type="submit"
             className="border-[3px] border-black bg-purple-400 p-4 px-4 text-base text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:bg-purple-400 sm:p-6 sm:px-6 sm:text-lg"
           >
@@ -136,12 +137,13 @@ export default function MainCard({
                             ? "bg-purple-400"
                             : "bg-purple-300 hover:bg-purple-400"
                         }`}
+                        tabIndex={0}
                       >
                         <span>Customize Diagram</span>
                         {activeDropdown === "customize" ? (
-                          <ChevronUp size={20} />
+                          <ChevronUp size={20} role="img" aria-label="Customize Diagram"/>
                         ) : (
-                          <ChevronDown size={20} />
+                          <ChevronDown size={20} role="img" aria-label="Customize Diagram"/>
                         )}
                       </button>
                     )}
@@ -158,22 +160,24 @@ export default function MainCard({
                             ? "bg-purple-400"
                             : "bg-purple-300 hover:bg-purple-400"
                         }`}
+                        tabIndex={0}
                       >
                         <span>Export Diagram</span>
                         {activeDropdown === "export" ? (
-                          <ChevronUp size={20} />
+                          <ChevronUp size={20} role="img" aria-label="Export Diagram"/>
                         ) : (
-                          <ChevronDown size={20} />
+                          <ChevronDown size={20} role="img" aria-label="Export Diagram"/>
                         )}
                       </button>
                     </div>
                   )}
                   {lastGenerated && (
                     <>
-                      <label className="font-medium text-black">
+                      <label className="font-medium text-black" htmlFor="zoom-toggle">
                         Enable Zoom
                       </label>
                       <Switch
+                        id="zoom-toggle"
                         checked={zoomingEnabled}
                         onCheckedChange={onZoomToggle}
                       />
@@ -224,6 +228,7 @@ export default function MainCard({
                   variant="outline"
                   className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base"
                   onClick={(e) => handleExampleClick(path, e)}
+                  tabIndex={0}
                 >
                   {name}
                 </Button>
@@ -239,6 +244,8 @@ export default function MainCard({
           className="h-20 w-20 fill-sky-400 text-black"
           strokeWidth={0.6}
           style={{ transform: "rotate(-15deg)" }}
+          role="img"
+          aria-hidden
         />
       </div>
     </Card>
