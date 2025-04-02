@@ -32,6 +32,15 @@ router = APIRouter(prefix="/generate", tags=["Claude"])
 # claude_service = ClaudeService()
 o3_service = OpenAIo3Service()
 
+
+def dump_mermaid_code(mermaid_code):
+    output_dir = "/app"
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "mermaid.txt"), "w") as f:
+        f.write(mermaid_code)  # directly write to mermaid.txt
+    return
+
+
 # cache github data to avoid double API calls from cost and generate
 @lru_cache(maxsize=100)
 def get_cached_github_data(username: str, repo: str, github_pat: str | None = None):
@@ -261,6 +270,10 @@ async def generate_stream(request: Request, body: ApiRequest):
                 processed_diagram = process_click_events(
                     mermaid_code, body.username, body.repo, default_branch
                 )
+
+                # dump the generated mermaid code
+                # will be useful when debugging
+                dump_mermaid_code(mermaid_code)
 
                 # Send final result
                 yield f"data: {json.dumps({
