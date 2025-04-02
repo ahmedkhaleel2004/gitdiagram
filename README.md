@@ -101,6 +101,55 @@ pnpm dev
 
 You can now access the website at `localhost:3000` and edit the rate limits defined in `backend/app/routers/generate.py` in the generate function decorator.
 
+## How to run it on local direcotry
+Make sure you already can go through the Self-hosting correctly.
+1. Create env file
+```bash
+cp .env.example .env
+```
+Change the `ENABLE_LOCAL_SERVER` to `True`
+
+2. Mount directrory
+Change the `docker-compose.yml`, mount your local directory at volumns. For example, if you want to generate the diagram of directory `/Users/xxx/my-project`. Add one line: `- /Users/xxx/my-project:/app/code` like below:
+```
+services:
+  api:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /Users/xxx/my-project:/app/code
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development} # Default to development if not set
+    restart: unless-stopped
+```
+
+3. Run the following command to launch service.
+run it.
+```bash
+docker-compose up --build -d
+chmod +x start-database.sh
+./start-database.sh
+pnpm db:push
+pnpm dev
+```
+
+4. Go `localhost:3000` and just input any valide github url, eg `https://github.com/yufansong/gitdiagram`. It won't real generate the diagram of that github url, but will trigger the logic to generate the diagram of your local directory previously assigned. 
+
+5. If you meet the "syntax error" like this issue: `https://github.com/ahmedkhaleel2004/gitdiagram/issues/64`. It result from the lack of modal ability. The LLM generated mermaid js is not correct. My temprory solution is:
+- Go `backend` directory, you will find `mermaid.txt`. 
+- Throw it into an online mermaid editor like this `https://www.mermaidchart.com/play`, then you should get an error if you input the content of `mermaid.txt`.
+- Put the `mermaid.txt` and the error log into GPT, let it give you a correct mermard code.
+- Go back to `https://www.mermaidchart.com/play` and retry, you will get the result.
+
+As least for me, I can get correctly result for several times by above solution.
+
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
