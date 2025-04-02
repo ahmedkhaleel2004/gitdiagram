@@ -4,11 +4,11 @@ import time
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
+from .base_service import BaseService
 
 load_dotenv()
 
-
-class GitHubService:
+class GitHubService(BaseService):
     def __init__(self, pat: str | None = None):
         # Try app authentication first
         self.client_id = os.getenv("GITHUB_CLIENT_ID")
@@ -107,7 +107,7 @@ class GitHubService:
             return response.json().get("default_branch")
         return None
 
-    def get_github_file_paths_as_list(self, username, repo):
+    def get_file_paths_as_list(self, username, repo):
         """
         Fetches the file tree of an open-source GitHub repository,
         excluding static files and generated code.
@@ -119,47 +119,6 @@ class GitHubService:
         Returns:
             str: A filtered and formatted string of file paths in the repository, one per line.
         """
-
-        def should_include_file(path):
-            # Patterns to exclude
-            excluded_patterns = [
-                # Dependencies
-                "node_modules/",
-                "vendor/",
-                "venv/",
-                # Compiled files
-                ".min.",
-                ".pyc",
-                ".pyo",
-                ".pyd",
-                ".so",
-                ".dll",
-                ".class",
-                # Asset files
-                ".jpg",
-                ".jpeg",
-                ".png",
-                ".gif",
-                ".ico",
-                ".svg",
-                ".ttf",
-                ".woff",
-                ".webp",
-                # Cache and temporary files
-                "__pycache__/",
-                ".cache/",
-                ".tmp/",
-                # Lock files and logs
-                "yarn.lock",
-                "poetry.lock",
-                "*.log",
-                # Configuration files
-                ".vscode/",
-                ".idea/",
-            ]
-
-            return not any(pattern in path.lower() for pattern in excluded_patterns)
-
         # Try to get the default branch first
         branch = self.get_default_branch(username, repo)
         if branch:
@@ -174,7 +133,7 @@ class GitHubService:
                     paths = [
                         item["path"]
                         for item in data["tree"]
-                        if should_include_file(item["path"])
+                        if self._should_include_file(item["path"])
                     ]
                     return "\n".join(paths)
 
@@ -191,7 +150,7 @@ class GitHubService:
                     paths = [
                         item["path"]
                         for item in data["tree"]
-                        if should_include_file(item["path"])
+                        if self._should_include_file(item["path"])
                     ]
                     return "\n".join(paths)
 
@@ -199,7 +158,7 @@ class GitHubService:
             "Could not fetch repository file tree. Repository might not exist, be empty or private."
         )
 
-    def get_github_readme(self, username, repo):
+    def get_readme(self, username, repo):
         """
         Fetches the README contents of an open-source GitHub repository.
 
