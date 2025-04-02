@@ -11,12 +11,42 @@ class BaseService(ABC):
 
     # Shared utility method can be implemented here
     def _should_include_file(self, path):
+        # Patterns to exclude
         excluded_patterns = [
-            "node_modules/", "vendor/", "venv/",
-            ".min.", ".pyc", ".pyo", ".pyd",
-            ".jpg", ".jpeg", ".png", ".gif",
-            "__pycache__/", ".cache/", ".tmp/",
-            "yarn.lock", "poetry.lock", "*.log",
-            ".vscode/", ".idea/"
+            # Dependencies
+            "node_modules/",
+            "vendor/",
+            "venv/",
+            # Compiled files
+            ".min.",
+            ".pyc",
+            ".pyo",
+            ".pyd",
+            ".so",
+            ".dll",
+            ".class",
+            # Asset files
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".ico",
+            ".svg",
+            ".ttf",
+            ".woff",
+            ".webp",
+            # Cache and temporary files
+            "__pycache__/",
+            ".cache/",
+            ".tmp/",
+            # Lock files and logs
+            "yarn.lock",
+            "poetry.lock",
+            "*.log",
+            # Configuration files
+            ".vscode/",
+            ".idea/",
         ]
+
         return not any(pattern in path.lower() for pattern in excluded_patterns)
+  

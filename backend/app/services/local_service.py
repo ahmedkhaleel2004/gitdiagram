@@ -18,32 +18,38 @@ class LocalService(BaseService):  # Changed to inherit from BaseService
         if not base_path.is_dir():
             raise ValueError("Should provide a valid directory path")
 
-    # 新增本地文件处理方法
     def get_file_paths_as_list(self):
         """
         Get the file paths of the local codebase, excluding static files and generated code.
         Returns:
             str: file path list after filtering
         """
-        def scan_directory(path: Path):
+        def scan_directory(base_path: Path):
+            """recursively scan directories and filter files"""
             paths = []
-            for entry in path.iterdir():
-                if entry.name.startswith('.'):  # remove hidden files and folders
+            for entry in base_path.iterdir():
+                if entry.name.startswith('.'): 
                     continue
                 if entry.is_dir():
                     paths.extend(scan_directory(entry))
                 else:
-                    file_path = str(entry.relative_to(Path)) 
+                    file_path = str(entry.relative_to(base_path))
                     if self._should_include_file(file_path):
                         paths.append(file_path)
             return paths
         
         try:
-            all_files = scan_directory(Path(self.path) )
+            base_path = Path(self.path) 
+            if not base_path.exists():
+                raise ValueError(f"local path not exist {self.path}")
+            if not base_path.is_dir():
+                raise ValueError("should provide the directory path")
+                
+            all_files = scan_directory(base_path)
             return "\n".join(all_files)
             
         except Exception as e:
-            raise ValueError(f"Connot read local file: {str(e)}")
+            raise ValueError(f"cannot read the local codebase: {str(e)}")
 
     def get_readme(self):
         """

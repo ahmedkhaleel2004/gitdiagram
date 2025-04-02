@@ -25,7 +25,7 @@ ENABLE_LOCAL_SERVER = os.getenv("ENABLE_LOCAL_SERVER") == "true" \
      or os.getenv("ENABLE_LOCAL_SERVER") == "TRUE" \
      or os.getenv("ENABLE_LOCAL_SERVER") == "1" \
      or os.getenv("ENABLE_LOCAL_SERVER") == 1
-
+LOCAL_CODEBASE = os.getenv("LOCAL_CODEBASE")
 router = APIRouter(prefix="/generate", tags=["Claude"])
 
 # Initialize services
@@ -45,7 +45,7 @@ def dump_mermaid_code(mermaid_code):
 @lru_cache(maxsize=100)
 def get_cached_github_data(username: str, repo: str, github_pat: str | None = None):
     if ENABLE_LOCAL_SERVER:
-        return get_cached_local_data(local_path=repo)
+        return get_cached_local_data(local_path=LOCAL_CODEBASE)
     # Create a new service instance for each call with the appropriate PAT
     service = GitHubService(pat=github_pat)
 
@@ -61,11 +61,9 @@ def get_cached_github_data(username: str, repo: str, github_pat: str | None = No
 @lru_cache(maxsize=100)
 def get_cached_local_data(local_path: str):
     # Create a new service instance for each call with the appropriate PAT
-    service = LocalService(pat=local_path)
-
+    service = LocalService(path=local_path)
     file_tree = service.get_file_paths_as_list()
     readme = service.get_readme()
-
     return {"default_branch": "Your Current Branch", "file_tree": file_tree, "readme": readme}
 
 
