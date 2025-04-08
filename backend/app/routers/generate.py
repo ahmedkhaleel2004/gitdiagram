@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from app.services.github_service import GitHubService
 from app.services.local_service import LocalService
 from app.services.o3_mini_openai_service import OpenAIo3Service
+from app.services.seed_dpsk_service import SeedDpSkService
 from app.prompts import (
     SYSTEM_FIRST_PROMPT,
     SYSTEM_SECOND_PROMPT,
