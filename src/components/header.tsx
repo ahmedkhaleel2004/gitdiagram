@@ -18,7 +18,7 @@ export function Header() {
   }, []);
 
   const formatStarCount = (count: number | null) => {
-    if (!count) return "3.0k"; // Default to 2.0k if count is null (it can only go up from here)
+    if (!count) return "6.0k"; // Default to 2.0k if count is null (it can only go up from here)
     if (count >= 1000) {
       return `${(count / 1000).toFixed(1)}k`;
     }

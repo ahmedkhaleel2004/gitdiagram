@@ -8,10 +8,15 @@ import { useDiagram } from "~/hooks/useDiagram";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
 import { ApiKeyButton } from "~/components/api-key-button";
 import { useState } from "react";
+import { useStarReminder } from "~/hooks/useStarReminder";
 
 export default function Repo() {
   const [zoomingEnabled, setZoomingEnabled] = useState(false);
   const params = useParams<{ username: string; repo: string }>();
+
+  // Use the star reminder hook
+  useStarReminder();
+
   const {
     diagram,
     error,
