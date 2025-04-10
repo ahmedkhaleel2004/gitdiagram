@@ -2,7 +2,9 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from app.services.github_service import GitHubService
+from app.services.local_service import LocalService
 from app.services.o3_mini_openai_service import OpenAIo3Service
+from app.services.seed_dpsk_service import SeedDpSkService
 from app.prompts import (
     SYSTEM_FIRST_PROMPT,
     SYSTEM_SECOND_PROMPT,
@@ -15,12 +17,16 @@ from functools import lru_cache
 import re
 import json
 import asyncio
-
 # from app.services.claude_service import ClaudeService
 # from app.core.limiter import limiter
-
+import os
 load_dotenv()
-
+ENABLE_LOCAL_SERVER = os.getenv("ENABLE_LOCAL_SERVER") == "true" \
+     or os.getenv("ENABLE_LOCAL_SERVER") == "True" \
+     or os.getenv("ENABLE_LOCAL_SERVER") == "TRUE" \
+     or os.getenv("ENABLE_LOCAL_SERVER") == "1" \
+     or os.getenv("ENABLE_LOCAL_SERVER") == 1
+LOCAL_CODEBASE = os.getenv("LOCAL_CODEBASE")
 router = APIRouter(prefix="/generate", tags=["Claude"])
 
 # Initialize services
@@ -28,20 +34,38 @@ router = APIRouter(prefix="/generate", tags=["Claude"])
 o3_service = OpenAIo3Service()
 
 
+def dump_mermaid_code(mermaid_code):
+    output_dir = "/app"
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "mermaid.txt"), "w") as f:
+        f.write(mermaid_code)  # directly write to mermaid.txt
+    return
+
+
 # cache github data to avoid double API calls from cost and generate
 @lru_cache(maxsize=100)
 def get_cached_github_data(username: str, repo: str, github_pat: str | None = None):
+    if ENABLE_LOCAL_SERVER:
+        return get_cached_local_data(local_path=LOCAL_CODEBASE)
     # Create a new service instance for each call with the appropriate PAT
-    current_github_service = GitHubService(pat=github_pat)
+    service = GitHubService(pat=github_pat)
 
-    default_branch = current_github_service.get_default_branch(username, repo)
+    default_branch = service.get_default_branch(username, repo)
     if not default_branch:
         default_branch = "main"  # fallback value
 
-    file_tree = current_github_service.get_github_file_paths_as_list(username, repo)
-    readme = current_github_service.get_github_readme(username, repo)
+    file_tree = service.get_file_paths_as_list(username, repo)
+    readme = service.get_readme(username, repo)
 
     return {"default_branch": default_branch, "file_tree": file_tree, "readme": readme}
+
+@lru_cache(maxsize=100)
+def get_cached_local_data(local_path: str):
+    # Create a new service instance for each call with the appropriate PAT
+    service = LocalService(path=local_path)
+    file_tree = service.get_file_paths_as_list()
+    readme = service.get_readme()
+    return {"default_branch": "Your Current Branch", "file_tree": file_tree, "readme": readme}
 
 
 class ApiRequest(BaseModel):
@@ -245,6 +269,10 @@ async def generate_stream(request: Request, body: ApiRequest):
                 processed_diagram = process_click_events(
                     mermaid_code, body.username, body.repo, default_branch
                 )
+
+                # dump the generated mermaid code
+                # will be useful when debugging
+                dump_mermaid_code(mermaid_code)
 
                 # Send final result
                 yield f"data: {json.dumps({
