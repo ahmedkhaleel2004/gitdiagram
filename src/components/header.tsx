@@ -52,7 +52,12 @@ export function Header() {
         <nav className="flex items-center gap-3 sm:gap-6">
           <span
             onClick={() => setIsApiKeyDialogOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter")
+                setIsApiKeyDialogOpen(true);
+              }}
             className="cursor-pointer text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600"
+            tabIndex={0}
           >
             <span className="flex items-center sm:hidden">
               <span>API Key</span>
@@ -63,7 +68,12 @@ export function Header() {
           </span>
           <span
             onClick={() => setIsPrivateReposDialogOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter")
+                setIsPrivateReposDialogOpen(true);
+              }}
             className="cursor-pointer text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600"
+            tabIndex={0}
           >
             <span className="sm:hidden">Private Repos</span>
             <span className="hidden sm:inline">Private Repos</span>
@@ -71,8 +81,9 @@ export function Header() {
           <Link
             href="https://github.com/ahmedkhaleel2004/gitdiagram"
             className="flex items-center gap-1 text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600 sm:gap-2"
+            tabIndex={0}
           >
-            <FaGithub className="h-5 w-5" />
+            <FaGithub className="h-5 w-5" aria-label="Github" role="img"/>
             <span className="hidden sm:inline">GitHub</span>
           </Link>
           <span className="flex items-center gap-1 text-sm font-medium text-black">
