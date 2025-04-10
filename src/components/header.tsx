@@ -38,7 +38,7 @@ export function Header() {
 
   return (
     <header className="border-b-[3px] border-black">
-      <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-8">
+      <div className="mx-auto flex h-16 max-w-4xl items-center justify-between gap-3 px-4 sm:px-8">
         <Link href="/" className="flex items-center">
           <span className="text-lg font-semibold sm:text-xl">
             <span className="text-black transition-colors duration-200 hover:text-gray-600">
