@@ -1,12 +1,12 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import MainCard from "~/components/main-card";
+import { ApiKeyButton } from "~/components/api-key-button";
+import { ApiKeyDialog } from "~/components/api-key-dialog";
 import Loading from "~/components/loading";
+import MainCard from "~/components/main-card";
 import MermaidChart from "~/components/mermaid-diagram";
 import { useDiagram } from "~/hooks/useDiagram";
-import { ApiKeyDialog } from "~/components/api-key-dialog";
-import { ApiKeyButton } from "~/components/api-key-button";
+import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useStarReminder } from "~/hooks/useStarReminder";
 
@@ -33,6 +33,7 @@ export default function Repo() {
     handleExportImage,
     state,
   } = useDiagram(params.username.toLowerCase(), params.repo.toLowerCase());
+
 
   return (
     <div className="flex flex-col items-center p-4">
@@ -68,14 +69,15 @@ export default function Repo() {
             </p>
             {(error?.includes("API key") ||
               state.error?.includes("API key")) && (
-              <div className="mt-8 flex flex-col items-center gap-2">
-                <ApiKeyButton onClick={handleOpenApiKeyDialog} />
-              </div>
-            )}
+                <div className="mt-8 flex flex-col items-center gap-2">
+                  <ApiKeyButton onClick={handleOpenApiKeyDialog} />
+                </div>
+              )}
           </div>
         ) : (
-          <div className="flex w-full justify-center px-4">
-            <MermaidChart chart={diagram} zoomingEnabled={zoomingEnabled} />
+          <div className="flex flex-col w-full justify-center px-4">
+            <MermaidChart rawDiagram={state.diagram} chart={diagram} zoomingEnabled={zoomingEnabled} />
+
           </div>
         )}
       </div>
