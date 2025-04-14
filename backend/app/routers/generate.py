@@ -15,6 +15,7 @@ from functools import lru_cache
 import re
 import json
 import asyncio
+from app.utils.mermaid_validator import validate_mermaid_syntax
 
 # from app.services.claude_service import ClaudeService
 # from app.core.limiter import limiter
@@ -240,6 +241,11 @@ async def generate_stream(request: Request, body: ApiRequest):
                 mermaid_code = mermaid_code.replace("```mermaid", "").replace("```", "")
                 if "BAD_INSTRUCTIONS" in mermaid_code:
                     yield f"data: {json.dumps({'error': 'Invalid or unclear instructions provided'})}\n\n"
+                    return
+
+                # Validate Mermaid.js syntax
+                if not validate_mermaid_syntax(mermaid_code):
+                    yield f"data: {json.dumps({'error': 'Invalid Mermaid.js syntax detected'})}\n\n"
                     return
 
                 processed_diagram = process_click_events(
