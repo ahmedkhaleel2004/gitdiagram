@@ -103,7 +103,7 @@ export function PrivateReposDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={!pat.startsWith("ghp_")}
+                disabled={!pat.startsWith("github_pat_")}
                 className="border-[3px] border-black bg-purple-400 px-4 py-2 text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-purple-300 disabled:opacity-50"
               >
                 Save Token
