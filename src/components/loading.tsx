@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 
 const messages = [
-  "Checking if its cached...",
+  "Checking if it's cached...",
   "Generating diagram...",
   "Analyzing repository...",
   "Prompting o3-mini...",
