@@ -79,7 +79,7 @@ export function PrivateReposDialog({
           </details>
           <Input
             type="password"
-            placeholder="ghp_..."
+            placeholder="github_pat_..."
             value={pat}
             onChange={(e) => setPat(e.target.value)}
             className="flex-1 rounded-md border-[3px] border-black px-3 py-2 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700"
