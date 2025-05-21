@@ -1,0 +1,6 @@
+# ~/gitdiagram/repos_to_update.txt
+# List of repositories to update, one per line (format: owner/repo_name)
+# Lines starting with # are comments and will be ignored.
+
+Tanay10x/hiring-assistant
+#10xConstruction/wall-finishing-app

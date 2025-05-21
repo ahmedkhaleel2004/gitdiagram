@@ -1,0 +1,110 @@
+Project Snapshot
+Source Directory: C:\Users\tanay\gitdiagram
+Generated on: 2025-05-21 12:53:24
+--------------------------------------------------
+
+Directory Tree Structure (Ignoring items marked by IGNORE_DIRS/IGNORE_PATTERNS):
+------------------------------------------------------------------------------
+gitdiagram/
+backend/
+│   ├── app/
+│   │   ├── core/
+│   │   │   └── limiter.py
+│   │   ├── routers/
+│   │   │   ├── generate.py
+│   │   │   └── modify.py
+│   │   ├── services/
+│   │   │   ├── claude_service.py
+│   │   │   ├── github_service.py
+│   │   │   ├── o1_mini_openai_service.py
+│   │   │   ├── o3_mini_openai_service.py
+│   │   │   ├── o3_mini_openrouter_service.py
+│   │   │   └── o4_mini_openai_service.py
+│   │   ├── utils/
+│   │   │   └── format_message.py
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   └── prompts.py
+│   ├── nginx/
+│   │   ├── api.conf
+│   │   └── setup_nginx.sh
+│   ├── deploy.sh
+│   ├── Dockerfile
+│   ├── entrypoint.sh
+│   └── requirements.txt
+docs/
+│   └── readme_img.png
+public/
+│   ├── favicon.ico
+│   └── og-image.png
+src/
+│   ├── app/
+│   │   ├── [username]/
+│   │   │   └── [repo]/
+│   │   │       └── page.tsx
+│   │   ├── _actions/
+│   │   │   ├── cache.ts
+│   │   │   ├── github.ts
+│   │   │   └── repo.ts
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   └── providers.tsx
+│   ├── components/
+│   │   ├── ui/
+│   │   │   ├── button.tsx
+│   │   │   ├── card.tsx
+│   │   │   ├── dialog.tsx
+│   │   │   ├── input.tsx
+│   │   │   ├── progress.tsx
+│   │   │   ├── sonner.tsx
+│   │   │   ├── switch.tsx
+│   │   │   ├── textarea.tsx
+│   │   │   └── tooltip.tsx
+│   │   ├── action-button.tsx
+│   │   ├── api-key-button.tsx
+│   │   ├── api-key-dialog.tsx
+│   │   ├── copy-button.tsx
+│   │   ├── customization-dropdown.tsx
+│   │   ├── export-dropdown.tsx
+│   │   ├── footer.tsx
+│   │   ├── header.tsx
+│   │   ├── hero.tsx
+│   │   ├── loading-animation.tsx
+│   │   ├── loading.tsx
+│   │   ├── main-card.tsx
+│   │   ├── mermaid-diagram.tsx
+│   │   └── private-repos-dialog.tsx
+│   ├── hooks/
+│   │   ├── useDiagram.ts
+│   │   └── useStarReminder.tsx
+│   ├── lib/
+│   │   ├── exampleRepos.ts
+│   │   ├── fetch-backend.ts
+│   │   └── utils.ts
+│   ├── server/
+│   │   └── db/
+│   │       ├── index.ts
+│   │       └── schema.ts
+│   ├── styles/
+│   │   └── globals.css
+│   └── env.js
+.gitignore
+components.json
+docker-compose.yml
+drizzle.config.ts
+LICENSE
+next-env.d.ts
+next.config.js
+package.json
+postcss.config.js
+prettier.config.js
+README.md
+start-database.sh
+tailwind.config.ts
+tsconfig.json
+
+
+==================================================
+                  File Contents
+==================================================
+

@@ -1,0 +1,3096 @@
+Project Snapshot
+Source Directory: C:\Users\tanay\gitdiagram\src
+Generated on: 2025-05-21 14:56:25
+--------------------------------------------------
+
+Directory Tree Structure (Ignoring items marked by IGNORE_DIRS/IGNORE_PATTERNS):
+------------------------------------------------------------------------------
+src/
+app/
+│   ├── [username]/
+│   │   └── [repo]/
+│   │       └── page.tsx
+│   ├── _actions/
+│   │   ├── cache.ts
+│   │   ├── github.ts
+│   │   └── repo.ts
+│   ├── layout.tsx
+│   ├── page.tsx
+│   └── providers.tsx
+components/
+│   ├── ui/
+│   │   ├── button.tsx
+│   │   ├── card.tsx
+│   │   ├── dialog.tsx
+│   │   ├── input.tsx
+│   │   ├── progress.tsx
+│   │   ├── sonner.tsx
+│   │   ├── switch.tsx
+│   │   ├── textarea.tsx
+│   │   └── tooltip.tsx
+│   ├── action-button.tsx
+│   ├── api-key-button.tsx
+│   ├── api-key-dialog.tsx
+│   ├── copy-button.tsx
+│   ├── customization-dropdown.tsx
+│   ├── export-dropdown.tsx
+│   ├── footer.tsx
+│   ├── header.tsx
+│   ├── hero.tsx
+│   ├── loading-animation.tsx
+│   ├── loading.tsx
+│   ├── main-card.tsx
+│   ├── mermaid-diagram.tsx
+│   └── private-repos-dialog.tsx
+hooks/
+│   ├── useDiagram.ts
+│   └── useStarReminder.tsx
+lib/
+│   ├── exampleRepos.ts
+│   ├── fetch-backend.ts
+│   └── utils.ts
+server/
+│   └── db/
+│       ├── index.ts
+│       └── schema.ts
+styles/
+│   └── globals.css
+env.js
+
+
+==================================================
+                  File Contents
+==================================================
+
+--- File: app/[username]/[repo]/page.tsx ---
+"use client";
+
+import { useParams } from "next/navigation";
+import MainCard from "~/components/main-card";
+import Loading from "~/components/loading";
+import MermaidChart from "~/components/mermaid-diagram";
+import { useDiagram } from "~/hooks/useDiagram";
+import { ApiKeyDialog } from "~/components/api-key-dialog";
+import { ApiKeyButton } from "~/components/api-key-button";
+import { useState } from "react";
+import { useStarReminder } from "~/hooks/useStarReminder";
+
+export default function Repo() {
+  const [zoomingEnabled, setZoomingEnabled] = useState(false);
+  const params = useParams<{ username: string; repo: string }>();
+
+  // Use the star reminder hook
+  useStarReminder();
+
+  const {
+    diagram,
+    error,
+    loading,
+    lastGenerated,
+    cost,
+    showApiKeyDialog,
+    handleModify,
+    handleRegenerate,
+    handleCopy,
+    handleApiKeySubmit,
+    handleCloseApiKeyDialog,
+    handleOpenApiKeyDialog,
+    handleExportImage,
+    state,
+  } = useDiagram(params.username.toLowerCase(), params.repo.toLowerCase());
+
+  return (
+    <div className="flex flex-col items-center p-4">
+      <div className="flex w-full justify-center pt-8">
+        <MainCard
+          isHome={false}
+          username={params.username.toLowerCase()}
+          repo={params.repo.toLowerCase()}
+          showCustomization={!loading && !error}
+          onModify={handleModify}
+          onRegenerate={handleRegenerate}
+          onCopy={handleCopy}
+          lastGenerated={lastGenerated}
+          onExportImage={handleExportImage}
+          zoomingEnabled={zoomingEnabled}
+          onZoomToggle={() => setZoomingEnabled(!zoomingEnabled)}
+          loading={loading}
+        />
+      </div>
+      <div className="mt-8 flex w-full flex-col items-center gap-8">
+        {loading ? (
+          <Loading
+            cost={cost}
+            status={state.status}
+            explanation={state.explanation}
+            mapping={state.mapping}
+            diagram={state.diagram}
+          />
+        ) : error || state.error ? (
+          <div className="mt-12 text-center">
+            <p className="max-w-4xl text-lg font-medium text-purple-600">
+              {error || state.error}
+            </p>
+            {(error?.includes("API key") ||
+              state.error?.includes("API key")) && (
+              <div className="mt-8 flex flex-col items-center gap-2">
+                <ApiKeyButton onClick={handleOpenApiKeyDialog} />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex w-full justify-center px-4">
+            <MermaidChart chart={diagram} zoomingEnabled={zoomingEnabled} />
+          </div>
+        )}
+      </div>
+
+      <ApiKeyDialog
+        isOpen={showApiKeyDialog}
+        onClose={handleCloseApiKeyDialog}
+        onSubmit={handleApiKeySubmit}
+      />
+    </div>
+  );
+}
+--------------------------------------------
+
+--- File: app/_actions/cache.ts ---
+"use server";
+
+import { db } from "~/server/db";
+import { eq, and } from "drizzle-orm";
+import { diagramCache } from "~/server/db/schema";
+import { sql } from "drizzle-orm";
+
+export async function getCachedDiagram(username: string, repo: string) {
+  try {
+    const cached = await db
+      .select()
+      .from(diagramCache)
+      .where(
+        and(eq(diagramCache.username, username), eq(diagramCache.repo, repo)),
+      )
+      .limit(1);
+
+    return cached[0]?.diagram ?? null;
+  } catch (error) {
+    console.error("Error fetching cached diagram:", error);
+    return null;
+  }
+}
+
+export async function getCachedExplanation(username: string, repo: string) {
+  try {
+    const cached = await db
+      .select()
+      .from(diagramCache)
+      .where(
+        and(eq(diagramCache.username, username), eq(diagramCache.repo, repo)),
+      )
+      .limit(1);
+
+    return cached[0]?.explanation ?? null;
+  } catch (error) {
+    console.error("Error fetching cached explanation:", error);
+    return null;
+  }
+}
+
+export async function cacheDiagramAndExplanation(
+  username: string,
+  repo: string,
+  diagram: string,
+  explanation: string,
+  usedOwnKey = false,
+) {
+  try {
+    await db
+      .insert(diagramCache)
+      .values({
+        username,
+        repo,
+        diagram,
+        explanation,
+        usedOwnKey,
+      })
+      .onConflictDoUpdate({
+        target: [diagramCache.username, diagramCache.repo],
+        set: {
+          diagram,
+          explanation,
+          usedOwnKey,
+          updatedAt: new Date(),
+        },
+      });
+  } catch (error) {
+    console.error("Error caching diagram:", error);
+  }
+}
+
+export async function getDiagramStats() {
+  try {
+    const stats = await db
+      .select({
+        totalDiagrams: sql`COUNT(*)`,
+        ownKeyUsers: sql`COUNT(CASE WHEN ${diagramCache.usedOwnKey} = true THEN 1 END)`,
+        freeUsers: sql`COUNT(CASE WHEN ${diagramCache.usedOwnKey} = false THEN 1 END)`,
+      })
+      .from(diagramCache);
+
+    return stats[0];
+  } catch (error) {
+    console.error("Error getting diagram stats:", error);
+    return null;
+  }
+}
+-----------------------------------
+
+--- File: app/_actions/github.ts ---
+import { cache } from "react";
+
+interface GitHubResponse {
+  stargazers_count: number;
+}
+
+export const getStarCount = cache(async () => {
+  try {
+    const response = await fetch(
+      "https://api.github.com/repos/ahmedkhaleel2004/gitdiagram",
+      {
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+        },
+        next: {
+          revalidate: 300, // Cache for 5 minutes
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch star count");
+    }
+
+    const data = (await response.json()) as GitHubResponse;
+    return data.stargazers_count;
+  } catch (error) {
+    console.error("Error fetching star count:", error);
+    return null;
+  }
+});
+------------------------------------
+
+--- File: app/_actions/repo.ts ---
+"use server";
+
+import { db } from "~/server/db";
+import { eq, and } from "drizzle-orm";
+import { diagramCache } from "~/server/db/schema";
+
+export async function getLastGeneratedDate(username: string, repo: string) {
+  const result = await db
+    .select()
+    .from(diagramCache)
+    .where(
+      and(eq(diagramCache.username, username), eq(diagramCache.repo, repo)),
+    );
+
+  return result[0]?.updatedAt;
+}
+----------------------------------
+
+--- File: app/layout.tsx ---
+import "~/styles/globals.css";
+
+import { GeistSans } from "geist/font/sans";
+import { type Metadata } from "next";
+import { Header } from "~/components/header";
+import { Footer } from "~/components/footer";
+import { CSPostHogProvider } from "./providers";
+import { Toaster } from "~/components/ui/sonner";
+
+export const metadata: Metadata = {
+  title: "GitDiagram",
+  description:
+    "Turn any GitHub repository into an interactive diagram for visualization in seconds.",
+  metadataBase: new URL("https://gitdiagram.com"),
+  keywords: [
+    "github",
+    "git diagram",
+    "git diagram generator",
+    "git diagram tool",
+    "git diagram maker",
+    "git diagram creator",
+    "git diagram",
+    "diagram",
+    "repository",
+    "visualization",
+    "code structure",
+    "system design",
+    "software architecture",
+    "software design",
+    "software engineering",
+    "software development",
+    "software architecture",
+    "software design",
+    "software engineering",
+    "software development",
+    "open source",
+    "open source software",
+    "ahmedkhaleel2004",
+    "ahmed khaleel",
+    "gitdiagram",
+    "gitdiagram.com",
+  ],
+  authors: [
+    { name: "Ahmed Khaleel", url: "https://github.com/ahmedkhaleel2004" },
+  ],
+  creator: "Ahmed Khaleel",
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://gitdiagram.com",
+    title: "GitDiagram - Repository to Diagram in Seconds",
+    description:
+      "Turn any GitHub repository into an interactive diagram for visualization.",
+    siteName: "GitDiagram",
+    images: [
+      {
+        url: "/og-image.png", // You'll need to create this image
+        width: 1200,
+        height: 630,
+        alt: "GitDiagram - Repository Visualization Tool",
+      },
+    ],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-snippet": -1,
+    },
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en" className={`${GeistSans.variable}`}>
+      <CSPostHogProvider>
+        <body className="flex min-h-screen flex-col">
+          <Header />
+          <main className="flex-grow">{children}</main>
+          <Footer />
+          <Toaster />
+        </body>
+      </CSPostHogProvider>
+    </html>
+  );
+}
+----------------------------
+
+--- File: app/page.tsx ---
+import MainCard from "~/components/main-card";
+import Hero from "~/components/hero";
+
+export default function HomePage() {
+  return (
+    <main className="flex-grow px-8 pb-8 md:p-8">
+      <div className="mx-auto mb-4 max-w-4xl lg:my-8">
+        <Hero />
+        <div className="mt-12"></div>
+        <p className="mx-auto mt-8 max-w-2xl text-center text-lg">
+          Turn any GitHub repository into an interactive diagram for
+          visualization.
+        </p>
+        <p className="mx-auto mt-0 max-w-2xl text-center text-lg">
+          This is useful for quickly visualizing projects.
+        </p>
+        <p className="mx-auto mt-2 max-w-2xl text-center text-lg">
+          You can also replace &apos;hub&apos; with &apos;diagram&apos; in any
+          Github URL
+        </p>
+      </div>
+      <div className="mb-16 flex justify-center lg:mb-0">
+        <MainCard />
+      </div>
+    </main>
+  );
+}
+--------------------------
+
+--- File: app/providers.tsx ---
+// app/providers.js
+"use client";
+import posthog from "posthog-js";
+import { PostHogProvider } from "posthog-js/react";
+
+if (typeof window !== "undefined") {
+  // Only initialize PostHog if the environment variables are available
+  const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  // const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+
+  if (posthogKey) {
+    posthog.init(posthogKey, {
+      api_host: "/ingest",
+      ui_host: "https://us.posthog.com",
+      person_profiles: "always",
+    });
+  } else {
+    console.log(
+      "PostHog environment variables are not set. Analytics will be disabled. Skipping PostHog initialization.",
+    );
+  }
+}
+
+export function CSPostHogProvider({ children }: { children: React.ReactNode }) {
+  return <PostHogProvider client={posthog}>{children}</PostHogProvider>;
+}
+-------------------------------
+
+--- File: components/action-button.tsx ---
+import { Button } from "~/components/ui/button";
+import type { LucideIcon } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
+
+interface ActionButtonProps {
+  onClick: () => void;
+  icon: LucideIcon;
+  tooltipText: string;
+  disabled?: boolean;
+  text?: string;
+}
+
+export function ActionButton({
+  onClick,
+  icon: Icon,
+  tooltipText,
+  disabled,
+  text,
+}: ActionButtonProps) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            onClick={(e) => {
+              e.preventDefault();
+              onClick();
+            }}
+            disabled={disabled}
+            className="border-[3px] border-black bg-purple-400 p-4 px-4 text-base text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:bg-purple-400 sm:p-6 sm:px-6 sm:text-lg"
+          >
+            <Icon className="h-6 w-6" />
+            {text && <span className="text-sm">{text}</span>}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{tooltipText}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+------------------------------------------
+
+--- File: components/api-key-button.tsx ---
+import { Key } from "lucide-react";
+import { Button } from "./ui/button";
+
+interface ApiKeyButtonProps {
+  onClick: () => void;
+}
+
+export function ApiKeyButton({ onClick }: ApiKeyButtonProps) {
+  return (
+    <Button
+      onClick={onClick}
+      className="border-[3px] border-black bg-purple-400 px-4 py-2 text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-purple-400"
+    >
+      <Key className="mr-2 h-5 w-5" />
+      Use Your API Key
+    </Button>
+  );
+}
+-------------------------------------------
+
+--- File: components/api-key-dialog.tsx ---
+"use client";
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+
+interface ApiKeyDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (apiKey: string) => void;
+}
+
+export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
+  const [apiKey, setApiKey] = useState<string>("");
+
+  useEffect(() => {
+    const storedKey = localStorage.getItem("openai_key");
+    if (storedKey) {
+      setApiKey(storedKey);
+    }
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(apiKey);
+    setApiKey("");
+  };
+
+  const handleClear = () => {
+    localStorage.removeItem("openai_key");
+    setApiKey("");
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="border-[3px] border-black bg-purple-200 p-6 shadow-[8px_8px_0_0_#000000] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold text-black">
+            Enter OpenAI API Key
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="text-sm">
+            GitDiagram offers infinite free diagram generations! You can also
+            provide an OpenAI API key to generate diagrams at your own cost. The
+            key will be stored locally in your browser.
+            {/* GitDiagram offers one free diagram generation. For additional
+            diagrams, you&apos;ll need to provide an OpenAI API key. The key
+            will be stored locally in your browser. */}
+            <br />
+            <br />
+            <span className="font-medium">Get your OpenAI API key </span>
+            <Link
+              href="https://platform.openai.com/api-keys"
+              className="font-medium text-purple-600 transition-colors duration-200 hover:text-purple-500"
+            >
+              here
+            </Link>
+            .
+          </div>
+          <details className="group text-sm [&>summary:focus-visible]:outline-none">
+            <summary className="cursor-pointer font-medium text-purple-700 hover:text-purple-600">
+              Data storage disclaimer
+            </summary>
+            <div className="animate-accordion-down mt-2 space-y-2 overflow-hidden pl-2">
+              <p>
+                Your API key will be stored locally in your browser and used
+                only for generating diagrams. You can also self-host this app by
+                following the instructions in the{" "}
+                <Link
+                  href="https://github.com/ahmedkhaleel2004/gitdiagram"
+                  className="text-purple-600 transition-colors duration-200 hover:text-purple-500"
+                >
+                  README
+                </Link>
+                .
+              </p>
+            </div>
+          </details>
+          <Input
+            type="password"
+            placeholder="sk-..."
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            className="flex-1 rounded-md border-[3px] border-black px-3 py-2 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700"
+            required
+          />
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handleClear}
+              className="text-sm text-purple-600 hover:text-purple-500"
+            >
+              Clear
+            </button>
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                onClick={onClose}
+                className="border-[3px] border-black bg-gray-200 px-4 py-2 text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-gray-300"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!apiKey.startsWith("sk-")}
+                className="border-[3px] border-black bg-purple-400 px-4 py-2 text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-purple-300 disabled:opacity-50"
+              >
+                Save Key
+              </Button>
+            </div>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+-------------------------------------------
+
+--- File: components/copy-button.tsx ---
+import React, { useState } from "react";
+import { Button } from "~/components/ui/button";
+import { FileText, Check } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
+
+interface CopyButtonProps {
+  onClick: () => void;
+}
+
+export function CopyButton({ onClick }: CopyButtonProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleClick = () => {
+    onClick();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
+  };
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            onClick={handleClick}
+            className="border-[3px] border-black bg-purple-400 p-4 px-4 text-base text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:bg-purple-400 sm:p-6 sm:px-6 sm:text-lg"
+          >
+            {copied ? (
+              <>
+                <Check className="h-6 w-6" />
+                <span className="text-sm">Copied!</span>
+              </>
+            ) : (
+              <>
+                <FileText className="h-6 w-6" />
+                <span className="text-sm">Copy Mermaid.js Code</span>
+              </>
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>
+            {copied
+              ? "Copied!"
+              : "Copy the internal Mermaid.js code needed to generate the diagram"}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+----------------------------------------
+
+--- File: components/customization-dropdown.tsx ---
+import { useState } from "react";
+import { Wand2, RefreshCw } from "lucide-react";
+import { ActionButton } from "./action-button";
+import { Textarea } from "./ui/textarea";
+
+interface CustomizationDropdownProps {
+  onModify: (instructions: string) => void;
+  onRegenerate: (instructions: string) => void;
+  lastGenerated: Date;
+  isOpen: boolean;
+}
+
+export function CustomizationDropdown({
+  onModify,
+  onRegenerate,
+  lastGenerated,
+}: CustomizationDropdownProps) {
+  const [instructions, setInstructions] = useState("");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+        <Textarea
+          placeholder="Custom instructions (optional)"
+          className="min-h-[38px] flex-1 resize-y rounded-md border-[3px] border-black px-3 py-2 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:min-h-[46px] sm:px-4 sm:py-3 sm:text-lg sm:placeholder:text-lg"
+          value={instructions}
+          onChange={(e) => {
+            if (e.target.value.length <= 1000) {
+              setInstructions(e.target.value);
+            }
+          }}
+          maxLength={1000}
+          rows={1}
+        />
+
+        <div className="flex flex-row gap-3 sm:gap-4">
+          <ActionButton
+            onClick={() => onModify(instructions)}
+            icon={Wand2}
+            tooltipText="Modify existing diagram"
+            disabled={!instructions.trim()}
+          />
+          <ActionButton
+            onClick={() => onRegenerate(instructions)}
+            icon={RefreshCw}
+            tooltipText="Regenerate with/without custom instructions"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center">
+        <span className="text-sm text-gray-700">
+          Last generated: {lastGenerated.toLocaleString()}
+        </span>
+      </div>
+    </div>
+  );
+}
+---------------------------------------------------
+
+--- File: components/export-dropdown.tsx ---
+import { CopyButton } from "./copy-button";
+import { Image } from "lucide-react";
+import { ActionButton } from "./action-button";
+
+interface ExportDropdownProps {
+  onCopy: () => void;
+  lastGenerated: Date;
+  onExportImage: () => void;
+  isOpen: boolean;
+}
+
+export function ExportDropdown({
+  onCopy,
+  lastGenerated,
+  onExportImage,
+}: ExportDropdownProps) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+        <ActionButton
+          onClick={onExportImage}
+          icon={Image}
+          tooltipText="Download diagram as high-quality PNG"
+          text="Download PNG"
+        />
+        <CopyButton onClick={onCopy} />
+      </div>
+
+      <div className="flex items-center">
+        <span className="text-sm text-gray-700">
+          Last generated: {lastGenerated.toLocaleString()}
+        </span>
+      </div>
+    </div>
+  );
+}
+--------------------------------------------
+
+--- File: components/footer.tsx ---
+import React from "react";
+import Link from "next/link";
+
+export function Footer() {
+  return (
+    <footer className="mt-auto border-t-[3px] border-black py-4 lg:px-8">
+      <div className="container mx-auto flex h-8 max-w-4xl items-center justify-center">
+        <span className="text-sm font-medium text-black">
+          Made by{" "}
+          <Link
+            href="https://x.com/ahmedkhaleel04"
+            className="text-purple-600 hover:underline"
+          >
+            @ahmedkhaleel04
+          </Link>
+        </span>
+      </div>
+    </footer>
+  );
+}
+-----------------------------------
+
+--- File: components/header.tsx ---
+"use client";
+
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { FaGithub } from "react-icons/fa";
+import { getStarCount } from "~/app/_actions/github";
+import { PrivateReposDialog } from "./private-repos-dialog";
+import { ApiKeyDialog } from "./api-key-dialog";
+
+export function Header() {
+  const [isPrivateReposDialogOpen, setIsPrivateReposDialogOpen] =
+    useState(false);
+  const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
+  const [starCount, setStarCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    void getStarCount().then(setStarCount);
+  }, []);
+
+  const formatStarCount = (count: number | null) => {
+    if (!count) return "9.0k"; // Default to 2.0k if count is null (it can only go up from here)
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}k`;
+    }
+    return count.toString();
+  };
+
+  const handlePrivateReposSubmit = (pat: string) => {
+    // Store the PAT in localStorage
+    localStorage.setItem("github_pat", pat);
+    setIsPrivateReposDialogOpen(false);
+  };
+
+  const handleApiKeySubmit = (apiKey: string) => {
+    localStorage.setItem("openai_key", apiKey);
+    setIsApiKeyDialogOpen(false);
+  };
+
+  return (
+    <header className="border-b-[3px] border-black">
+      <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-8">
+        <Link href="/" className="flex items-center">
+          <span className="text-lg font-semibold sm:text-xl">
+            <span className="text-black transition-colors duration-200 hover:text-gray-600">
+              Git
+            </span>
+            <span className="text-purple-600 transition-colors duration-200 hover:text-purple-500">
+              Diagram
+            </span>
+          </span>
+        </Link>
+        <nav className="flex items-center gap-3 sm:gap-6">
+          <span
+            onClick={() => setIsApiKeyDialogOpen(true)}
+            className="cursor-pointer text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600"
+          >
+            <span className="flex items-center sm:hidden">
+              <span>API Key</span>
+            </span>
+            <span className="hidden items-center gap-1 sm:flex">
+              <span>API Key</span>
+            </span>
+          </span>
+          <span
+            onClick={() => setIsPrivateReposDialogOpen(true)}
+            className="cursor-pointer text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600"
+          >
+            <span className="sm:hidden">Private Repos</span>
+            <span className="hidden sm:inline">Private Repos</span>
+          </span>
+          <Link
+            href="https://github.com/ahmedkhaleel2004/gitdiagram"
+            className="flex items-center gap-1 text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600 sm:gap-2"
+          >
+            <FaGithub className="h-5 w-5" />
+            <span className="hidden sm:inline">GitHub</span>
+          </Link>
+          <span className="flex items-center gap-1 text-sm font-medium text-black">
+            <span className="text-amber-400">★</span>
+            {formatStarCount(starCount)}
+          </span>
+        </nav>
+
+        <PrivateReposDialog
+          isOpen={isPrivateReposDialogOpen}
+          onClose={() => setIsPrivateReposDialogOpen(false)}
+          onSubmit={handlePrivateReposSubmit}
+        />
+        <ApiKeyDialog
+          isOpen={isApiKeyDialogOpen}
+          onClose={() => setIsApiKeyDialogOpen(false)}
+          onSubmit={handleApiKeySubmit}
+        />
+      </div>
+    </header>
+  );
+}
+-----------------------------------
+
+--- File: components/hero.tsx ---
+import React from "react";
+
+const Hero = () => {
+  return (
+    <div className="relative mx-auto flex w-full flex-col items-start justify-center sm:flex-row sm:items-center">
+      <svg
+        className="left-0 h-auto w-16 flex-shrink-0 -translate-x-2 translate-y-4 p-2 sm:absolute sm:w-20 sm:-translate-y-16 md:relative md:w-24 md:-translate-y-0 md:translate-x-10 lg:absolute lg:ml-32 lg:-translate-x-full lg:-translate-y-10"
+        viewBox="0 0 91 98"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m35.878 14.162 1.333-5.369 1.933 5.183c4.47 11.982 14.036 21.085 25.828 24.467l5.42 1.555-5.209 2.16c-11.332 4.697-19.806 14.826-22.888 27.237l-1.333 5.369-1.933-5.183C34.56 57.599 24.993 48.496 13.201 45.114l-5.42-1.555 5.21-2.16c11.331-4.697 19.805-14.826 22.887-27.237Z"
+          fill="#a855f7"
+          stroke="#000"
+          strokeWidth="3.445"
+        />
+        <path
+          d="M79.653 5.729c-2.436 5.323-9.515 15.25-18.341 12.374m9.197 16.336c2.6-5.851 10.008-16.834 18.842-13.956m-9.738-15.07c-.374 3.787 1.076 12.078 9.869 14.943M70.61 34.6c.503-4.21-.69-13.346-9.49-16.214M14.922 65.967c1.338 5.677 6.372 16.756 15.808 15.659M18.21 95.832c-1.392-6.226-6.54-18.404-15.984-17.305m12.85-12.892c-.41 3.771-3.576 11.588-12.968 12.681M18.025 96c.367-4.21 3.453-12.905 12.854-14"
+          stroke="#000"
+          strokeWidth="2.548"
+          strokeLinecap="round"
+        />
+      </svg>
+      <h1 className="relative inline-block w-full text-center text-5xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:pt-5 lg:text-7xl">
+        Repository to <br />
+        diagram&nbsp;
+      </h1>
+      <svg
+        className="bottom-0 right-0 hidden h-auto w-16 flex-shrink-0 -translate-x-10 translate-y-10 md:block md:translate-y-20 lg:absolute lg:w-20 lg:-translate-x-12 lg:translate-y-4"
+        viewBox="0 0 92 80"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m35.213 16.953.595-5.261 2.644 4.587a35.056 35.056 0 0 0 26.432 17.33l5.261.594-4.587 2.644A35.056 35.056 0 0 0 48.23 63.28l-.595 5.26-2.644-4.587a35.056 35.056 0 0 0-26.432-17.328l-5.261-.595 4.587-2.644a35.056 35.056 0 0 0 17.329-26.433Z"
+          fill="#38bdf8"
+          stroke="#000"
+          strokeWidth="2.868"
+          className=""
+        />
+        <path
+          d="M75.062 40.108c1.07 5.255 1.072 16.52-7.472 19.54m7.422-19.682c1.836 2.965 7.643 8.14 16.187 5.121-8.544 3.02-8.207 15.23-6.971 20.957-1.97-3.343-8.044-9.274-16.588-6.254M12.054 28.012c1.34-5.22 6.126-15.4 14.554-14.369M12.035 28.162c-.274-3.487-2.93-10.719-11.358-11.75C9.104 17.443 14.013 6.262 15.414.542c.226 3.888 2.784 11.92 11.212 12.95"
+          stroke="#000"
+          strokeWidth="2.319"
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+};
+
+export default Hero;
+---------------------------------
+
+--- File: components/loading-animation.tsx ---
+"use client";
+
+import { trio } from "ldrs";
+
+trio.register();
+
+const LoadingAnimation = () => {
+  return <l-trio size="40" speed="2.0" color="black" />;
+};
+
+export default LoadingAnimation;
+----------------------------------------------
+
+--- File: components/loading.tsx ---
+"use client";
+
+import { useEffect, useState, useRef } from "react";
+
+const messages = [
+  "Checking if its cached...",
+  "Generating diagram...",
+  "Analyzing repository...",
+  "Prompting o3-mini...",
+  "Inspecting file paths...",
+  "Finding component relationships...",
+  "Linking components to code...",
+  "Extracting relevant directories...",
+  "Reasoning about the diagram...",
+  "Prompt engineers needed -> Check out the GitHub",
+  "Shoutout to GitIngest for inspiration",
+  "I need to find a way to make this faster...",
+  "Finding the meaning of life...",
+  "I'm tired...",
+  "Please just give me the diagram...",
+  "...NOW!",
+  "guess not...",
+];
+
+interface LoadingProps {
+  cost?: string;
+  status:
+    | "idle"
+    | "started"
+    | "explanation_sent"
+    | "explanation"
+    | "explanation_chunk"
+    | "mapping_sent"
+    | "mapping"
+    | "mapping_chunk"
+    | "diagram_sent"
+    | "diagram"
+    | "diagram_chunk"
+    | "complete"
+    | "error";
+  explanation?: string;
+  mapping?: string;
+  diagram?: string;
+}
+
+const getStepNumber = (status: string): number => {
+  if (status.startsWith("diagram")) return 3;
+  if (status.startsWith("mapping")) return 2;
+  if (status.startsWith("explanation")) return 1;
+  return 0;
+};
+
+const SequentialDots = () => {
+  return (
+    <span className="inline-flex w-8 justify-start">
+      <span className="flex gap-0.5">
+        <span className="h-1 w-1 animate-[dot1_1.5s_steps(1)_infinite] rounded-full bg-purple-500" />
+        <span className="h-1 w-1 animate-[dot2_1.5s_steps(1)_infinite] rounded-full bg-purple-500" />
+        <span className="h-1 w-1 animate-[dot3_1.5s_steps(1)_infinite] rounded-full bg-purple-500" />
+      </span>
+    </span>
+  );
+};
+
+const StepDots = ({ currentStep }: { currentStep: number }) => {
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3].map((step) => (
+        <div
+          key={step}
+          className={`h-1.5 w-1.5 rounded-full transition-colors duration-300 ${
+            step <= currentStep ? "bg-purple-500" : "bg-purple-200"
+          }`}
+        />
+      ))}
+    </div>
+  );
+};
+
+export default function Loading({
+  status = "idle",
+  explanation,
+  mapping,
+  diagram,
+  cost,
+}: LoadingProps) {
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentMessageIndex((prevIndex) => (prevIndex + 1) % messages.length);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Auto-scroll effect
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [explanation, mapping, diagram]);
+
+  const shouldShowReasoning = (currentStatus: string) => {
+    if (
+      currentStatus === "explanation_sent" ||
+      (currentStatus.startsWith("explanation") && !explanation)
+    ) {
+      return "explanation";
+    }
+    if (
+      currentStatus === "mapping_sent" ||
+      (currentStatus.startsWith("mapping") && !mapping)
+    ) {
+      return "mapping";
+    }
+    if (
+      currentStatus === "diagram_sent" ||
+      (currentStatus.startsWith("diagram") && !diagram)
+    ) {
+      return "diagram";
+    }
+    return null;
+  };
+
+  const renderReasoningMessage = () => {
+    const reasoningType = shouldShowReasoning(status);
+    switch (reasoningType) {
+      case "explanation":
+        return "Model is analyzing the repository structure and codebase...";
+      case "mapping":
+        return "Model is identifying component relationships and dependencies...";
+      case "diagram":
+        return "Model is planning the diagram layout and connections...";
+      default:
+        return null;
+    }
+  };
+
+  const getStatusDisplay = () => {
+    const reasoningType = shouldShowReasoning(status);
+    switch (status) {
+      case "explanation_sent":
+      case "explanation":
+      case "explanation_chunk":
+        return {
+          text: reasoningType
+            ? "Model is reasoning about repository structure"
+            : "Explaining repository structure...",
+          isReasoning: !!reasoningType,
+        };
+      case "mapping_sent":
+      case "mapping":
+      case "mapping_chunk":
+        return {
+          text: reasoningType
+            ? "Model is reasoning about component relationships"
+            : "Creating component mapping...",
+          isReasoning: !!reasoningType,
+        };
+      case "diagram_sent":
+      case "diagram":
+      case "diagram_chunk":
+        return {
+          text: reasoningType
+            ? "Model is reasoning about diagram structure"
+            : "Generating diagram...",
+          isReasoning: !!reasoningType,
+        };
+      default:
+        return {
+          text: messages[currentMessageIndex],
+          isReasoning: false,
+        };
+    }
+  };
+
+  const statusDisplay = getStatusDisplay();
+  const reasoningMessage = renderReasoningMessage();
+
+  return (
+    <div className="mx-auto w-full max-w-4xl p-4">
+      <div className="overflow-hidden rounded-xl border-2 border-purple-200 bg-purple-50/30 backdrop-blur-sm">
+        <div className="border-b border-purple-100 bg-purple-100/50 px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-purple-500">
+                {statusDisplay.text}
+              </span>
+              {statusDisplay.isReasoning && <SequentialDots />}
+            </div>
+            <div className="flex items-center gap-3 text-xs font-medium text-purple-500">
+              {cost && <span>Estimated cost: {cost}</span>}
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-purple-100 px-2 py-0.5">
+                  Step {getStepNumber(status)}/3
+                </span>
+                <StepDots currentStep={getStepNumber(status)} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div ref={scrollRef} className="max-h-[400px] overflow-y-auto p-6">
+          <div className="flex flex-col gap-6">
+            {/* Only show reasoning message if we have some content */}
+            {reasoningMessage &&
+              statusDisplay.isReasoning &&
+              (explanation ?? mapping ?? diagram) && (
+                <div className="rounded-lg bg-purple-100/50 p-4 text-sm text-purple-500">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">Reasoning</p>
+                    <SequentialDots />
+                  </div>
+                  <p className="mt-2 leading-relaxed">{reasoningMessage}</p>
+                </div>
+              )}
+            {explanation && (
+              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-600">
+                <p className="font-medium text-purple-500">Explanation:</p>
+                <p className="mt-2 leading-relaxed">{explanation}</p>
+              </div>
+            )}
+            {mapping && (
+              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-600">
+                <p className="font-medium text-purple-500">Mapping:</p>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                  {mapping}
+                </pre>
+              </div>
+            )}
+            {diagram && (
+              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-600">
+                <p className="font-medium text-purple-500">
+                  Mermaid.js diagram:
+                </p>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                  {diagram}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+------------------------------------
+
+--- File: components/main-card.tsx ---
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Card } from "~/components/ui/card";
+import { Input } from "~/components/ui/input";
+import { Button } from "~/components/ui/button";
+import { Sparkles } from "lucide-react";
+import React from "react";
+import { CustomizationDropdown } from "./customization-dropdown";
+import { exampleRepos } from "~/lib/exampleRepos";
+import { ExportDropdown } from "./export-dropdown";
+import { ChevronUp, ChevronDown } from "lucide-react";
+import { Switch } from "~/components/ui/switch";
+
+interface MainCardProps {
+  isHome?: boolean;
+  username?: string;
+  repo?: string;
+  showCustomization?: boolean;
+  onModify?: (instructions: string) => void;
+  onRegenerate?: (instructions: string) => void;
+  onCopy?: () => void;
+  lastGenerated?: Date;
+  onExportImage?: () => void;
+  zoomingEnabled?: boolean;
+  onZoomToggle?: () => void;
+  loading?: boolean;
+}
+
+export default function MainCard({
+  isHome = true,
+  username,
+  repo,
+  showCustomization,
+  onModify,
+  onRegenerate,
+  onCopy,
+  lastGenerated,
+  onExportImage,
+  zoomingEnabled,
+  onZoomToggle,
+  loading,
+}: MainCardProps) {
+  const [repoUrl, setRepoUrl] = useState("");
+  const [error, setError] = useState("");
+  const [activeDropdown, setActiveDropdown] = useState<
+    "customize" | "export" | null
+  >(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (username && repo) {
+      setRepoUrl(`https://github.com/${username}/${repo}`);
+    }
+  }, [username, repo]);
+
+  useEffect(() => {
+    if (loading) {
+      setActiveDropdown(null);
+    }
+  }, [loading]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    const githubUrlPattern =
+      /^https?:\/\/github\.com\/([a-zA-Z0-9-_]+)\/([a-zA-Z0-9-_\.]+)\/?$/;
+    const match = githubUrlPattern.exec(repoUrl.trim());
+
+    if (!match) {
+      setError("Please enter a valid GitHub repository URL");
+      return;
+    }
+
+    const [, username, repo] = match || [];
+    if (!username || !repo) {
+      setError("Invalid repository URL format");
+      return;
+    }
+    const sanitizedUsername = encodeURIComponent(username);
+    const sanitizedRepo = encodeURIComponent(repo);
+    router.push(`/${sanitizedUsername}/${sanitizedRepo}`);
+  };
+
+  const handleExampleClick = (repoPath: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    router.push(repoPath);
+  };
+
+  const handleDropdownToggle = (dropdown: "customize" | "export") => {
+    setActiveDropdown(activeDropdown === dropdown ? null : dropdown);
+  };
+
+  return (
+    <Card className="relative w-full max-w-3xl border-[3px] border-black bg-purple-200 p-4 shadow-[8px_8px_0_0_#000000] sm:p-8">
+      <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+          <Input
+            placeholder="https://github.com/username/repo"
+            className="flex-1 rounded-md border-[3px] border-black px-3 py-4 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg"
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            required
+          />
+          <Button
+            type="submit"
+            className="border-[3px] border-black bg-purple-400 p-4 px-4 text-base text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:bg-purple-400 sm:p-6 sm:px-6 sm:text-lg"
+          >
+            Diagram
+          </Button>
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        {/* Dropdowns Container */}
+        {!isHome && (
+          <div className="space-y-4">
+            {/* Only show buttons and dropdowns when not loading */}
+            {!loading && (
+              <>
+                {/* Buttons Container */}
+                <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-4">
+                  {showCustomization &&
+                    onModify &&
+                    onRegenerate &&
+                    lastGenerated && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleDropdownToggle("customize");
+                        }}
+                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
+                          activeDropdown === "customize"
+                            ? "bg-purple-400"
+                            : "bg-purple-300 hover:bg-purple-400"
+                        }`}
+                      >
+                        <span>Customize Diagram</span>
+                        {activeDropdown === "customize" ? (
+                          <ChevronUp size={20} />
+                        ) : (
+                          <ChevronDown size={20} />
+                        )}
+                      </button>
+                    )}
+
+                  {onCopy && lastGenerated && onExportImage && (
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleDropdownToggle("export");
+                        }}
+                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
+                          activeDropdown === "export"
+                            ? "bg-purple-400"
+                            : "bg-purple-300 hover:bg-purple-400"
+                        }`}
+                      >
+                        <span>Export Diagram</span>
+                        {activeDropdown === "export" ? (
+                          <ChevronUp size={20} />
+                        ) : (
+                          <ChevronDown size={20} />
+                        )}
+                      </button>
+                    </div>
+                  )}
+                  {lastGenerated && (
+                    <>
+                      <label className="font-medium text-black">
+                        Enable Zoom
+                      </label>
+                      <Switch
+                        checked={zoomingEnabled}
+                        onCheckedChange={onZoomToggle}
+                      />
+                    </>
+                  )}
+                </div>
+
+                {/* Dropdown Content */}
+                <div
+                  className={`transition-all duration-200 ${
+                    activeDropdown
+                      ? "pointer-events-auto max-h-[500px] opacity-100"
+                      : "pointer-events-none max-h-0 opacity-0"
+                  }`}
+                >
+                  {activeDropdown === "customize" && (
+                    <CustomizationDropdown
+                      onModify={onModify!}
+                      onRegenerate={onRegenerate!}
+                      lastGenerated={lastGenerated!}
+                      isOpen={true}
+                    />
+                  )}
+                  {activeDropdown === "export" && (
+                    <ExportDropdown
+                      onCopy={onCopy!}
+                      lastGenerated={lastGenerated!}
+                      onExportImage={onExportImage!}
+                      isOpen={true}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Example Repositories */}
+        {isHome && (
+          <div className="space-y-2">
+            <div className="text-sm text-gray-700 sm:text-base">
+              Try these example repositories:
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(exampleRepos).map(([name, path]) => (
+                <Button
+                  key={name}
+                  variant="outline"
+                  className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base"
+                  onClick={(e) => handleExampleClick(path, e)}
+                >
+                  {name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+      </form>
+
+      {/* Decorative Sparkle */}
+      <div className="absolute -bottom-8 -left-12 hidden sm:block">
+        <Sparkles
+          className="h-20 w-20 fill-sky-400 text-black"
+          strokeWidth={0.6}
+          style={{ transform: "rotate(-15deg)" }}
+        />
+      </div>
+    </Card>
+  );
+}
+--------------------------------------
+
+--- File: components/mermaid-diagram.tsx ---
+"use client";
+
+import { useEffect, useRef } from "react";
+import mermaid from "mermaid";
+// Remove the direct import
+// import svgPanZoom from "svg-pan-zoom";
+
+interface MermaidChartProps {
+  chart: string;
+  zoomingEnabled?: boolean;
+}
+
+const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "neutral",
+      htmlLabels: true,
+      flowchart: {
+        htmlLabels: true,
+        curve: "basis",
+        nodeSpacing: 50,
+        rankSpacing: 50,
+        padding: 15,
+      },
+      themeCSS: `
+        .clickable {
+          transition: transform 0.2s ease;
+        }
+        .clickable:hover {
+          transform: scale(1.05);
+          cursor: pointer;
+        }
+        .clickable:hover > * {
+          filter: brightness(0.85);
+        }
+      `,
+    });
+
+    const initializePanZoom = async () => {
+      const svgElement = containerRef.current?.querySelector("svg");
+      if (svgElement && zoomingEnabled) {
+        // Remove any max-width constraints
+        svgElement.style.maxWidth = "none";
+        svgElement.style.width = "100%";
+        svgElement.style.height = "100%";
+
+        if (zoomingEnabled) {
+          try {
+            // Dynamically import svg-pan-zoom only when needed in the browser
+            const svgPanZoom = (await import("svg-pan-zoom")).default;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+            svgPanZoom(svgElement, {
+              zoomEnabled: true,
+              controlIconsEnabled: true,
+              fit: true,
+              center: true,
+              minZoom: 0.1,
+              maxZoom: 10,
+              zoomScaleSensitivity: 0.3,
+            });
+          } catch (error) {
+            console.error("Failed to load svg-pan-zoom:", error);
+          }
+        }
+      }
+    };
+
+    mermaid.contentLoaded();
+    // Wait for the SVG to be rendered
+    setTimeout(() => {
+      void initializePanZoom();
+    }, 100);
+
+    return () => {
+      // Cleanup not needed with dynamic import approach
+    };
+  }, [chart, zoomingEnabled]); // Added zoomingEnabled to dependencies
+
+  return (
+    <div
+      ref={containerRef}
+      className={`w-full max-w-full p-4 ${zoomingEnabled ? "h-[600px]" : ""}`}
+    >
+      <div
+        key={`${chart}-${zoomingEnabled}`}
+        className={`mermaid h-full ${
+          zoomingEnabled ? "rounded-lg border-2 border-black" : ""
+        }`}
+      >
+        {chart}
+      </div>
+    </div>
+  );
+};
+
+export default MermaidChart;
+--------------------------------------------
+
+--- File: components/private-repos-dialog.tsx ---
+"use client";
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+
+interface PrivateReposDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (pat: string) => void;
+}
+
+export function PrivateReposDialog({
+  isOpen,
+  onClose,
+  onSubmit,
+}: PrivateReposDialogProps) {
+  const [pat, setPat] = useState<string>("");
+
+  useEffect(() => {
+    const storedPat = localStorage.getItem("github_pat");
+    if (storedPat) {
+      setPat(storedPat);
+    }
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(pat);
+    setPat("");
+  };
+
+  const handleClear = () => {
+    localStorage.removeItem("github_pat");
+    setPat("");
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="border-[3px] border-black bg-purple-200 p-6 shadow-[8px_8px_0_0_#000000] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold text-black">
+            Enter GitHub Personal Access Token
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="text-sm">
+            To enable private repositories, you&apos;ll need to provide a GitHub
+            Personal Access Token with repo scope. The token will be stored
+            locally in your browser. Find out how{" "}
+            <Link
+              href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
+              className="text-purple-600 transition-colors duration-200 hover:text-purple-500"
+            >
+              here
+            </Link>
+            .
+          </div>
+          <details className="group text-sm [&>summary:focus-visible]:outline-none">
+            <summary className="cursor-pointer font-medium text-purple-700 hover:text-purple-600">
+              Data storage disclaimer
+            </summary>
+            <div className="animate-accordion-down mt-2 space-y-2 overflow-hidden pl-2">
+              <p>
+                Take note that the diagram data will be stored in my database
+                (not that I would use it for anything anyways). You can also
+                self-host this app by following the instructions in the{" "}
+                <Link
+                  href="https://github.com/ahmedkhaleel2004/gitdiagram"
+                  className="text-purple-600 transition-colors duration-200 hover:text-purple-500"
+                >
+                  README
+                </Link>
+                .
+              </p>
+            </div>
+          </details>
+          <Input
+            type="password"
+            placeholder="ghp_..."
+            value={pat}
+            onChange={(e) => setPat(e.target.value)}
+            className="flex-1 rounded-md border-[3px] border-black px-3 py-2 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700"
+            required
+          />
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handleClear}
+              className="text-sm text-purple-600 hover:text-purple-500"
+            >
+              Clear
+            </button>
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                onClick={onClose}
+                className="border-[3px] border-black bg-gray-200 px-4 py-2 text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-gray-300"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!pat.startsWith("ghp_")}
+                className="border-[3px] border-black bg-purple-400 px-4 py-2 text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-purple-300 disabled:opacity-50"
+              >
+                Save Token
+              </Button>
+            </div>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+-------------------------------------------------
+
+--- File: components/ui/button.tsx ---
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+
+import { cn } from "~/lib/utils";
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline:
+          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
+
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean;
+}
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : "button";
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        {...props}
+      />
+    );
+  },
+);
+Button.displayName = "Button";
+
+export { Button, buttonVariants };
+--------------------------------------
+
+--- File: components/ui/card.tsx ---
+import * as React from "react";
+
+import { cn } from "~/lib/utils";
+
+const Card = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(
+      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      className,
+    )}
+    {...props}
+  />
+));
+Card.displayName = "Card";
+
+const CardHeader = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    {...props}
+  />
+));
+CardHeader.displayName = "CardHeader";
+
+const CardTitle = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(
+      "text-2xl font-semibold leading-none tracking-tight",
+      className,
+    )}
+    {...props}
+  />
+));
+CardTitle.displayName = "CardTitle";
+
+const CardDescription = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("text-sm text-muted-foreground", className)}
+    {...props}
+  />
+));
+CardDescription.displayName = "CardDescription";
+
+const CardContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
+));
+CardContent.displayName = "CardContent";
+
+const CardFooter = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("flex items-center p-6 pt-0", className)}
+    {...props}
+  />
+));
+CardFooter.displayName = "CardFooter";
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardDescription,
+  CardContent,
+};
+------------------------------------
+
+--- File: components/ui/dialog.tsx ---
+"use client";
+
+import * as React from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
+
+import { cn } from "~/lib/utils";
+
+const Dialog = DialogPrimitive.Root;
+
+const DialogTrigger = DialogPrimitive.Trigger;
+
+const DialogPortal = DialogPrimitive.Portal;
+
+const DialogClose = DialogPrimitive.Close;
+
+const DialogOverlay = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Overlay>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Overlay
+    ref={ref}
+    className={cn(
+      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      className,
+    )}
+    {...props}
+  />
+));
+DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
+
+const DialogContent = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <DialogPortal>
+    <DialogOverlay />
+    <DialogPrimitive.Content
+      ref={ref}
+      className={cn(
+        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+        <X className="h-4 w-4" />
+        <span className="sr-only">Close</span>
+      </DialogPrimitive.Close>
+    </DialogPrimitive.Content>
+  </DialogPortal>
+));
+DialogContent.displayName = DialogPrimitive.Content.displayName;
+
+const DialogHeader = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn(
+      "flex flex-col space-y-1.5 text-center sm:text-left",
+      className,
+    )}
+    {...props}
+  />
+);
+DialogHeader.displayName = "DialogHeader";
+
+const DialogFooter = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn(
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      className,
+    )}
+    {...props}
+  />
+);
+DialogFooter.displayName = "DialogFooter";
+
+const DialogTitle = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Title>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Title
+    ref={ref}
+    className={cn(
+      "text-lg font-semibold leading-none tracking-tight",
+      className,
+    )}
+    {...props}
+  />
+));
+DialogTitle.displayName = DialogPrimitive.Title.displayName;
+
+const DialogDescription = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Description>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Description
+    ref={ref}
+    className={cn("text-sm text-muted-foreground", className)}
+    {...props}
+  />
+));
+DialogDescription.displayName = DialogPrimitive.Description.displayName;
+
+export {
+  Dialog,
+  DialogPortal,
+  DialogOverlay,
+  DialogClose,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+};
+--------------------------------------
+
+--- File: components/ui/input.tsx ---
+import * as React from "react";
+
+import { cn } from "~/lib/utils";
+
+const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+          className,
+        )}
+        ref={ref}
+        {...props}
+      />
+    );
+  },
+);
+Input.displayName = "Input";
+
+export { Input };
+-------------------------------------
+
+--- File: components/ui/progress.tsx ---
+"use client";
+
+import * as React from "react";
+import * as ProgressPrimitive from "@radix-ui/react-progress";
+
+import { cn } from "~/lib/utils";
+
+const Progress = React.forwardRef<
+  React.ElementRef<typeof ProgressPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
+>(({ className, value, ...props }, ref) => (
+  <ProgressPrimitive.Root
+    ref={ref}
+    className={cn(
+      "relative h-4 w-full overflow-hidden rounded-full bg-black",
+      className,
+    )}
+    {...props}
+  >
+    <ProgressPrimitive.Indicator
+      className="h-full w-full flex-1 bg-green-500 transition-all"
+      style={{ transform: `translateX(-${100 - (value ?? 0)}%)` }}
+    />
+  </ProgressPrimitive.Root>
+));
+Progress.displayName = ProgressPrimitive.Root.displayName;
+
+export { Progress };
+----------------------------------------
+
+--- File: components/ui/sonner.tsx ---
+"use client";
+
+import { useTheme } from "next-themes";
+import { Toaster as Sonner } from "sonner";
+
+type ToasterProps = React.ComponentProps<typeof Sonner>;
+
+const Toaster = ({ ...props }: ToasterProps) => {
+  const { theme = "system" } = useTheme();
+
+  return (
+    <Sonner
+      theme={theme as ToasterProps["theme"]}
+      className="toaster group"
+      toastOptions={{
+        classNames: {
+          toast:
+            "group toast group-[.toaster]:bg-purple-100 group-[.toaster]:text-foreground group-[.toaster]:shadow-[3px_3px_0_0_#000000] group-[.toaster]:border-[2px] group-[.toaster]:border-black group-[.toaster]:rounded-md group-[.toaster]:p-3 group-[.toaster]:flex group-[.toaster]:items-center group-[.toaster]:justify-between group-[.toaster]:gap-4",
+          title:
+            "group-[.toast]:font-bold group-[.toast]:text-base group-[.toast]:m-0",
+          description: "group-[.toast]:text-muted-foreground",
+          actionButton:
+            "group-[.toast]:!bg-purple-200 group-[.toast]:!border-[2px] group-[.toast]:!border-solid group-[.toast]:!border-black group-[.toast]:!py-[14px] group-[.toast]:!px-6 group-[.toast]:!text-lg group-[.toast]:!text-black group-[.toast]:hover:!bg-purple-300 group-[.toast]:!transition-colors",
+          cancelButton:
+            "group-[.toast]:text-neutral-500 group-[.toast]:underline hover:group-[.toast]:text-neutral-700",
+        },
+        duration: 5000,
+      }}
+      {...props}
+    />
+  );
+};
+
+export { Toaster };
+--------------------------------------
+
+--- File: components/ui/switch.tsx ---
+"use client";
+
+import * as React from "react";
+import * as SwitchPrimitives from "@radix-ui/react-switch";
+
+import { cn } from "~/lib/utils";
+
+const Switch = React.forwardRef<
+  React.ElementRef<typeof SwitchPrimitives.Root>,
+  React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
+>(({ className, ...props }, ref) => (
+  <SwitchPrimitives.Root
+    className={cn(
+      "peer inline-flex h-8 w-16 shrink-0 cursor-pointer items-center rounded-full border-2 border-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-purple-500 data-[state=unchecked]:bg-purple-300",
+      className,
+    )}
+    {...props}
+    ref={ref}
+  >
+    <SwitchPrimitives.Thumb
+      className={cn(
+        "pointer-events-none block h-6 w-6 rounded-full bg-white shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-[34px] data-[state=unchecked]:translate-x-[2px]",
+      )}
+    />
+  </SwitchPrimitives.Root>
+));
+Switch.displayName = SwitchPrimitives.Root.displayName;
+
+export { Switch };
+--------------------------------------
+
+--- File: components/ui/textarea.tsx ---
+import * as React from "react";
+
+import { cn } from "~/lib/utils";
+
+const Textarea = React.forwardRef<
+  HTMLTextAreaElement,
+  React.ComponentProps<"textarea">
+>(({ className, ...props }, ref) => {
+  return (
+    <textarea
+      className={cn(
+        "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        className,
+      )}
+      ref={ref}
+      {...props}
+    />
+  );
+});
+Textarea.displayName = "Textarea";
+
+export { Textarea };
+----------------------------------------
+
+--- File: components/ui/tooltip.tsx ---
+"use client";
+
+import * as React from "react";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+
+import { cn } from "~/lib/utils";
+
+const TooltipProvider = TooltipPrimitive.Provider;
+
+const Tooltip = TooltipPrimitive.Root;
+
+const TooltipTrigger = TooltipPrimitive.Trigger;
+
+const TooltipContent = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
+>(({ className, sideOffset = 4, ...props }, ref) => (
+  <TooltipPrimitive.Content
+    ref={ref}
+    sideOffset={sideOffset}
+    className={cn(
+      "z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md",
+      "duration-300 animate-in fade-in-0 zoom-in-95",
+      "duration-300 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+      "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+      className,
+    )}
+    {...props}
+  />
+));
+TooltipContent.displayName = TooltipPrimitive.Content.displayName;
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
+---------------------------------------
+
+--- File: env.js ---
+import { createEnv } from "@t3-oss/env-nextjs";
+import { z } from "zod";
+
+export const env = createEnv({
+  /**
+   * Specify your server-side environment variables schema here. This way you can ensure the app
+   * isn't built with invalid env vars.
+   */
+  server: {
+    POSTGRES_URL: z.string().url(),
+    NODE_ENV: z
+      .enum(["development", "test", "production"])
+      .default("development"),
+  },
+
+  /**
+   * Specify your client-side environment variables schema here. This way you can ensure the app
+   * isn't built with invalid env vars. To expose them to the client, prefix them with
+   * `NEXT_PUBLIC_`.
+   */
+  client: {
+    // NEXT_PUBLIC_CLIENTVAR: z.string(),
+  },
+
+  /**
+   * You can't destruct `process.env` as a regular object in the Next.js edge runtimes (e.g.
+   * middlewares) or client-side so we need to destruct manually.
+   */
+  runtimeEnv: {
+    POSTGRES_URL: process.env.POSTGRES_URL,
+    NODE_ENV: process.env.NODE_ENV,
+    // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
+  },
+  /**
+   * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
+   * useful for Docker builds.
+   */
+  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
+  /**
+   * Makes it so that empty strings are treated as undefined. `SOME_VAR: z.string()` and
+   * `SOME_VAR=''` will throw an error.
+   */
+  emptyStringAsUndefined: true,
+});
+--------------------
+
+--- File: hooks/useDiagram.ts ---
+import { useState, useEffect, useCallback } from "react";
+import {
+  cacheDiagramAndExplanation,
+  getCachedDiagram,
+} from "~/app/_actions/cache";
+import { getLastGeneratedDate } from "~/app/_actions/repo";
+import { getCostOfGeneration } from "~/lib/fetch-backend";
+import { exampleRepos } from "~/lib/exampleRepos";
+
+interface StreamState {
+  status:
+    | "idle"
+    | "started"
+    | "explanation_sent"
+    | "explanation"
+    | "explanation_chunk"
+    | "mapping_sent"
+    | "mapping"
+    | "mapping_chunk"
+    | "diagram_sent"
+    | "diagram"
+    | "diagram_chunk"
+    | "complete"
+    | "error";
+  message?: string;
+  explanation?: string;
+  mapping?: string;
+  diagram?: string;
+  error?: string;
+}
+
+interface StreamResponse {
+  status: StreamState["status"];
+  message?: string;
+  chunk?: string;
+  explanation?: string;
+  mapping?: string;
+  diagram?: string;
+  error?: string;
+}
+
+export function useDiagram(username: string, repo: string) {
+  const [diagram, setDiagram] = useState<string>("");
+  const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [lastGenerated, setLastGenerated] = useState<Date | undefined>();
+  const [cost, setCost] = useState<string>("");
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+  // const [tokenCount, setTokenCount] = useState<number>(0);
+  const [state, setState] = useState<StreamState>({ status: "idle" });
+  const [hasUsedFreeGeneration, setHasUsedFreeGeneration] = useState<boolean>(
+    () => {
+      if (typeof window === "undefined") return false;
+      return localStorage.getItem("has_used_free_generation") === "true";
+    },
+  );
+
+  const generateDiagram = useCallback(
+    async (instructions = "", githubPat?: string) => {
+      setState({
+        status: "started",
+        message: "Starting generation process...",
+      });
+
+      try {
+        const baseUrl =
+          process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
+        const response = await fetch(`${baseUrl}/generate/stream`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username,
+            repo,
+            instructions,
+            api_key: localStorage.getItem("openai_key") ?? undefined,
+            github_pat: githubPat,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error("Failed to start streaming");
+        }
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("No reader available");
+        }
+
+        let explanation = "";
+        let mapping = "";
+        let diagram = "";
+
+        // Process the stream
+        const processStream = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              // Convert the chunk to text
+              const chunk = new TextDecoder().decode(value);
+              const lines = chunk.split("\n");
+
+              // Process each SSE message
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  try {
+                    const data = JSON.parse(line.slice(6)) as StreamResponse;
+
+                    // If we receive an error, set loading to false immediately
+                    if (data.error) {
+                      setState({ status: "error", error: data.error });
+                      setLoading(false);
+                      return; // Add this to stop processing
+                    }
+
+                    // Update state based on the message type
+                    switch (data.status) {
+                      case "started":
+                        setState((prev) => ({
+                          ...prev,
+                          status: "started",
+                          message: data.message,
+                        }));
+                        break;
+                      case "explanation_sent":
+                        setState((prev) => ({
+                          ...prev,
+                          status: "explanation_sent",
+                          message: data.message,
+                        }));
+                        break;
+                      case "explanation":
+                        setState((prev) => ({
+                          ...prev,
+                          status: "explanation",
+                          message: data.message,
+                        }));
+                        break;
+                      case "explanation_chunk":
+                        if (data.chunk) {
+                          explanation += data.chunk;
+                          setState((prev) => ({ ...prev, explanation }));
+                        }
+                        break;
+                      case "mapping_sent":
+                        setState((prev) => ({
+                          ...prev,
+                          status: "mapping_sent",
+                          message: data.message,
+                        }));
+                        break;
+                      case "mapping":
+                        setState((prev) => ({
+                          ...prev,
+                          status: "mapping",
+                          message: data.message,
+                        }));
+                        break;
+                      case "mapping_chunk":
+                        if (data.chunk) {
+                          mapping += data.chunk;
+                          setState((prev) => ({ ...prev, mapping }));
+                        }
+                        break;
+                      case "diagram_sent":
+                        setState((prev) => ({
+                          ...prev,
+                          status: "diagram_sent",
+                          message: data.message,
+                        }));
+                        break;
+                      case "diagram":
+                        setState((prev) => ({
+                          ...prev,
+                          status: "diagram",
+                          message: data.message,
+                        }));
+                        break;
+                      case "diagram_chunk":
+                        if (data.chunk) {
+                          diagram += data.chunk;
+                          setState((prev) => ({ ...prev, diagram }));
+                        }
+                        break;
+                      case "complete":
+                        setState({
+                          status: "complete",
+                          explanation: data.explanation,
+                          diagram: data.diagram,
+                        });
+                        const date = await getLastGeneratedDate(username, repo);
+                        setLastGenerated(date ?? undefined);
+                        if (!hasUsedFreeGeneration) {
+                          localStorage.setItem(
+                            "has_used_free_generation",
+                            "true",
+                          );
+                          setHasUsedFreeGeneration(true);
+                        }
+                        break;
+                      case "error":
+                        setState({ status: "error", error: data.error });
+                        break;
+                    }
+                  } catch (e) {
+                    console.error("Error parsing SSE message:", e);
+                  }
+                }
+              }
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        };
+
+        await processStream();
+      } catch (error) {
+        setState({
+          status: "error",
+          error:
+            error instanceof Error
+              ? error.message
+              : "An unknown error occurred",
+        });
+        setLoading(false);
+      }
+    },
+    [username, repo, hasUsedFreeGeneration],
+  );
+
+  useEffect(() => {
+    if (state.status === "complete" && state.diagram) {
+      // Cache the completed diagram with the usedOwnKey flag
+      const hasApiKey = !!localStorage.getItem("openai_key");
+      void cacheDiagramAndExplanation(
+        username,
+        repo,
+        state.diagram,
+        state.explanation ?? "No explanation provided",
+        hasApiKey,
+      );
+      setDiagram(state.diagram);
+      void getLastGeneratedDate(username, repo).then((date) =>
+        setLastGenerated(date ?? undefined),
+      );
+    } else if (state.status === "error") {
+      setLoading(false);
+    }
+  }, [state.status, state.diagram, username, repo, state.explanation]);
+
+  const getDiagram = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setCost("");
+
+    try {
+      // Check cache first - always allow access to cached diagrams
+      const cached = await getCachedDiagram(username, repo);
+      const github_pat = localStorage.getItem("github_pat");
+
+      if (cached) {
+        setDiagram(cached);
+        const date = await getLastGeneratedDate(username, repo);
+        setLastGenerated(date ?? undefined);
+        return;
+      }
+
+      // TEMP: LET USERS HAVE INFINITE GENERATIONS
+      // Only check for API key if we need to generate a new diagram
+      // const storedApiKey = localStorage.getItem("openai_key");
+      // if (hasUsedFreeGeneration && !storedApiKey) {
+      //   setError(
+      //     "You've used your one free diagram. Please enter your API key to continue. As a student, I can't afford to keep it totally free and I hope you understand :)",
+      //   );
+      //   setState({ status: "error", error: "API key required" });
+      //   return;
+      // }
+
+      // Get cost estimate
+      const costEstimate = await getCostOfGeneration(
+        username,
+        repo,
+        "",
+        github_pat ?? undefined,
+      );
+
+      if (costEstimate.error) {
+        console.error("Cost estimation failed:", costEstimate.error);
+        // if (costEstimate.requires_api_key) {
+        //   setTokenCount(costEstimate.token_count ?? 0);
+        // }
+        // TODO: come to think of it, why is requires api key based on tokens? this unimplemented option is smarter. Add API key dialog
+        setError(costEstimate.error);
+        return;
+      }
+
+      setCost(costEstimate.cost ?? "");
+
+      // Start streaming generation
+      await generateDiagram("", github_pat ?? undefined);
+
+      // Note: The diagram and lastGenerated will be set by the generateDiagram function
+      // through the state updates
+    } catch (error) {
+      console.error("Error in getDiagram:", error);
+      setError("Something went wrong. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  }, [username, repo, generateDiagram]);
+
+  useEffect(() => {
+    void getDiagram();
+  }, [getDiagram]);
+
+  const isExampleRepo = (repoName: string): boolean => {
+    return Object.values(exampleRepos).some((value) =>
+      value.includes(repoName),
+    );
+  };
+
+  const handleModify = async (instructions: string) => {
+    if (isExampleRepo(repo)) {
+      setError("Example repositories cannot be modified.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setCost("");
+    try {
+      // Start streaming generation with instructions
+      await generateDiagram(instructions);
+    } catch (error) {
+      console.error("Error modifying diagram:", error);
+      setError("Failed to modify diagram. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegenerate = async (instructions: string) => {
+    if (isExampleRepo(repo)) {
+      setError("Example repositories cannot be regenerated.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setCost("");
+    try {
+      const github_pat = localStorage.getItem("github_pat");
+
+      // TEMP: LET USERS HAVE INFINITE GENERATIONS
+      // const storedApiKey = localStorage.getItem("openai_key");
+
+      // Check if user has used their free generation and doesn't have an API key
+      // if (hasUsedFreeGeneration && !storedApiKey) {
+      //   setError(
+      //     "You've used your one free diagram. Please enter your API key to continue. As a student, I can't afford to keep it totally free and I hope you understand :)",
+      //   );
+      //   setLoading(false);
+      //   return;
+      // }
+
+      const costEstimate = await getCostOfGeneration(username, repo, "");
+
+      if (costEstimate.error) {
+        console.error("Cost estimation failed:", costEstimate.error);
+        setError(costEstimate.error);
+        return;
+      }
+
+      setCost(costEstimate.cost ?? "");
+
+      // Start streaming generation with instructions
+      await generateDiagram(instructions, github_pat ?? undefined);
+    } catch (error) {
+      console.error("Error regenerating diagram:", error);
+      setError("Failed to regenerate diagram. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(diagram);
+    } catch (error) {
+      console.error("Error copying to clipboard:", error);
+    }
+  };
+
+  const handleExportImage = () => {
+    const svgElement = document.querySelector(".mermaid svg");
+    if (!(svgElement instanceof SVGSVGElement)) return;
+
+    try {
+      const canvas = document.createElement("canvas");
+      const scale = 4;
+
+      const bbox = svgElement.getBBox();
+      const transform = svgElement.getScreenCTM();
+      if (!transform) return;
+
+      const width = Math.ceil(bbox.width * transform.a);
+      const height = Math.ceil(bbox.height * transform.d);
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const img = new Image();
+
+      img.onload = () => {
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const a = document.createElement("a");
+        a.download = "diagram.png";
+        a.href = canvas.toDataURL("image/png", 1.0);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+
+      img.src =
+        "data:image/svg+xml;base64," +
+        btoa(unescape(encodeURIComponent(svgData)));
+    } catch (error) {
+      console.error("Error generating PNG:", error);
+    }
+  };
+
+  const handleApiKeySubmit = async (apiKey: string) => {
+    setShowApiKeyDialog(false);
+    setLoading(true);
+    setError("");
+
+    // Store the key first
+    localStorage.setItem("openai_key", apiKey);
+
+    // Then generate diagram using stored key
+    const github_pat = localStorage.getItem("github_pat");
+    try {
+      await generateDiagram("", github_pat ?? undefined);
+    } catch (error) {
+      console.error("Error generating with API key:", error);
+      setError("Failed to generate diagram with provided API key.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseApiKeyDialog = () => {
+    setShowApiKeyDialog(false);
+  };
+
+  const handleOpenApiKeyDialog = () => {
+    setShowApiKeyDialog(true);
+  };
+
+  return {
+    diagram,
+    error,
+    loading,
+    lastGenerated,
+    cost,
+    handleModify,
+    handleRegenerate,
+    handleCopy,
+    showApiKeyDialog,
+    // tokenCount,
+    handleApiKeySubmit,
+    handleCloseApiKeyDialog,
+    handleOpenApiKeyDialog,
+    handleExportImage,
+    state,
+  };
+}
+---------------------------------
+
+--- File: hooks/useStarReminder.tsx ---
+"use client";
+
+import { useEffect } from "react";
+import { toast } from "sonner";
+
+export function useStarReminder() {
+  useEffect(() => {
+    // Check if we've already shown the toast
+    const hasShownStarReminder = localStorage.getItem("hasShownStarReminder");
+
+    if (!hasShownStarReminder) {
+      // Set a timeout to show the toast after 3 seconds
+      const timeoutId = setTimeout(() => {
+        toast("Enjoying GitDiagram?", {
+          action: {
+            label: "Star ★",
+            onClick: () =>
+              window.open(
+                "https://github.com/ahmedkhaleel2004/gitdiagram",
+                "_blank",
+              ),
+          },
+          duration: 5000,
+          dismissible: true,
+        });
+
+        // Set flag in localStorage to prevent showing again
+        localStorage.setItem("hasShownStarReminder", "true");
+      }, 5000);
+
+      // Clean up the timeout if the component unmounts
+      return () => clearTimeout(timeoutId);
+    }
+  }, []);
+}
+---------------------------------------
+
+--- File: lib/exampleRepos.ts ---
+export const exampleRepos = {
+  FastAPI: "/fastapi/fastapi",
+  Streamlit: "/streamlit/streamlit",
+  Flask: "/pallets/flask",
+  "api-analytics": "/tom-draper/api-analytics",
+  Monkeytype: "/monkeytypegame/monkeytype",
+};
+---------------------------------
+
+--- File: lib/fetch-backend.ts ---
+import {
+  cacheDiagramAndExplanation,
+  getCachedDiagram,
+  getCachedExplanation,
+} from "~/app/_actions/cache";
+
+interface GenerateApiResponse {
+  error?: string;
+  diagram?: string;
+  explanation?: string;
+  token_count?: number;
+  requires_api_key?: boolean;
+}
+
+interface ModifyApiResponse {
+  error?: string;
+  diagram?: string;
+}
+
+interface CostApiResponse {
+  error?: string;
+  cost?: string;
+}
+
+export async function generateAndCacheDiagram(
+  username: string,
+  repo: string,
+  github_pat?: string,
+  instructions?: string,
+  api_key?: string,
+): Promise<GenerateApiResponse> {
+  try {
+    const baseUrl =
+      process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
+    const url = new URL(`${baseUrl}/generate`);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username,
+        repo,
+        instructions: instructions ?? "",
+        api_key: api_key,
+        github_pat: github_pat,
+      }),
+    });
+
+    if (response.status === 429) {
+      return { error: "Rate limit exceeded. Please try again later." };
+    }
+
+    const data = (await response.json()) as GenerateApiResponse;
+
+    if (data.error) {
+      return data; // pass the whole thing for multiple data fields
+    }
+
+    // Call the server action to cache the diagram
+    await cacheDiagramAndExplanation(
+      username,
+      repo,
+      data.diagram!,
+      data.explanation!,
+    );
+    return { diagram: data.diagram };
+  } catch (error) {
+    console.error("Error generating diagram:", error);
+    return { error: "Failed to generate diagram. Please try again later." };
+  }
+}
+
+export async function modifyAndCacheDiagram(
+  username: string,
+  repo: string,
+  instructions: string,
+): Promise<ModifyApiResponse> {
+  try {
+    // First get the current diagram from cache
+    const currentDiagram = await getCachedDiagram(username, repo);
+    const explanation = await getCachedExplanation(username, repo);
+
+    if (!currentDiagram || !explanation) {
+      return { error: "No existing diagram or explanation found to modify" };
+    }
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
+    const url = new URL(`${baseUrl}/modify`);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username,
+        repo,
+        instructions: instructions,
+        current_diagram: currentDiagram,
+        explanation: explanation,
+      }),
+    });
+
+    if (response.status === 429) {
+      return { error: "Rate limit exceeded. Please try again later." };
+    }
+
+    const data = (await response.json()) as ModifyApiResponse;
+
+    if (data.error) {
+      return { error: data.error };
+    }
+
+    // Call the server action to cache the diagram
+    await cacheDiagramAndExplanation(
+      username,
+      repo,
+      data.diagram!,
+      explanation,
+    );
+    return { diagram: data.diagram };
+  } catch (error) {
+    console.error("Error modifying diagram:", error);
+    return { error: "Failed to modify diagram. Please try again later." };
+  }
+}
+
+export async function getCostOfGeneration(
+  username: string,
+  repo: string,
+  instructions: string,
+  github_pat?: string,
+): Promise<CostApiResponse> {
+  try {
+    const baseUrl =
+      process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
+    const url = new URL(`${baseUrl}/generate/cost`);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username,
+        repo,
+        github_pat: github_pat,
+        instructions: instructions ?? "",
+      }),
+    });
+
+    if (response.status === 429) {
+      return { error: "Rate limit exceeded. Please try again later." };
+    }
+
+    const data = (await response.json()) as CostApiResponse;
+
+    return { cost: data.cost, error: data.error };
+  } catch (error) {
+    console.error("Error getting generation cost:", error);
+    return { error: "Failed to get cost estimate." };
+  }
+}
+----------------------------------
+
+--- File: lib/utils.ts ---
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+--------------------------
+
+--- File: server/db/index.ts ---
+import * as schema from "./schema";
+import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
+import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
+import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
+import { config } from "dotenv";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
+
+config({ path: ".env" });
+
+// Define a type that can be either Neon or Postgres database
+type DrizzleDatabase =
+  | NeonHttpDatabase<typeof schema>
+  | PostgresJsDatabase<typeof schema>;
+
+// Check if we're using Neon/Vercel (production) or local Postgres
+const isNeonConnection = process.env.POSTGRES_URL?.includes("neon.tech");
+
+let db: DrizzleDatabase;
+if (isNeonConnection) {
+  // Production: Use Neon HTTP connection
+  const sql = neon(process.env.POSTGRES_URL!);
+  db = drizzleNeon(sql, { schema });
+} else {
+  // Local development: Use standard Postgres connection
+  const client = postgres(process.env.POSTGRES_URL!);
+  db = drizzlePostgres(client, { schema });
+}
+
+export { db };
+--------------------------------
+
+--- File: server/db/schema.ts ---
+// Example model schema from the Drizzle docs
+// https://orm.drizzle.team/docs/sql-schema-declaration
+
+import { sql } from "drizzle-orm";
+import {
+  pgTableCreator,
+  timestamp,
+  varchar,
+  primaryKey,
+  boolean,
+} from "drizzle-orm/pg-core";
+
+/**
+ * This is an example of how to use the multi-project schema feature of Drizzle ORM. Use the same
+ * database instance for multiple projects.
+ *
+ * @see https://orm.drizzle.team/docs/goodies#multi-project-schema
+ */
+export const createTable = pgTableCreator((name) => `gitdiagram_${name}`);
+
+export const diagramCache = createTable(
+  "diagram_cache",
+  {
+    username: varchar("username", { length: 256 }).notNull(),
+    repo: varchar("repo", { length: 256 }).notNull(),
+    diagram: varchar("diagram", { length: 10000 }).notNull(), // Adjust length as needed
+    explanation: varchar("explanation", { length: 10000 })
+      .notNull()
+      .default("No explanation provided"), // Default explanation to avoid data loss of existing rows
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).$onUpdate(
+      () => new Date(),
+    ),
+    usedOwnKey: boolean("used_own_key").default(false),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.username, table.repo] }),
+  }),
+);
+---------------------------------
+
+--- File: styles/globals.css ---
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base {
+  :root {
+    --background: 269 100% 95%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+--------------------------------
+
+==================================================
+Content Processing Summary:
+- Files with content included:      39
+- Files omitted (size limit):       0
+- Files omitted (content rule):     0
+- Files omitted (encoding issue):   0
+- Files with read errors:           0
+==================================================

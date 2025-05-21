@@ -1,0 +1,2244 @@
+Project Snapshot
+Source Directory: C:\Users\tanay\gitdiagram\backend
+Generated on: 2025-05-21 14:56:18
+--------------------------------------------------
+
+Directory Tree Structure (Ignoring items marked by IGNORE_DIRS/IGNORE_PATTERNS):
+------------------------------------------------------------------------------
+backend/
+app/
+│   ├── core/
+│   │   └── limiter.py
+│   ├── routers/
+│   │   ├── generate.py
+│   │   ├── modify.py
+│   │   └── readme_update_router.py
+│   ├── services/
+│   │   ├── claude_service.py
+│   │   ├── github_service.py
+│   │   ├── o1_mini_openai_service.py
+│   │   ├── o3_mini_openai_service.py
+│   │   ├── o3_mini_openrouter_service.py
+│   │   └── o4_mini_openai_service.py
+│   ├── utils/
+│   │   ├── diagram_generator_util.py
+│   │   ├── format_message.py
+│   │   └── readme_updater.py
+│   ├── __init__.py
+│   ├── main.py
+│   └── prompts.py
+nginx/
+│   ├── api.conf
+│   └── setup_nginx.sh
+deploy.sh
+Dockerfile
+entrypoint.sh
+requirements.txt
+
+
+==================================================
+                  File Contents
+==================================================
+
+--- File: app/__init__.py ---
+-----------------------------
+
+--- File: app/core/limiter.py ---
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+---------------------------------
+
+--- File: app/main.py ---
+# backend/app/main.py
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.routers import generate, modify
+from app.routers import readme_update_router # <<< ADD THIS IMPORT
+from app.core.limiter import limiter
+from typing import cast
+from starlette.exceptions import ExceptionMiddleware # Ensure this is imported if not already
+from api_analytics.fastapi import Analytics # Assuming you still use this
+import os
+
+
+app = FastAPI(
+    # title="GitDiagram API", # Optional: Add title, version, etc.
+    # version="1.0.0"
+)
+
+
+origins = [
+    "http://localhost:3000", # For local frontend development
+    "https://gitdiagram.com"  # Your production frontend
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"], # Adjust if other methods are needed globally
+    allow_headers=["*"],
+)
+
+API_ANALYTICS_KEY = os.getenv("API_ANALYTICS_KEY")
+if API_ANALYTICS_KEY:
+    app.add_middleware(Analytics, api_key=API_ANALYTICS_KEY)
+
+app.state.limiter = limiter
+app.add_exception_handler(
+    RateLimitExceeded, cast(ExceptionMiddleware, _rate_limit_exceeded_handler)
+)
+
+# Include your existing routers
+app.include_router(generate.router)
+app.include_router(modify.router)
+
+# Include the new router for README updates
+app.include_router(readme_update_router.router) # <<< ADD THIS LINE
+
+@app.get("/")
+@limiter.limit("100/day") # Your existing rate limit comment
+async def root(request: Request):
+    return {"message": "Hello from GitDiagram API! Now with README update capabilities."}
+
+# If you have other specific startup events or configurations, they would go here
+# @app.on_event("startup")
+# async def startup_event():
+#     print("Application startup...")
+
+# @app.on_event("shutdown")
+# def shutdown_event():
+#     print("Application shutdown.")
+-------------------------
+
+--- File: app/prompts.py ---
+# This is our processing. This is where GitDiagram makes the magic happen
+# There is a lot of DETAIL we need to extract from the repository to produce detailed and accurate diagrams
+# I will immediately put out there that I'm trying to reduce costs. Theoretically, I could, for like 5x better accuracy, include most file content as well which would make for perfect diagrams, but thats too many tokens for my wallet, and would probably greatly increase generation time. (maybe a paid feature?)
+
+# THE PROCESS:
+
+# imagine it like this:
+# def prompt1(file_tree, readme) -> explanation of diagram
+# def prompt2(explanation, file_tree) -> maps relevant directories and files to parts of diagram for interactivity
+# def prompt3(explanation, map) -> Mermaid.js code
+
+# Note: Originally prompt1 and prompt2 were combined - but I tested it, and turns out mapping relevant dirs and files in one prompt along with generating detailed and accurate diagrams was difficult for Claude 3.5 Sonnet. It lost detail in the explanation and dedicated more "effort" to the mappings, so this is now its own prompt.
+
+# This is my first take at prompt engineering so if you have any ideas on optimizations please make an issue on the GitHub!
+
+SYSTEM_FIRST_PROMPT = """
+You are tasked with explaining to a principal software engineer how to draw the best and most accurate system design diagram / architecture of a given project. This explanation should be tailored to the specific project's purpose and structure. To accomplish this, you will be provided with two key pieces of information:
+
+1. The complete and entire file tree of the project including all directory and file names, which will be enclosed in <file_tree> tags in the users message.
+
+2. The README file of the project, which will be enclosed in <readme> tags in the users message.
+
+Analyze these components carefully, as they will provide crucial information about the project's structure and purpose. Follow these steps to create an explanation for the principal software engineer:
+
+1. Identify the project type and purpose:
+   - Examine the file structure and README to determine if the project is a full-stack application, an open-source tool, a compiler, or another type of software imaginable.
+   - Look for key indicators in the README, such as project description, features, or use cases.
+
+2. Analyze the file structure:
+   - Pay attention to top-level directories and their names (e.g., "frontend", "backend", "src", "lib", "tests").
+   - Identify patterns in the directory structure that might indicate architectural choices (e.g., MVC pattern, microservices).
+   - Note any configuration files, build scripts, or deployment-related files.
+
+3. Examine the README for additional insights:
+   - Look for sections describing the architecture, dependencies, or technical stack.
+   - Check for any diagrams or explanations of the system's components.
+
+4. Based on your analysis, explain how to create a system design diagram that accurately represents the project's architecture. Include the following points:
+
+   a. Identify the main components of the system (e.g., frontend, backend, database, building, external services).
+   b. Determine the relationships and interactions between these components.
+   c. Highlight any important architectural patterns or design principles used in the project.
+   d. Include relevant technologies, frameworks, or libraries that play a significant role in the system's architecture.
+
+5. Provide guidelines for tailoring the diagram to the specific project type:
+   - For a full-stack application, emphasize the separation between frontend and backend, database interactions, and any API layers.
+   - For an open-source tool, focus on the core functionality, extensibility points, and how it integrates with other systems.
+   - For a compiler or language-related project, highlight the different stages of compilation or interpretation, and any intermediate representations.
+
+6. Instruct the principal software engineer to include the following elements in the diagram:
+   - Clear labels for each component
+   - Directional arrows to show data flow or dependencies
+   - Color coding or shapes to distinguish between different types of components
+
+7. NOTE: Emphasize the importance of being very detailed and capturing the essential architectural elements. Don't overthink it too much, simply separating the project into as many components as possible is best.
+
+Present your explanation and instructions within <explanation> tags, ensuring that you tailor your advice to the specific project based on the provided file tree and README content.
+"""
+
+# - A legend explaining any symbols or abbreviations used
+# ^ removed since it was making the diagrams very long
+
+# just adding some clear separation between the prompts
+# ************************************************************
+# ************************************************************
+
+SYSTEM_SECOND_PROMPT = """
+You are tasked with mapping key components of a system design to their corresponding files and directories in a project's file structure. You will be provided with a detailed explanation of the system design/architecture and a file tree of the project.
+
+First, carefully read the system design explanation which will be enclosed in <explanation> tags in the users message.
+
+Then, examine the file tree of the project which will be enclosed in <file_tree> tags in the users message.
+
+Your task is to analyze the system design explanation and identify key components, modules, or services mentioned. Then, try your best to map these components to what you believe could be their corresponding directories and files in the provided file tree.
+
+Guidelines:
+1. Focus on major components described in the system design.
+2. Look for directories and files that clearly correspond to these components.
+3. Include both directories and specific files when relevant.
+4. If a component doesn't have a clear corresponding file or directory, simply dont include it in the map.
+
+Now, provide your final answer in the following format:
+
+<component_mapping>
+1. [Component Name]: [File/Directory Path]
+2. [Component Name]: [File/Directory Path]
+[Continue for all identified components]
+</component_mapping>
+
+Remember to be as specific as possible in your mappings, only use what is given to you from the file tree, and to strictly follow the components mentioned in the explanation. 
+"""
+
+# ❌ BELOW IS A REMOVED SECTION FROM THE ABOVE PROMPT USED FOR CLAUDE 3.5 SONNET
+# Before providing your final answer, use the <scratchpad> to think through your process:
+# 1. List the key components identified in the system design.
+# 2. For each component, brainstorm potential corresponding directories or files.
+# 3. Verify your mappings by double-checking the file tree.
+
+# <scratchpad>
+# [Your thought process here]
+# </scratchpad>
+
+# just adding some clear separation between the prompts
+# ************************************************************
+# ************************************************************
+
+SYSTEM_THIRD_PROMPT = """
+You are a principal software engineer tasked with creating a system design diagram using Mermaid.js based on a detailed explanation. Your goal is to accurately represent the architecture and design of the project as described in the explanation.
+
+The detailed explanation of the design will be enclosed in <explanation> tags in the users message.
+
+Also, sourced from the explanation, as a bonus, a few of the identified components have been mapped to their paths in the project file tree, whether it is a directory or file which will be enclosed in <component_mapping> tags in the users message.
+
+To create the Mermaid.js diagram:
+
+1. Carefully read and analyze the provided design explanation.
+2. Identify the main components, services, and their relationships within the system.
+3. Determine the appropriate Mermaid.js diagram type to use (e.g., flowchart, sequence diagram, class diagram, architecture, etc.) based on the nature of the system described.
+4. Create the Mermaid.js code to represent the design, ensuring that:
+   a. All major components are included
+   b. Relationships between components are clearly shown
+   c. The diagram accurately reflects the architecture described in the explanation
+   d. The layout is logical and easy to understand
+
+Guidelines for diagram components and relationships:
+- Use appropriate shapes for different types of components (e.g., rectangles for services, cylinders for databases, etc.)
+- Use clear and concise labels for each component
+- Show the direction of data flow or dependencies using arrows
+- Group related components together if applicable
+- Include any important notes or annotations mentioned in the explanation
+- Just follow the explanation. It will have everything you need.
+
+IMPORTANT!!: Please orient and draw the diagram as vertically as possible. You must avoid long horizontal lists of nodes and sections!
+
+You must include click events for components of the diagram that have been specified in the provided <component_mapping>:
+- Do not try to include the full url. This will be processed by another program afterwards. All you need to do is include the path.
+- For example:
+  - This is a correct click event: `click Example "app/example.js"`
+  - This is an incorrect click event: `click Example "https://github.com/username/repo/blob/main/app/example.js"`
+- Do this for as many components as specified in the component mapping, include directories and files.
+  - If you believe the component contains files and is a directory, include the directory path.
+  - If you believe the component references a specific file, include the file path.
+- Make sure to include the full path to the directory or file exactly as specified in the component mapping.
+- It is very important that you do this for as many files as possible. The more the better.
+
+- IMPORTANT: THESE PATHS ARE FOR CLICK EVENTS ONLY, these paths should not be included in the diagram's node's names. Only for the click events. Paths should not be seen by the user.
+
+Your output should be valid Mermaid.js code that can be rendered into a diagram.
+
+Do not include an init declaration such as `%%{init: {'key':'etc'}}%%`. This is handled externally. Just return the diagram code.
+
+Your response must strictly be just the Mermaid.js code, without any additional text or explanations.
+No code fence or markdown ticks needed, simply return the Mermaid.js code.
+
+Ensure that your diagram adheres strictly to the given explanation, without adding or omitting any significant components or relationships. 
+
+For general direction, the provided example below is how you should structure your code:
+
+```mermaid
+flowchart TD 
+    %% or graph TD, your choice
+
+    %% Global entities
+    A("Entity A"):::external
+    %% more...
+
+    %% Subgraphs and modules
+    subgraph "Layer A"
+        A1("Module A"):::example
+        %% more modules...
+        %% inner subgraphs if needed...
+    end
+
+    %% more subgraphs, modules, etc...
+
+    %% Connections
+    A -->|"relationship"| B
+    %% and a lot more...
+
+    %% Click Events
+    click A1 "example/example.js"
+    %% and a lot more...
+
+    %% Styles
+    classDef frontend %%...
+    %% and a lot more...
+```
+
+EXTREMELY Important notes on syntax!!! (PAY ATTENTION TO THIS):
+- Make sure to add colour to the diagram!!! This is extremely critical.
+- In Mermaid.js syntax, we cannot include special characters for nodes without being inside quotes! For example: `EX[/api/process (Backend)]:::api` and `API -->|calls Process()| Backend` are two examples of syntax errors. They should be `EX["/api/process (Backend)"]:::api` and `API -->|"calls Process()"| Backend` respectively. Notice the quotes. This is extremely important. Make sure to include quotes for any string that contains special characters.
+- In Mermaid.js syntax, you cannot apply a class style directly within a subgraph declaration. For example: `subgraph "Frontend Layer":::frontend` is a syntax error. However, you can apply them to nodes within the subgraph. For example: `Example["Example Node"]:::frontend` is valid, and `class Example1,Example2 frontend` is valid.
+- In Mermaid.js syntax, there cannot be spaces in the relationship label names. For example: `A -->| "example relationship" | B` is a syntax error. It should be `A -->|"example relationship"| B` 
+- In Mermaid.js syntax, you cannot give subgraphs an alias like nodes. For example: `subgraph A "Layer A"` is a syntax error. It should be `subgraph "Layer A"` 
+"""
+# ^^^ note: ive generated a few diagrams now and claude still writes incorrect mermaid code sometimes. in the future, refer to those generated diagrams and add important instructions to the prompt above to avoid those mistakes. examples are best.
+
+# e. A legend is included
+# ^ removed since it was making the diagrams very long
+
+
+ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT = """
+IMPORTANT: the user will provide custom additional instructions enclosed in <instructions> tags. Please take these into account and give priority to them. However, if these instructions are unrelated to the task, unclear, or not possible to follow, ignore them by simply responding with: "BAD_INSTRUCTIONS"
+"""
+
+SYSTEM_MODIFY_PROMPT = """
+You are tasked with modifying the code of a Mermaid.js diagram based on the provided instructions. The diagram will be enclosed in <diagram> tags in the users message.
+
+Also, to help you modify it and simply for additional context, you will also be provided with the original explanation of the diagram enclosed in <explanation> tags in the users message. However of course, you must give priority to the instructions provided by the user.
+
+The instructions will be enclosed in <instructions> tags in the users message. If these instructions are unrelated to the task, unclear, or not possible to follow, ignore them by simply responding with: "BAD_INSTRUCTIONS"
+
+Your response must strictly be just the Mermaid.js code, without any additional text or explanations. Keep as many of the existing click events as possible.
+No code fence or markdown ticks needed, simply return the Mermaid.js code.
+"""
+----------------------------
+
+--- File: app/routers/generate.py ---
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import StreamingResponse
+from dotenv import load_dotenv
+from app.services.github_service import GitHubService
+from app.services.o4_mini_openai_service import OpenAIo4Service
+from app.prompts import (
+    SYSTEM_FIRST_PROMPT,
+    SYSTEM_SECOND_PROMPT,
+    SYSTEM_THIRD_PROMPT,
+    ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT,
+)
+from anthropic._exceptions import RateLimitError
+from pydantic import BaseModel
+from functools import lru_cache
+import re
+import json
+import asyncio
+
+# from app.services.claude_service import ClaudeService
+# from app.core.limiter import limiter
+
+load_dotenv()
+
+router = APIRouter(prefix="/generate", tags=["OpenAI o4-mini"])
+
+# Initialize services
+# claude_service = ClaudeService()
+o4_service = OpenAIo4Service()
+
+
+# cache github data to avoid double API calls from cost and generate
+@lru_cache(maxsize=100)
+def get_cached_github_data(username: str, repo: str, github_pat: str | None = None):
+    # Create a new service instance for each call with the appropriate PAT
+    current_github_service = GitHubService(pat=github_pat)
+
+    default_branch = current_github_service.get_default_branch(username, repo)
+    if not default_branch:
+        default_branch = "main"  # fallback value
+
+    file_tree = current_github_service.get_github_file_paths_as_list(username, repo)
+    readme = current_github_service.get_github_readme(username, repo)
+
+    return {"default_branch": default_branch, "file_tree": file_tree, "readme": readme}
+
+
+class ApiRequest(BaseModel):
+    username: str
+    repo: str
+    instructions: str = ""
+    api_key: str | None = None
+    github_pat: str | None = None
+
+
+@router.post("/cost")
+# @limiter.limit("5/minute") # TEMP: disable rate limit for growth??
+async def get_generation_cost(request: Request, body: ApiRequest):
+    try:
+        # Get file tree and README content
+        github_data = get_cached_github_data(body.username, body.repo, body.github_pat)
+        file_tree = github_data["file_tree"]
+        readme = github_data["readme"]
+
+        # Calculate combined token count
+        # file_tree_tokens = claude_service.count_tokens(file_tree)
+        # readme_tokens = claude_service.count_tokens(readme)
+
+        file_tree_tokens = o4_service.count_tokens(file_tree)
+        readme_tokens = o4_service.count_tokens(readme)
+
+        # CLAUDE: Calculate approximate cost
+        # Input cost: $3 per 1M tokens ($0.000003 per token)
+        # Output cost: $15 per 1M tokens ($0.000015 per token)
+        # input_cost = ((file_tree_tokens * 2 + readme_tokens) + 3000) * 0.000003
+        # output_cost = 3500 * 0.000015
+        # estimated_cost = input_cost + output_cost
+
+        # Input cost: $1.1 per 1M tokens ($0.0000011 per token)
+        # Output cost: $4.4 per 1M tokens ($0.0000044 per token)
+        input_cost = ((file_tree_tokens * 2 + readme_tokens) + 3000) * 0.0000011
+        output_cost = (
+            8000 * 0.0000044
+        )  # 8k just based on what I've seen (reasoning is expensive)
+        estimated_cost = input_cost + output_cost
+
+        # Format as currency string
+        cost_string = f"${estimated_cost:.2f} USD"
+        return {"cost": cost_string}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def process_click_events(diagram: str, username: str, repo: str, branch: str) -> str:
+    """
+    Process click events in Mermaid diagram to include full GitHub URLs.
+    Detects if path is file or directory and uses appropriate URL format.
+    """
+
+    def replace_path(match):
+        # Extract the path from the click event
+        path = match.group(2).strip("\"'")
+
+        # Determine if path is likely a file (has extension) or directory
+        is_file = "." in path.split("/")[-1]
+
+        # Construct GitHub URL
+        base_url = f"https://github.com/{username}/{repo}"
+        path_type = "blob" if is_file else "tree"
+        full_url = f"{base_url}/{path_type}/{branch}/{path}"
+
+        # Return the full click event with the new URL
+        return f'click {match.group(1)} "{full_url}"'
+
+    # Match click events: click ComponentName "path/to/something"
+    click_pattern = r'click ([^\s"]+)\s+"([^"]+)"'
+    return re.sub(click_pattern, replace_path, diagram)
+
+
+@router.post("/stream")
+async def generate_stream(request: Request, body: ApiRequest):
+    try:
+        # Initial validation checks
+        if len(body.instructions) > 1000:
+            return {"error": "Instructions exceed maximum length of 1000 characters"}
+
+        if body.repo in [
+            "fastapi",
+            "streamlit",
+            "flask",
+            "api-analytics",
+            "monkeytype",
+        ]:
+            return {"error": "Example repos cannot be regenerated"}
+
+        async def event_generator():
+            try:
+                # Get cached github data
+                github_data = get_cached_github_data(
+                    body.username, body.repo, body.github_pat
+                )
+                default_branch = github_data["default_branch"]
+                file_tree = github_data["file_tree"]
+                readme = github_data["readme"]
+
+                # Send initial status
+                yield f"data: {json.dumps({'status': 'started', 'message': 'Starting generation process...'})}\n\n"
+                await asyncio.sleep(0.1)
+
+                # Token count check
+                combined_content = f"{file_tree}\n{readme}"
+                token_count = o4_service.count_tokens(combined_content)
+
+                if 50000 < token_count < 195000 and not body.api_key:
+                    yield f"data: {json.dumps({'error': f'File tree and README combined exceeds token limit (50,000). Current size: {token_count} tokens. This GitHub repository is too large for my wallet, but you can continue by providing your own OpenAI API key.'})}\n\n"
+                    return
+                elif token_count > 195000:
+                    yield f"data: {json.dumps({'error': f'Repository is too large (>195k tokens) for analysis. OpenAI o4-mini\'s max context length is 200k tokens. Current size: {token_count} tokens.'})}\n\n"
+                    return
+
+                # Prepare prompts
+                first_system_prompt = SYSTEM_FIRST_PROMPT
+                third_system_prompt = SYSTEM_THIRD_PROMPT
+                if body.instructions:
+                    first_system_prompt = (
+                        first_system_prompt
+                        + "\n"
+                        + ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT
+                    )
+                    third_system_prompt = (
+                        third_system_prompt
+                        + "\n"
+                        + ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT
+                    )
+
+                # Phase 1: Get explanation
+                yield f"data: {json.dumps({'status': 'explanation_sent', 'message': 'Sending explanation request to o4-mini...'})}\n\n"
+                await asyncio.sleep(0.1)
+                yield f"data: {json.dumps({'status': 'explanation', 'message': 'Analyzing repository structure...'})}\n\n"
+                explanation = ""
+                async for chunk in o4_service.call_o4_api_stream(
+                    system_prompt=first_system_prompt,
+                    data={
+                        "file_tree": file_tree,
+                        "readme": readme,
+                        "instructions": body.instructions,
+                    },
+                    api_key=body.api_key,
+                    reasoning_effort="medium",
+                ):
+                    explanation += chunk
+                    yield f"data: {json.dumps({'status': 'explanation_chunk', 'chunk': chunk})}\n\n"
+
+                if "BAD_INSTRUCTIONS" in explanation:
+                    yield f"data: {json.dumps({'error': 'Invalid or unclear instructions provided'})}\n\n"
+                    return
+
+                # Phase 2: Get component mapping
+                yield f"data: {json.dumps({'status': 'mapping_sent', 'message': 'Sending component mapping request to o4-mini...'})}\n\n"
+                await asyncio.sleep(0.1)
+                yield f"data: {json.dumps({'status': 'mapping', 'message': 'Creating component mapping...'})}\n\n"
+                full_second_response = ""
+                async for chunk in o4_service.call_o4_api_stream(
+                    system_prompt=SYSTEM_SECOND_PROMPT,
+                    data={"explanation": explanation, "file_tree": file_tree},
+                    api_key=body.api_key,
+                    reasoning_effort="low",
+                ):
+                    full_second_response += chunk
+                    yield f"data: {json.dumps({'status': 'mapping_chunk', 'chunk': chunk})}\n\n"
+
+                # i dont think i need this anymore? but keep it here for now
+                # Extract component mapping
+                start_tag = "<component_mapping>"
+                end_tag = "</component_mapping>"
+                component_mapping_text = full_second_response[
+                    full_second_response.find(start_tag) : full_second_response.find(
+                        end_tag
+                    )
+                ]
+
+                # Phase 3: Generate Mermaid diagram
+                yield f"data: {json.dumps({'status': 'diagram_sent', 'message': 'Sending diagram generation request to o4-mini...'})}\n\n"
+                await asyncio.sleep(0.1)
+                yield f"data: {json.dumps({'status': 'diagram', 'message': 'Generating diagram...'})}\n\n"
+                mermaid_code = ""
+                async for chunk in o4_service.call_o4_api_stream(
+                    system_prompt=third_system_prompt,
+                    data={
+                        "explanation": explanation,
+                        "component_mapping": component_mapping_text,
+                        "instructions": body.instructions,
+                    },
+                    api_key=body.api_key,
+                    reasoning_effort="low",
+                ):
+                    mermaid_code += chunk
+                    yield f"data: {json.dumps({'status': 'diagram_chunk', 'chunk': chunk})}\n\n"
+
+                # Process final diagram
+                mermaid_code = mermaid_code.replace("```mermaid", "").replace("```", "")
+                if "BAD_INSTRUCTIONS" in mermaid_code:
+                    yield f"data: {json.dumps({'error': 'Invalid or unclear instructions provided'})}\n\n"
+                    return
+
+                processed_diagram = process_click_events(
+                    mermaid_code, body.username, body.repo, default_branch
+                )
+
+                # Send final result
+                yield f"data: {json.dumps({
+                    'status': 'complete',
+                    'diagram': processed_diagram,
+                    'explanation': explanation,
+                    'mapping': component_mapping_text
+                })}\n\n"
+
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "X-Accel-Buffering": "no",  # Hint to Nginx
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
+    except Exception as e:
+        return {"error": str(e)}
+-------------------------------------
+
+--- File: app/routers/modify.py ---
+from fastapi import APIRouter, Request, HTTPException
+from dotenv import load_dotenv
+
+# from app.services.claude_service import ClaudeService
+# from app.core.limiter import limiter
+from anthropic._exceptions import RateLimitError
+from app.prompts import SYSTEM_MODIFY_PROMPT
+from pydantic import BaseModel
+from app.services.o1_mini_openai_service import OpenAIO1Service
+
+
+load_dotenv()
+
+router = APIRouter(prefix="/modify", tags=["Claude"])
+
+# Initialize services
+# claude_service = ClaudeService()
+o1_service = OpenAIO1Service()
+
+
+# Define the request body model
+
+
+class ModifyRequest(BaseModel):
+    instructions: str
+    current_diagram: str
+    repo: str
+    username: str
+    explanation: str
+
+
+@router.post("")
+# @limiter.limit("2/minute;10/day")
+async def modify(request: Request, body: ModifyRequest):
+    try:
+        # Check instructions length
+        if not body.instructions or not body.current_diagram:
+            return {"error": "Instructions and/or current diagram are required"}
+        elif (
+            len(body.instructions) > 1000 or len(body.current_diagram) > 100000
+        ):  # just being safe
+            return {"error": "Instructions exceed maximum length of 1000 characters"}
+
+        if body.repo in [
+            "fastapi",
+            "streamlit",
+            "flask",
+            "api-analytics",
+            "monkeytype",
+        ]:
+            return {"error": "Example repos cannot be modified"}
+
+        # modified_mermaid_code = claude_service.call_claude_api(
+        #     system_prompt=SYSTEM_MODIFY_PROMPT,
+        #     data={
+        #         "instructions": body.instructions,
+        #         "explanation": body.explanation,
+        #         "diagram": body.current_diagram,
+        #     },
+        # )
+
+        modified_mermaid_code = o1_service.call_o1_api(
+            system_prompt=SYSTEM_MODIFY_PROMPT,
+            data={
+                "instructions": body.instructions,
+                "explanation": body.explanation,
+                "diagram": body.current_diagram,
+            },
+        )
+
+        # Check for BAD_INSTRUCTIONS response
+        if "BAD_INSTRUCTIONS" in modified_mermaid_code:
+            return {"error": "Invalid or unclear instructions provided"}
+
+        return {"diagram": modified_mermaid_code}
+    except RateLimitError as e:
+        raise HTTPException(
+            status_code=429,
+            detail="Service is currently experiencing high demand. Please try again in a few minutes.",
+        )
+    except Exception as e:
+        return {"error": str(e)}
+-----------------------------------
+
+--- File: app/routers/readme_update_router.py ---
+# backend/app/routers/readme_update_router.py
+import os
+from fastapi import APIRouter, HTTPException, Header, Depends
+from pydantic import BaseModel
+from app.utils.readme_updater import update_readme_with_new_diagram
+
+router = APIRouter(
+    prefix="/internal",
+    tags=["internal-readme-updates"],
+)
+
+async def verify_internal_token(x_internal_token: str = Header(None)):
+    expected_token = os.getenv("GITDIAGRAM_INTERNAL_SECRET_TOKEN")
+    if not expected_token:
+        print("CRITICAL: GITDIAGRAM_INTERNAL_SECRET_TOKEN is not configured on the server.")
+        raise HTTPException(status_code=500, detail="Internal server configuration error.")
+    if not x_internal_token or x_internal_token != expected_token:
+        print(f"Access denied: Invalid or missing internal token.")
+        raise HTTPException(status_code=403, detail="Access denied: Invalid or missing internal token.")
+    return True
+
+class ReadmeUpdateRequest(BaseModel):
+    repo_full_name: str # e.g., "owner/repo"
+    branch_name: str    # e.g., "main" or "master" - to be provided by the calling script
+
+@router.post("/update-readme-diagram", dependencies=[Depends(verify_internal_token)])
+async def trigger_readme_diagram_update(request_data: ReadmeUpdateRequest):
+    github_pat_for_readme_updates = os.getenv("GITHUB_PAT_FOR_README_UPDATES")
+    llm_api_key_env = os.getenv("OPENAI_API_KEY")
+    github_pat_for_repo_read = os.getenv("GITHUB_PAT") # PAT backend uses to read general repo info
+
+    if not github_pat_for_readme_updates:
+        # ... (error handling as in your snapshot) ...
+        print("CRITICAL: GITHUB_PAT_FOR_README_UPDATES is not set.")
+        raise HTTPException(status_code=500, detail="Server config error: Missing PAT for README updates.")
+    if not llm_api_key_env:
+        # ... (error handling as in your snapshot) ...
+        print("CRITICAL: OPENAI_API_KEY is not set for internal diagram generation.")
+        raise HTTPException(status_code=500, detail="Server config error: Missing LLM API key.")
+
+    print(f"Received request to update README for {request_data.repo_full_name} on branch {request_data.branch_name}")
+    success = await update_readme_with_new_diagram(
+        repo_full_name=request_data.repo_full_name,
+        branch_to_commit_to=request_data.branch_name, # Pass the branch from request
+        github_pat_for_updates=github_pat_for_readme_updates,
+        llm_api_key=llm_api_key_env,
+        github_pat_for_repo_read=github_pat_for_repo_read
+    )
+
+    if success:
+        return {"status": "ok", "message": f"README update process for {request_data.repo_full_name} on branch {request_data.branch_name} initiated."}
+    else:
+        print(f"README update process for {request_data.repo_full_name} on branch {request_data.branch_name} failed.")
+        raise HTTPException(status_code=500, detail=f"Failed to update README for {request_data.repo_full_name}. Check server logs.")
+-------------------------------------------------
+
+--- File: app/services/claude_service.py ---
+from anthropic import Anthropic
+from dotenv import load_dotenv
+from app.utils.format_message import format_user_message
+
+load_dotenv()
+
+
+class ClaudeService:
+    def __init__(self):
+        self.default_client = Anthropic()
+
+    def call_claude_api(
+        self, system_prompt: str, data: dict, api_key: str | None = None
+    ) -> str:
+        """
+        Makes an API call to Claude and returns the response.
+
+        Args:
+            system_prompt (str): The instruction/system prompt
+            data (dict): Dictionary of variables to format into the user message
+            api_key (str | None): Optional custom API key
+
+        Returns:
+            str: Claude's response text
+        """
+        # Create the user message with the data
+        user_message = format_user_message(data)
+
+        # Use custom client if API key provided, otherwise use default
+        client = Anthropic(api_key=api_key) if api_key else self.default_client
+
+        message = client.messages.create(
+            model="claude-3-5-sonnet-latest",
+            max_tokens=4096,
+            temperature=0,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": [{"type": "text", "text": user_message}]}
+            ],
+        )
+        return message.content[0].text  # type: ignore
+
+    def count_tokens(self, prompt: str) -> int:
+        """
+        Counts the number of tokens in a prompt.
+
+        Args:
+            prompt (str): The prompt to count tokens for
+
+        Returns:
+            int: Number of input tokens
+        """
+        response = self.default_client.messages.count_tokens(
+            model="claude-3-5-sonnet-latest",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.input_tokens
+--------------------------------------------
+
+--- File: app/services/github_service.py ---
+import requests
+import jwt
+import time
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+
+class GitHubService:
+    def __init__(self, pat: str | None = None):
+        # Try app authentication first
+        self.client_id = os.getenv("GITHUB_CLIENT_ID")
+        self.private_key = os.getenv("GITHUB_PRIVATE_KEY")
+        self.installation_id = os.getenv("GITHUB_INSTALLATION_ID")
+
+        # Use provided PAT if available, otherwise fallback to env PAT
+        self.github_token = pat or os.getenv("GITHUB_PAT")
+
+        # If no credentials are provided, warn about rate limits
+        if (
+            not all([self.client_id, self.private_key, self.installation_id])
+            and not self.github_token
+        ):
+            print(
+                "\033[93mWarning: No GitHub credentials provided. Using unauthenticated requests with rate limit of 60 requests/hour.\033[0m"
+            )
+
+        self.access_token = None
+        self.token_expires_at = None
+
+    # autopep8: off
+    def _generate_jwt(self):
+        now = int(time.time())
+        payload = {
+            "iat": now,
+            "exp": now + (10 * 60),  # 10 minutes
+            "iss": self.client_id,
+        }
+        # Convert PEM string format to proper newlines
+        return jwt.encode(payload, self.private_key, algorithm="RS256")  # type: ignore
+
+    # autopep8: on
+
+    def _get_installation_token(self):
+        if self.access_token and self.token_expires_at > datetime.now():  # type: ignore
+            return self.access_token
+
+        jwt_token = self._generate_jwt()
+        response = requests.post(
+            f"https://api.github.com/app/installations/{
+                self.installation_id}/access_tokens",
+            headers={
+                "Authorization": f"Bearer {jwt_token}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+        data = response.json()
+        self.access_token = data["token"]
+        self.token_expires_at = datetime.now() + timedelta(hours=1)
+        return self.access_token
+
+    def _get_headers(self):
+        # If no credentials are available, return basic headers
+        if (
+            not all([self.client_id, self.private_key, self.installation_id])
+            and not self.github_token
+        ):
+            return {"Accept": "application/vnd.github+json"}
+
+        # Use PAT if available
+        if self.github_token:
+            return {
+                "Authorization": f"token {self.github_token}",
+                "Accept": "application/vnd.github+json",
+            }
+
+        # Otherwise use app authentication
+        token = self._get_installation_token()
+        return {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+    def _check_repository_exists(self, username, repo):
+        """
+        Check if the repository exists using the GitHub API.
+        """
+        api_url = f"https://api.github.com/repos/{username}/{repo}"
+        response = requests.get(api_url, headers=self._get_headers())
+
+        if response.status_code == 404:
+            raise ValueError("Repository not found.")
+        elif response.status_code != 200:
+            raise Exception(
+                f"Failed to check repository: {response.status_code}, {response.json()}"
+            )
+
+    def get_default_branch(self, username, repo):
+        """Get the default branch of the repository."""
+        api_url = f"https://api.github.com/repos/{username}/{repo}"
+        response = requests.get(api_url, headers=self._get_headers())
+
+        if response.status_code == 200:
+            return response.json().get("default_branch")
+        return None
+
+    def get_github_file_paths_as_list(self, username, repo):
+        """
+        Fetches the file tree of an open-source GitHub repository,
+        excluding static files and generated code.
+
+        Args:
+            username (str): The GitHub username or organization name
+            repo (str): The repository name
+
+        Returns:
+            str: A filtered and formatted string of file paths in the repository, one per line.
+        """
+
+        def should_include_file(path):
+            # Patterns to exclude
+            excluded_patterns = [
+                # Dependencies
+                "node_modules/",
+                "vendor/",
+                "venv/",
+                # Compiled files
+                ".min.",
+                ".pyc",
+                ".pyo",
+                ".pyd",
+                ".so",
+                ".dll",
+                ".class",
+                # Asset files
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".gif",
+                ".ico",
+                ".svg",
+                ".ttf",
+                ".woff",
+                ".webp",
+                # Cache and temporary files
+                "__pycache__/",
+                ".cache/",
+                ".tmp/",
+                # Lock files and logs
+                "yarn.lock",
+                "poetry.lock",
+                "*.log",
+                # Configuration files
+                ".vscode/",
+                ".idea/",
+            ]
+
+            return not any(pattern in path.lower() for pattern in excluded_patterns)
+
+        # Try to get the default branch first
+        branch = self.get_default_branch(username, repo)
+        if branch:
+            api_url = f"https://api.github.com/repos/{
+                username}/{repo}/git/trees/{branch}?recursive=1"
+            response = requests.get(api_url, headers=self._get_headers())
+
+            if response.status_code == 200:
+                data = response.json()
+                if "tree" in data:
+                    # Filter the paths and join them with newlines
+                    paths = [
+                        item["path"]
+                        for item in data["tree"]
+                        if should_include_file(item["path"])
+                    ]
+                    return "\n".join(paths)
+
+        # If default branch didn't work or wasn't found, try common branch names
+        for branch in ["main", "master"]:
+            api_url = f"https://api.github.com/repos/{
+                username}/{repo}/git/trees/{branch}?recursive=1"
+            response = requests.get(api_url, headers=self._get_headers())
+
+            if response.status_code == 200:
+                data = response.json()
+                if "tree" in data:
+                    # Filter the paths and join them with newlines
+                    paths = [
+                        item["path"]
+                        for item in data["tree"]
+                        if should_include_file(item["path"])
+                    ]
+                    return "\n".join(paths)
+
+        raise ValueError(
+            "Could not fetch repository file tree. Repository might not exist, be empty or private."
+        )
+
+    def get_github_readme(self, username, repo):
+        """
+        Fetches the README contents of an open-source GitHub repository.
+
+        Args:
+            username (str): The GitHub username or organization name
+            repo (str): The repository name
+
+        Returns:
+            str: The contents of the README file.
+
+        Raises:
+            ValueError: If repository does not exist or has no README.
+            Exception: For other unexpected API errors.
+        """
+        # First check if the repository exists
+        self._check_repository_exists(username, repo)
+
+        # Then attempt to fetch the README
+        api_url = f"https://api.github.com/repos/{username}/{repo}/readme"
+        response = requests.get(api_url, headers=self._get_headers())
+
+        if response.status_code == 404:
+            raise ValueError("No README found for the specified repository.")
+        elif response.status_code != 200:
+            raise Exception(
+                f"Failed to fetch README: {
+                            response.status_code}, {response.json()}"
+            )
+
+        data = response.json()
+        readme_content = requests.get(data["download_url"]).text
+        return readme_content
+--------------------------------------------
+
+--- File: app/services/o1_mini_openai_service.py ---
+from openai import OpenAI
+from dotenv import load_dotenv
+from app.utils.format_message import format_user_message
+import tiktoken
+import os
+import aiohttp
+import json
+from typing import AsyncGenerator
+
+load_dotenv()
+
+
+class OpenAIO1Service:
+    def __init__(self):
+        self.default_client = OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+        )
+        self.encoding = tiktoken.get_encoding("o200k_base")  # Encoder for OpenAI models
+        self.base_url = "https://api.openai.com/v1/chat/completions"
+
+    def call_o1_api(
+        self,
+        system_prompt: str,
+        data: dict,
+        api_key: str | None = None,
+    ) -> str:
+        """
+        Makes an API call to OpenAI o1-mini and returns the response.
+
+        Args:
+            system_prompt (str): The instruction/system prompt
+            data (dict): Dictionary of variables to format into the user message
+            api_key (str | None): Optional custom API key
+
+        Returns:
+            str: o1-mini's response text
+        """
+        # Create the user message with the data
+        user_message = format_user_message(data)
+
+        # Use custom client if API key provided, otherwise use default
+        client = OpenAI(api_key=api_key) if api_key else self.default_client
+
+        try:
+            print(
+                f"Making non-streaming API call to o1-mini with API key: {'custom key' if api_key else 'default key'}"
+            )
+
+            completion = client.chat.completions.create(
+                model="o1-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                max_completion_tokens=12000,  # Adjust as needed
+                temperature=0.2,
+            )
+
+            print("API call completed successfully")
+
+            if completion.choices[0].message.content is None:
+                raise ValueError("No content returned from OpenAI o1-mini")
+
+            return completion.choices[0].message.content
+
+        except Exception as e:
+            print(f"Error in OpenAI o1-mini API call: {str(e)}")
+            raise
+
+    async def call_o1_api_stream(
+        self,
+        system_prompt: str,
+        data: dict,
+        api_key: str | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Makes a streaming API call to OpenAI o1-mini and yields the responses.
+
+        Args:
+            system_prompt (str): The instruction/system prompt
+            data (dict): Dictionary of variables to format into the user message
+            api_key (str | None): Optional custom API key
+
+        Yields:
+            str: Chunks of o1-mini's response text
+        """
+        # Create the user message with the data
+        user_message = format_user_message(data)
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key or self.default_client.api_key}",
+        }
+
+        payload = {
+            "model": "o1-mini",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"""
+                    <VERY_IMPORTANT_SYSTEM_INSTRUCTIONS>
+                    {system_prompt}
+                    </VERY_IMPORTANT_SYSTEM_INSTRUCTIONS>
+                    <USER_INSTRUCTIONS>
+                    {user_message}
+                    </USER_INSTRUCTIONS>
+                    """,
+                },
+            ],
+            "max_completion_tokens": 12000,
+            "stream": True,
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.base_url, headers=headers, json=payload
+                ) as response:
+
+                    if response.status != 200:
+                        error_text = await response.text()
+                        print(f"Error response: {error_text}")
+                        raise ValueError(
+                            f"OpenAI API returned status code {response.status}: {error_text}"
+                        )
+
+                    line_count = 0
+                    async for line in response.content:
+                        line = line.decode("utf-8").strip()
+                        if not line:
+                            continue
+
+                        line_count += 1
+
+                        if line.startswith("data: "):
+                            if line == "data: [DONE]":
+                                break
+                            try:
+                                data = json.loads(line[6:])
+                                content = (
+                                    data.get("choices", [{}])[0]
+                                    .get("delta", {})
+                                    .get("content")
+                                )
+                                if content:
+                                    yield content
+                            except json.JSONDecodeError as e:
+                                print(f"JSON decode error: {e} for line: {line}")
+                                continue
+
+                    if line_count == 0:
+                        print("Warning: No lines received in stream response")
+
+        except aiohttp.ClientError as e:
+            print(f"Connection error: {str(e)}")
+            raise ValueError(f"Failed to connect to OpenAI API: {str(e)}")
+        except Exception as e:
+            print(f"Unexpected error in streaming API call: {str(e)}")
+            raise
+
+    def count_tokens(self, prompt: str) -> int:
+        """
+        Counts the number of tokens in a prompt.
+
+        Args:
+            prompt (str): The prompt to count tokens for
+
+        Returns:
+            int: Estimated number of input tokens
+        """
+        num_tokens = len(self.encoding.encode(prompt))
+        return num_tokens
+----------------------------------------------------
+
+--- File: app/services/o3_mini_openai_service.py ---
+from openai import OpenAI
+from dotenv import load_dotenv
+from app.utils.format_message import format_user_message
+import tiktoken
+import os
+import aiohttp
+import json
+from typing import AsyncGenerator, Literal
+
+load_dotenv()
+
+
+class OpenAIo3Service:
+    def __init__(self):
+        self.default_client = OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+        )
+        self.encoding = tiktoken.get_encoding("o200k_base")  # Encoder for OpenAI models
+        self.base_url = "https://api.openai.com/v1/chat/completions"
+
+    def call_o3_api(
+        self,
+        system_prompt: str,
+        data: dict,
+        api_key: str | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] = "low",
+    ) -> str:
+        """
+        Makes an API call to OpenAI o3-mini and returns the response.
+
+        Args:
+            system_prompt (str): The instruction/system prompt
+            data (dict): Dictionary of variables to format into the user message
+            api_key (str | None): Optional custom API key
+
+        Returns:
+            str: o3-mini's response text
+        """
+        # Create the user message with the data
+        user_message = format_user_message(data)
+
+        # Use custom client if API key provided, otherwise use default
+        client = OpenAI(api_key=api_key) if api_key else self.default_client
+
+        try:
+            print(
+                f"Making non-streaming API call to o3-mini with API key: {'custom key' if api_key else 'default key'}"
+            )
+
+            completion = client.chat.completions.create(
+                model="o3-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                max_completion_tokens=12000,  # Adjust as needed
+                temperature=0.2,
+                reasoning_effort=reasoning_effort,
+            )
+
+            print("API call completed successfully")
+
+            if completion.choices[0].message.content is None:
+                raise ValueError("No content returned from OpenAI o3-mini")
+
+            return completion.choices[0].message.content
+
+        except Exception as e:
+            print(f"Error in OpenAI o3-mini API call: {str(e)}")
+            raise
+
+    async def call_o3_api_stream(
+        self,
+        system_prompt: str,
+        data: dict,
+        api_key: str | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] = "low",
+    ) -> AsyncGenerator[str, None]:
+        """
+        Makes a streaming API call to OpenAI o3-mini and yields the responses.
+
+        Args:
+            system_prompt (str): The instruction/system prompt
+            data (dict): Dictionary of variables to format into the user message
+            api_key (str | None): Optional custom API key
+
+        Yields:
+            str: Chunks of o3-mini's response text
+        """
+        # Create the user message with the data
+        user_message = format_user_message(data)
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key or self.default_client.api_key}",
+        }
+
+        # payload = {
+        #     "model": "o3-mini",
+        #     "messages": [
+        #         {
+        #             "role": "user",
+        #             "content": f"""
+        #             <VERY_IMPORTANT_SYSTEM_INSTRUCTIONS>
+        #             {system_prompt}
+        #             </VERY_IMPORTANT_SYSTEM_INSTRUCTIONS>
+        #             <USER_INSTRUCTIONS>
+        #             {user_message}
+        #             </USER_INSTRUCTIONS>
+        #             """,
+        #         },
+        #     ],
+        #     "max_completion_tokens": 12000,
+        #     "stream": True,
+        # }
+
+        payload = {
+            "model": "o3-mini",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "max_completion_tokens": 12000,
+            "stream": True,
+            "reasoning_effort": reasoning_effort,
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.base_url, headers=headers, json=payload
+                ) as response:
+
+                    if response.status != 200:
+                        error_text = await response.text()
+                        print(f"Error response: {error_text}")
+                        raise ValueError(
+                            f"OpenAI API returned status code {response.status}: {error_text}"
+                        )
+
+                    line_count = 0
+                    async for line in response.content:
+                        line = line.decode("utf-8").strip()
+                        if not line:
+                            continue
+
+                        line_count += 1
+
+                        if line.startswith("data: "):
+                            if line == "data: [DONE]":
+                                break
+                            try:
+                                data = json.loads(line[6:])
+                                content = (
+                                    data.get("choices", [{}])[0]
+                                    .get("delta", {})
+                                    .get("content")
+                                )
+                                if content:
+                                    yield content
+                            except json.JSONDecodeError as e:
+                                print(f"JSON decode error: {e} for line: {line}")
+                                continue
+
+                    if line_count == 0:
+                        print("Warning: No lines received in stream response")
+
+        except aiohttp.ClientError as e:
+            print(f"Connection error: {str(e)}")
+            raise ValueError(f"Failed to connect to OpenAI API: {str(e)}")
+        except Exception as e:
+            print(f"Unexpected error in streaming API call: {str(e)}")
+            raise
+
+    def count_tokens(self, prompt: str) -> int:
+        """
+        Counts the number of tokens in a prompt.
+
+        Args:
+            prompt (str): The prompt to count tokens for
+
+        Returns:
+            int: Estimated number of input tokens
+        """
+        num_tokens = len(self.encoding.encode(prompt))
+        return num_tokens
+----------------------------------------------------
+
+--- File: app/services/o3_mini_openrouter_service.py ---
+from openai import OpenAI
+from dotenv import load_dotenv
+from app.utils.format_message import format_user_message
+import tiktoken
+import os
+import aiohttp
+import json
+from typing import Literal, AsyncGenerator
+
+load_dotenv()
+
+
+class OpenRouterO3Service:
+    def __init__(self):
+        self.default_client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
+        self.encoding = tiktoken.get_encoding("o200k_base")
+        self.base_url = "https://openrouter.ai/api/v1/chat/completions"
+
+    def call_o3_api(
+        self,
+        system_prompt: str,
+        data: dict,
+        api_key: str | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] = "low",
+    ) -> str:
+        """
+        Makes an API call to OpenRouter O3 and returns the response.
+
+        Args:
+            system_prompt (str): The instruction/system prompt
+            data (dict): Dictionary of variables to format into the user message
+            api_key (str | None): Optional custom API key
+
+        Returns:
+            str: O3's response text
+        """
+        # Create the user message with the data
+        user_message = format_user_message(data)
+
+        # Use custom client if API key provided, otherwise use default
+        client = (
+            OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+            if api_key
+            else self.default_client
+        )
+
+        completion = client.chat.completions.create(
+            extra_headers={
+                "HTTP-Referer": "https://gitdiagram.com",  # Optional. Site URL for rankings on openrouter.ai.
+                "X-Title": "gitdiagram",  # Optional. Site title for rankings on openrouter.ai.
+            },
+            model="openai/o3-mini",  # Can be configured as needed
+            reasoning_effort=reasoning_effort,  # Can be adjusted based on needs
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            max_completion_tokens=12000,  # Adjust as needed
+            temperature=0.2,
+        )
+
+        if completion.choices[0].message.content is None:
+            raise ValueError("No content returned from OpenRouter O3")
+
+        return completion.choices[0].message.content
+
+    async def call_o3_api_stream(
+        self,
+        system_prompt: str,
+        data: dict,
+        api_key: str | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] = "low",
+    ) -> AsyncGenerator[str, None]:
+        """
+        Makes a streaming API call to OpenRouter O3 and yields the responses.
+
+        Args:
+            system_prompt (str): The instruction/system prompt
+            data (dict): Dictionary of variables to format into the user message
+            api_key (str | None): Optional custom API key
+
+        Yields:
+            str: Chunks of O3's response text
+        """
+        # Create the user message with the data
+        user_message = format_user_message(data)
+
+        headers = {
+            "HTTP-Referer": "https://gitdiagram.com",
+            "X-Title": "gitdiagram",
+            "Authorization": f"Bearer {api_key or self.default_client.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": "openai/o3-mini",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "max_tokens": 12000,
+            "temperature": 0.2,
+            "stream": True,
+            "reasoning_effort": reasoning_effort,
+        }
+
+        buffer = ""
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                self.base_url, headers=headers, json=payload
+            ) as response:
+                async for line in response.content:
+                    line = line.decode("utf-8").strip()
+                    if line.startswith("data: "):
+                        if line == "data: [DONE]":
+                            break
+                        try:
+                            data = json.loads(line[6:])
+                            if (
+                                content := data.get("choices", [{}])[0]
+                                .get("delta", {})
+                                .get("content")
+                            ):
+                                yield content
+                        except json.JSONDecodeError:
+                            # Skip any non-JSON lines (like the OPENROUTER PROCESSING comments)
+                            continue
+
+    def count_tokens(self, prompt: str) -> int:
+        """
+        Counts the number of tokens in a prompt.
+        Note: This is a rough estimate as OpenRouter may not provide direct token counting.
+
+        Args:
+            prompt (str): The prompt to count tokens for
+
+        Returns:
+            int: Estimated number of input tokens
+        """
+        num_tokens = len(self.encoding.encode(prompt))
+        return num_tokens
+--------------------------------------------------------
+
+--- File: app/services/o4_mini_openai_service.py ---
+from openai import OpenAI
+from dotenv import load_dotenv
+from app.utils.format_message import format_user_message
+import tiktoken
+import os
+import aiohttp
+import json
+from typing import AsyncGenerator, Literal
+
+load_dotenv()
+
+
+class OpenAIo4Service:
+    def __init__(self):
+        self.default_client = OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+        )
+        self.encoding = tiktoken.get_encoding("o200k_base")  # Encoder for OpenAI models
+        self.base_url = "https://api.openai.com/v1/chat/completions"
+
+    def call_o4_api(
+        self,
+        system_prompt: str,
+        data: dict,
+        api_key: str | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] = "low",
+    ) -> str:
+        """
+        Makes an API call to OpenAI o4-mini and returns the response.
+
+        Args:
+            system_prompt (str): The instruction/system prompt
+            data (dict): Dictionary of variables to format into the user message
+            api_key (str | None): Optional custom API key
+
+        Returns:
+            str: o4-mini's response text
+        """
+        # Create the user message with the data
+        user_message = format_user_message(data)
+
+        # Use custom client if API key provided, otherwise use default
+        client = OpenAI(api_key=api_key) if api_key else self.default_client
+
+        try:
+            print(
+                f"Making non-streaming API call to o4-mini with API key: {'custom key' if api_key else 'default key'}"
+            )
+
+            completion = client.chat.completions.create(
+                model="o4-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                max_completion_tokens=12000,  # Adjust as needed
+                temperature=0.2,
+                reasoning_effort=reasoning_effort,
+            )
+
+            print("API call completed successfully")
+
+            if completion.choices[0].message.content is None:
+                raise ValueError("No content returned from OpenAI o4-mini")
+
+            return completion.choices[0].message.content
+
+        except Exception as e:
+            print(f"Error in OpenAI o4-mini API call: {str(e)}")
+            raise
+
+    async def call_o4_api_stream(
+        self,
+        system_prompt: str,
+        data: dict,
+        api_key: str | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] = "low",
+    ) -> AsyncGenerator[str, None]:
+        """
+        Makes a streaming API call to OpenAI o4-mini and yields the responses.
+
+        Args:
+            system_prompt (str): The instruction/system prompt
+            data (dict): Dictionary of variables to format into the user message
+            api_key (str | None): Optional custom API key
+
+        Yields:
+            str: Chunks of o4-mini's response text
+        """
+        # Create the user message with the data
+        user_message = format_user_message(data)
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key or self.default_client.api_key}",
+        }
+
+        # payload = {
+        #     "model": "o3-mini",
+        #     "messages": [
+        #         {
+        #             "role": "user",
+        #             "content": f"""
+        #             <VERY_IMPORTANT_SYSTEM_INSTRUCTIONS>
+        #             {system_prompt}
+        #             </VERY_IMPORTANT_SYSTEM_INSTRUCTIONS>
+        #             <USER_INSTRUCTIONS>
+        #             {user_message}
+        #             </USER_INSTRUCTIONS>
+        #             """,
+        #         },
+        #     ],
+        #     "max_completion_tokens": 12000,
+        #     "stream": True,
+        # }
+
+        payload = {
+            "model": "o4-mini",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "max_completion_tokens": 12000,
+            "stream": True,
+            "reasoning_effort": reasoning_effort,
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.base_url, headers=headers, json=payload
+                ) as response:
+
+                    if response.status != 200:
+                        error_text = await response.text()
+                        print(f"Error response: {error_text}")
+                        raise ValueError(
+                            f"OpenAI API returned status code {response.status}: {error_text}"
+                        )
+
+                    line_count = 0
+                    async for line in response.content:
+                        line = line.decode("utf-8").strip()
+                        if not line:
+                            continue
+
+                        line_count += 1
+
+                        if line.startswith("data: "):
+                            if line == "data: [DONE]":
+                                break
+                            try:
+                                data = json.loads(line[6:])
+                                content = (
+                                    data.get("choices", [{}])[0]
+                                    .get("delta", {})
+                                    .get("content")
+                                )
+                                if content:
+                                    yield content
+                            except json.JSONDecodeError as e:
+                                print(f"JSON decode error: {e} for line: {line}")
+                                continue
+
+                    if line_count == 0:
+                        print("Warning: No lines received in stream response")
+
+        except aiohttp.ClientError as e:
+            print(f"Connection error: {str(e)}")
+            raise ValueError(f"Failed to connect to OpenAI API: {str(e)}")
+        except Exception as e:
+            print(f"Unexpected error in streaming API call: {str(e)}")
+            raise
+
+    def count_tokens(self, prompt: str) -> int:
+        """
+        Counts the number of tokens in a prompt.
+
+        Args:
+            prompt (str): The prompt to count tokens for
+
+        Returns:
+            int: Estimated number of input tokens
+        """
+        num_tokens = len(self.encoding.encode(prompt))
+        return num_tokens
+----------------------------------------------------
+
+--- File: app/utils/diagram_generator_util.py ---
+# backend/app/utils/diagram_generator_util.py
+import asyncio
+import json
+from functools import lru_cache
+
+from app.services.github_service import GitHubService
+from app.services.o4_mini_openai_service import OpenAIo4Service # Your primary LLM service
+from app.prompts import (
+    SYSTEM_FIRST_PROMPT,
+    SYSTEM_SECOND_PROMPT,
+    SYSTEM_THIRD_PROMPT,
+    ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT,
+)
+
+# Using the existing lru_cache from generate.py might be tricky if it's module-level.
+# For simplicity in this util, we can re-fetch or you can adapt your caching.
+# This simplified version fetches directly.
+def get_repo_data_for_diagram(username: str, repo: str, github_pat: str | None = None, branch_name: str | None = None):
+    current_github_service = GitHubService(pat=github_pat)
+    
+    actual_branch = branch_name or current_github_service.get_default_branch(username, repo)
+    if not actual_branch:
+        actual_branch = "main" # fallback
+        
+    print(f"Util: Fetching data for {username}/{repo} on branch {actual_branch}")
+    file_tree = current_github_service.get_github_file_paths_as_list(username, repo) # Implicitly uses default branch per your GitHubService
+    readme_content = current_github_service.get_github_readme(username, repo) # Implicitly uses default branch
+    
+    # If you modify GitHubService to accept a branch for get_github_file_paths_as_list and get_github_readme,
+    # you would pass 'actual_branch' to them here. For now, it uses the default logic.
+    
+    return {"default_branch": actual_branch, "file_tree": file_tree, "readme": readme_content}
+
+async def generate_mermaid_code_for_repo(
+    username: str,
+    repo_name: str,
+    github_pat_for_reading_repo: str | None = None,
+    llm_api_key: str | None = None,
+    custom_instructions: str = "",
+    target_branch_for_analysis: str | None = None # New: specify branch for analysis
+) -> tuple[str | None, str | None, str | None]: # Returns (mermaid_code, error_message, analyzed_branch_name)
+    o4_service = OpenAIo4Service()
+
+    try:
+        # Use target_branch_for_analysis if provided, else default logic (which usually gets default branch)
+        repo_data = get_repo_data_for_diagram(username, repo_name, github_pat_for_reading_repo, target_branch_for_analysis)
+        file_tree = repo_data["file_tree"]
+        readme = repo_data["readme"]
+        analyzed_branch = repo_data["default_branch"] # This is the branch data was fetched from
+
+        combined_content = f"{file_tree}\n{readme}"
+        token_count = o4_service.count_tokens(combined_content)
+        if token_count > 195000:
+            return None, f"Repository content (branch: {analyzed_branch}) is too large (>195k tokens).", analyzed_branch
+
+        first_system_prompt = SYSTEM_FIRST_PROMPT
+        third_system_prompt = SYSTEM_THIRD_PROMPT
+        if custom_instructions:
+            first_system_prompt += f"\n{ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT}"
+            third_system_prompt += f"\n{ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT}"
+
+        explanation_parts = []
+        async for chunk in o4_service.call_o4_api_stream(
+            system_prompt=first_system_prompt,
+            data={"file_tree": file_tree, "readme": readme, "instructions": custom_instructions},
+            api_key=llm_api_key, reasoning_effort="medium",
+        ):
+            explanation_parts.append(chunk)
+        explanation = "".join(explanation_parts)
+        if "BAD_INSTRUCTIONS" in explanation and custom_instructions:
+            return None, "Invalid custom instructions for explanation.", analyzed_branch
+
+        mapping_parts = []
+        async for chunk in o4_service.call_o4_api_stream(
+            system_prompt=SYSTEM_SECOND_PROMPT,
+            data={"explanation": explanation, "file_tree": file_tree},
+            api_key=llm_api_key, reasoning_effort="low",
+        ):
+            mapping_parts.append(chunk)
+        component_mapping_text = "".join(mapping_parts)
+        start_tag, end_tag = "<component_mapping>", "</component_mapping>"
+        if start_tag in component_mapping_text and end_tag in component_mapping_text:
+            component_mapping_text = component_mapping_text[
+                component_mapping_text.find(start_tag) + len(start_tag) : component_mapping_text.rfind(end_tag)
+            ].strip()
+        else:
+            print(f"Warning: <component_mapping> tags not found for {username}/{repo_name}. Using full response.")
+
+
+        mermaid_code_parts = []
+        async for chunk in o4_service.call_o4_api_stream(
+            system_prompt=third_system_prompt,
+            data={"explanation": explanation, "component_mapping": component_mapping_text, "instructions": custom_instructions},
+            api_key=llm_api_key, reasoning_effort="low",
+        ):
+            mermaid_code_parts.append(chunk)
+        mermaid_code = "".join(mermaid_code_parts)
+        mermaid_code = mermaid_code.replace("```mermaid", "").replace("```", "").strip()
+        if "BAD_INSTRUCTIONS" in mermaid_code and custom_instructions:
+            return None, "Invalid custom instructions for diagram generation.", analyzed_branch
+
+        return mermaid_code, None, analyzed_branch
+
+    except Exception as e:
+        print(f"Error in generate_mermaid_code_for_repo for {username}/{repo_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, str(e), None
+-------------------------------------------------
+
+--- File: app/utils/format_message.py ---
+def format_user_message(data: dict[str, str]) -> str:
+    """
+    Formats a dictionary of data into a structured user message with XML-style tags.
+
+    Args:
+        data (dict[str, str]): Dictionary of key-value pairs to format
+
+    Returns:
+        str: Formatted message with each key-value pair wrapped in appropriate tags
+    """
+    parts = []
+    for key, value in data.items():
+        # Map keys to their XML-style tags
+        if key == "file_tree":
+            parts.append(f"<file_tree>\n{value}\n</file_tree>")
+        elif key == "readme":
+            parts.append(f"<readme>\n{value}\n</readme>")
+        elif key == "explanation":
+            parts.append(f"<explanation>\n{value}\n</explanation>")
+        elif key == "component_mapping":
+            parts.append(f"<component_mapping>\n{value}\n</component_mapping>")
+        elif key == "instructions":
+            parts.append(f"<instructions>\n{value}\n</instructions>")
+        elif key == "diagram":
+            parts.append(f"<diagram>\n{value}\n</diagram>")
+
+    return "\n\n".join(parts)
+-----------------------------------------
+
+--- File: app/utils/readme_updater.py ---
+# backend/app/utils/readme_updater.py
+import os
+import re
+from github import Github, GithubException, Auth # PyGithub
+from app.utils.diagram_generator_util import generate_mermaid_code_for_repo
+from app.services.github_service import GitHubService # Your existing GitHub service
+
+GITDIAGRAM_START_MARKER = "<!-- GITDIAGRAM_START -->"
+GITDIAGRAM_END_MARKER = "<!-- GITDIAGRAM_END -->"
+COMMIT_MESSAGE = "docs: Update architecture diagram [skip ci]"
+
+def process_click_events_for_readme(diagram: str, username: str, repo: str, branch_for_urls: str) -> str:
+    # This function is from your generate.py, ensure it's robust
+    def replace_path(match):
+        path = match.group(2).strip("\"'")
+        is_file = "." in path.split("/")[-1]
+        base_url = f"https://github.com/{username}/{repo}"
+        path_type = "blob" if is_file else "tree"
+        # IMPORTANT: branch_for_urls should be the branch where the README will LIVE (e.g., "main")
+        full_url = f"{base_url}/{path_type}/{branch_for_urls}/{path}"
+        return f'click {match.group(1)} "{full_url}"'
+    click_pattern = r'click ([^\s"]+)\s+"([^"]+)"'
+    return re.sub(click_pattern, replace_path, diagram)
+
+async def update_readme_with_new_diagram(
+    repo_full_name: str,
+    branch_to_commit_to: str, # e.g., "main"
+    github_pat_for_updates: str, # PAT to commit README changes
+    llm_api_key: str | None = None,
+    github_pat_for_repo_read: str | None = None
+    ) -> bool:
+    print(f"Starting README update for {repo_full_name} on branch {branch_to_commit_to}")
+    owner, repo_name_only = repo_full_name.split('/')
+
+    try:
+        # 1. Generate the new Mermaid diagram
+        # The diagram should reflect the state of the branch_to_commit_to (e.g., "main")
+        print(f"Generating diagram for {repo_full_name} (analyzing branch: {branch_to_commit_to})...")
+        raw_mermaid_code, error_msg, analyzed_branch = await generate_mermaid_code_for_repo(
+            username=owner,
+            repo_name=repo_name_only,
+            github_pat_for_reading_repo=github_pat_for_repo_read,
+            llm_api_key=llm_api_key,
+            target_branch_for_analysis=branch_to_commit_to # Analyze the target branch
+        )
+
+        if error_msg or not raw_mermaid_code:
+            print(f"Error generating diagram for {repo_full_name}: {error_msg or 'No diagram content'}")
+            return False
+        print(f"Diagram generated successfully for {repo_full_name} based on branch {analyzed_branch}")
+
+        # URLs in click events should point to the branch where the README lives (branch_to_commit_to)
+        mermaid_code_with_clicks = process_click_events_for_readme(raw_mermaid_code, owner, repo_name_only, branch_to_commit_to)
+
+        # 2. Connect to GitHub to update README
+        auth_for_commit = Auth.Token(github_pat_for_updates)
+        g_for_commit = Github(auth=auth_for_commit)
+        repo_gh_obj = g_for_commit.get_repo(repo_full_name)
+
+        # 3. Get current README from the branch_to_commit_to
+        print(f"Fetching README.md for {repo_full_name} from branch {branch_to_commit_to}...")
+        try:
+            readme_content_item = repo_gh_obj.get_contents("README.md", ref=branch_to_commit_to)
+            readme_text = readme_content_item.decoded_content.decode("utf-8")
+            readme_sha = readme_content_item.sha
+        except GithubException as e:
+            if e.status == 404:
+                print(f"README.md not found on branch {branch_to_commit_to}. Creating a new one.")
+                readme_text = f"# {repo_name_only}\n\nThis is an auto-generated README for {repo_full_name}."
+                readme_sha = None
+            else:
+                print(f"Error fetching README from branch {branch_to_commit_to} for {repo_full_name}: {e}")
+                return False
+
+        # 4. Prepare new README content
+        diagram_block = f"{GITDIAGRAM_START_MARKER}\n\n```mermaid\n{mermaid_code_with_clicks}\n```\n\n{GITDIAGRAM_END_MARKER}"
+        start_idx = readme_text.find(GITDIAGRAM_START_MARKER)
+        end_idx_marker = readme_text.find(GITDIAGRAM_END_MARKER)
+        if start_idx != -1 and end_idx_marker != -1 and end_idx_marker > start_idx:
+            end_idx = end_idx_marker + len(GITDIAGRAM_END_MARKER)
+            new_readme_text = readme_text[:start_idx] + diagram_block + readme_text[end_idx:]
+        else:
+            print("Diagram markers not found or in wrong order. Prepending new diagram to README.")
+            new_readme_text = diagram_block + "\n\n" + readme_text
+        
+        if readme_text.strip() == new_readme_text.strip(): # Avoid commit if no actual change
+            print(f"README for {repo_full_name} on branch {branch_to_commit_to} is already up-to-date.")
+            return True
+
+        # 5. Commit updated README to the branch_to_commit_to
+        commit_args = {
+            "path": "README.md",
+            "message": COMMIT_MESSAGE,
+            "content": new_readme_text,
+            "branch": branch_to_commit_to 
+        }
+        if readme_sha: # Update existing file
+            print(f"Updating existing README.md on branch {branch_to_commit_to} for {repo_full_name}...")
+            repo_gh_obj.update_file(**commit_args, sha=readme_sha)
+        else: # Create new file
+            print(f"Creating new README.md on branch {branch_to_commit_to} for {repo_full_name}...")
+            repo_gh_obj.create_file(**commit_args)
+            
+        print(f"Successfully updated README.md for {repo_full_name} on branch {branch_to_commit_to}")
+        return True
+
+    except Exception as e:
+        print(f"An unexpected error occurred while updating README for {repo_full_name} on branch {branch_to_commit_to}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+-----------------------------------------
+
+--- File: deploy.sh ---
+#!/bin/bash
+
+# Exit on any error
+set -e
+
+# Navigate to project directory
+cd ~/gitdiagram
+
+# Pull latest changes
+git pull origin main
+
+# Build and restart containers with production environment
+docker-compose down
+ENVIRONMENT=production docker-compose up --build -d
+
+# Remove unused images
+docker image prune -f
+
+# Show logs only if --logs flag is passed
+if [ "$1" == "--logs" ]; then
+    docker-compose logs -f
+else
+    echo "Deployment complete! Run 'docker-compose logs -f' to view logs"
+fi
+-----------------------
+
+--- File: Dockerfile ---
+# Use Python 3.12 slim image for smaller size
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Create and set permissions for entrypoint script
+COPY entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh && \
+    # Ensure the script uses Unix line endings
+    sed -i 's/\r$//' /app/entrypoint.sh && \
+    # Double check permissions
+    ls -la /app/entrypoint.sh
+
+# Expose port
+EXPOSE 8000
+
+# Use entrypoint script
+CMD ["/bin/bash", "/app/entrypoint.sh"]
+------------------------
+
+--- File: entrypoint.sh ---
+#!/bin/bash
+
+echo "Current ENVIRONMENT: $ENVIRONMENT"
+
+if [ "$ENVIRONMENT" = "development" ]; then
+    echo "Starting in development mode with hot reload..."
+    exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+elif [ "$ENVIRONMENT" = "production" ]; then
+    echo "Starting in production mode with multiple workers..."
+    exec uvicorn app.main:app \
+        --host 0.0.0.0 \
+        --port 8000 \
+        --timeout-keep-alive 300 \
+        --workers 2 \
+        --loop uvloop \
+        --http httptools
+else
+    echo "ENVIRONMENT must be set to either 'development' or 'production'"
+    exit 1
+fi
+---------------------------
+
+--- File: nginx/api.conf ---
+server {
+    server_name api.gitdiagram.com;
+
+    # Block requests with no valid Host header
+    if ($host !~ ^(api.gitdiagram.com)$) {
+        return 444;
+    }
+
+    # Strictly allow only GET, POST, and OPTIONS requests for the specified paths (defined in my fastapi app)
+    location ~ ^/(generate(/cost|/stream)?|modify|)?$ {
+        if ($request_method !~ ^(GET|POST|OPTIONS)$) {
+            return 444;
+        }
+
+        proxy_pass http://127.0.0.1:8000;
+        include proxy_params;
+        proxy_redirect off;
+
+        # Disable buffering for SSE
+        proxy_buffering off;
+        proxy_cache off;
+        
+        # Required headers for SSE
+        proxy_set_header Connection '';
+        proxy_http_version 1.1;
+    }
+
+    # Return 444 for everything else (no response, just close connection)
+    location / {
+        return 444;
+        # keep access log on
+    }
+
+    # Add timeout settings
+    proxy_connect_timeout 300;
+    proxy_send_timeout 300;
+    proxy_read_timeout 300;
+    send_timeout 300;
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/api.gitdiagram.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/api.gitdiagram.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+server {
+    if ($host = api.gitdiagram.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    server_name api.gitdiagram.com;
+    return 404; # managed by Certbot
+}
+----------------------------
+
+--- File: nginx/setup_nginx.sh ---
+#!/bin/bash
+
+# Exit on any error
+set -e
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then 
+    echo "Please run as root or with sudo"
+    exit 1
+fi
+
+# Copy Nginx configuration
+echo "Copying Nginx configuration..."
+cp "$(dirname "$0")/api.conf" /etc/nginx/sites-available/api
+ln -sf /etc/nginx/sites-available/api /etc/nginx/sites-enabled/
+
+# Test Nginx configuration
+echo "Testing Nginx configuration..."
+nginx -t
+
+# Reload Nginx
+echo "Reloading Nginx..."
+systemctl reload nginx
+
+echo "Nginx configuration updated successfully!" 
+----------------------------------
+
+--- File: requirements.txt ---
+aiohappyeyeballs==2.4.6
+aiohttp==3.11.12
+aiosignal==1.3.2
+annotated-types==0.7.0
+anthropic==0.42.0
+anyio==4.7.0
+api-analytics==1.2.5
+attrs==25.1.0
+certifi==2024.12.14
+cffi==1.17.1
+charset-normalizer==3.4.0
+click==8.1.7
+cryptography==44.0.0
+Deprecated==1.2.15
+distro==1.9.0
+dnspython==2.7.0
+email_validator==2.2.0
+fastapi==0.115.6
+fastapi-cli==0.0.6
+frozenlist==1.5.0
+h11==0.14.0
+httpcore==1.0.7
+httptools==0.6.4
+httpx==0.28.1
+idna==3.10
+Jinja2==3.1.4
+jiter==0.8.2
+limits==3.14.1
+markdown-it-py==3.0.0
+MarkupSafe==3.0.2
+mdurl==0.1.2
+multidict==6.1.0
+openai==1.61.1
+packaging==24.2
+propcache==0.2.1
+pycparser==2.22
+pydantic==2.10.3
+pydantic_core==2.27.1
+Pygments==2.18.0
+PyJWT==2.10.1
+python-dotenv==1.0.1
+python-multipart==0.0.19
+PyYAML==6.0.2
+regex==2024.11.6
+requests==2.32.3
+rich==13.9.4
+rich-toolkit==0.12.0
+shellingham==1.5.4
+slowapi==0.1.9
+sniffio==1.3.1
+starlette==0.41.3
+tiktoken==0.8.0
+tqdm==4.67.1
+typer==0.15.1
+typing_extensions==4.12.2
+urllib3==2.2.3
+uvicorn==0.34.0
+uvloop==0.21.0
+watchfiles==1.0.3
+websockets==14.1
+wrapt==1.17.0
+yarl==1.18.3
+PyGithub>=1.59.0
+------------------------------
+
+==================================================
+Content Processing Summary:
+- Files with content included:      22
+- Files omitted (size limit):       0
+- Files omitted (content rule):     0
+- Files omitted (encoding issue):   0
+- Files with read errors:           0
+==================================================
