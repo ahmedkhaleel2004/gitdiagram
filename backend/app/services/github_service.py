@@ -1,234 +1,200 @@
-import requests
-import jwt
-import time
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
+# backend/app/services/github_service.py
 import os
+import time 
+from github import Github, Auth, GithubIntegration, GithubException
+from dotenv import load_dotenv
+import traceback # Make sure traceback is imported for debugging
 
-load_dotenv()
-
+# Load .env from the project root
+project_root_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '.env')
+if os.path.exists(project_root_env_path):
+    load_dotenv(dotenv_path=project_root_env_path)
+else:
+    load_dotenv() # Default search
 
 class GitHubService:
-    def __init__(self, pat: str | None = None):
-        # Try app authentication first
-        self.client_id = os.getenv("GITHUB_CLIENT_ID")
-        self.private_key = os.getenv("GITHUB_PRIVATE_KEY")
-        self.installation_id = os.getenv("GITHUB_INSTALLATION_ID")
+    def __init__(self):
+        self.github_instance = None
+        self.auth_method_used = "None Initialized" 
 
-        # Use provided PAT if available, otherwise fallback to env PAT
-        self.github_token = pat or os.getenv("GITHUB_PAT")
+        print("--- GitHubService Initialization Attempt ---")
 
-        # If no credentials are provided, warn about rate limits
-        if (
-            not all([self.client_id, self.private_key, self.installation_id])
-            and not self.github_token
-        ):
-            print(
-                "\033[93mWarning: No GitHub credentials provided. Using unauthenticated requests with rate limit of 60 requests/hour.\033[0m"
-            )
+        app_id_str = os.getenv("GITHUB_APP_ID")
+        installation_id_str = os.getenv("GITHUB_APP_INSTALLATION_ID")
+        private_key_from_env = os.getenv("GITHUB_APP_PRIVATE_KEY") 
+        private_key_path = os.getenv("GITHUB_APP_PRIVATE_KEY_PATH") 
 
-        self.access_token = None
-        self.token_expires_at = None
+        print(f"  Env GITHUB_APP_ID: '{app_id_str}' (Type: {type(app_id_str)})")
+        print(f"  Env GITHUB_APP_INSTALLATION_ID: '{installation_id_str}' (Type: {type(installation_id_str)})")
+        # ... (other initial prints for key path/env presence) ...
+        actual_private_key_content = None
+        # ... (logic for loading actual_private_key_content as before) ...
+        if private_key_from_env and private_key_from_env.strip(): # Added condition
+            actual_private_key_content = private_key_from_env.replace("\\n", "\n") 
+            print("  Successfully loaded private key from GITHUB_APP_PRIVATE_KEY env var.")
+        # ... (else if path, else neither) ...
 
-    # autopep8: off
-    def _generate_jwt(self):
-        now = int(time.time())
-        payload = {
-            "iat": now,
-            "exp": now + (10 * 60),  # 10 minutes
-            "iss": self.client_id,
-        }
-        # Convert PEM string format to proper newlines
-        return jwt.encode(payload, self.private_key, algorithm="RS256")  # type: ignore
-
-    # autopep8: on
-
-    def _get_installation_token(self):
-        if self.access_token and self.token_expires_at > datetime.now():  # type: ignore
-            return self.access_token
-
-        jwt_token = self._generate_jwt()
-        response = requests.post(
-            f"https://api.github.com/app/installations/{
-                self.installation_id}/access_tokens",
-            headers={
-                "Authorization": f"Bearer {jwt_token}",
-                "Accept": "application/vnd.github+json",
-            },
+        can_attempt_app_auth = bool(
+            app_id_str and app_id_str.strip() and
+            actual_private_key_content and actual_private_key_content.strip() and
+            installation_id_str and installation_id_str.strip()
         )
-        data = response.json()
-        self.access_token = data["token"]
-        self.token_expires_at = datetime.now() + timedelta(hours=1)
-        return self.access_token
+        print(f"  Can attempt GitHub App Authentication: {can_attempt_app_auth}")
 
-    def _get_headers(self):
-        # If no credentials are available, return basic headers
-        if (
-            not all([self.client_id, self.private_key, self.installation_id])
-            and not self.github_token
-        ):
-            return {"Accept": "application/vnd.github+json"}
+        if can_attempt_app_auth:
+            try:
+                app_id = int(app_id_str)
+                installation_id = int(installation_id_str)
 
-        # Use PAT if available
-        if self.github_token:
-            return {
-                "Authorization": f"token {self.github_token}",
-                "Accept": "application/vnd.github+json",
-            }
+                print(f"  Attempting App Auth with AppID: {app_id}, InstallID: {installation_id}, Key content present: {'Yes' if actual_private_key_content and actual_private_key_content.strip() else 'No'}")
+                
+                git_integration = GithubIntegration(
+                    app_id,
+                    actual_private_key_content,
+                )
+                print("  GithubIntegration object created.")
+                
+                installation_auth = git_integration.get_access_token(installation_id)
+                # print(f"  get_access_token response object: {installation_auth}") # Can be verbose
 
-        # Otherwise use app authentication
-        token = self._get_installation_token()
-        return {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
+                if not installation_auth or not installation_auth.token:
+                    print("  Error: Failed to obtain a valid installation access token (token object or token itself is None/empty).")
+                    raise Exception("Failed to obtain installation access token.")
+                
+                print(f"  Obtained installation access token (snippet): {installation_auth.token[:20]}...")
+                self.github_instance = Github(login_or_token=installation_auth.token)
+                self.auth_method_used = "GitHub App" # Set this immediately after successful tokenization
+                
+                # MODIFIED TEST: Instead of get_user(), just confirm token was set.
+                # The real test will be when get_repo_object is called by the application.
+                # We've already confirmed installation_auth.token is not None.
+                print(f"  GitHubService: Successfully initialized PyGithub with App Installation Token. Method: {self.auth_method_used}. Token expires at: {installation_auth.expires_at}")
+                # If we want a lightweight API call to verify, we could try fetching app details,
+                # but for now, having the token is the main step.
+                # Example: app_details = git_integration.get_app()
+                # print(f"  App Details: {app_details.name}, {app_details.slug}")
 
-    def _check_repository_exists(self, username, repo):
-        """
-        Check if the repository exists using the GitHub API.
-        """
-        api_url = f"https://api.github.com/repos/{username}/{repo}"
-        response = requests.get(api_url, headers=self._get_headers())
+            except ValueError as ve: 
+                print(f"  Error: Invalid App ID or Installation ID (not integers): {ve}")
+                self.github_instance = None # Ensure fallback
+            except GithubException as ge: 
+                print(f"  Error: PyGithubException during GitHub App credentials initialization: {ge.status} {ge.data}") 
+                self.github_instance = None # Ensure fallback
+            except Exception as e: 
+                print(f"  Error: General exception during GitHub App credentials initialization: {e}")
+                # import traceback # Keep this commented unless needed for very obscure errors
+                # traceback.print_exc()
+                self.github_instance = None # Ensure fallback
+        else:
+            print("  Info: Not attempting App Auth due to missing or empty credentials.")
+        
+        # Fallback logic
+        if not self.github_instance:
+            print("  Attempting fallback authentication methods...")
+            pat_token = os.getenv("GITHUB_PAT")
+            if pat_token and pat_token.strip(): 
+                self.github_instance = Github(pat_token)
+                self.auth_method_used = "Personal Access Token (GITHUB_PAT Fallback)"
+                print(f"  GitHubService: Initialized with GITHUB_PAT (Fallback).")
+            else:
+                self.github_instance = Github() 
+                self.auth_method_used = "Unauthenticated (Fallback)"
+                print("  GitHubService Warning: No App credentials or GITHUB_PAT. Using unauthenticated access.")
 
-        if response.status_code == 404:
-            raise ValueError("Repository not found.")
-        elif response.status_code != 200:
-            raise Exception(
-                f"Failed to check repository: {response.status_code}, {response.json()}"
-            )
+        if not self.github_instance:
+             raise Exception("GitHubService critical failure: Could not initialize any PyGithub instance.")
+        print(f"--- GitHubService Initialization Complete. Method used: {self.auth_method_used} ---")
+        
 
-    def get_default_branch(self, username, repo):
-        """Get the default branch of the repository."""
-        api_url = f"https://api.github.com/repos/{username}/{repo}"
-        response = requests.get(api_url, headers=self._get_headers())
+    # Ensure all subsequent methods are correctly indented at the class level (one indent from class GitHubService:)
+    def get_repo_object(self, repo_full_name: str):
+        """Helper to get a repository object using the initialized PyGithub instance."""
+        if not self.github_instance:
+            raise Exception("GitHubService not properly initialized with an auth method before get_repo_object.")
+        try:
+            print(f"  GitHubService [get_repo_object]: Attempting to get repo '{repo_full_name}' using auth: {self.auth_method_used}")
+            return self.github_instance.get_repo(repo_full_name)
+        except GithubException as e:
+            print(f"  GitHubService Error [get_repo_object]: Could not get repo object for '{repo_full_name}' (using {self.auth_method_used}). Status: {e.status}, Data: {e.data}")
+            raise 
 
-        if response.status_code == 200:
-            return response.json().get("default_branch")
-        return None
+    def get_default_branch(self, username: str, repo_name_only: str) -> str | None:
+        repo_full_name = f"{username}/{repo_name_only}"
+        try:
+            repo_obj = self.get_repo_object(repo_full_name)
+            return repo_obj.default_branch
+        except Exception as e:
+            print(f"GitHubService Info [get_default_branch]: Failed to get default branch for {repo_full_name} due to: {e}")
+            return None
 
-    def get_github_file_paths_as_list(self, username, repo):
-        """
-        Fetches the file tree of an open-source GitHub repository,
-        excluding static files and generated code.
+    def _fetch_tree(self, repo_obj, branch_sha_or_name: str):
+        try:
+            tree = repo_obj.get_git_tree(sha=branch_sha_or_name, recursive=True).tree
+            return tree
+        except GithubException as e:
+            print(f"GitHubService Error [_fetch_tree]: Failed to fetch git tree for branch/SHA '{branch_sha_or_name}' in repo '{repo_obj.full_name}'. Status: {e.status}, Data: {e.data}")
+            return None
 
-        Args:
-            username (str): The GitHub username or organization name
-            repo (str): The repository name
+    def get_github_file_paths_as_list(self, username: str, repo_name_only: str, branch_name: str | None = None) -> str:
+        repo_full_name = f"{username}/{repo_name_only}"
+        repo_obj = self.get_repo_object(repo_full_name) 
+        
+        actual_branch_to_query = branch_name or repo_obj.default_branch
+        
+        tree_data = None
+        if not actual_branch_to_query:
+            print(f"GitHubService Warning [get_github_file_paths_as_list]: No specific branch and no default branch found for {repo_full_name}. Trying 'main', then 'master'.")
+            common_branches_to_try = ["main", "master"]
+            for common_branch in common_branches_to_try:
+                print(f"GitHubService Info [get_github_file_paths_as_list]: Attempting branch '{common_branch}' for {repo_full_name}.")
+                tree_data = self._fetch_tree(repo_obj, common_branch)
+                if tree_data is not None:
+                    actual_branch_to_query = common_branch 
+                    break
+            if tree_data is None:
+                raise ValueError(f"Could not fetch file tree. No valid branch (tried common fallbacks) found for {repo_full_name}.")
+        else:
+            print(f"GitHubService [get_github_file_paths_as_list]: Fetching file tree for {repo_full_name} on branch '{actual_branch_to_query}'")
+            tree_data = self._fetch_tree(repo_obj, actual_branch_to_query)
+            if tree_data is None:
+                 raise ValueError(f"Could not fetch file tree for specified branch '{actual_branch_to_query}' in {repo_full_name}.")
 
-        Returns:
-            str: A filtered and formatted string of file paths in the repository, one per line.
-        """
-
-        def should_include_file(path):
-            # Patterns to exclude
+        def should_include_file(path_str: str) -> bool:
             excluded_patterns = [
-                # Dependencies
-                "node_modules/",
-                "vendor/",
-                "venv/",
-                # Compiled files
-                ".min.",
-                ".pyc",
-                ".pyo",
-                ".pyd",
-                ".so",
-                ".dll",
-                ".class",
-                # Asset files
-                ".jpg",
-                ".jpeg",
-                ".png",
-                ".gif",
-                ".ico",
-                ".svg",
-                ".ttf",
-                ".woff",
-                ".webp",
-                # Cache and temporary files
-                "__pycache__/",
-                ".cache/",
-                ".tmp/",
-                # Lock files and logs
-                "yarn.lock",
-                "poetry.lock",
-                "*.log",
-                # Configuration files
-                ".vscode/",
-                ".idea/",
-            ]
+                ".git/", "node_modules/", "vendor/", "venv/", ".vscode/", ".idea/",
+                "__pycache__/", "*.pyc", "*.pyo", "*.pyd", "*.so", "*.dll", "*.class",
+                ".min.", ".lock", ".log", "package-lock.json", "pnpm-lock.yaml",
+                ".jpg", ".jpeg", ".png", ".gif", ".ico", ".svg", ".ttf", ".woff", ".woff2", ".webp", ".mp4", ".mov",
+                ".cache/", ".tmp/", "dist/", "build/", "out/", "target/", ".DS_Store"
+            ] 
+            return not any(excluded_item in path_str.lower() for excluded_item in excluded_patterns)
 
-            return not any(pattern in path.lower() for pattern in excluded_patterns)
+        paths = [element.path for element in tree_data if element.type == 'blob' and should_include_file(element.path)]
+        print(f"GitHubService [get_github_file_paths_as_list]: Found {len(paths)} relevant files for {repo_full_name} on branch '{actual_branch_to_query}'.")
+        return "\n".join(paths)
 
-        # Try to get the default branch first
-        branch = self.get_default_branch(username, repo)
-        if branch:
-            api_url = f"https://api.github.com/repos/{
-                username}/{repo}/git/trees/{branch}?recursive=1"
-            response = requests.get(api_url, headers=self._get_headers())
+    def get_github_readme(self, username: str, repo_name_only: str, branch_name: str | None = None) -> str:
+        repo_full_name = f"{username}/{repo_name_only}"
+        repo_obj = self.get_repo_object(repo_full_name) 
+        
+        actual_branch_to_query = branch_name or repo_obj.default_branch
+        ref_to_use = actual_branch_to_query 
 
-            if response.status_code == 200:
-                data = response.json()
-                if "tree" in data:
-                    # Filter the paths and join them with newlines
-                    paths = [
-                        item["path"]
-                        for item in data["tree"]
-                        if should_include_file(item["path"])
-                    ]
-                    return "\n".join(paths)
-
-        # If default branch didn't work or wasn't found, try common branch names
-        for branch in ["main", "master"]:
-            api_url = f"https://api.github.com/repos/{
-                username}/{repo}/git/trees/{branch}?recursive=1"
-            response = requests.get(api_url, headers=self._get_headers())
-
-            if response.status_code == 200:
-                data = response.json()
-                if "tree" in data:
-                    # Filter the paths and join them with newlines
-                    paths = [
-                        item["path"]
-                        for item in data["tree"]
-                        if should_include_file(item["path"])
-                    ]
-                    return "\n".join(paths)
-
-        raise ValueError(
-            "Could not fetch repository file tree. Repository might not exist, be empty or private."
-        )
-
-    def get_github_readme(self, username, repo):
-        """
-        Fetches the README contents of an open-source GitHub repository.
-
-        Args:
-            username (str): The GitHub username or organization name
-            repo (str): The repository name
-
-        Returns:
-            str: The contents of the README file.
-
-        Raises:
-            ValueError: If repository does not exist or has no README.
-            Exception: For other unexpected API errors.
-        """
-        # First check if the repository exists
-        self._check_repository_exists(username, repo)
-
-        # Then attempt to fetch the README
-        api_url = f"https://api.github.com/repos/{username}/{repo}/readme"
-        response = requests.get(api_url, headers=self._get_headers())
-
-        if response.status_code == 404:
-            raise ValueError("No README found for the specified repository.")
-        elif response.status_code != 200:
-            raise Exception(
-                f"Failed to fetch README: {
-                            response.status_code}, {response.json()}"
-            )
-
-        data = response.json()
-        readme_content = requests.get(data["download_url"]).text
-        return readme_content
+        print(f"GitHubService [get_github_readme]: Fetching README for {repo_full_name} from branch/ref '{ref_to_use or '(default)'}'")
+        
+        common_readme_names = ["README.md", "readme.md", "README.rst", "readme.rst", "README", "readme"]
+        for name_variant in common_readme_names:
+            try:
+                readme_content_item = repo_obj.get_contents(name_variant, ref=ref_to_use)
+                print(f"GitHubService [get_github_readme]: Found README as '{name_variant}' for {repo_full_name} on branch '{ref_to_use or '(default)'}'.")
+                return readme_content_item.decoded_content.decode("utf-8")
+            except GithubException as e:
+                if e.status == 404:
+                    continue 
+                else: 
+                    print(f"GitHubService Error [get_github_readme]: Fetching README variant '{name_variant}' for {repo_full_name} failed. Status: {e.status}, Data: {e.data}")
+                    raise 
+        
+        final_branch_identifier = ref_to_use or "default"
+        print(f"GitHubService Error [get_github_readme]: No README file (tried common names) found for {repo_full_name} on branch/ref '{final_branch_identifier}'.")
+        raise ValueError(f"No README file found for {repo_full_name} on branch/ref '{final_branch_identifier}'.")
