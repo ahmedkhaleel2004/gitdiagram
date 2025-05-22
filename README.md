@@ -7,7 +7,7 @@
 
 Turn any GitHub repository into an interactive diagram for visualization in seconds.
 
-You can also replace `hub` with `diagram` in any Github URL to access its diagram.
+You can also replace `hub` with `diagram` in any GitHub URL to access its diagram.
 
 ## 🚀 Features
 
@@ -72,7 +72,7 @@ Then edit the `.env` file with your Anthropic API key and optional GitHub person
 docker-compose up --build -d
 ```
 
-Logs available at `docker-compose logs -f`
+Logs are available using `docker-compose logs -f`
 The FastAPI server will be available at `localhost:8000`
 
 5. Start local database
@@ -82,7 +82,7 @@ chmod +x start-database.sh
 ./start-database.sh
 ```
 
-When prompted to generate a random password, input yes.
+When prompted to generate a random password, type Yes and press Enter.
 The Postgres database will start in a container at `localhost:5432`
 
 6. Initialize the database schema
@@ -93,7 +93,7 @@ pnpm db:push
 
 You can view and interact with the database using `pnpm db:studio`
 
-7. Run Frontend
+7. Run the Frontend
 
 ```bash
 pnpm dev
@@ -122,5 +122,5 @@ Diagram generation:
 
 ## 🤔 Future Steps
 
-- Implement font-awesome icons in diagram
+- Implement Font-Awesome icons in diagram
 - Implement an embedded feature like star-history.com but for diagrams. The diagram could also be updated progressively as commits are made.
