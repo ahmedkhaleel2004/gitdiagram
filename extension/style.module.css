@@ -1,0 +1,33 @@
+.gitdiagram_btn {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  margin: 0 10px;
+  font-size:14px;
+  font-weight: 500;
+  font-size: small;
+  color: #f0f6fc;
+  background-color: #24292e;
+  border: 1px solid #3d444d;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease-in-out,
+    transform 0.1s ease-in-out;
+}
+
+.gitdiagram_btn:hover {
+  background-color: #33393f;
+}
+
+.gitdiagram_btn:active {
+  transform: scale(0.95);
+}
+
+.gitdiagram_btn_icon {
+  color: #9198a1;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+}
