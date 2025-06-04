@@ -132,12 +132,19 @@ export async function getCostOfGeneration(
   username: string,
   repo: string,
   instructions: string,
-  github_pat?: string,
+  githubPat?: string,
+  clearCache = false,
 ): Promise<CostApiResponse> {
   try {
     const baseUrl =
       process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
-    const url = new URL(`${baseUrl}/generate/cost`);
+    const url = new URL(`${baseUrl}/cost`);
+
+    // Log environment variable and final URL for debugging
+    console.log("💰 Cost API Environment:");
+    console.log("  NEXT_PUBLIC_API_DEV_URL:", process.env.NEXT_PUBLIC_API_DEV_URL);
+    console.log("  Final cost URL:", url.toString());
+    console.log("  Clear cache:", clearCache);
 
     const response = await fetch(url, {
       method: "POST",
@@ -147,8 +154,9 @@ export async function getCostOfGeneration(
       body: JSON.stringify({
         username,
         repo,
-        github_pat: github_pat,
+        github_pat: githubPat,
         instructions: instructions ?? "",
+        clear_cache: clearCache,
       }),
     });
 

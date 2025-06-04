@@ -17,6 +17,13 @@ export default function Repo() {
   // Use the star reminder hook
   useStarReminder();
 
+  // Strip .git suffix if present and convert to lowercase
+  const cleanUsername = params.username.toLowerCase();
+  let cleanRepo = params.repo.toLowerCase();
+  if (cleanRepo.endsWith('.git')) {
+    cleanRepo = cleanRepo.slice(0, -4);
+  }
+
   const {
     diagram,
     error,
@@ -32,15 +39,16 @@ export default function Repo() {
     handleOpenApiKeyDialog,
     handleExportImage,
     state,
-  } = useDiagram(params.username.toLowerCase(), params.repo.toLowerCase());
+    handleClearCache,
+  } = useDiagram(cleanUsername, cleanRepo);
 
   return (
     <div className="flex flex-col items-center p-4">
       <div className="flex w-full justify-center pt-8">
         <MainCard
           isHome={false}
-          username={params.username.toLowerCase()}
-          repo={params.repo.toLowerCase()}
+          username={cleanUsername}
+          repo={cleanRepo}
           showCustomization={!loading && !error}
           onModify={handleModify}
           onRegenerate={handleRegenerate}
@@ -50,6 +58,7 @@ export default function Repo() {
           zoomingEnabled={zoomingEnabled}
           onZoomToggle={() => setZoomingEnabled(!zoomingEnabled)}
           loading={loading}
+          onClearCache={handleClearCache}
         />
       </div>
       <div className="mt-8 flex w-full flex-col items-center gap-8">

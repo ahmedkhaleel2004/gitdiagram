@@ -55,8 +55,30 @@ export function useDiagram(username: string, repo: string) {
     },
   );
 
+  // Function to process click events in Mermaid diagram
+  const processClickEvents = useCallback((diagramCode: string, username: string, repo: string, branch: string = "main") => {
+    const replaceClickEvent = (match: string, componentName: string, path: string) => {
+      // Remove quotes from path
+      const cleanPath = path.replace(/^["']|["']$/g, '');
+      
+      // Determine if path is likely a file (has extension) or directory
+      const isFile = cleanPath.split('/').pop()?.includes('.') ?? false;
+      
+      // Construct GitHub URL
+      const baseUrl = `https://github.com/${username}/${repo}`;
+      const pathType = isFile ? 'blob' : 'tree';
+      const fullUrl = `${baseUrl}/${pathType}/${branch}/${cleanPath}`;
+      
+      return `click ${componentName} "${fullUrl}"`;
+    };
+
+    // Match click events: click ComponentName "path/to/something"
+    const clickPattern = /click\s+([^\s"]+)\s+"([^"]+)"/g;
+    return diagramCode.replace(clickPattern, replaceClickEvent);
+  }, []);
+
   const generateDiagram = useCallback(
-    async (instructions = "", githubPat?: string) => {
+    async (instructions = "", githubPat?: string, clearCache = false) => {
       setState({
         status: "started",
         message: "Starting generation process...",
@@ -65,7 +87,14 @@ export function useDiagram(username: string, repo: string) {
       try {
         const baseUrl =
           process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
-        const response = await fetch(`${baseUrl}/generate/stream`, {
+        
+        // Log environment variable and final URL for debugging
+        console.log("🔧 Frontend Environment:");
+        console.log("  NEXT_PUBLIC_API_DEV_URL:", process.env.NEXT_PUBLIC_API_DEV_URL);
+        console.log("  Final API baseUrl:", baseUrl);
+        console.log("  Clear cache:", clearCache);
+        
+        const response = await fetch(`${baseUrl}/stream`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -76,6 +105,7 @@ export function useDiagram(username: string, repo: string) {
             instructions,
             api_key: localStorage.getItem("openai_key") ?? undefined,
             github_pat: githubPat,
+            clear_cache: clearCache,
           }),
         });
         if (!response.ok) {
@@ -92,20 +122,31 @@ export function useDiagram(username: string, repo: string) {
 
         // Process the stream
         const processStream = async () => {
+          let buffer = ""; // Buffer to store incomplete lines
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
 
-              // Convert the chunk to text
+              // Convert the chunk to text and add to buffer
               const chunk = new TextDecoder().decode(value);
-              const lines = chunk.split("\n");
+              buffer += chunk;
+              
+              // Split buffer into lines
+              const lines = buffer.split("\n");
+              
+              // Keep the last potentially incomplete line in buffer
+              buffer = lines.pop() || "";
 
-              // Process each SSE message
+              // Process each complete SSE message
               for (const line of lines) {
                 if (line.startsWith("data: ")) {
                   try {
-                    const data = JSON.parse(line.slice(6)) as StreamResponse;
+                    const jsonStr = line.slice(6);
+                    // Skip empty data lines
+                    if (!jsonStr.trim()) continue;
+                    
+                    const data = JSON.parse(jsonStr) as StreamResponse;
 
                     // If we receive an error, set loading to false immediately
                     if (data.error) {
@@ -184,10 +225,15 @@ export function useDiagram(username: string, repo: string) {
                         }
                         break;
                       case "complete":
+                        // Use accumulated content instead of expecting it in the response
+                        // Apply click event processing to the final diagram
+                        const processedDiagram = processClickEvents(diagram, username, repo, "main");
+                        
                         setState({
                           status: "complete",
-                          explanation: data.explanation,
-                          diagram: data.diagram,
+                          explanation: explanation,
+                          diagram: processedDiagram,
+                          message: data.message,
                         });
                         const date = await getLastGeneratedDate(username, repo);
                         setLastGenerated(date ?? undefined);
@@ -205,8 +251,28 @@ export function useDiagram(username: string, repo: string) {
                     }
                   } catch (e) {
                     console.error("Error parsing SSE message:", e);
+                    console.error("Raw line:", line);
+                    console.error("JSON string:", line.slice(6));
+                    // Don't throw here, just continue processing other messages
                   }
                 }
+              }
+            }
+            
+            // Process any remaining buffered content after stream ends
+            if (buffer.trim() && buffer.startsWith("data: ")) {
+              try {
+                const jsonStr = buffer.slice(6);
+                if (jsonStr.trim()) {
+                  const data = JSON.parse(jsonStr) as StreamResponse;
+                  // Handle final message if needed
+                  if (data.error) {
+                    setState({ status: "error", error: data.error });
+                  }
+                }
+              } catch (e) {
+                console.error("Error parsing final buffered SSE message:", e);
+                console.error("Buffered content:", buffer);
               }
             }
           } finally {
@@ -226,7 +292,7 @@ export function useDiagram(username: string, repo: string) {
         setLoading(false);
       }
     },
-    [username, repo, hasUsedFreeGeneration],
+    [username, repo, hasUsedFreeGeneration, processClickEvents],
   );
 
   useEffect(() => {
@@ -241,6 +307,7 @@ export function useDiagram(username: string, repo: string) {
         hasApiKey,
       );
       setDiagram(state.diagram);
+      setLoading(false);
       void getLastGeneratedDate(username, repo).then((date) =>
         setLastGenerated(date ?? undefined),
       );
@@ -283,6 +350,7 @@ export function useDiagram(username: string, repo: string) {
         repo,
         "",
         github_pat ?? undefined,
+        false, // Don't clear cache for initial cost estimate
       );
 
       if (costEstimate.error) {
@@ -298,7 +366,7 @@ export function useDiagram(username: string, repo: string) {
       setCost(costEstimate.cost ?? "");
 
       // Start streaming generation
-      await generateDiagram("", github_pat ?? undefined);
+      await generateDiagram("", github_pat ?? undefined, false);
 
       // Note: The diagram and lastGenerated will be set by the generateDiagram function
       // through the state updates
@@ -331,7 +399,7 @@ export function useDiagram(username: string, repo: string) {
     setCost("");
     try {
       // Start streaming generation with instructions
-      await generateDiagram(instructions);
+      await generateDiagram(instructions, undefined, false);
     } catch (error) {
       console.error("Error modifying diagram:", error);
       setError("Failed to modify diagram. Please try again later.");
@@ -364,7 +432,7 @@ export function useDiagram(username: string, repo: string) {
       //   return;
       // }
 
-      const costEstimate = await getCostOfGeneration(username, repo, "");
+      const costEstimate = await getCostOfGeneration(username, repo, "", undefined, false);
 
       if (costEstimate.error) {
         console.error("Cost estimation failed:", costEstimate.error);
@@ -375,7 +443,7 @@ export function useDiagram(username: string, repo: string) {
       setCost(costEstimate.cost ?? "");
 
       // Start streaming generation with instructions
-      await generateDiagram(instructions, github_pat ?? undefined);
+      await generateDiagram(instructions, github_pat ?? undefined, false);
     } catch (error) {
       console.error("Error regenerating diagram:", error);
       setError("Failed to regenerate diagram. Please try again later.");
@@ -449,7 +517,7 @@ export function useDiagram(username: string, repo: string) {
     // Then generate diagram using stored key
     const github_pat = localStorage.getItem("github_pat");
     try {
-      await generateDiagram("", github_pat ?? undefined);
+      await generateDiagram("", github_pat ?? undefined, false);
     } catch (error) {
       console.error("Error generating with API key:", error);
       setError("Failed to generate diagram with provided API key.");
@@ -464,6 +532,24 @@ export function useDiagram(username: string, repo: string) {
 
   const handleOpenApiKeyDialog = () => {
     setShowApiKeyDialog(true);
+  };
+
+  const handleClearCache = async () => {
+    setLoading(true);
+    setError("");
+    setCost("");
+    try {
+      const github_pat = localStorage.getItem("github_pat");
+      console.log("🗑️ Clearing cache and regenerating diagram...");
+      
+      // Regenerate with cache clearing enabled
+      await generateDiagram("", github_pat ?? undefined, true);
+    } catch (error) {
+      console.error("Error clearing cache and regenerating:", error);
+      setError("Failed to clear cache and regenerate diagram. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return {
@@ -482,5 +568,6 @@ export function useDiagram(username: string, repo: string) {
     handleOpenApiKeyDialog,
     handleExportImage,
     state,
+    handleClearCache,
   };
 }
