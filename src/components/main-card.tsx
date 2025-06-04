@@ -26,6 +26,7 @@ interface MainCardProps {
   zoomingEnabled?: boolean;
   onZoomToggle?: () => void;
   loading?: boolean;
+  onClearCache?: () => void;
 }
 
 export default function MainCard({
@@ -41,6 +42,7 @@ export default function MainCard({
   zoomingEnabled,
   onZoomToggle,
   loading,
+  onClearCache,
 }: MainCardProps) {
   const [repoUrl, setRepoUrl] = useState("");
   const [error, setError] = useState("");
@@ -74,11 +76,17 @@ export default function MainCard({
       return;
     }
 
-    const [, username, repo] = match || [];
+    let [, username, repo] = match || [];
     if (!username || !repo) {
       setError("Invalid repository URL format");
       return;
     }
+    
+    // Strip .git suffix if present
+    if (repo.endsWith('.git')) {
+      repo = repo.slice(0, -4);
+    }
+    
     const sanitizedUsername = encodeURIComponent(username);
     const sanitizedRepo = encodeURIComponent(repo);
     router.push(`/${sanitizedUsername}/${sanitizedRepo}`);
@@ -177,6 +185,18 @@ export default function MainCard({
                         checked={zoomingEnabled}
                         onCheckedChange={onZoomToggle}
                       />
+                      {onClearCache && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            onClearCache();
+                          }}
+                          className="rounded-md border-[3px] border-black bg-red-300 px-4 py-2 font-medium text-black transition-colors hover:bg-red-400"
+                          title="Clear GitHub repository cache and fetch fresh data"
+                        >
+                          🗑️ Clear Cache
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

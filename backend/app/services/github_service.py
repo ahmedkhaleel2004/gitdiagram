@@ -4,8 +4,12 @@ import time
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
+import logging
 
 load_dotenv()
+
+# Configure logging for better debugging
+logger = logging.getLogger(__name__)
 
 
 class GitHubService:
@@ -23,6 +27,9 @@ class GitHubService:
             not all([self.client_id, self.private_key, self.installation_id])
             and not self.github_token
         ):
+            logger.warning(
+                "No GitHub credentials provided. Using unauthenticated requests with rate limit of 60 requests/hour."
+            )
             print(
                 "\033[93mWarning: No GitHub credentials provided. Using unauthenticated requests with rate limit of 60 requests/hour.\033[0m"
             )
@@ -93,7 +100,14 @@ class GitHubService:
 
         if response.status_code == 404:
             raise ValueError("Repository not found.")
+        elif response.status_code == 403:
+            # Check if it's a rate limit issue
+            if 'rate limit' in response.text.lower():
+                raise Exception("GitHub API rate limit exceeded. Please configure GITHUB_PAT in environment variables or wait before trying again.")
+            else:
+                raise Exception("Access forbidden. Repository might be private and require authentication.")
         elif response.status_code != 200:
+            logger.error(f"GitHub API error - Status: {response.status_code}, Response: {response.text}")
             raise Exception(
                 f"Failed to check repository: {response.status_code}, {response.json()}"
             )
@@ -105,6 +119,13 @@ class GitHubService:
 
         if response.status_code == 200:
             return response.json().get("default_branch")
+        elif response.status_code == 403:
+            logger.warning(f"Rate limit or access issue for {username}/{repo}: {response.status_code}")
+        elif response.status_code == 404:
+            logger.warning(f"Repository {username}/{repo} not found")
+        else:
+            logger.warning(f"Unexpected response for {username}/{repo}: {response.status_code}")
+        
         return None
 
     def get_github_file_paths_as_list(self, username, repo):
@@ -160,13 +181,17 @@ class GitHubService:
 
             return not any(pattern in path.lower() for pattern in excluded_patterns)
 
+        logger.info(f"Fetching file tree for {username}/{repo}")
+
         # Try to get the default branch first
         branch = self.get_default_branch(username, repo)
         if branch:
-            api_url = f"https://api.github.com/repos/{
-                username}/{repo}/git/trees/{branch}?recursive=1"
+            logger.info(f"Using default branch: {branch}")
+            api_url = f"https://api.github.com/repos/{username}/{repo}/git/trees/{branch}?recursive=1"
             response = requests.get(api_url, headers=self._get_headers())
 
+            logger.info(f"GitHub API response status: {response.status_code}")
+            
             if response.status_code == 200:
                 data = response.json()
                 if "tree" in data:
@@ -176,13 +201,26 @@ class GitHubService:
                         for item in data["tree"]
                         if should_include_file(item["path"])
                     ]
+                    logger.info(f"Successfully fetched {len(paths)} file paths")
                     return "\n".join(paths)
+            elif response.status_code == 403:
+                error_msg = "GitHub API rate limit exceeded or access denied."
+                if not self.github_token:
+                    error_msg += " Consider configuring GITHUB_PAT environment variable for higher rate limits (5000/hour vs 60/hour)."
+                logger.error(f"{error_msg} Response: {response.text}")
+                raise ValueError(error_msg)
+            elif response.status_code == 404:
+                logger.error(f"Branch {branch} not found for {username}/{repo}")
+            else:
+                logger.error(f"Unexpected response for {username}/{repo} branch {branch}: {response.status_code} - {response.text}")
 
         # If default branch didn't work or wasn't found, try common branch names
+        logger.info("Trying common branch names: main, master")
         for branch in ["main", "master"]:
-            api_url = f"https://api.github.com/repos/{
-                username}/{repo}/git/trees/{branch}?recursive=1"
+            api_url = f"https://api.github.com/repos/{username}/{repo}/git/trees/{branch}?recursive=1"
             response = requests.get(api_url, headers=self._get_headers())
+
+            logger.info(f"Branch {branch} response status: {response.status_code}")
 
             if response.status_code == 200:
                 data = response.json()
@@ -193,11 +231,31 @@ class GitHubService:
                         for item in data["tree"]
                         if should_include_file(item["path"])
                     ]
+                    logger.info(f"Successfully fetched {len(paths)} file paths from branch {branch}")
                     return "\n".join(paths)
+            elif response.status_code == 403:
+                error_msg = "GitHub API rate limit exceeded or access denied."
+                if not self.github_token:
+                    error_msg += " Consider configuring GITHUB_PAT environment variable for higher rate limits (5000/hour vs 60/hour)."
+                logger.error(f"{error_msg} Response: {response.text}")
+                raise ValueError(error_msg)
+            elif response.status_code == 404:
+                logger.info(f"Branch {branch} not found, trying next...")
+                continue
+            else:
+                logger.error(f"Unexpected response for branch {branch}: {response.status_code} - {response.text}")
 
-        raise ValueError(
-            "Could not fetch repository file tree. Repository might not exist, be empty or private."
-        )
+        # Enhanced error message with debugging info
+        auth_status = "authenticated" if self.github_token else "unauthenticated"
+        logger.error(f"Failed to fetch file tree for {username}/{repo} using {auth_status} requests")
+        
+        error_msg = f"Could not fetch repository file tree for {username}/{repo}. "
+        if not self.github_token:
+            error_msg += "Repository might be private, empty, or GitHub API rate limit exceeded (60/hour for unauthenticated requests). Consider configuring GITHUB_PAT environment variable."
+        else:
+            error_msg += "Repository might not exist, be empty, or branch access might be restricted."
+            
+        raise ValueError(error_msg)
 
     def get_github_readme(self, username, repo):
         """
@@ -214,21 +272,42 @@ class GitHubService:
             ValueError: If repository does not exist or has no README.
             Exception: For other unexpected API errors.
         """
+        logger.info(f"Fetching README for {username}/{repo}")
+        
         # First check if the repository exists
-        self._check_repository_exists(username, repo)
+        try:
+            self._check_repository_exists(username, repo)
+        except Exception as e:
+            logger.error(f"Repository existence check failed: {e}")
+            raise
 
         # Then attempt to fetch the README
         api_url = f"https://api.github.com/repos/{username}/{repo}/readme"
         response = requests.get(api_url, headers=self._get_headers())
 
+        logger.info(f"README API response status: {response.status_code}")
+
         if response.status_code == 404:
+            logger.warning(f"No README found for {username}/{repo}")
             raise ValueError("No README found for the specified repository.")
+        elif response.status_code == 403:
+            error_msg = "GitHub API rate limit exceeded or access denied while fetching README."
+            if not self.github_token:
+                error_msg += " Consider configuring GITHUB_PAT environment variable."
+            logger.error(f"{error_msg} Response: {response.text}")
+            raise Exception(error_msg)
         elif response.status_code != 200:
+            logger.error(f"README fetch failed: {response.status_code} - {response.text}")
             raise Exception(
-                f"Failed to fetch README: {
-                            response.status_code}, {response.json()}"
+                f"Failed to fetch README: {response.status_code}, {response.json()}"
             )
 
         data = response.json()
-        readme_content = requests.get(data["download_url"]).text
-        return readme_content
+        readme_response = requests.get(data["download_url"])
+        
+        if readme_response.status_code != 200:
+            logger.error(f"README download failed: {readme_response.status_code}")
+            raise Exception(f"Failed to download README content: {readme_response.status_code}")
+            
+        logger.info(f"Successfully fetched README for {username}/{repo}")
+        return readme_response.text
