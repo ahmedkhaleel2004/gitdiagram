@@ -44,16 +44,15 @@ export const Dropdown: React.FC<DropdownProps> = ({
   // this is useful to prevent the dropdown from opening when there are no branches
   // and to avoid unnecessary API calls or UI updates
   useEffect(() => {
-    console.log("Branches updated:", branches);
     if (branches.length) {
       setShouldOpen(true);
       setError(""); // Clear error when branches are available
     } else {
       setShouldOpen(false);
       setOpen(false); // Close the dropdown if branches are empty
-      onSelectBranch(""); // Reset selected branch
+      // Do not reset selectedBranch here; let parent control it
     }
-  },[branches, onSelectBranch, setError]);
+  },[branches, setError]);
 
   // Show error if user tries to open dropdown with no branches
   const handleOpenChange = (nextOpen: boolean) => {

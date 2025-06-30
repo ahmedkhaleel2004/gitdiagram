@@ -234,7 +234,6 @@ export function useDiagram(username: string, repo: string, branch: string) {
     if (state.status === "complete" && state.diagram) {
       // Cache the completed diagram with the usedOwnKey flag
       const hasApiKey = !!localStorage.getItem("openai_key");
-      console.log("diagram",state.diagram);
       void cacheDiagramAndExplanation(
         username,
         repo,

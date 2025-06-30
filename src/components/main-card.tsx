@@ -14,6 +14,7 @@ import { ChevronUp, ChevronDown } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
 import { Dropdown } from "./ui/dropdown";
 import { getRepoBranches } from "~/lib/fetch-backend";
+import { set } from "zod";
 
 
 interface MainCardProps {
@@ -56,6 +57,7 @@ export default function MainCard({
     "customize" | "export" | null
   >(null);
   const router = useRouter();
+  const isInitialLoad = useRef<boolean>(true);
 
   useEffect(() => {
     if (username && repo) {
@@ -69,30 +71,24 @@ export default function MainCard({
     }
   }, [loading]);
 
-  useEffect(() => {
-    if (branch) {
-      setSelectedBranch(branch);
-    }
-  }, [branch]);
-
-
-  useEffect(() => {
-    console.log("Selected branch changed:", selectedBranch);
-  }, [selectedBranch]);
   
-  //useEffect to get the branches lsist as soon as the repoUrl is entered in a debounced manner
+  //useEffect to get the branches list as soon as the repoUrl is entered in a debounced manner
   useEffect(() => {
-    // Reset selectedBranch immediately when repoUrl changes
+    setBranches([]);
     setSelectedBranch("");
+    setError("");
+
+    if (!repoUrl) {
+      setLoadingBranches(false);
+      return;
+    }
+
     setLoadingBranches(true);
     const fetchBranches = async () => {
-      if(!repoUrl) {
-        return;
-      }
-
       const { sanitizedUsername, sanitizedRepo } = verifyRepoUrl(repoUrl) ?? {};
       if (!sanitizedUsername || !sanitizedRepo) {
         setError("Invalid repository URL format");
+        setLoadingBranches(false);
         return;
       }
 
@@ -107,17 +103,26 @@ export default function MainCard({
 
         if (branchList.error) {
           setError(branchList.error);
+          setBranches([]);
+          setSelectedBranch("");
           return;
         }
-        console.log("Fetched branches:", branchList);
         setBranches(branchList.branches ?? []);
-        setSelectedBranch(branch ?? branchList.default_branch ?? ""); // Set either selected branch or default branch
-        setError(""); // Clear any previous errors
+
+        if (isInitialLoad.current && branch) {
+          setSelectedBranch(branch);
+          isInitialLoad.current = false;
+        } else {
+          setSelectedBranch(branchList.default_branch ?? "");
+        }
+
+        setError("");
       } catch (error) {
-        console.error("Error fetching branches:", error);
-        setError("Failed to fetch branches. Please try again later.");
+        setError(error as string);
+        setBranches([]);
+        setSelectedBranch("");
       } finally {
-        setLoadingBranches(false); // Set loading to false after fetching branches
+        setLoadingBranches(false);
       }
     };
 
@@ -126,15 +131,8 @@ export default function MainCard({
       void fetchBranches();
     }, 1000);
 
-    if (!repoUrl) {
-      setLoadingBranches(false); // Reset loading state if repoUrl is empty
-      setBranches([]); // Reset branches
-      setSelectedBranch(""); // Reset  branch
-      return;
-    }
-
-    return () => clearTimeout(handler); // Cleanup on unmount or repoUrl change
-  },[branch, repoUrl]);
+    return () => clearTimeout(handler);
+  }, [branch, repoUrl]);
 
   //verify the repoUrl format and extract username and repo
   const verifyRepoUrl = (repoUrl: string) => {
