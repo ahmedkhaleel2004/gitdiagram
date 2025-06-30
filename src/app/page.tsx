@@ -23,7 +23,7 @@ export default function HomePage() {
           visualize a specific branch.
         </p>
       </div>
-      <div className="mb-20 flex justify-center lg:mb-0">
+      <div className="mb-20 pb-10 flex justify-center lg:mb-0">
         <MainCard />
       </div>
     </main>
