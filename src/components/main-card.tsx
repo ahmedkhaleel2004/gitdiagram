@@ -157,6 +157,10 @@ export default function MainCard({
   }
 
   const handleSubmit = (e: React.FormEvent) => {
+    if(loadingBranches) {
+      setError("Please wait for branches to load");
+      return;
+    }
     e.preventDefault();
     setError("");
 
@@ -164,7 +168,7 @@ export default function MainCard({
     if (!sanitizedUsername || !sanitizedRepo) {
       return; // Error will be set in verifyRepoUrl
     }
-
+      
     const branchQuery = `?branch=${encodeURIComponent(selectedBranch)}`;
     router.push(`/${sanitizedUsername}/${sanitizedRepo}${branchQuery}`);
   };
