@@ -1,3 +1,4 @@
+from app.services.gemini_service import GeminiService
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
@@ -25,12 +26,12 @@ router = APIRouter(prefix="/generate", tags=["OpenAI o4-mini"])
 
 # Initialize services
 # claude_service = ClaudeService()
+# gemini_service = GeminiService()
 o4_service = OpenAIo4Service()
-
 
 # cache github data to avoid double API calls from cost and generate
 @lru_cache(maxsize=100)
-def get_cached_github_data(username: str, repo: str, github_pat: str | None = None):
+def get_cached_github_data(username: str, repo: str, github_pat: str | None = None, branch: str = ""):
     # Create a new service instance for each call with the appropriate PAT
     current_github_service = GitHubService(pat=github_pat)
 
@@ -38,26 +39,63 @@ def get_cached_github_data(username: str, repo: str, github_pat: str | None = No
     if not default_branch:
         default_branch = "main"  # fallback value
 
-    file_tree = current_github_service.get_github_file_paths_as_list(username, repo)
+    file_tree = current_github_service.get_github_file_paths_as_list(username, repo, branch)
     readme = current_github_service.get_github_readme(username, repo)
 
     return {"default_branch": default_branch, "file_tree": file_tree, "readme": readme}
 
+@lru_cache(maxsize=100)
+def get_github_repo_branches(username: str, repo: str, github_pat: str | None = None):
+    """Get all branches of a GitHub repository.
+    """
+    # Create a new service instance for each call with the appropriate PAT
+    current_github_service = GitHubService(pat=github_pat)
 
+    branches = current_github_service.get_github_repo_branches(username, repo)
+    if not branches:
+        raise HTTPException(status_code=404, detail="No branches found in repository")
+
+    # Get the default branch as well to return it
+    default_branch = get_cached_github_data(username, repo, github_pat)["default_branch"]
+    if not default_branch:
+        default_branch = "main"
+    return {
+        "branches": branches["branches"],
+        "default_branch": default_branch,
+    }
+                            
 class ApiRequest(BaseModel):
     username: str
     repo: str
     instructions: str = ""
     api_key: str | None = None
     github_pat: str | None = None
+    branch: str = "" 
 
+@router.post("/branches")
+async def get_repo_branches(request: Request, body: ApiRequest):
+    try:
+        # Validate input
+        if not body.username or not body.repo:
+            raise HTTPException(status_code=400, detail="Username and repo are required")
+
+        # Get branches from cached service
+        branches_data = get_github_repo_branches(
+            body.username, body.repo, body.github_pat
+        )
+        return branches_data
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/cost")
 # @limiter.limit("5/minute") # TEMP: disable rate limit for growth??
 async def get_generation_cost(request: Request, body: ApiRequest):
     try:
         # Get file tree and README content
-        github_data = get_cached_github_data(body.username, body.repo, body.github_pat)
+        github_data = get_cached_github_data(body.username, body.repo, body.github_pat, body.branch)
         file_tree = github_data["file_tree"]
         readme = github_data["readme"]
 
@@ -136,7 +174,7 @@ async def generate_stream(request: Request, body: ApiRequest):
             try:
                 # Get cached github data
                 github_data = get_cached_github_data(
-                    body.username, body.repo, body.github_pat
+                    body.username, body.repo, body.github_pat, body.branch
                 )
                 default_branch = github_data["default_branch"]
                 file_tree = github_data["file_tree"]

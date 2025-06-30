@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
@@ -12,11 +12,15 @@ import { exampleRepos } from "~/lib/exampleRepos";
 import { ExportDropdown } from "./export-dropdown";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
+import { Dropdown } from "./ui/dropdown";
+import { getRepoBranches } from "~/lib/fetch-backend";
+
 
 interface MainCardProps {
   isHome?: boolean;
   username?: string;
   repo?: string;
+  branch?: string;
   showCustomization?: boolean;
   onModify?: (instructions: string) => void;
   onRegenerate?: (instructions: string) => void;
@@ -32,6 +36,7 @@ export default function MainCard({
   isHome = true,
   username,
   repo,
+  branch,
   showCustomization,
   onModify,
   onRegenerate,
@@ -44,6 +49,9 @@ export default function MainCard({
 }: MainCardProps) {
   const [repoUrl, setRepoUrl] = useState("");
   const [error, setError] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<
     "customize" | "export" | null
   >(null);
@@ -61,11 +69,76 @@ export default function MainCard({
     }
   }, [loading]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  useEffect(() => {
+    if (branch) {
+      setSelectedBranch(branch);
+    }
+  }, [branch]);
 
-    const githubUrlPattern =
+
+  useEffect(() => {
+    console.log("Selected branch changed:", selectedBranch);
+  }, [selectedBranch]);
+  
+  //useEffect to get the branches lsist as soon as the repoUrl is entered in a debounced manner
+  useEffect(() => {
+    // Reset selectedBranch immediately when repoUrl changes
+    setSelectedBranch("");
+    setLoadingBranches(true);
+    const fetchBranches = async () => {
+      if(!repoUrl) {
+        return;
+      }
+
+      const { sanitizedUsername, sanitizedRepo } = verifyRepoUrl(repoUrl) ?? {};
+      if (!sanitizedUsername || !sanitizedRepo) {
+        setError("Invalid repository URL format");
+        return;
+      }
+
+      try {
+        const githubPat =
+          localStorage.getItem("github_pat") ?? process.env.GITHUB_PAT;
+        const branchList = await getRepoBranches(
+          sanitizedUsername,
+          sanitizedRepo,
+          githubPat,
+        );
+
+        if (branchList.error) {
+          setError(branchList.error);
+          return;
+        }
+        console.log("Fetched branches:", branchList);
+        setBranches(branchList.branches ?? []);
+        setSelectedBranch(branch ?? branchList.default_branch ?? ""); // Set either selected branch or default branch
+        setError(""); // Clear any previous errors
+      } catch (error) {
+        console.error("Error fetching branches:", error);
+        setError("Failed to fetch branches. Please try again later.");
+      } finally {
+        setLoadingBranches(false); // Set loading to false after fetching branches
+      }
+    };
+
+    // Debounce the fetchBranches call to avoid too many requests
+    const handler = setTimeout(() => {
+      void fetchBranches();
+    }, 1000);
+
+    if (!repoUrl) {
+      setLoadingBranches(false); // Reset loading state if repoUrl is empty
+      setBranches([]); // Reset branches
+      setSelectedBranch(""); // Reset  branch
+      return;
+    }
+
+    return () => clearTimeout(handler); // Cleanup on unmount or repoUrl change
+  },[branch, repoUrl]);
+
+  //verify the repoUrl format and extract username and repo
+  const verifyRepoUrl = (repoUrl: string) => {
+     const githubUrlPattern =
       /^https?:\/\/github\.com\/([a-zA-Z0-9-_]+)\/([a-zA-Z0-9-_\.]+)\/?$/;
     const match = githubUrlPattern.exec(repoUrl.trim());
 
@@ -81,7 +154,21 @@ export default function MainCard({
     }
     const sanitizedUsername = encodeURIComponent(username);
     const sanitizedRepo = encodeURIComponent(repo);
-    router.push(`/${sanitizedUsername}/${sanitizedRepo}`);
+
+    return { sanitizedUsername, sanitizedRepo };
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    const { sanitizedUsername, sanitizedRepo } = verifyRepoUrl(repoUrl) ?? {};
+    if (!sanitizedUsername || !sanitizedRepo) {
+      return; // Error will be set in verifyRepoUrl
+    }
+
+    const branchQuery = `?branch=${encodeURIComponent(selectedBranch)}`;
+    router.push(`/${sanitizedUsername}/${sanitizedRepo}${branchQuery}`);
   };
 
   const handleExampleClick = (repoPath: string, e: React.MouseEvent) => {
@@ -96,13 +183,22 @@ export default function MainCard({
   return (
     <Card className="relative w-full max-w-3xl border-[3px] border-black bg-purple-200 p-4 shadow-[8px_8px_0_0_#000000] sm:p-8">
       <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+        <div className="flex flex-row gap-3 sm:flex-row sm:gap-4">
           <Input
             placeholder="https://github.com/username/repo"
             className="flex-1 rounded-md border-[3px] border-black px-3 py-4 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
             required
+          />
+        </div>
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-4">
+          <Dropdown
+            branches={branches}
+            selectedBranch={selectedBranch}
+            onSelectBranch={setSelectedBranch}
+            loadingBranches={loadingBranches}
+            setError={setError}
           />
           <Button
             type="submit"
