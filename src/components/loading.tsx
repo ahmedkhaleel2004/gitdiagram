@@ -6,7 +6,7 @@ const messages = [
   "Checking if its cached...",
   "Generating diagram...",
   "Analyzing repository...",
-  "Prompting o3-mini...",
+  "Prompting the AI Model...",
   "Inspecting file paths...",
   "Finding component relationships...",
   "Linking components to code...",
@@ -19,7 +19,7 @@ const messages = [
   "I'm tired...",
   "Please just give me the diagram...",
   "...NOW!",
-  "guess not...",
+  "Guess not...",
 ];
 
 interface LoadingProps {
@@ -53,11 +53,11 @@ const getStepNumber = (status: string): number => {
 const SequentialDots = () => {
   return (
     <span className="inline-flex w-8 justify-start">
-      <span className="flex gap-0.5">
-        <span className="h-1 w-1 animate-[dot1_1.5s_steps(1)_infinite] rounded-full bg-purple-500" />
-        <span className="h-1 w-1 animate-[dot2_1.5s_steps(1)_infinite] rounded-full bg-purple-500" />
-        <span className="h-1 w-1 animate-[dot3_1.5s_steps(1)_infinite] rounded-full bg-purple-500" />
-      </span>
+      <span className="flex gap-0.5 ">
+        <span className="h-1 w-1 animate-[dot1_1.5s_steps(1)_infinite] rounded-full bg-purple-500 dark:bg-[hsl(var(--text-color-secondary))]" />
+        <span className="h-1 w-1 animate-[dot2_1.5s_steps(1)_infinite] rounded-full bg-purple-500 dark:bg-[hsl(var(--text-color-secondary))]" />
+        <span className="h-1 w-1 animate-[dot3_1.5s_steps(1)_infinite] rounded-full bg-purple-500 dark:bg-[hsl(var(--text-color-secondary))]" />
+      </span> 
     </span>
   );
 };
@@ -181,19 +181,19 @@ export default function Loading({
 
   return (
     <div className="mx-auto w-full max-w-4xl p-4">
-      <div className="overflow-hidden rounded-xl border-2 border-purple-200 bg-purple-50/30 backdrop-blur-sm">
-        <div className="border-b border-purple-100 bg-purple-100/50 px-6 py-3">
+      <div className="overflow-hidden rounded-xl border-2 border-purple-200 dark:border-[hsl(var(--border))] bg-purple-50/30 dark:bg-[hsl(var(--background))] backdrop-blur-sm">
+        <div className="border-b dark:border-[hsl(var(--border))] border-purple-100 bg-purple-100/50 dark:bg-[hsl(var(--card-foreground))] px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-purple-500">
+              <span className="text-sm font-medium text-purple-500 dark:text-[hsl(var(--text-color-primary))]">
                 {statusDisplay.text}
               </span>
               {statusDisplay.isReasoning && <SequentialDots />}
             </div>
-            <div className="flex items-center gap-3 text-xs font-medium text-purple-500">
+            <div className="flex items-center gap-3 text-xs font-medium text-purple-500 dark:text-[hsl(var(--text-color-primary))]">
               {cost && <span>Estimated cost: {cost}</span>}
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-purple-100 px-2 py-0.5">
+                <span className="rounded-full bg-purple-100 dark:bg-[hsl(var(--button-background))] px-2 py-0.5 dark:text-white">
                   Step {getStepNumber(status)}/3
                 </span>
                 <StepDots currentStep={getStepNumber(status)} />
@@ -209,31 +209,31 @@ export default function Loading({
             {reasoningMessage &&
               statusDisplay.isReasoning &&
               (explanation ?? mapping ?? diagram) && (
-                <div className="rounded-lg bg-purple-100/50 p-4 text-sm text-purple-500">
+                <div className="rounded-lg bg-white/50 p-4 text-sm text-purple-500 dark:bg-[hsl(var(--background-lighter))]">
                   <div className="flex items-center gap-2">
-                    <p className="font-medium">Reasoning</p>
+                    <p className="font-medium dark:text-[hsl(var(--text-color-primary))]">Reasoning</p>
                     <SequentialDots />
                   </div>
-                  <p className="mt-2 leading-relaxed">{reasoningMessage}</p>
+                  <p className="mt-2 leading-relaxed dark:text-[hsl(var(--text-color-primary))]">{reasoningMessage}</p>
                 </div>
               )}
             {explanation && (
-              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-600">
-                <p className="font-medium text-purple-500">Explanation:</p>
+              <div className="rounded-lg bg-white/50 p-4 text-sm dark:bg-[hsl(var(--background-lighter))] ">
+                <p className="font-medium text-purple-500 dark:text-[hsl(var(--text-color-primary))]">Explanation:</p>
                 <p className="mt-2 leading-relaxed">{explanation}</p>
               </div>
             )}
             {mapping && (
-              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-600">
-                <p className="font-medium text-purple-500">Mapping:</p>
+              <div className="rounded-lg bg-white/50 p-4 text-sm dark:bg-[hsl(var(--background-lighter))] ">
+                <p className="font-medium text-purple-500 dark:text-[hsl(var(--text-color-primary))]">Mapping:</p>
                 <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
                   {mapping}
                 </pre>
               </div>
             )}
             {diagram && (
-              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-600">
-                <p className="font-medium text-purple-500">
+              <div className="rounded-lg bg-white/50 p-4 text-sm dark:bg-[hsl(var(--background-lighter))] ">
+                <p className="font-medium text-purple-500 dark:text-[hsl(var(--text-color-primary))]">
                   Mermaid.js diagram:
                 </p>
                 <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">

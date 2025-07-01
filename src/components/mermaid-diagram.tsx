@@ -86,8 +86,8 @@ const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
     >
       <div
         key={`${chart}-${zoomingEnabled}`}
-        className={`mermaid h-full ${
-          zoomingEnabled ? "rounded-lg border-2 border-black" : ""
+        className={`dark:bg-[hsl(var(--background-lighter))] rounded-lg mermaid h-full ${
+          zoomingEnabled ? "border-2 border-black" : "p-4"
         }`}
       >
         {chart}

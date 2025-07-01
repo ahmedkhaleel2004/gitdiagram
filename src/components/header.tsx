@@ -6,6 +6,7 @@ import { FaGithub } from "react-icons/fa";
 import { getStarCount } from "~/app/_actions/github";
 import { PrivateReposDialog } from "./private-repos-dialog";
 import { ApiKeyDialog } from "./api-key-dialog";
+import { ThemeToggleButton } from "./theme-toggle-button";
 
 export function Header() {
   const [isPrivateReposDialogOpen, setIsPrivateReposDialogOpen] =
@@ -41,10 +42,10 @@ export function Header() {
       <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-8">
         <Link href="/" className="flex items-center">
           <span className="text-lg font-semibold sm:text-xl">
-            <span className="text-black transition-colors duration-200 hover:text-gray-600">
+            <span className= "transition-colors duration-200 hover:text-gray-600">
               Git
             </span>
-            <span className="text-purple-600 transition-colors duration-200 hover:text-purple-500">
+            <span className="dark:text-[hsl(var(--text-color-primary))] text-purple-500 transition-colors duration-200 hover:text-purple-500">
               Diagram
             </span>
           </span>
@@ -52,7 +53,7 @@ export function Header() {
         <nav className="flex items-center gap-3 sm:gap-6">
           <span
             onClick={() => setIsApiKeyDialogOpen(true)}
-            className="cursor-pointer text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600"
+            className="cursor-pointer text-sm font-medium transition-transform hover:translate-y-[-2px] hover:text-purple-600 dark:hover:text-purple-400"
           >
             <span className="flex items-center sm:hidden">
               <span>API Key</span>
@@ -63,22 +64,23 @@ export function Header() {
           </span>
           <span
             onClick={() => setIsPrivateReposDialogOpen(true)}
-            className="cursor-pointer text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600"
+            className="cursor-pointer text-sm font-medium transition-transform hover:translate-y-[-2px] hover:text-purple-600 dark:hover:text-purple-400"
           >
             <span className="sm:hidden">Private Repos</span>
             <span className="hidden sm:inline">Private Repos</span>
           </span>
           <Link
             href="https://github.com/ahmedkhaleel2004/gitdiagram"
-            className="flex items-center gap-1 text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600 sm:gap-2"
+            className="flex items-center gap-1 text-sm font-medium transition-transform hover:translate-y-[-2px] hover:text-purple-600 dark:hover:text-purple-400 sm:gap-2"
           >
             <FaGithub className="h-5 w-5" />
             <span className="hidden sm:inline">GitHub</span>
           </Link>
-          <span className="flex items-center gap-1 text-sm font-medium text-black">
+          <span className="flex items-center gap-1 text-sm font-medium">
             <span className="text-amber-400">★</span>
             {formatStarCount(starCount)}
           </span>
+          <ThemeToggleButton />
         </nav>
 
         <PrivateReposDialog

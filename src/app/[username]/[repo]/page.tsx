@@ -76,7 +76,7 @@ export default function Repo() {
             )}
           </div>
         ) : (
-          <div className="flex w-full justify-center px-4">
+          <div className="flex w-full justify-center px-4 rounded-lg">
             <MermaidChart chart={diagram} zoomingEnabled={zoomingEnabled} />
           </div>
         )}

@@ -74,9 +74,9 @@ export const Dropdown: React.FC<DropdownProps> = ({
           role="combobox"
           aria-expanded={open}
           disabled={loadingBranches || !shouldOpen}
-          className="text-md text-md w-full justify-between overflow-y-hidden overflow-x-clip border-[3px] border-black p-4 px-4 text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:bg-gray-100 max-sm:w-full sm:p-6 sm:px-6"
+          className="text-md text-md w-full justify-between overflow-y-hidden overflow-x-clip border-[3px] border-black p-4 px-4 text-black shadow-[4px_4px_0_0_#000000] dark:text-gray-100 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform dark:hover:bg-gray-600 hover:bg-gray-100 max-sm:w-full sm:p-6 sm:px-6"
         >
-          {loadingBranches && branches.length > 0
+          {loadingBranches && !branches.length
             ? "Loading branches..."
             : selectedBranch
               ? selectedBranch
@@ -84,14 +84,14 @@ export const Dropdown: React.FC<DropdownProps> = ({
           <ChevronsUpDown className="ml-2 h-5 w-5 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="border-2 border-black shadow-[4px_4px_0_0_#000000]">
-        <Command className="">
+      <PopoverContent className="border-2 dark:bg-gray-700 border-black shadow-[4px_4px_0_0_#000000]">
+        <Command className="dark:bg-gray-700">
           <CommandInput placeholder="Search branch..." className="h-9" />
           <CommandList>
             {branches.length === 0 ? (
               <CommandEmpty>No branches found.</CommandEmpty>
             ) : (
-              <CommandGroup>
+              <CommandGroup className="dark:bg-gray-700">
                 {branches.map((branch) => (
                   <CommandItem
                     key={branch}
@@ -100,6 +100,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
                       onSelectBranch(branch);
                       setOpen(false);
                     }}
+                    className="dark:bg-gray-700 dark:text-gray-100 text-black hover:bg-gray-200 hover:dark:bg-gray-600 flex items-center"
                   >
                     {branch}
                     <Check

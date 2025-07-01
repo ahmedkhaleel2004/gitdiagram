@@ -8,15 +8,15 @@ export default function HomePage() {
         <Hero />
         <div className="mt-12"/>
         <p className="mx-auto mt-8 max-w-2xl text-center text-md">
-          Turn any GitHub repository into an interactive diagram for
+          Turn any <b>GitHub</b> repository into an interactive diagram for
           visualization.
         </p>
-        <p className="mx-auto mt-0 max-w-2xl text-center text-md">
+        <p className="mx-auto mt-1 max-w-2xl text-center text-md">
           This is useful for quickly visualizing projects.
         </p>
         <p className="mx-auto mt-2 max-w-2xl text-center text-md">
-          You can also replace &apos;hub&apos; with &apos;diagram&apos; in any
-          Github URL
+          You can also replace <i>&apos;hub&apos;</i> with <i>&apos;diagram&apos;</i> in any
+          Github Repository URL
         </p>
         <p className="mx-auto my-2 max-w-2xl text-center text-md">
           You can also add <i>&apos;?branch=branch_name&apos;</i> to the URL to
