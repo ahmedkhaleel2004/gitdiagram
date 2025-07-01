@@ -76,7 +76,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
           disabled={loadingBranches || !shouldOpen}
           className="text-md text-md w-full justify-between overflow-y-hidden overflow-x-clip border-[3px] border-black p-4 px-4 text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:bg-gray-100 max-sm:w-full sm:p-6 sm:px-6"
         >
-          {loadingBranches && branches.length > 0
+          {loadingBranches && !branches.length
             ? "Loading branches..."
             : selectedBranch
               ? selectedBranch
