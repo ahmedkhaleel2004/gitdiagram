@@ -22,7 +22,7 @@ export function CustomizationDropdown({
       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
         <Textarea
           placeholder="Custom instructions (optional)"
-          className="min-h-[38px] flex-1 resize-y rounded-md border-[3px] border-black px-3 py-2 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:min-h-[46px] sm:px-4 sm:py-3 sm:text-lg sm:placeholder:text-lg"
+          className="min-h-[38px] flex-1 resize-y rounded-md border-[3px] border-black px-3 py-2 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal sm:min-h-[46px] sm:px-4 sm:py-3 sm:text-lg sm:placeholder:text-lg"
           value={instructions}
           onChange={(e) => {
             if (e.target.value.length <= 1000) {
@@ -49,7 +49,7 @@ export function CustomizationDropdown({
       </div>
 
       <div className="flex items-center">
-        <span className="text-sm text-gray-700">
+        <span className="text-sm">
           Last generated: {lastGenerated.toLocaleString()}
         </span>
       </div>

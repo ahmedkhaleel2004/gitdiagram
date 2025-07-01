@@ -39,7 +39,7 @@ interface StreamResponse {
   error?: string;
 }
 
-export function useDiagram(username: string, repo: string) {
+export function useDiagram(username: string, repo: string, branch: string) {
   const [diagram, setDiagram] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
@@ -73,6 +73,7 @@ export function useDiagram(username: string, repo: string) {
           body: JSON.stringify({
             username,
             repo,
+            branch,
             instructions,
             api_key: localStorage.getItem("openai_key") ?? undefined,
             github_pat: githubPat,
@@ -226,7 +227,7 @@ export function useDiagram(username: string, repo: string) {
         setLoading(false);
       }
     },
-    [username, repo, hasUsedFreeGeneration],
+    [username, repo, branch, hasUsedFreeGeneration],
   );
 
   useEffect(() => {
@@ -236,6 +237,7 @@ export function useDiagram(username: string, repo: string) {
       void cacheDiagramAndExplanation(
         username,
         repo,
+        branch,
         state.diagram,
         state.explanation ?? "No explanation provided",
         hasApiKey,
@@ -247,7 +249,7 @@ export function useDiagram(username: string, repo: string) {
     } else if (state.status === "error") {
       setLoading(false);
     }
-  }, [state.status, state.diagram, username, repo, state.explanation]);
+  }, [state.status, state.diagram, username, repo, state.explanation, branch]);
 
   const getDiagram = useCallback(async () => {
     setLoading(true);
@@ -257,7 +259,7 @@ export function useDiagram(username: string, repo: string) {
     try {
       // Check cache first - always allow access to cached diagrams
       const cached = await getCachedDiagram(username, repo);
-      const github_pat = localStorage.getItem("github_pat");
+      const github_pat = localStorage.getItem("github_pat") ?? undefined;
 
       if (cached) {
         setDiagram(cached);
@@ -281,8 +283,9 @@ export function useDiagram(username: string, repo: string) {
       const costEstimate = await getCostOfGeneration(
         username,
         repo,
+        branch,
         "",
-        github_pat ?? undefined,
+        github_pat,
       );
 
       if (costEstimate.error) {
@@ -308,7 +311,7 @@ export function useDiagram(username: string, repo: string) {
     } finally {
       setLoading(false);
     }
-  }, [username, repo, generateDiagram]);
+  }, [username, repo, branch, generateDiagram]);
 
   useEffect(() => {
     void getDiagram();
@@ -364,7 +367,7 @@ export function useDiagram(username: string, repo: string) {
       //   return;
       // }
 
-      const costEstimate = await getCostOfGeneration(username, repo, "");
+      const costEstimate = await getCostOfGeneration(username, repo, "", branch);
 
       if (costEstimate.error) {
         console.error("Cost estimation failed:", costEstimate.error);

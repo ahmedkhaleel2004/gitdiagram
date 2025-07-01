@@ -13,6 +13,7 @@ const Hero = () => {
           d="m35.878 14.162 1.333-5.369 1.933 5.183c4.47 11.982 14.036 21.085 25.828 24.467l5.42 1.555-5.209 2.16c-11.332 4.697-19.806 14.826-22.888 27.237l-1.333 5.369-1.933-5.183C34.56 57.599 24.993 48.496 13.201 45.114l-5.42-1.555 5.21-2.16c11.331-4.697 19.805-14.826 22.887-27.237Z"
           fill="#a855f7"
           stroke="#000"
+          className="dark:stroke-white"
           strokeWidth="3.445"
         />
         <path
@@ -20,6 +21,7 @@ const Hero = () => {
           stroke="#000"
           strokeWidth="2.548"
           strokeLinecap="round"
+          className="dark:stroke-white"
         />
       </svg>
       <h1 className="relative inline-block w-full text-center text-5xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:pt-5 lg:text-7xl">
@@ -37,13 +39,14 @@ const Hero = () => {
           fill="#38bdf8"
           stroke="#000"
           strokeWidth="2.868"
-          className=""
+          className="dark:stroke-white"
         />
         <path
           d="M75.062 40.108c1.07 5.255 1.072 16.52-7.472 19.54m7.422-19.682c1.836 2.965 7.643 8.14 16.187 5.121-8.544 3.02-8.207 15.23-6.971 20.957-1.97-3.343-8.044-9.274-16.588-6.254M12.054 28.012c1.34-5.22 6.126-15.4 14.554-14.369M12.035 28.162c-.274-3.487-2.93-10.719-11.358-11.75C9.104 17.443 14.013 6.262 15.414.542c.226 3.888 2.784 11.92 11.212 12.95"
           stroke="#000"
           strokeWidth="2.319"
           strokeLinecap="round"
+          className="dark:stroke-white"
         />
       </svg>
     </div>

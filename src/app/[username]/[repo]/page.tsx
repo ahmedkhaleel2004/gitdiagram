@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import MainCard from "~/components/main-card";
 import Loading from "~/components/loading";
 import MermaidChart from "~/components/mermaid-diagram";
@@ -13,6 +13,7 @@ import { useStarReminder } from "~/hooks/useStarReminder";
 export default function Repo() {
   const [zoomingEnabled, setZoomingEnabled] = useState(false);
   const params = useParams<{ username: string; repo: string }>();
+  const branch = useSearchParams().get("branch") ?? "";
 
   // Use the star reminder hook
   useStarReminder();
@@ -31,8 +32,8 @@ export default function Repo() {
     handleCloseApiKeyDialog,
     handleOpenApiKeyDialog,
     handleExportImage,
-    state,
-  } = useDiagram(params.username.toLowerCase(), params.repo.toLowerCase());
+    state
+  } = useDiagram(params.username.toLowerCase(), params.repo.toLowerCase(), branch);
 
   return (
     <div className="flex flex-col items-center p-4">
@@ -41,6 +42,7 @@ export default function Repo() {
           isHome={false}
           username={params.username.toLowerCase()}
           repo={params.repo.toLowerCase()}
+          branch={branch}
           showCustomization={!loading && !error}
           onModify={handleModify}
           onRegenerate={handleRegenerate}
@@ -74,7 +76,7 @@ export default function Repo() {
             )}
           </div>
         ) : (
-          <div className="flex w-full justify-center px-4">
+          <div className="flex w-full justify-center px-4 rounded-lg">
             <MermaidChart chart={diagram} zoomingEnabled={zoomingEnabled} />
           </div>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
@@ -12,11 +12,16 @@ import { exampleRepos } from "~/lib/exampleRepos";
 import { ExportDropdown } from "./export-dropdown";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
+import { Dropdown } from "./ui/dropdown";
+import { getRepoBranches } from "~/lib/fetch-backend";
+import { set } from "zod";
+
 
 interface MainCardProps {
   isHome?: boolean;
   username?: string;
   repo?: string;
+  branch?: string;
   showCustomization?: boolean;
   onModify?: (instructions: string) => void;
   onRegenerate?: (instructions: string) => void;
@@ -32,6 +37,7 @@ export default function MainCard({
   isHome = true,
   username,
   repo,
+  branch,
   showCustomization,
   onModify,
   onRegenerate,
@@ -44,10 +50,14 @@ export default function MainCard({
 }: MainCardProps) {
   const [repoUrl, setRepoUrl] = useState("");
   const [error, setError] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<
     "customize" | "export" | null
   >(null);
   const router = useRouter();
+  const isInitialLoad = useRef<boolean>(true);
 
   useEffect(() => {
     if (username && repo) {
@@ -61,11 +71,72 @@ export default function MainCard({
     }
   }, [loading]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  
+  //useEffect to get the branches list as soon as the repoUrl is entered in a debounced manner
+  useEffect(() => {
+    setBranches([]);
+    setSelectedBranch("");
     setError("");
 
-    const githubUrlPattern =
+    if (!repoUrl) {
+      setLoadingBranches(false);
+      return;
+    }
+
+    setLoadingBranches(true);
+    const fetchBranches = async () => {
+      const { sanitizedUsername, sanitizedRepo } = verifyRepoUrl(repoUrl) ?? {};
+      if (!sanitizedUsername || !sanitizedRepo) {
+        setError("Invalid repository URL format");
+        setLoadingBranches(false);
+        return;
+      }
+
+      try {
+        const githubPat =
+          localStorage.getItem("github_pat") ?? process.env.GITHUB_PAT;
+        const branchList = await getRepoBranches(
+          sanitizedUsername,
+          sanitizedRepo,
+          githubPat,
+        );
+
+        if (branchList.error) {
+          setError(branchList.error);
+          setBranches([]);
+          setSelectedBranch("");
+          return;
+        }
+        setBranches(branchList.branches ?? []);
+
+        if (isInitialLoad.current && branch) {
+          setSelectedBranch(branch);
+          isInitialLoad.current = false;
+        } else {
+          setSelectedBranch(branchList.default_branch ?? "");
+        }
+
+        setError("");
+      } catch (error) {
+        setError(error as string);
+        setBranches([]);
+        setSelectedBranch("");
+      } finally {
+        setLoadingBranches(false);
+      }
+    };
+
+    // Debounce the fetchBranches call to avoid too many requests
+    const handler = setTimeout(() => {
+      void fetchBranches();
+    }, 1000);
+
+    return () => clearTimeout(handler);
+  }, [branch, repoUrl]);
+
+  //verify the repoUrl format and extract username and repo
+  const verifyRepoUrl = (repoUrl: string) => {
+     const githubUrlPattern =
       /^https?:\/\/github\.com\/([a-zA-Z0-9-_]+)\/([a-zA-Z0-9-_\.]+)\/?$/;
     const match = githubUrlPattern.exec(repoUrl.trim());
 
@@ -81,7 +152,25 @@ export default function MainCard({
     }
     const sanitizedUsername = encodeURIComponent(username);
     const sanitizedRepo = encodeURIComponent(repo);
-    router.push(`/${sanitizedUsername}/${sanitizedRepo}`);
+
+    return { sanitizedUsername, sanitizedRepo };
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    if(loadingBranches) {
+      setError("Please wait for branches to load");
+      return;
+    }
+    e.preventDefault();
+    setError("");
+
+    const { sanitizedUsername, sanitizedRepo } = verifyRepoUrl(repoUrl) ?? {};
+    if (!sanitizedUsername || !sanitizedRepo) {
+      return; // Error will be set in verifyRepoUrl
+    }
+      
+    const branchQuery = `?branch=${encodeURIComponent(selectedBranch)}`;
+    router.push(`/${sanitizedUsername}/${sanitizedRepo}${branchQuery}`);
   };
 
   const handleExampleClick = (repoPath: string, e: React.MouseEvent) => {
@@ -94,25 +183,34 @@ export default function MainCard({
   };
 
   return (
-    <Card className="relative w-full max-w-3xl border-[3px] border-black bg-purple-200 p-4 shadow-[8px_8px_0_0_#000000] sm:p-8">
+    <Card className="relative w-full max-w-3xl border-[3px] border-black dark:border-gray-400 bg-purple-200 dark:bg-[hsl(var(--card-foreground))] p-4 dark:shadow-[hsl(var(--shadow))] shadow-[8px_8px_0_0_#000000] sm:p-8">
       <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+        <div className="flex flex-row gap-3 sm:flex-row sm:gap-4">
           <Input
             placeholder="https://github.com/username/repo"
-            className="flex-1 rounded-md border-[3px] border-black px-3 py-4 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg"
+            className="flex-1 rounded-md border-[3px] border-black px-3 py-4 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal dark:caret-slate-100 dark:text-white sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
             required
           />
+        </div>
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-4">
+          <Dropdown
+            branches={branches}
+            selectedBranch={selectedBranch}
+            onSelectBranch={setSelectedBranch}
+            loadingBranches={loadingBranches}
+            setError={setError}
+          />
           <Button
             type="submit"
-            className="border-[3px] border-black bg-purple-400 p-4 px-4 text-base text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:bg-purple-400 sm:p-6 sm:px-6 sm:text-lg"
+            className="border-[3px] border-black bg-purple-400 dark:bg-[hsl(var(--button-background))] p-4 px-4 text-base shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:bg-purple-400 sm:p-6 sm:px-6 sm:text-lg"
           >
             Diagram
           </Button>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-[hsl(var(--text-error-color))]">{error}</p>}
 
         {/* Dropdowns Container */}
         {!isHome && (
@@ -131,10 +229,10 @@ export default function MainCard({
                           e.preventDefault();
                           handleDropdownToggle("customize");
                         }}
-                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
+                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-mediumtransition-colors sm:max-w-[250px] ${
                           activeDropdown === "customize"
-                            ? "bg-purple-400"
-                            : "bg-purple-300 hover:bg-purple-400"
+                            ? "bg-purple-400 dark:bg-[hsl(var(--button-background-clicked))]"
+                            : "bg-purple-300 hover:bg-purple-400 dark:hover:bg-purple-600 dark:bg-[hsl(var(--button-background))]"
                         }`}
                       >
                         <span>Customize Diagram</span>
@@ -153,10 +251,10 @@ export default function MainCard({
                           e.preventDefault();
                           handleDropdownToggle("export");
                         }}
-                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
+                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium transition-colors sm:max-w-[250px] ${
                           activeDropdown === "export"
-                            ? "bg-purple-400"
-                            : "bg-purple-300 hover:bg-purple-400"
+                            ? "bg-purple-400 dark:bg-[hsl(var(--button-background-clicked))]"
+                            : "bg-purple-300 hover:bg-purple-400 dark:hover:bg-purple-600 dark:bg-[hsl(var(--button-background))]"
                         }`}
                       >
                         <span>Export Diagram</span>
@@ -170,7 +268,7 @@ export default function MainCard({
                   )}
                   {lastGenerated && (
                     <>
-                      <label className="font-medium text-black">
+                      <label className="font-medium">
                         Enable Zoom
                       </label>
                       <Switch
@@ -214,7 +312,7 @@ export default function MainCard({
         {/* Example Repositories */}
         {isHome && (
           <div className="space-y-2">
-            <div className="text-sm text-gray-700 sm:text-base">
+            <div className="text-sm text-gray-700 dark:text-gray-100 sm:text-base">
               Try these example repositories:
             </div>
             <div className="flex flex-wrap gap-2">
@@ -222,7 +320,7 @@ export default function MainCard({
                 <Button
                   key={name}
                   variant="outline"
-                  className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base"
+                  className="border-2 border-black bg-purple-400 text-sm dark:bg-[hsl(var(--button-background))] dark:text-[hsl(var(--border))] text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base"
                   onClick={(e) => handleExampleClick(path, e)}
                 >
                   {name}
@@ -236,7 +334,7 @@ export default function MainCard({
       {/* Decorative Sparkle */}
       <div className="absolute -bottom-8 -left-12 hidden sm:block">
         <Sparkles
-          className="h-20 w-20 fill-sky-400 text-black"
+          className="h-20 w-20 fill-sky-400 text-black dark:stroke-white"
           strokeWidth={0.6}
           style={{ transform: "rotate(-15deg)" }}
         />

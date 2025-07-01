@@ -37,7 +37,7 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="border-[3px] border-black bg-purple-200 p-6 shadow-[8px_8px_0_0_#000000] sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-black">
+          <DialogTitle className="text-xl font-bold">
             Enter OpenAI API Key
           </DialogTitle>
         </DialogHeader>
@@ -54,14 +54,14 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
             <span className="font-medium">Get your OpenAI API key </span>
             <Link
               href="https://platform.openai.com/api-keys"
-              className="font-medium text-purple-600 transition-colors duration-200 hover:text-purple-500"
+              className="font-bold underline dark:text-[hsl(var(--text-color-link))] transition-colors duration-200 hover:text-gray-200 dark:hover:text-purple-400"
             >
               here
             </Link>
             .
           </div>
           <details className="group text-sm [&>summary:focus-visible]:outline-none">
-            <summary className="cursor-pointer font-medium text-purple-700 hover:text-purple-600">
+            <summary className="cursor-pointer font-medium text-purple-700 dark:text-[hsl(var(--text-color-link))] hover:text-purple-600 dark:hover:text-purple-400">
               Data storage disclaimer
             </summary>
             <div className="animate-accordion-down mt-2 space-y-2 overflow-hidden pl-2">
@@ -71,7 +71,7 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
                 following the instructions in the{" "}
                 <Link
                   href="https://github.com/ahmedkhaleel2004/gitdiagram"
-                  className="text-purple-600 transition-colors duration-200 hover:text-purple-500"
+                  className="text-purple-600 underline transition-colors duration-200 dark:text-[hsl(var(--text-color-link))] hover:text-purple-500 dark:hover:text-purple-400"
                 >
                   README
                 </Link>
@@ -84,14 +84,14 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
             placeholder="sk-..."
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            className="flex-1 rounded-md border-[3px] border-black px-3 py-2 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700"
+            className="flex-1 rounded-md border-[3px] border-black px-3 py-2 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal"
             required
           />
           <div className="flex items-center justify-between">
             <button
               type="button"
               onClick={handleClear}
-              className="text-sm text-purple-600 hover:text-purple-500"
+              className="text-sm text-purple-600 hover:text-purple-500 dark:text-[hsl(var(--text-color-link))]"
             >
               Clear
             </button>
@@ -106,7 +106,7 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
               <Button
                 type="submit"
                 disabled={!apiKey.startsWith("sk-")}
-                className="border-[3px] border-black bg-purple-400 px-4 py-2 text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-purple-300 disabled:opacity-50"
+                className="border-[3px] border-black bg-purple-400 dark:bg-[hsl(var(--button-background))] px-4 py-2 shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-purple-300 disabled:opacity-50"
               >
                 Save Key
               </Button>

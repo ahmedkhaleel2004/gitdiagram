@@ -6,6 +6,7 @@ import { Header } from "~/components/header";
 import { Footer } from "~/components/footer";
 import { CSPostHogProvider } from "./providers";
 import { Toaster } from "~/components/ui/sonner";
+import { ThemeProvider } from "./theme-provider";
 
 export const metadata: Metadata = {
   title: "GitDiagram",
@@ -79,10 +80,12 @@ export default function RootLayout({
     <html lang="en" className={`${GeistSans.variable}`}>
       <CSPostHogProvider>
         <body className="flex min-h-screen flex-col">
-          <Header />
-          <main className="flex-grow">{children}</main>
-          <Footer />
-          <Toaster />
+          <ThemeProvider>
+            <Header />
+            <main className="flex-grow">{children}</main>
+            <Footer />
+            <Toaster />
+          </ThemeProvider>
         </body>
       </CSPostHogProvider>
     </html>

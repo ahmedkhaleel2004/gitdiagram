@@ -27,7 +27,7 @@ export function ExportDropdown({
       </div>
 
       <div className="flex items-center">
-        <span className="text-sm text-gray-700">
+        <span className="text-sm">
           Last generated: {lastGenerated.toLocaleString()}
         </span>
       </div>
