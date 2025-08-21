@@ -3,130 +3,89 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 [![Kofi](https://img.shields.io/badge/Kofi-F16061.svg?logo=ko-fi&logoColor=white)](https://ko-fi.com/ahmedkhaleel2004)
 
-# GitDiagram
+# GitDiagram (한국어)
 
-Turn any GitHub repository into an interactive diagram for visualization in seconds.
+GitHub 저장소를 불러와 구조를 분석하고, 단 몇 초 만에 상호작용 가능한 Mermaid.js 시스템 다이어그램으로 시각화합니다.
 
-[한국어 README 보기](./README.ko.md)
+[English README](./README.en.md)
 
-You can also replace `hub` with `diagram` in any Github URL to access its diagram.
+- URL 바로 사용: 어떤 GitHub URL이든 `github` 대신 `diagram`으로 바꿔 접속하면 해당 저장소 다이어그램 페이지로 이동합니다.
+- 예: `https://github.com/user/repo` → `https://diagram.com/user/repo` (서비스 도메인/배포 환경에 따라 상이)
 
-## 🚀 Features
+## 🚀 주요 기능
+- 즉시 시각화: 저장소의 파일 트리/README를 분석하여 시스템 설계/아키텍처 다이어그램 생성
+- 상호작용: 다이어그램 노드를 클릭해 관련 파일/디렉터리로 이동(클릭 이벤트에 경로 내장)
+- 빠른 생성: OpenAI o4-mini 기반으로 빠르고 정확한 다이어그램 생성(스트리밍)
+- 커스터마이즈: 추가 지침을 입력해 재생성/수정 가능
+- API: 비용 추정/다이어그램 생성 스트리밍 엔드포인트 제공(백엔드)
 
-- 👀 **Instant Visualization**: Convert any GitHub repository structure into a system design / architecture diagram
-- 🎨 **Interactivity**: Click on components to navigate directly to source files and relevant directories
-- ⚡ **Fast Generation**: Powered by OpenAI o4-mini for quick and accurate diagrams
-- 🔄 **Customization**: Modify and regenerate diagrams with custom instructions
-- 🌐 **API Access**: Public API available for integration (WIP)
+## ⚙️ 기술 스택
+- 프론트엔드: Next.js, TypeScript, Tailwind CSS, shadcn/ui
+- 백엔드: FastAPI(Python), SSE(서버-전송-이벤트)
+- DB: PostgreSQL(Drizzle ORM)
+- AI: OpenAI o4-mini (이전: Claude 3.5 Sonnet)
+- 배포: Vercel(프론트), EC2 등(백엔드)
+- 분석: PostHog, api-analytics
 
-## ⚙️ Tech Stack
+## 🔎 핵심 로직
+프롬프트 파이프라인(3단계)으로 Mermaid v11.4.1 문법을 지키는 안정적인 다이어그램을 생성합니다.
 
-- **Frontend**: Next.js, TypeScript, Tailwind CSS, ShadCN
-- **Backend**: FastAPI, Python, Server Actions
-- **Database**: PostgreSQL (with Drizzle ORM)
-- **AI**: OpenAI o4-mini
-- **Deployment**: Vercel (Frontend), EC2 (Backend)
-- **CI/CD**: GitHub Actions
-- **Analytics**: PostHog, Api-Analytics
+1) 설명 생성 → 2) 컴포넌트-경로 매핑 → 3) Mermaid 코드 생성
 
-## 🤔 About
+중요 제약/안정화:
+- 지원 타입만 사용(graph/flowchart, sequenceDiagram, classDiagram, stateDiagram(-v2), erDiagram, journey, gantt, pie, mindmap, timeline, gitGraph). 불확실 시 `graph TD`로 폴백.
+- 특수문자/공백 라벨은 반드시 따옴표로 감싸기.
+- subgraph 선언에는 클래스 직접 지정 금지.
+- 클릭 이벤트는 `click Node "path/to"` 형태만. 노드명에 경로 노출 금지.
 
-I created this because I wanted to contribute to open-source projects but quickly realized their codebases are too massive for me to dig through manually, so this helps me get started - but it's definitely got many more use cases!
+## 🔒 프라이빗 저장소 다이어그램
+- 헤더의 “Private Repos” 버튼 클릭 → `repo` 스코프의 GitHub PAT 입력.
+- 또는 로컬(Self-host) 환경에서 직접 실행.
 
-Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with OpenAI's o4-mini! (Previously Claude 3.5 Sonnet)
-
-I extract information from the file tree and README for details and interactivity (you can click components to be taken to relevant files and directories)
-
-Most of what you might call the "processing" of this app is done with prompt engineering - see `/backend/app/prompts.py`. This basically extracts and pipelines data and analysis for a larger action workflow, ending in the diagram code.
-
-Notes on stability and correctness:
-- Mermaid v11.4.1 syntax is enforced in the prompts. Only supported diagram types are allowed; fall back to `graph TD` when unsure.
-- Frontend proxies generation/cost requests via Next.js API routes (`/api/generate/*`) to the FastAPI backend to avoid mixed-content and dev networking issues.
-
-## 🔒 How to diagram private repositories
-
-You can simply click on "Private Repos" in the header and follow the instructions by providing a GitHub personal access token with the `repo` scope.
-
-You can also self-host this app locally (backend separated as well!) with the steps below.
-
-## 🛠️ Self-hosting / Local Development
-
-1. Clone the repository
-
+## 🛠️ 로컬 개발/자가 호스팅
+1) 클론
 ```bash
-git clone https://github.com/ahmedkhaleel2004/gitdiagram.git
+git clone https://github.com/hongvincent/gitdiagram.git
 cd gitdiagram
 ```
-
-2. Install dependencies
-
+2) 의존성 설치
 ```bash
 pnpm i
 ```
-
-3. Set up environment variables (create .env)
-
+3) 환경변수 설정
 ```bash
 cp .env.example .env
 ```
-
-Then edit the `.env` file with your Anthropic API key and optional GitHub personal access token.
-
-4. Run backend
-
+4) 백엔드 실행(FastAPI)
 ```bash
-docker-compose up --build -d
+docker compose up -d --build
+# 백엔드: http://localhost:8000
 ```
-
-Logs available at `docker-compose logs -f`
-The FastAPI server will be available at `localhost:8000`
-
-5. Start local database
-
+5) DB 시작
 ```bash
 chmod +x start-database.sh
 ./start-database.sh
+# Postgres: localhost:5432
 ```
-
-When prompted to generate a random password, input yes.
-The Postgres database will start in a container at `localhost:5432`
-
-6. Initialize the database schema
-
+6) 스키마 초기화
 ```bash
 pnpm db:push
 ```
-
-You can view and interact with the database using `pnpm db:studio`
-
-7. Run Frontend
-
+7) 프론트엔드 실행(Next.js)
 ```bash
 pnpm dev
+# 프론트: http://localhost:3000
 ```
 
-You can now access the website at `localhost:3000` and edit the rate limits defined in `backend/app/routers/generate.py` in the generate function decorator.
+## 🤝 기여
+PR 환영합니다. 버그/개선 제안은 이슈로 남겨 주세요.
 
-## Contributing
+## 🙏 Acknowledgements
+[Romain Courtois](https://github.com/cyclotruc)의 [Gitingest](https://gitingest.com/)에서 영감을 받았습니다.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 📈 레이트 리밋
+무료 호스팅 중이며 정책은 추후 변경 가능성이 있습니다.
 
-## Acknowledgements
-
-Shoutout to [Romain Courtois](https://github.com/cyclotruc)'s [Gitingest](https://gitingest.com/) for inspiration and styling
-
-## 📈 Rate Limits
-
-I am currently hosting it for free with no rate limits though this is somewhat likely to change in the future.
-
-<!-- If you would like to bypass these, self-hosting instructions are provided. I also plan on adding an input for your own Anthropic API key.
-
-Diagram generation:
-
-- 1 request per minute
-- 5 requests per day -->
-
-## 🤔 Future Steps
-
-- Implement font-awesome icons in diagram
-- Implement an embedded feature like star-history.com but for diagrams. The diagram could also be updated progressively as commits are made.
+## 🔮 앞으로의 계획
+- font-awesome 아이콘 지원
+- star-history.com 유사 임베드 기능(커밋에 따라 점진 업데이트)
