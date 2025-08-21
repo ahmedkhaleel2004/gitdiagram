@@ -115,7 +115,7 @@ To create the Mermaid.js diagram:
 
 1. Carefully read and analyze the provided design explanation.
 2. Identify the main components, services, and their relationships within the system.
-3. Determine the appropriate Mermaid.js diagram type to use (e.g., flowchart, sequence diagram, class diagram, architecture, etc.) based on the nature of the system described.
+3. Determine the appropriate Mermaid.js diagram type to use based on the nature of the system described. STRICTLY use one of the supported Mermaid v11.4.1 diagram types only: flowchart/graph, sequenceDiagram, classDiagram, stateDiagram or stateDiagram-v2, erDiagram, journey, gantt, pie, mindmap, timeline, gitGraph. If unsure, default to a flowchart (graph TD).
 4. Create the Mermaid.js code to represent the design, ensuring that:
    a. All major components are included
    b. Relationships between components are clearly shown
@@ -186,6 +186,11 @@ flowchart TD
     %% and a lot more...
 ```
 
+Mermaid version and syntax compliance (v11.4.1):
+- You MUST produce code that is valid for Mermaid v11.4.1 specifically.
+- Only use the supported types listed above. Do NOT invent or use non-existent types like "architecture" or similar.
+- If you are uncertain, always fall back to a valid flowchart using `graph TD`.
+
 EXTREMELY Important notes on syntax!!! (PAY ATTENTION TO THIS):
 - Make sure to add colour to the diagram!!! This is extremely critical.
 - In Mermaid.js syntax, we cannot include special characters for nodes without being inside quotes! For example: `EX[/api/process (Backend)]:::api` and `API -->|calls Process()| Backend` are two examples of syntax errors. They should be `EX["/api/process (Backend)"]:::api` and `API -->|"calls Process()"| Backend` respectively. Notice the quotes. This is extremely important. Make sure to include quotes for any string that contains special characters.
@@ -209,6 +214,8 @@ You are tasked with modifying the code of a Mermaid.js diagram based on the prov
 Also, to help you modify it and simply for additional context, you will also be provided with the original explanation of the diagram enclosed in <explanation> tags in the users message. However of course, you must give priority to the instructions provided by the user.
 
 The instructions will be enclosed in <instructions> tags in the users message. If these instructions are unrelated to the task, unclear, or not possible to follow, ignore them by simply responding with: "BAD_INSTRUCTIONS"
+
+You MUST preserve valid Mermaid v11.4.1 syntax. Only use supported diagram types (flowchart/graph, sequenceDiagram, classDiagram, stateDiagram or stateDiagram-v2, erDiagram, journey, gantt, pie, mindmap, timeline, gitGraph). If unsure, default to a flowchart using `graph TD`.
 
 Your response must strictly be just the Mermaid.js code, without any additional text or explanations. Keep as many of the existing click events as possible.
 No code fence or markdown ticks needed, simply return the Mermaid.js code.

@@ -7,6 +7,8 @@
 
 Turn any GitHub repository into an interactive diagram for visualization in seconds.
 
+[한국어 README 보기](./README.ko.md)
+
 You can also replace `hub` with `diagram` in any Github URL to access its diagram.
 
 ## 🚀 Features
@@ -36,6 +38,10 @@ Given any public (or private!) GitHub repository it generates diagrams in Mermai
 I extract information from the file tree and README for details and interactivity (you can click components to be taken to relevant files and directories)
 
 Most of what you might call the "processing" of this app is done with prompt engineering - see `/backend/app/prompts.py`. This basically extracts and pipelines data and analysis for a larger action workflow, ending in the diagram code.
+
+Notes on stability and correctness:
+- Mermaid v11.4.1 syntax is enforced in the prompts. Only supported diagram types are allowed; fall back to `graph TD` when unsure.
+- Frontend proxies generation/cost requests via Next.js API routes (`/api/generate/*`) to the FastAPI backend to avoid mixed-content and dev networking issues.
 
 ## 🔒 How to diagram private repositories
 

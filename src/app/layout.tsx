@@ -76,9 +76,13 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${GeistSans.variable}`}>
+    <html
+      lang="en"
+      className={`${GeistSans.variable}`}
+      suppressHydrationWarning
+    >
       <CSPostHogProvider>
-        <body className="flex min-h-screen flex-col">
+        <body className="flex min-h-screen flex-col" suppressHydrationWarning>
           <Header />
           <main className="flex-grow">{children}</main>
           <Footer />
