@@ -88,9 +88,7 @@ export async function modifyAndCacheDiagram(
 
     const baseUrl =
       process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
-    const url = new URL(`${baseUrl}/modify`);
-
-    const response = await fetch(url, {
+    const url = new URL(`${baseUrl}/modify`);    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -135,11 +133,8 @@ export async function getCostOfGeneration(
   github_pat?: string,
 ): Promise<CostApiResponse> {
   try {
-    const baseUrl =
-      process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
-    const url = new URL(`${baseUrl}/generate/cost`);
-
-    const response = await fetch(url, {
+  // Proxy through Next.js API route for same-origin requests
+  const response = await fetch(`/api/generate/cost`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -13,7 +13,19 @@ import os
 app = FastAPI()
 
 
-origins = ["http://localhost:3000", "https://gitdiagram.com"]
+origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:3003",
+    "https://gitdiagram.com",
+]
+
+codespace_name = os.getenv("CODESPACE_NAME")
+codespace_domain = os.getenv("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
+if codespace_name and codespace_domain:
+    for port in range(3000, 3011):
+        origins.append(f"https://{codespace_name}-{port}.{codespace_domain}")
 
 app.add_middleware(
     CORSMiddleware,

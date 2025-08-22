@@ -63,9 +63,8 @@ export function useDiagram(username: string, repo: string) {
       });
 
       try {
-        const baseUrl =
-          process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
-        const response = await fetch(`${baseUrl}/generate/stream`, {
+  // Use Next.js API route for streaming to avoid direct backend calls
+  const response = await fetch(`/api/generate/stream`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -329,6 +328,7 @@ export function useDiagram(username: string, repo: string) {
     setLoading(true);
     setError("");
     setCost("");
+    setState({ status: "idle", error: undefined }); // Reset state
     try {
       // Start streaming generation with instructions
       await generateDiagram(instructions);
@@ -349,6 +349,7 @@ export function useDiagram(username: string, repo: string) {
     setLoading(true);
     setError("");
     setCost("");
+    setState({ status: "idle", error: undefined }); // Reset state
     try {
       const github_pat = localStorage.getItem("github_pat");
 
