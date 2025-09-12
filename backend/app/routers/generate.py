@@ -2,14 +2,13 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from app.services.github_service import GitHubService
-from app.services.o4_mini_openai_service import OpenAIo4Service
+from app.services.gpt_5_mini_openai_service import OpenAIgpt5Service
 from app.prompts import (
     SYSTEM_FIRST_PROMPT,
     SYSTEM_SECOND_PROMPT,
     SYSTEM_THIRD_PROMPT,
     ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT,
 )
-from anthropic._exceptions import RateLimitError
 from pydantic import BaseModel
 from functools import lru_cache
 import re
@@ -21,11 +20,11 @@ import asyncio
 
 load_dotenv()
 
-router = APIRouter(prefix="/generate", tags=["OpenAI o4-mini"])
+router = APIRouter(prefix="/generate", tags=["OpenAI gpt-5-mini"])
 
 # Initialize services
 # claude_service = ClaudeService()
-o4_service = OpenAIo4Service()
+gpt5_service = OpenAIgpt5Service()
 
 
 # cache github data to avoid double API calls from cost and generate
@@ -56,6 +55,11 @@ class ApiRequest(BaseModel):
 # @limiter.limit("5/minute") # TEMP: disable rate limit for growth??
 async def get_generation_cost(request: Request, body: ApiRequest):
     try:
+        print(
+            f"[COST] Request received user={body.username} repo={body.repo} "
+            f"instructions_len={len(body.instructions)} pat={'yes' if body.github_pat else 'no'}",
+            flush=True,
+        )
         # Get file tree and README content
         github_data = get_cached_github_data(body.username, body.repo, body.github_pat)
         file_tree = github_data["file_tree"]
@@ -65,8 +69,8 @@ async def get_generation_cost(request: Request, body: ApiRequest):
         # file_tree_tokens = claude_service.count_tokens(file_tree)
         # readme_tokens = claude_service.count_tokens(readme)
 
-        file_tree_tokens = o4_service.count_tokens(file_tree)
-        readme_tokens = o4_service.count_tokens(readme)
+        file_tree_tokens = gpt5_service.count_tokens(file_tree)
+        readme_tokens = gpt5_service.count_tokens(readme)
 
         # CLAUDE: Calculate approximate cost
         # Input cost: $3 per 1M tokens ($0.000003 per token)
@@ -85,9 +89,15 @@ async def get_generation_cost(request: Request, body: ApiRequest):
 
         # Format as currency string
         cost_string = f"${estimated_cost:.2f} USD"
+        print(
+            f"[COST] tokens file_tree={file_tree_tokens} readme={readme_tokens} -> {cost_string}",
+            flush=True,
+        )
         return {"cost": cost_string}
     except Exception as e:
+        print(f"[COST][ERROR] {str(e)}", flush=True)
         return {"error": str(e)}
+
 
 
 def process_click_events(diagram: str, username: str, repo: str, branch: str) -> str:
@@ -119,42 +129,48 @@ def process_click_events(diagram: str, username: str, repo: str, branch: str) ->
 @router.post("/stream")
 async def generate_stream(request: Request, body: ApiRequest):
     try:
+        print(
+            f"[GEN] /generate/stream user={body.username} repo={body.repo} "
+            f"instructions_len={len(body.instructions)} api_key={'yes' if body.api_key else 'no'} pat={'yes' if body.github_pat else 'no'}",
+            flush=True,
+        )
         # Initial validation checks
         if len(body.instructions) > 1000:
             return {"error": "Instructions exceed maximum length of 1000 characters"}
 
-        if body.repo in [
-            "fastapi",
-            "streamlit",
-            "flask",
-            "api-analytics",
-            "monkeytype",
-        ]:
-            return {"error": "Example repos cannot be regenerated"}
+        # Allow generation for all repositories; frontend handles caching.
 
         async def event_generator():
             try:
-                # Get cached github data
+                # Get cached github data first
                 github_data = get_cached_github_data(
                     body.username, body.repo, body.github_pat
                 )
                 default_branch = github_data["default_branch"]
                 file_tree = github_data["file_tree"]
                 readme = github_data["readme"]
+                print(
+                    f"[GEN] GitHub data fetched branch={default_branch} "
+                    f"file_tree_lines={len(file_tree.splitlines())} readme_chars={len(readme)}",
+                    flush=True,
+                )
 
-                # Send initial status
+                # Send initial status after inputs are ready
                 yield f"data: {json.dumps({'status': 'started', 'message': 'Starting generation process...'})}\n\n"
                 await asyncio.sleep(0.1)
 
                 # Token count check
                 combined_content = f"{file_tree}\n{readme}"
-                token_count = o4_service.count_tokens(combined_content)
+                token_count = gpt5_service.count_tokens(combined_content)
+                print(f"[GEN] Combined token_count≈{token_count}", flush=True)
 
                 if 50000 < token_count < 195000 and not body.api_key:
                     yield f"data: {json.dumps({'error': f'File tree and README combined exceeds token limit (50,000). Current size: {token_count} tokens. This GitHub repository is too large for my wallet, but you can continue by providing your own OpenAI API key.'})}\n\n"
+                    print("[GEN] Aborting due to token threshold without API key", flush=True)
                     return
                 elif token_count > 195000:
-                    yield f"data: {json.dumps({'error': f'Repository is too large (>195k tokens) for analysis. OpenAI o4-mini\'s max context length is 200k tokens. Current size: {token_count} tokens.'})}\n\n"
+                    yield f"data: {json.dumps({'error': f'Repository is too large (>195k tokens) for analysis. OpenAI gpt-5-mini\'s max context length is 200k tokens. Current size: {token_count} tokens.'})}\n\n"
+                    print("[GEN] Aborting due to token_count > 195k", flush=True)
                     return
 
                 # Prepare prompts
@@ -173,11 +189,14 @@ async def generate_stream(request: Request, body: ApiRequest):
                     )
 
                 # Phase 1: Get explanation
-                yield f"data: {json.dumps({'status': 'explanation_sent', 'message': 'Sending explanation request to o4-mini...'})}\n\n"
+                print("[GEN] Phase 1: explanation (stream) starting", flush=True)
+                print("[GEN][EXPLANATION][STREAM BEGIN]", flush=True)
+                yield f"data: {json.dumps({'status': 'explanation_sent', 'message': 'Sending explanation request to gpt-5-mini...'})}\n\n"
                 await asyncio.sleep(0.1)
                 yield f"data: {json.dumps({'status': 'explanation', 'message': 'Analyzing repository structure...'})}\n\n"
+                # Streaming explanation
                 explanation = ""
-                async for chunk in o4_service.call_o4_api_stream(
+                async for chunk in gpt5_service.call_gpt5_api_stream(
                     system_prompt=first_system_prompt,
                     data={
                         "file_tree": file_tree,
@@ -188,25 +207,46 @@ async def generate_stream(request: Request, body: ApiRequest):
                     reasoning_effort="medium",
                 ):
                     explanation += chunk
+                    # Echo streamed explanation content to stdout
+                    try:
+                        print(chunk, end="", flush=True)
+                    except Exception:
+                        # Fallback to repr in case of encoding issues
+                        print(repr(chunk), end="", flush=True)
                     yield f"data: {json.dumps({'status': 'explanation_chunk', 'chunk': chunk})}\n\n"
+                print("\n[GEN][EXPLANATION][STREAM END]", flush=True)
+                print(f"[GEN] Phase 1 complete. explanation_chars={len(explanation)}", flush=True)
 
                 if "BAD_INSTRUCTIONS" in explanation:
                     yield f"data: {json.dumps({'error': 'Invalid or unclear instructions provided'})}\n\n"
                     return
 
                 # Phase 2: Get component mapping
-                yield f"data: {json.dumps({'status': 'mapping_sent', 'message': 'Sending component mapping request to o4-mini...'})}\n\n"
+                print("[GEN] Phase 2: mapping (stream) starting", flush=True)
+                print("[GEN][MAPPING][STREAM BEGIN]", flush=True)
+                yield f"data: {json.dumps({'status': 'mapping_sent', 'message': 'Sending component mapping request to gpt-5-mini...'})}\n\n"
                 await asyncio.sleep(0.1)
                 yield f"data: {json.dumps({'status': 'mapping', 'message': 'Creating component mapping...'})}\n\n"
+                # Streaming mapping
                 full_second_response = ""
-                async for chunk in o4_service.call_o4_api_stream(
+                async for chunk in gpt5_service.call_gpt5_api_stream(
                     system_prompt=SYSTEM_SECOND_PROMPT,
                     data={"explanation": explanation, "file_tree": file_tree},
                     api_key=body.api_key,
                     reasoning_effort="low",
                 ):
                     full_second_response += chunk
+                    # Echo streamed mapping content to stdout
+                    try:
+                        print(chunk, end="", flush=True)
+                    except Exception:
+                        print(repr(chunk), end="", flush=True)
                     yield f"data: {json.dumps({'status': 'mapping_chunk', 'chunk': chunk})}\n\n"
+                print("\n[GEN][MAPPING][STREAM END]", flush=True)
+                print(
+                    f"[GEN] Phase 2 complete. mapping_chars={len(full_second_response)}",
+                    flush=True,
+                )
 
                 # i dont think i need this anymore? but keep it here for now
                 # Extract component mapping
@@ -219,11 +259,14 @@ async def generate_stream(request: Request, body: ApiRequest):
                 ]
 
                 # Phase 3: Generate Mermaid diagram
-                yield f"data: {json.dumps({'status': 'diagram_sent', 'message': 'Sending diagram generation request to o4-mini...'})}\n\n"
+                print("[GEN] Phase 3: diagram (stream) starting", flush=True)
+                print("[GEN][MERMAID][STREAM BEGIN]", flush=True)
+                yield f"data: {json.dumps({'status': 'diagram_sent', 'message': 'Sending diagram generation request to gpt-5-mini...'})}\n\n"
                 await asyncio.sleep(0.1)
                 yield f"data: {json.dumps({'status': 'diagram', 'message': 'Generating diagram...'})}\n\n"
+                # Streaming diagram
                 mermaid_code = ""
-                async for chunk in o4_service.call_o4_api_stream(
+                async for chunk in gpt5_service.call_gpt5_api_stream(
                     system_prompt=third_system_prompt,
                     data={
                         "explanation": explanation,
@@ -234,16 +277,75 @@ async def generate_stream(request: Request, body: ApiRequest):
                     reasoning_effort="low",
                 ):
                     mermaid_code += chunk
+                    # Echo streamed diagram (Mermaid) content to stdout
+                    try:
+                        print(chunk, end="", flush=True)
+                    except Exception:
+                        print(repr(chunk), end="", flush=True)
                     yield f"data: {json.dumps({'status': 'diagram_chunk', 'chunk': chunk})}\n\n"
+                print("\n[GEN][MERMAID][STREAM END]", flush=True)
+                print(
+                    f"[GEN] Phase 3 stream complete. raw_diagram_chars={len(mermaid_code)}",
+                    flush=True,
+                )
 
                 # Process final diagram
                 mermaid_code = mermaid_code.replace("```mermaid", "").replace("```", "")
+
+                # Sanitize: Keep only the first Mermaid diagram block (models sometimes append a second diagram like sequenceDiagram)
+                def sanitize_mermaid(code: str) -> str:
+                    markers = [
+                        r"flowchart\b",
+                        r"graph\b",
+                        r"sequenceDiagram\b",
+                        r"classDiagram\b",
+                        r"erDiagram\b",
+                        r"stateDiagram\b",
+                        r"gantt\b",
+                        r"journey\b",
+                        r"mindmap\b",
+                        r"timeline\b",
+                        r"pie\b",
+                        r"quadrantChart\b",
+                        r"gitGraph\b",
+                        r"xychart\b",
+                    ]
+                    # Find first diagram start
+                    first = None
+                    for m in markers:
+                        match = re.search(rf"^\s*{m}", code, flags=re.MULTILINE)
+                        if match:
+                            if first is None or match.start() < first.start():
+                                first = match
+                    if not first:
+                        return code
+                    # Find the next marker after the first
+                    next_pos = None
+                    for m in markers:
+                        match = re.search(rf"^\s*{m}", code[first.end():], flags=re.MULTILINE)
+                        if match:
+                            pos = first.end() + match.start()
+                            if next_pos is None or pos < next_pos:
+                                next_pos = pos
+                    return code if next_pos is None else code[:next_pos]
+
+                original_len = len(mermaid_code)
+                mermaid_code = sanitize_mermaid(mermaid_code)
+                if len(mermaid_code) != original_len:
+                    print(
+                        f"[GEN] Sanitized Mermaid to first diagram only (trimmed {original_len - len(mermaid_code)} chars)",
+                        flush=True,
+                    )
                 if "BAD_INSTRUCTIONS" in mermaid_code:
                     yield f"data: {json.dumps({'error': 'Invalid or unclear instructions provided'})}\n\n"
                     return
 
                 processed_diagram = process_click_events(
                     mermaid_code, body.username, body.repo, default_branch
+                )
+                print(
+                    f"[GEN] Diagram processed. diagram_chars={len(processed_diagram)} default_branch={default_branch}",
+                    flush=True,
                 )
 
                 # Send final result
@@ -253,8 +355,10 @@ async def generate_stream(request: Request, body: ApiRequest):
                     'explanation': explanation,
                     'mapping': component_mapping_text
                 })}\n\n"
+                print("[GEN] Stream complete and response sent.", flush=True)
 
             except Exception as e:
+                print(f"[GEN][ERROR] {str(e)}", flush=True)
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
         return StreamingResponse(

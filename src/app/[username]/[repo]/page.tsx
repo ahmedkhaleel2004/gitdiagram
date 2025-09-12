@@ -53,15 +53,7 @@ export default function Repo() {
         />
       </div>
       <div className="mt-8 flex w-full flex-col items-center gap-8">
-        {loading ? (
-          <Loading
-            cost={cost}
-            status={state.status}
-            explanation={state.explanation}
-            mapping={state.mapping}
-            diagram={state.diagram}
-          />
-        ) : error || state.error ? (
+        {error || state.error ? (
           <div className="mt-12 text-center">
             <p className="max-w-4xl text-lg font-medium text-purple-600">
               {error || state.error}
@@ -73,6 +65,14 @@ export default function Repo() {
               </div>
             )}
           </div>
+        ) : loading || !diagram ? (
+          <Loading
+            cost={cost}
+            status={state.status}
+            explanation={state.explanation}
+            mapping={state.mapping}
+            diagram={state.diagram}
+          />
         ) : (
           <div className="flex w-full justify-center px-4">
             <MermaidChart chart={diagram} zoomingEnabled={zoomingEnabled} />

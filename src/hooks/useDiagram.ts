@@ -90,122 +90,129 @@ export function useDiagram(username: string, repo: string) {
         let mapping = "";
         let diagram = "";
 
-        // Process the stream
+        // Process the stream (robust SSE parsing with buffering across chunks)
         const processStream = async () => {
+          const decoder = new TextDecoder();
+          let buffer = "";
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
 
-              // Convert the chunk to text
-              const chunk = new TextDecoder().decode(value);
-              const lines = chunk.split("\n");
+              buffer += decoder.decode(value, { stream: true });
 
-              // Process each SSE message
-              for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                  try {
-                    const data = JSON.parse(line.slice(6)) as StreamResponse;
+              let sepIndex: number;
+              // SSE events are separated by a blank line (\n\n)
+              while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+                const rawEvent = buffer.slice(0, sepIndex);
+                buffer = buffer.slice(sepIndex + 2);
 
-                    // If we receive an error, set loading to false immediately
-                    if (data.error) {
-                      setState({ status: "error", error: data.error });
-                      setLoading(false);
-                      return; // Add this to stop processing
-                    }
+                // Join all data: lines as per SSE spec
+                const dataLines = rawEvent
+                  .split("\n")
+                  .filter((l) => l.startsWith("data: "))
+                  .map((l) => l.slice(6));
+                if (dataLines.length === 0) continue;
 
-                    // Update state based on the message type
-                    switch (data.status) {
-                      case "started":
-                        setState((prev) => ({
-                          ...prev,
-                          status: "started",
-                          message: data.message,
-                        }));
-                        break;
-                      case "explanation_sent":
-                        setState((prev) => ({
-                          ...prev,
-                          status: "explanation_sent",
-                          message: data.message,
-                        }));
-                        break;
-                      case "explanation":
-                        setState((prev) => ({
-                          ...prev,
-                          status: "explanation",
-                          message: data.message,
-                        }));
-                        break;
-                      case "explanation_chunk":
-                        if (data.chunk) {
-                          explanation += data.chunk;
-                          setState((prev) => ({ ...prev, explanation }));
-                        }
-                        break;
-                      case "mapping_sent":
-                        setState((prev) => ({
-                          ...prev,
-                          status: "mapping_sent",
-                          message: data.message,
-                        }));
-                        break;
-                      case "mapping":
-                        setState((prev) => ({
-                          ...prev,
-                          status: "mapping",
-                          message: data.message,
-                        }));
-                        break;
-                      case "mapping_chunk":
-                        if (data.chunk) {
-                          mapping += data.chunk;
-                          setState((prev) => ({ ...prev, mapping }));
-                        }
-                        break;
-                      case "diagram_sent":
-                        setState((prev) => ({
-                          ...prev,
-                          status: "diagram_sent",
-                          message: data.message,
-                        }));
-                        break;
-                      case "diagram":
-                        setState((prev) => ({
-                          ...prev,
-                          status: "diagram",
-                          message: data.message,
-                        }));
-                        break;
-                      case "diagram_chunk":
-                        if (data.chunk) {
-                          diagram += data.chunk;
-                          setState((prev) => ({ ...prev, diagram }));
-                        }
-                        break;
-                      case "complete":
-                        setState({
-                          status: "complete",
-                          explanation: data.explanation,
-                          diagram: data.diagram,
-                        });
+                const jsonStr = dataLines.join("\n");
+                try {
+                  const data = JSON.parse(jsonStr) as StreamResponse;
+
+                  if (data.error) {
+                    setState({ status: "error", error: data.error });
+                    setLoading(false);
+                    return;
+                  }
+
+                  switch (data.status) {
+                    case "started":
+                      setState((prev) => ({
+                        ...prev,
+                        status: "started",
+                        message: data.message,
+                      }));
+                      break;
+                    case "explanation_sent":
+                      setState((prev) => ({
+                        ...prev,
+                        status: "explanation_sent",
+                        message: data.message,
+                      }));
+                      break;
+                    case "explanation":
+                      setState((prev) => ({
+                        ...prev,
+                        status: "explanation",
+                        message: data.message,
+                      }));
+                      break;
+                    case "explanation_chunk":
+                      if (data.chunk) {
+                        explanation += data.chunk;
+                        setState((prev) => ({ ...prev, explanation }));
+                      }
+                      break;
+                    case "mapping_sent":
+                      setState((prev) => ({
+                        ...prev,
+                        status: "mapping_sent",
+                        message: data.message,
+                      }));
+                      break;
+                    case "mapping":
+                      setState((prev) => ({
+                        ...prev,
+                        status: "mapping",
+                        message: data.message,
+                      }));
+                      break;
+                    case "mapping_chunk":
+                      if (data.chunk) {
+                        mapping += data.chunk;
+                        setState((prev) => ({ ...prev, mapping }));
+                      }
+                      break;
+                    case "diagram_sent":
+                      setState((prev) => ({
+                        ...prev,
+                        status: "diagram_sent",
+                        message: data.message,
+                      }));
+                      break;
+                    case "diagram":
+                      setState((prev) => ({
+                        ...prev,
+                        status: "diagram",
+                        message: data.message,
+                      }));
+                      break;
+                    case "diagram_chunk":
+                      if (data.chunk) {
+                        diagram += data.chunk;
+                        setState((prev) => ({ ...prev, diagram }));
+                      }
+                      break;
+                    case "complete":
+                      setState({
+                        status: "complete",
+                        explanation: data.explanation,
+                        diagram: data.diagram,
+                      });
+                      {
                         const date = await getLastGeneratedDate(username, repo);
                         setLastGenerated(date ?? undefined);
-                        if (!hasUsedFreeGeneration) {
-                          localStorage.setItem(
-                            "has_used_free_generation",
-                            "true",
-                          );
-                          setHasUsedFreeGeneration(true);
-                        }
-                        break;
-                      case "error":
-                        setState({ status: "error", error: data.error });
-                        break;
-                    }
-                  } catch (e) {
-                    console.error("Error parsing SSE message:", e);
+                      }
+                      if (!hasUsedFreeGeneration) {
+                        localStorage.setItem("has_used_free_generation", "true");
+                        setHasUsedFreeGeneration(true);
+                      }
+                      break;
+                    case "error":
+                      setState({ status: "error", error: data.error });
+                      break;
                   }
+                } catch (e) {
+                  console.error("Error parsing SSE event:", e);
                 }
               }
             }
@@ -231,7 +238,6 @@ export function useDiagram(username: string, repo: string) {
 
   useEffect(() => {
     if (state.status === "complete" && state.diagram) {
-      // Cache the completed diagram with the usedOwnKey flag
       const hasApiKey = !!localStorage.getItem("openai_key");
       void cacheDiagramAndExplanation(
         username,

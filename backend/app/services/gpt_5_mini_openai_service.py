@@ -10,7 +10,7 @@ from typing import AsyncGenerator, Literal
 load_dotenv()
 
 
-class OpenAIo3Service:
+class OpenAIgpt5Service:
     def __init__(self):
         self.default_client = OpenAI(
             api_key=os.getenv("OPENAI_API_KEY"),
@@ -18,7 +18,7 @@ class OpenAIo3Service:
         self.encoding = tiktoken.get_encoding("o200k_base")  # Encoder for OpenAI models
         self.base_url = "https://api.openai.com/v1/chat/completions"
 
-    def call_o3_api(
+    def call_gpt5_api(
         self,
         system_prompt: str,
         data: dict,
@@ -26,7 +26,7 @@ class OpenAIo3Service:
         reasoning_effort: Literal["low", "medium", "high"] = "low",
     ) -> str:
         """
-        Makes an API call to OpenAI o3-mini and returns the response.
+        Makes an API call to OpenAI gpt-5-mini and returns the response.
 
         Args:
             system_prompt (str): The instruction/system prompt
@@ -34,7 +34,7 @@ class OpenAIo3Service:
             api_key (str | None): Optional custom API key
 
         Returns:
-            str: o3-mini's response text
+            str: gpt-5-mini's response text
         """
         # Create the user message with the data
         user_message = format_user_message(data)
@@ -44,32 +44,30 @@ class OpenAIo3Service:
 
         try:
             print(
-                f"Making non-streaming API call to o3-mini with API key: {'custom key' if api_key else 'default key'}"
+                f"Making non-streaming API call to gpt-5-mini with API key: {'custom key' if api_key else 'default key'}"
             )
 
             completion = client.chat.completions.create(
-                model="o3-mini",
+                model="gpt-5-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
                 ],
-                max_completion_tokens=12000,  # Adjust as needed
-                temperature=0.2,
                 reasoning_effort=reasoning_effort,
             )
 
             print("API call completed successfully")
 
             if completion.choices[0].message.content is None:
-                raise ValueError("No content returned from OpenAI o3-mini")
+                raise ValueError("No content returned from OpenAI gpt-5-mini")
 
             return completion.choices[0].message.content
 
         except Exception as e:
-            print(f"Error in OpenAI o3-mini API call: {str(e)}")
+            print(f"Error in OpenAI gpt-5-mini API call: {str(e)}")
             raise
 
-    async def call_o3_api_stream(
+    async def call_gpt5_api_stream(
         self,
         system_prompt: str,
         data: dict,
@@ -77,7 +75,7 @@ class OpenAIo3Service:
         reasoning_effort: Literal["low", "medium", "high"] = "low",
     ) -> AsyncGenerator[str, None]:
         """
-        Makes a streaming API call to OpenAI o3-mini and yields the responses.
+        Makes a streaming API call to OpenAI gpt-5-mini and yields the responses.
 
         Args:
             system_prompt (str): The instruction/system prompt
@@ -85,7 +83,7 @@ class OpenAIo3Service:
             api_key (str | None): Optional custom API key
 
         Yields:
-            str: Chunks of o3-mini's response text
+            str: Chunks of gpt-5-mini's response text
         """
         # Create the user message with the data
         user_message = format_user_message(data)
@@ -95,8 +93,9 @@ class OpenAIo3Service:
             "Authorization": f"Bearer {api_key or self.default_client.api_key}",
         }
 
+        # Example alternate payload (single user message wrapper)
         # payload = {
-        #     "model": "o3-mini",
+        #     "model": "gpt-5-mini",
         #     "messages": [
         #         {
         #             "role": "user",
@@ -115,12 +114,11 @@ class OpenAIo3Service:
         # }
 
         payload = {
-            "model": "o3-mini",
+            "model": "gpt-5-mini",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            "max_completion_tokens": 12000,
             "stream": True,
             "reasoning_effort": reasoning_effort,
         }

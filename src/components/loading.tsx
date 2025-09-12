@@ -6,7 +6,7 @@ const messages = [
   "Checking if its cached...",
   "Generating diagram...",
   "Analyzing repository...",
-  "Prompting o3-mini...",
+  "Prompting gpt-5-mini...",
   "Inspecting file paths...",
   "Finding component relationships...",
   "Linking components to code...",

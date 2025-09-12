@@ -6,16 +6,16 @@ from dotenv import load_dotenv
 from anthropic._exceptions import RateLimitError
 from app.prompts import SYSTEM_MODIFY_PROMPT
 from pydantic import BaseModel
-from app.services.o1_mini_openai_service import OpenAIO1Service
+from app.services.gpt_5_mini_openai_service import OpenAIgpt5Service
 
 
 load_dotenv()
 
-router = APIRouter(prefix="/modify", tags=["Claude"])
+router = APIRouter(prefix="/modify", tags=["OpenAI gpt-5-mini"])
 
 # Initialize services
 # claude_service = ClaudeService()
-o1_service = OpenAIO1Service()
+gpt5_service = OpenAIgpt5Service()
 
 
 # Define the request body model
@@ -33,6 +33,10 @@ class ModifyRequest(BaseModel):
 # @limiter.limit("2/minute;10/day")
 async def modify(request: Request, body: ModifyRequest):
     try:
+        print(
+            f"[MODIFY] Request user={body.username} repo={body.repo} instructions_len={len(body.instructions)}",
+            flush=True,
+        )
         # Check instructions length
         if not body.instructions or not body.current_diagram:
             return {"error": "Instructions and/or current diagram are required"}
@@ -41,14 +45,7 @@ async def modify(request: Request, body: ModifyRequest):
         ):  # just being safe
             return {"error": "Instructions exceed maximum length of 1000 characters"}
 
-        if body.repo in [
-            "fastapi",
-            "streamlit",
-            "flask",
-            "api-analytics",
-            "monkeytype",
-        ]:
-            return {"error": "Example repos cannot be modified"}
+        # Allow modifications for all repositories
 
         # modified_mermaid_code = claude_service.call_claude_api(
         #     system_prompt=SYSTEM_MODIFY_PROMPT,
@@ -59,13 +56,21 @@ async def modify(request: Request, body: ModifyRequest):
         #     },
         # )
 
-        modified_mermaid_code = o1_service.call_o1_api(
+        print(
+            f"[MODIFY] Calling model. current_diagram_chars={len(body.current_diagram)} explanation_chars={len(body.explanation)}",
+            flush=True,
+        )
+        modified_mermaid_code = gpt5_service.call_gpt5_api(
             system_prompt=SYSTEM_MODIFY_PROMPT,
             data={
                 "instructions": body.instructions,
                 "explanation": body.explanation,
                 "diagram": body.current_diagram,
             },
+        )
+        print(
+            f"[MODIFY] Model response received. modified_diagram_chars={len(modified_mermaid_code)}",
+            flush=True,
         )
 
         # Check for BAD_INSTRUCTIONS response
@@ -79,4 +84,5 @@ async def modify(request: Request, body: ModifyRequest):
             detail="Service is currently experiencing high demand. Please try again in a few minutes.",
         )
     except Exception as e:
+        print(f"[MODIFY][ERROR] {str(e)}", flush=True)
         return {"error": str(e)}

@@ -13,7 +13,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 
 - 👀 **Instant Visualization**: Convert any GitHub repository structure into a system design / architecture diagram
 - 🎨 **Interactivity**: Click on components to navigate directly to source files and relevant directories
-- ⚡ **Fast Generation**: Powered by OpenAI o4-mini for quick and accurate diagrams
+- ⚡ **Fast Generation**: Powered by OpenAI gpt-5-mini for quick and accurate diagrams
 - 🔄 **Customization**: Modify and regenerate diagrams with custom instructions
 - 🌐 **API Access**: Public API available for integration (WIP)
 
@@ -22,7 +22,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 - **Frontend**: Next.js, TypeScript, Tailwind CSS, ShadCN
 - **Backend**: FastAPI, Python, Server Actions
 - **Database**: PostgreSQL (with Drizzle ORM)
-- **AI**: OpenAI o4-mini
+- **AI**: OpenAI gpt-5-mini
 - **Deployment**: Vercel (Frontend), EC2 (Backend)
 - **CI/CD**: GitHub Actions
 - **Analytics**: PostHog, Api-Analytics
@@ -31,7 +31,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 
 I created this because I wanted to contribute to open-source projects but quickly realized their codebases are too massive for me to dig through manually, so this helps me get started - but it's definitely got many more use cases!
 
-Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with OpenAI's o4-mini! (Previously Claude 3.5 Sonnet)
+Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with OpenAI's gpt-5-mini.
 
 I extract information from the file tree and README for details and interactivity (you can click components to be taken to relevant files and directories)
 
@@ -64,7 +64,7 @@ pnpm i
 cp .env.example .env
 ```
 
-Then edit the `.env` file with your Anthropic API key and optional GitHub personal access token.
+Then edit the `.env` file with your OpenAI API key (`OPENAI_API_KEY`) and optional GitHub personal access token.
 
 4. Run backend
 
@@ -113,7 +113,7 @@ Shoutout to [Romain Courtois](https://github.com/cyclotruc)'s [Gitingest](https:
 
 I am currently hosting it for free with no rate limits though this is somewhat likely to change in the future.
 
-<!-- If you would like to bypass these, self-hosting instructions are provided. I also plan on adding an input for your own Anthropic API key.
+<!-- If you would like to bypass these, self-hosting instructions are provided. I also plan on adding an input for your own OpenAI API key.
 
 Diagram generation:
 
