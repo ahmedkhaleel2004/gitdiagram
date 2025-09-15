@@ -396,30 +396,49 @@ export function useDiagram(username: string, repo: string) {
     const svgElement = document.querySelector(".mermaid svg");
     if (!(svgElement instanceof SVGSVGElement)) return;
 
+    const svgElementCopy = svgElement.cloneNode(true) as SVGSVGElement; //Copy the SVG to avoid modifying the original
+
+    const removeZoomControls = svgElementCopy.querySelector(
+      "#svg-pan-zoom-controls",
+    );
+    removeZoomControls?.remove();
+
+    const svgZoomViewportGroup = svgElementCopy.querySelector(
+      ".svg-pan-zoom_viewport",
+    );
+
+    if (svgZoomViewportGroup) {
+      svgZoomViewportGroup.removeAttribute("transform");
+      svgZoomViewportGroup.removeAttribute("style");
+    }
+
     try {
       const canvas = document.createElement("canvas");
-      const scale = 4;
 
-      const bbox = svgElement.getBBox();
-      const transform = svgElement.getScreenCTM();
-      if (!transform) return;
+      const rootElement = svgElement.querySelector("g.root");
 
-      const width = Math.ceil(bbox.width * transform.a);
-      const height = Math.ceil(bbox.height * transform.d);
-      canvas.width = width * scale;
-      canvas.height = height * scale;
+      if (!rootElement) {
+        console.error("Could not find root element");
+        return;
+      }
+
+      const originalBbox = (rootElement as SVGGElement).getBBox();
+      const width = originalBbox.width;
+      const height = originalBbox.height;
+
+      canvas.width = width;
+      canvas.height = height;
 
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const svgData = new XMLSerializer().serializeToString(svgElementCopy);
       const img = new Image();
 
       img.onload = () => {
         ctx.fillStyle = "white";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.scale(scale, scale);
         ctx.drawImage(img, 0, 0, width, height);
 
         const a = document.createElement("a");
@@ -432,7 +451,7 @@ export function useDiagram(username: string, repo: string) {
 
       img.src =
         "data:image/svg+xml;base64," +
-        btoa(unescape(encodeURIComponent(svgData)));
+        btoa(decodeURIComponent(encodeURIComponent(svgData))); //removed deprecated unescape()
     } catch (error) {
       console.error("Error generating PNG:", error);
     }
