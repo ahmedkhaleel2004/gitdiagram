@@ -24,7 +24,12 @@ interface CostApiResponse {
 
 interface BranchesApiResponse {
   branches?: string[];
-  default_branch?: string;
+  defaultBranch?: string;
+  pagination?: {
+    current_page: number;
+    has_next: boolean;
+    total_count?: number;
+  };
   error?: string;
 }
 
@@ -32,6 +37,8 @@ export async function getRepoBranches(
   username: string,
   repo: string,
   github_pat?: string,
+  page = 1,
+  pageSize = 100,
 ): Promise<BranchesApiResponse> {
   try {
     const baseUrl =
@@ -43,7 +50,13 @@ export async function getRepoBranches(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ username, repo, github_pat }),
+      body: JSON.stringify({ 
+        username, 
+        repo, 
+        github_pat, 
+        page, 
+        pageSize 
+      }),
     });
 
     if (response.status === 429) {

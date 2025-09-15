@@ -35,14 +35,14 @@ def get_cached_github_data(username: str, repo: str, github_pat: str | None = No
     # Create a new service instance for each call with the appropriate PAT
     current_github_service = GitHubService(pat=github_pat)
 
-    default_branch = current_github_service.get_default_branch(username, repo)
-    if not default_branch:
-        default_branch = "main"  # fallback value
+    defaultBranch = current_github_service.get_default_branch(username, repo)
+    if not defaultBranch:
+        defaultBranch = "main"  # fallback value
 
     file_tree = current_github_service.get_github_file_paths_as_list(username, repo, branch)
     readme = current_github_service.get_github_readme(username, repo)
 
-    return {"default_branch": default_branch, "file_tree": file_tree, "readme": readme}
+    return {"defaultBranch": defaultBranch, "file_tree": file_tree, "readme": readme}
 
 @lru_cache(maxsize=100)
 def get_github_repo_branches(username: str, repo: str, github_pat: str | None = None):
@@ -56,12 +56,12 @@ def get_github_repo_branches(username: str, repo: str, github_pat: str | None = 
         raise HTTPException(status_code=404, detail="No branches found in repository")
 
     # Get the default branch as well to return it
-    default_branch = get_cached_github_data(username, repo, github_pat)["default_branch"]
-    if not default_branch:
-        default_branch = "main"
+    defaultBranch = get_cached_github_data(username, repo, github_pat)["defaultBranch"]
+    if not defaultBranch:
+        defaultBranch = "main"
     return {
         "branches": branches["branches"],
-        "default_branch": default_branch,
+        "defaultBranch": defaultBranch,
     }
                             
 class ApiRequest(BaseModel):
@@ -70,7 +70,9 @@ class ApiRequest(BaseModel):
     instructions: str = ""
     api_key: str | None = None
     github_pat: str | None = None
-    branch: str = "" 
+    branch: str = ""
+    page: int = 1
+    pageSize: int = 100 
 
 @router.post("/branches")
 async def get_repo_branches(request: Request, body: ApiRequest):
@@ -79,10 +81,20 @@ async def get_repo_branches(request: Request, body: ApiRequest):
         if not body.username or not body.repo:
             raise HTTPException(status_code=400, detail="Username and repo are required")
 
-        # Get branches from cached service
-        branches_data = get_github_repo_branches(
-            body.username, body.repo, body.github_pat
+        # Create a new service instance with the appropriate PAT
+        current_github_service = GitHubService(pat=body.github_pat)
+        
+        # Get branches with pagination
+        branches_data = current_github_service.get_github_repo_branches(
+            body.username, body.repo, body.page, body.pageSize
         )
+        
+        # Also get the default branch for compatibility
+        defaultBranch = current_github_service.get_default_branch(body.username, body.repo)
+        
+        # Add defaultBranch to the response for compatibility
+        branches_data["defaultBranch"] = defaultBranch
+        
         return branches_data
 
     except HTTPException as e:
@@ -176,7 +188,7 @@ async def generate_stream(request: Request, body: ApiRequest):
                 github_data = get_cached_github_data(
                     body.username, body.repo, body.github_pat, body.branch
                 )
-                default_branch = github_data["default_branch"]
+                defaultBranch = github_data["defaultBranch"]
                 file_tree = github_data["file_tree"]
                 readme = github_data["readme"]
 
@@ -281,7 +293,7 @@ async def generate_stream(request: Request, body: ApiRequest):
                     return
 
                 processed_diagram = process_click_events(
-                    mermaid_code, body.username, body.repo, default_branch
+                    mermaid_code, body.username, body.repo, defaultBranch
                 )
 
                 # Send final result

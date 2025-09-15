@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
@@ -14,8 +14,6 @@ import { ChevronUp, ChevronDown } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
 import { Dropdown } from "./ui/dropdown";
 import { getRepoBranches } from "~/lib/fetch-backend";
-import { set } from "zod";
-
 
 interface MainCardProps {
   isHome?: boolean;
@@ -49,47 +47,51 @@ export default function MainCard({
   loading,
 }: MainCardProps) {
   const [repoUrl, setRepoUrl] = useState("");
+  const [debouncedRepoUrl, setDebouncedRepoUrl] = useState("");
   const [error, setError] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [branches, setBranches] = useState<string[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
+  const [loadingMoreBranches, setLoadingMoreBranches] = useState(false);
+  const pageSize = 50;
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    hasNext: false,
+  });
   const [activeDropdown, setActiveDropdown] = useState<
     "customize" | "export" | null
   >(null);
   const router = useRouter();
-  const isInitialLoad = useRef<boolean>(true);
 
-  useEffect(() => {
-    if (username && repo) {
-      setRepoUrl(`https://github.com/${username}/${repo}`);
-    }
-  }, [username, repo]);
+  const fetchBranches = useCallback(
+    async (page: number) => {
+      if (!debouncedRepoUrl) {
+        setBranches([]);
+        setSelectedBranch("");
+        setError("");
+        setLoadingBranches(false);
+        return;
+      }
 
-  useEffect(() => {
-    if (loading) {
-      setActiveDropdown(null);
-    }
-  }, [loading]);
+      const { sanitizedUsername, sanitizedRepo } = verifyRepoUrl(debouncedRepoUrl) ?? {};
 
-  
-  //useEffect to get the branches list as soon as the repoUrl is entered in a debounced manner
-  useEffect(() => {
-    setBranches([]);
-    setSelectedBranch("");
-    setError("");
-
-    if (!repoUrl) {
-      setLoadingBranches(false);
-      return;
-    }
-
-    setLoadingBranches(true);
-    const fetchBranches = async () => {
-      const { sanitizedUsername, sanitizedRepo } = verifyRepoUrl(repoUrl) ?? {};
       if (!sanitizedUsername || !sanitizedRepo) {
         setError("Invalid repository URL format");
         setLoadingBranches(false);
         return;
+      }
+
+      if (page === 1) {
+        setLoadingBranches(true);
+        setBranches([]);
+        setSelectedBranch("");
+        setError("");
+        setPagination({
+          currentPage: 1,
+          hasNext: false,
+        });
+      } else {
+        setLoadingMoreBranches(true);
       }
 
       try {
@@ -99,44 +101,100 @@ export default function MainCard({
           sanitizedUsername,
           sanitizedRepo,
           githubPat,
+          page,
+          pageSize,
         );
 
         if (branchList.error) {
           setError(branchList.error);
-          setBranches([]);
-          setSelectedBranch("");
+          if (page === 1) {
+            setBranches([]);
+            setSelectedBranch("");
+          }
           return;
         }
-        setBranches(branchList.branches ?? []);
 
-        if (isInitialLoad.current && branch) {
-          setSelectedBranch(branch);
-          isInitialLoad.current = false;
+        if (page == 1) {
+          const branches = branchList.branches ?? [];
+          const defaultBranch = branchList.defaultBranch;
+          if (defaultBranch && !branches.includes(defaultBranch)) {
+            setBranches([defaultBranch, ...branches]);
+          } else {
+            setBranches(branches);
+          }
         } else {
-          setSelectedBranch(branchList.default_branch ?? "");
+          setBranches((prev) => {
+            const newBranches = (branchList.branches ?? []).filter(
+              branch => !prev.includes(branch)
+            );
+            return [...prev, ...newBranches];
+          });
         }
 
+        if (branchList.pagination) {
+          setPagination({
+            currentPage: branchList.pagination.current_page,
+            hasNext: branchList.pagination.has_next,
+          });
+        }
+
+        setSelectedBranch(branch ?? branchList.defaultBranch ?? "");
         setError("");
       } catch (error) {
         setError(error as string);
-        setBranches([]);
-        setSelectedBranch("");
+        if (page === 1) {
+          setBranches([]);
+          setSelectedBranch("");
+        }
       } finally {
-        setLoadingBranches(false);
+        if (page === 1) {
+          setLoadingBranches(false);
+        } else {
+          setLoadingMoreBranches(false);
+        }
       }
-    };
+    },
+    [debouncedRepoUrl, branch],
+  );
 
-    // Debounce the fetchBranches call to avoid too many requests
+  useEffect(() => {
+    void fetchBranches(1);
+  }, [fetchBranches]);
+
+  const loadMoreBranches = useCallback(async () => {
+    if (!debouncedRepoUrl || !pagination.hasNext || loadingMoreBranches) return;
+    await fetchBranches(pagination.currentPage + 1);
+  }, [
+    debouncedRepoUrl,
+    pagination.hasNext,
+    pagination.currentPage,
+    loadingMoreBranches,
+    fetchBranches,
+  ]);
+
+  useEffect(() => {
+    if (username && repo) {
+      setRepoUrl(`https://github.com/${username}/${repo}`);
+    }
+  }, [username, repo]);
+
+  // Debouncing
+  useEffect(() => {
     const handler = setTimeout(() => {
-      void fetchBranches();
-    }, 1000);
-
+      setDebouncedRepoUrl(repoUrl);
+    }, 600);
     return () => clearTimeout(handler);
-  }, [branch, repoUrl]);
+  }, [repoUrl]);
+
+  useEffect(() => {
+    if (loading) {
+      setActiveDropdown(null);
+    }
+  }, [loading]);
 
   //verify the repoUrl format and extract username and repo
   const verifyRepoUrl = (repoUrl: string) => {
-     const githubUrlPattern =
+    const githubUrlPattern =
       /^https?:\/\/github\.com\/([a-zA-Z0-9-_]+)\/([a-zA-Z0-9-_\.]+)\/?$/;
     const match = githubUrlPattern.exec(repoUrl.trim());
 
@@ -200,6 +258,9 @@ export default function MainCard({
             selectedBranch={selectedBranch}
             onSelectBranch={setSelectedBranch}
             loadingBranches={loadingBranches}
+            loadingMoreBranches={loadingMoreBranches}
+            hasMoreBranches={pagination.hasNext}
+            onLoadMore={loadMoreBranches}
             setError={setError}
           />
           <Button

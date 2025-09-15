@@ -25,6 +25,9 @@ interface DropdownProps {
   selectedBranch: string | null;
   onSelectBranch: (branch: string) => void;
   loadingBranches: boolean;
+  loadingMoreBranches?: boolean;
+  hasMoreBranches?: boolean;
+  onLoadMore: () => void;
   setError: (error: string) => void;
 }
 
@@ -33,32 +36,38 @@ export const Dropdown: React.FC<DropdownProps> = ({
   selectedBranch,
   onSelectBranch,
   loadingBranches,
-  setError
+  loadingMoreBranches = false,
+  hasMoreBranches = false,
+  onLoadMore,
+  setError,
 }) => {
   const [open, setOpen] = React.useState(false);
   const [shouldOpen, setShouldOpen] = React.useState(false);
-  // this effect is used to check if the dropdown should open
-  //depending on if the branches array is empty or not
-  // if branches are empty, we don't allow the dropdown to open
-  // if branches are not empty, we allow the dropdown to open
-  // this is useful to prevent the dropdown from opening when there are no branches
-  // and to avoid unnecessary API calls or UI updates
   useEffect(() => {
     if (branches.length) {
       setShouldOpen(true);
-      setError(""); // Clear error when branches are available
+      setError("");
     } else {
       setShouldOpen(false);
-      setOpen(false); // Close the dropdown if branches are empty
-      // Do not reset selectedBranch here; let parent control it
+      setOpen(false);
     }
-  },[branches, setError]);
+  }, [branches, setError]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (loadingMoreBranches || !hasMoreBranches) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    
+    if (distanceFromBottom <= 100) {
+      onLoadMore();
+    }
+  };
 
   // Show error if user tries to open dropdown with no branches
   const handleOpenChange = (nextOpen: boolean) => {
-    if (loadingBranches) return; // Prevent opening while loading branches
+    if (loadingBranches) return; 
     if (nextOpen && !shouldOpen) {
-      // Show error (could use a toast, alert, or set a parent error state)
       setError("Please enter a valid GitHub repository URL first.");
       setOpen(false);
       return;
@@ -86,8 +95,8 @@ export const Dropdown: React.FC<DropdownProps> = ({
       </PopoverTrigger>
       <PopoverContent className="border-2 border-black shadow-[4px_4px_0_0_#000000]">
         <Command className="">
-          <CommandInput placeholder="Search branch..." className="h-9" />
-          <CommandList>
+          <CommandInput placeholder="Search branch..." className="h-9"/>
+          <CommandList onScroll={handleScroll}>
             {branches.length === 0 ? (
               <CommandEmpty>No branches found.</CommandEmpty>
             ) : (
@@ -111,6 +120,13 @@ export const Dropdown: React.FC<DropdownProps> = ({
                   </CommandItem>
                 ))}
               </CommandGroup>
+            )}
+            {hasMoreBranches && (
+              <div className="border-t border-gray-200 p-2 text-center text-sm text-gray-500">
+                {loadingMoreBranches
+                  ? "Loading more branches..."
+                  : "End of list"}
+              </div>
             )}
           </CommandList>
         </Command>
