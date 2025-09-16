@@ -124,10 +124,8 @@ export default function MainCard({
           }
         } else {
           setBranches((prev) => {
-            const newBranches = (branchList.branches ?? []).filter(
-              branch => !prev.includes(branch)
-            );
-            return [...prev, ...newBranches];
+            const newBranches = branchList.branches ?? [];
+            return Array.from(new Set([...prev, ...newBranches]));
           });
         }
 

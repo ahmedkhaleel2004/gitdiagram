@@ -37,6 +37,6 @@ export const diagramCache = createTable(
     branch: varchar("branch", { length: 512 }).notNull()
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.username, table.repo] }),
+    pk: primaryKey({ columns: [table.username, table.repo, table.branch] }),
   }),
 );
