@@ -21,10 +21,10 @@ export const createTable = pgTableCreator((name) => `gitdiagram_${name}`);
 export const diagramCache = createTable(
   "diagram_cache",
   {
-    username: varchar("username", { length: 256 }).notNull(),
+    username: varchar("username", { length: 512 }).notNull(),
     repo: varchar("repo", { length: 256 }).notNull(),
-    diagram: varchar("diagram", { length: 10000 }).notNull(), // Adjust length as needed
-    explanation: varchar("explanation", { length: 10000 })
+    diagram: varchar("diagram", { length: 100000 }).notNull(), // Adjust length as needed
+    explanation: varchar("explanation", { length: 50000 })
       .notNull()
       .default("No explanation provided"), // Default explanation to avoid data loss of existing rows
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -34,8 +34,9 @@ export const diagramCache = createTable(
       () => new Date(),
     ),
     usedOwnKey: boolean("used_own_key").default(false),
+    branch: varchar("branch", { length: 512 }).notNull()
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.username, table.repo] }),
+    pk: primaryKey({ columns: [table.username, table.repo, table.branch] }),
   }),
 );

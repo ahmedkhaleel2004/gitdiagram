@@ -22,9 +22,59 @@ interface CostApiResponse {
   cost?: string;
 }
 
+interface BranchesApiResponse {
+  branches?: string[];
+  defaultBranch?: string;
+  pagination?: {
+    current_page: number;
+    has_next: boolean;
+    total_count?: number;
+  };
+  error?: string;
+}
+
+export async function getRepoBranches(
+  username: string,
+  repo: string,
+  github_pat?: string,
+  page = 1,
+  pageSize = 100,
+): Promise<BranchesApiResponse> {
+  try {
+    const baseUrl =
+      process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
+    const url = new URL(`${baseUrl}/generate/branches`);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ 
+        username, 
+        repo, 
+        github_pat, 
+        page, 
+        pageSize 
+      }),
+    });
+
+    if (response.status === 429) {
+      return { error: "Rate limit exceeded. Please try again later." };
+    }
+
+    const data = (await response.json()) as BranchesApiResponse;
+    return data;
+  } catch (error) {
+    console.error("Error fetching branches:", error);
+    return { error: "Failed to fetch branches. Please try again later." };
+  }
+}
+
 export async function generateAndCacheDiagram(
   username: string,
   repo: string,
+  branch:string,
   github_pat?: string,
   instructions?: string,
   api_key?: string,
@@ -45,6 +95,7 @@ export async function generateAndCacheDiagram(
         instructions: instructions ?? "",
         api_key: api_key,
         github_pat: github_pat,
+        branch: branch ?? "",
       }),
     });
 
@@ -62,6 +113,7 @@ export async function generateAndCacheDiagram(
     await cacheDiagramAndExplanation(
       username,
       repo,
+      branch,
       data.diagram!,
       data.explanation!,
     );
@@ -76,6 +128,7 @@ export async function modifyAndCacheDiagram(
   username: string,
   repo: string,
   instructions: string,
+  branch: string
 ): Promise<ModifyApiResponse> {
   try {
     // First get the current diagram from cache
@@ -101,6 +154,7 @@ export async function modifyAndCacheDiagram(
         instructions: instructions,
         current_diagram: currentDiagram,
         explanation: explanation,
+        branch: branch ?? "",
       }),
     });
 
@@ -118,6 +172,7 @@ export async function modifyAndCacheDiagram(
     await cacheDiagramAndExplanation(
       username,
       repo,
+      branch,
       data.diagram!,
       explanation,
     );
@@ -131,6 +186,7 @@ export async function modifyAndCacheDiagram(
 export async function getCostOfGeneration(
   username: string,
   repo: string,
+  branch: string,
   instructions: string,
   github_pat?: string,
 ): Promise<CostApiResponse> {
@@ -149,6 +205,7 @@ export async function getCostOfGeneration(
         repo,
         github_pat: github_pat,
         instructions: instructions ?? "",
+        branch:branch ?? "",
       }),
     });
 

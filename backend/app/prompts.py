@@ -187,11 +187,20 @@ flowchart TD
 ```
 
 EXTREMELY Important notes on syntax!!! (PAY ATTENTION TO THIS):
-- Make sure to add colour to the diagram!!! This is extremely critical.
+- Make sure to add colour to the diagram!!! This is extremely critical. Not Following these rules will result in a syntax error!
 - In Mermaid.js syntax, we cannot include special characters for nodes without being inside quotes! For example: `EX[/api/process (Backend)]:::api` and `API -->|calls Process()| Backend` are two examples of syntax errors. They should be `EX["/api/process (Backend)"]:::api` and `API -->|"calls Process()"| Backend` respectively. Notice the quotes. This is extremely important. Make sure to include quotes for any string that contains special characters.
 - In Mermaid.js syntax, you cannot apply a class style directly within a subgraph declaration. For example: `subgraph "Frontend Layer":::frontend` is a syntax error. However, you can apply them to nodes within the subgraph. For example: `Example["Example Node"]:::frontend` is valid, and `class Example1,Example2 frontend` is valid.
-- In Mermaid.js syntax, there cannot be spaces in the relationship label names. For example: `A -->| "example relationship" | B` is a syntax error. It should be `A -->|"example relationship"| B` 
+- In Mermaid.js syntax, connections should be following the format `A -->|"relationship"| B` without spaces around the relationship label. For example: `A -->|"relationship"| B` is valid, and `A -->| "relationship" | B` is a syntax error.
+- In Mermaid.js syntax, there cannot be spaces in the relationship label names. For example: `A -->| "example relationship" | B` is a syntax error. It should be `A -->|"example relationship"| B`.
 - In Mermaid.js syntax, you cannot give subgraphs an alias like nodes. For example: `subgraph A "Layer A"` is a syntax error. It should be `subgraph "Layer A"` 
+- In Mermaid.js syntax, you cannot use "direction TD", replace "direction TD" with "direction TB" everwhere neeeded. Very critical information , remember it.
+   -- Example `subgraph "Layer A" direction TD` is a syntax error. It should be `subgraph "Layer A" direction TB`
+- In Mermaid.js syntax, you cannot use special characters in node names and no examples inside the nodes. 
+   -- Example `A[("Example Node", (<text>))] and A[("Example Node"), (<text>)]` is a syntax error. It should be `A["Example Node"]:::example`
+- In Mermaid.js syntax, you cannot use special characters in comments and no examples inside the comments.
+   -- Example `%% This is an example comment with special characters: @#$%^&*()[]{};:'",.<>?` is a syntax error. It should be `%% This is an example comment with special characters: @#$%^&*()[]{};:'",.<>?`
+- In Mermaid.js syntax, you cannot add comments after any code line, For example: AI_ModelProviders_Group -->|"Returns Diagram Code"| BE_App %% Simplified return path is a syntax error. It should be AI_ModelProviders_Group -->|"Returns Diagram Code"| BE_App without any comments after it. It is very important, remember it!
+- In Mermaid.js syntax, if you encounter the keyword "end" in the code, make sure not to add any comments after it. For example: `end %% This is an example comment` is a syntax error. It should be `end` without any comments after it!
 """
 # ^^^ note: ive generated a few diagrams now and claude still writes incorrect mermaid code sometimes. in the future, refer to those generated diagrams and add important instructions to the prompt above to avoid those mistakes. examples are best.
 

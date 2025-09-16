@@ -98,6 +98,64 @@ class GitHubService:
                 f"Failed to check repository: {response.status_code}, {response.json()}"
             )
 
+    def get_github_repo_branches(self, username, repo, page=1, pageSize=100):
+        """
+        Get branches of a GitHub repository with pagination.
+
+        Args:
+            username (str): The GitHub username or organization name
+            repo (str): The repository name
+            page (int): Page number to fetch (default: 1)
+            pageSize (int): Number of branches per page (max: 100, default: 100)
+
+        Returns:
+            dict: A dictionary containing branch names, pagination info, and default branch.
+        """
+        self._check_repository_exists(username, repo)
+
+        # Ensure pageSize doesn't exceed GitHub's limit
+        pageSize = min(pageSize, 100)
+        
+        api_url = f"https://api.github.com/repos/{username}/{repo}/branches"
+        params = {
+            "page": page,
+            "pageSize": pageSize
+        }
+        
+        response = requests.get(api_url, headers=self._get_headers(), params=params)
+
+        if response.status_code == 200:
+            branches_data = response.json()
+            branches = [branch["name"] for branch in branches_data]
+            
+            # Parse pagination info from headers
+            link_header = response.headers.get('Link', '')
+            has_next = 'rel="next"' in link_header
+            
+            # Get total count if available (not always provided by GitHub)
+            total_count = None
+            if 'Link' in response.headers:
+                # Try to extract total from last page link if available
+                import re
+                last_match = re.search(r'page=(\d+)>; rel="last"', link_header)
+                if last_match:
+                    last_page = int(last_match.group(1))
+                    # Estimate total (this is approximate)
+                    total_count = (last_page - 1) * pageSize + len(branches_data)
+            
+            return {
+                "branches": branches,
+                "pagination": {
+                    "current_page": page,
+                    "has_next": has_next,
+                    "total_count": total_count
+                }
+            }
+
+        raise Exception(
+            f"Failed to fetch branches: {response.status_code}, {response.json()}"
+        )
+
     def get_default_branch(self, username, repo):
         """Get the default branch of the repository."""
         api_url = f"https://api.github.com/repos/{username}/{repo}"
@@ -107,7 +165,7 @@ class GitHubService:
             return response.json().get("default_branch")
         return None
 
-    def get_github_file_paths_as_list(self, username, repo):
+    def get_github_file_paths_as_list(self, username, repo, branch):
         """
         Fetches the file tree of an open-source GitHub repository,
         excluding static files and generated code.
@@ -160,8 +218,11 @@ class GitHubService:
 
             return not any(pattern in path.lower() for pattern in excluded_patterns)
 
-        # Try to get the default branch first
-        branch = self.get_default_branch(username, repo)
+        #if the branch is empty, try to get the default branch
+        if not branch:
+            branch = self.get_default_branch(username, repo)
+        
+        # Finding the file tree for the specified branch
         if branch:
             api_url = f"https://api.github.com/repos/{
                 username}/{repo}/git/trees/{branch}?recursive=1"

@@ -42,6 +42,7 @@ export async function getCachedExplanation(username: string, repo: string) {
 export async function cacheDiagramAndExplanation(
   username: string,
   repo: string,
+  branch: string,
   diagram: string,
   explanation: string,
   usedOwnKey = false,
@@ -55,6 +56,7 @@ export async function cacheDiagramAndExplanation(
         diagram,
         explanation,
         usedOwnKey,
+        branch,
       })
       .onConflictDoUpdate({
         target: [diagramCache.username, diagramCache.repo],
@@ -63,6 +65,7 @@ export async function cacheDiagramAndExplanation(
           explanation,
           usedOwnKey,
           updatedAt: new Date(),
+          branch, 
         },
       });
   } catch (error) {
