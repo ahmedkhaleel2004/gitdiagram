@@ -94,25 +94,25 @@ export default function MainCard({
   };
 
   return (
-    <Card className="relative w-full max-w-3xl border-[3px] border-black bg-purple-200 p-4 shadow-[8px_8px_0_0_#000000] sm:p-8">
+    <Card className="relative w-full max-w-3xl border-[3px] border border-l-[3px] border-t-[3px] bg-card p-4 shadow-[8px_8px_0_0_#000000] sm:p-8">
       <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <Input
             placeholder="https://github.com/username/repo"
-            className="flex-1 rounded-md border-[3px] border-black px-3 py-4 text-base font-bold shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg"
+            className="flex-1 rounded-md border-[3px] border px-3 py-4 text-base font-bold text-foreground shadow-[4px_4px_0_0_#000000] placeholder:text-base placeholder:font-normal placeholder:text-muted-foreground sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
             required
           />
           <Button
             type="submit"
-            className="border-[3px] border-black bg-purple-400 p-4 px-4 text-base text-black shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:bg-purple-400 sm:p-6 sm:px-6 sm:text-lg"
+            className="border-[3px] border bg-primary p-4 px-4 text-base text-primary-foreground shadow-[4px_4px_0_0_#000000] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:transform hover:opacity-90 sm:p-6 sm:px-6 sm:text-lg"
           >
             Diagram
           </Button>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
 
         {/* Dropdowns Container */}
         {!isHome && (
@@ -131,10 +131,10 @@ export default function MainCard({
                           e.preventDefault();
                           handleDropdownToggle("customize");
                         }}
-                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
+                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border px-4 py-2 font-medium text-foreground transition-colors sm:max-w-[250px] ${
                           activeDropdown === "customize"
-                            ? "bg-purple-400"
-                            : "bg-purple-300 hover:bg-purple-400"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary hover:opacity-90"
                         }`}
                       >
                         <span>Customize Diagram</span>
@@ -153,10 +153,10 @@ export default function MainCard({
                           e.preventDefault();
                           handleDropdownToggle("export");
                         }}
-                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
+                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border px-4 py-2 font-medium text-foreground transition-colors sm:max-w-[250px] ${
                           activeDropdown === "export"
-                            ? "bg-purple-400"
-                            : "bg-purple-300 hover:bg-purple-400"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary hover:opacity-90"
                         }`}
                       >
                         <span>Export Diagram</span>
@@ -170,7 +170,7 @@ export default function MainCard({
                   )}
                   {lastGenerated && (
                     <>
-                      <label className="font-medium text-black">
+                      <label className="font-medium text-foreground">
                         Enable Zoom
                       </label>
                       <Switch
@@ -214,7 +214,7 @@ export default function MainCard({
         {/* Example Repositories */}
         {isHome && (
           <div className="space-y-2">
-            <div className="text-sm text-gray-700 sm:text-base">
+            <div className="text-sm text-muted-foreground sm:text-base">
               Try these example repositories:
             </div>
             <div className="flex flex-wrap gap-2">
@@ -222,7 +222,7 @@ export default function MainCard({
                 <Button
                   key={name}
                   variant="outline"
-                  className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base"
+                  className="border-2 border bg-primary text-sm text-primary-foreground transition-transform hover:-translate-y-0.5 hover:transform hover:opacity-90 sm:text-base"
                   onClick={(e) => handleExampleClick(path, e)}
                 >
                   {name}
@@ -236,7 +236,7 @@ export default function MainCard({
       {/* Decorative Sparkle */}
       <div className="absolute -bottom-8 -left-12 hidden sm:block">
         <Sparkles
-          className="h-20 w-20 fill-sky-400 text-black"
+          className="h-20 w-20 fill-primary text-foreground"
           strokeWidth={0.6}
           style={{ transform: "rotate(-15deg)" }}
         />
