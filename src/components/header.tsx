@@ -12,10 +12,43 @@ export function Header() {
     useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
   const [starCount, setStarCount] = useState<number | null>(null);
+  const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
     void getStarCount().then(setStarCount);
   }, []);
+
+  // Initialize theme from localStorage and apply class on <html>
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const saved = localStorage.getItem("theme");
+    const html = document.documentElement;
+    if (saved === "dark") {
+      html.classList.remove("light-mode");
+      html.classList.add("dark-mode");
+      setIsDark(true);
+    } else {
+      html.classList.remove("dark-mode");
+      html.classList.add("light-mode");
+      setIsDark(false);
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    if (typeof document === "undefined") return;
+    const html = document.documentElement;
+    if (isDark) {
+      html.classList.remove("dark-mode");
+      html.classList.add("light-mode");
+      localStorage.setItem("theme", "light");
+      setIsDark(false);
+    } else {
+      html.classList.remove("light-mode");
+      html.classList.add("dark-mode");
+      localStorage.setItem("theme", "dark");
+      setIsDark(true);
+    }
+  };
 
   const formatStarCount = (count: number | null) => {
     if (!count) return "10.0k";
@@ -37,14 +70,14 @@ export function Header() {
   };
 
   return (
-    <header className="border-b-[3px] border-black">
+    <header className="border-b-[3px] border">
       <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-8">
         <Link href="/" className="flex items-center">
           <span className="text-lg font-semibold sm:text-xl">
-            <span className="text-black transition-colors duration-200 hover:text-gray-600">
+            <span className="text-foreground transition-colors duration-200">
               Git
             </span>
-            <span className="text-purple-600 transition-colors duration-200 hover:text-purple-500">
+            <span className="text-primary transition-opacity duration-200 hover:opacity-80">
               Diagram
             </span>
           </span>
@@ -52,7 +85,7 @@ export function Header() {
         <nav className="flex items-center gap-3 sm:gap-6">
           <span
             onClick={() => setIsApiKeyDialogOpen(true)}
-            className="cursor-pointer text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600"
+            className="cursor-pointer text-sm font-medium text-foreground transition-transform hover:translate-y-[-2px] hover:text-primary"
           >
             <span className="flex items-center sm:hidden">
               <span>API Key</span>
@@ -63,20 +96,29 @@ export function Header() {
           </span>
           <span
             onClick={() => setIsPrivateReposDialogOpen(true)}
-            className="cursor-pointer text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600"
+            className="cursor-pointer text-sm font-medium text-foreground transition-transform hover:translate-y-[-2px] hover:text-primary"
           >
             <span className="sm:hidden">Private Repos</span>
             <span className="hidden sm:inline">Private Repos</span>
           </span>
           <Link
             href="https://github.com/ahmedkhaleel2004/gitdiagram"
-            className="flex items-center gap-1 text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600 sm:gap-2"
+            className="flex items-center gap-1 text-sm font-medium text-foreground transition-transform hover:translate-y-[-2px] hover:text-primary sm:gap-2"
           >
             <FaGithub className="h-5 w-5" />
             <span className="hidden sm:inline">GitHub</span>
           </Link>
-          <span className="flex items-center gap-1 text-sm font-medium text-black">
-            <span className="text-amber-400">★</span>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            title={isDark ? "Light mode" : "Dark mode"}
+            className="flex h-10 w-10 items-center justify-center rounded-full border text-lg transition-colors hover:bg-accent"
+          >
+            <span>{isDark ? "🌙" : "☀️"}</span>
+          </button>
+          <span className="flex items-center gap-1 text-sm font-medium text-foreground">
+            <span className="text-accent">★</span>
             {formatStarCount(starCount)}
           </span>
         </nav>

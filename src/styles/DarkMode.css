@@ -1,0 +1,66 @@
+/* Standalone theme variables. Apply `light-mode` or `dark-mode` on a root element
+   (e.g., <html> or <body> wrapper) to enable. This file does not modify globals. */
+
+/* Light: Original GitDiagram purple theme */
+.light-mode {
+  /* Original GitDiagram colors */
+  --background: 269 100% 95%; /* Light purple background #e6d5ff */
+  --foreground: 0 0% 0%;      /* Pure black text */
+  --card: 270 100% 88%;        /* Purple card #d4b3ff */
+  --card-foreground: 0 0% 0%;
+  --popover: 270 100% 88%;
+  --popover-foreground: 0 0% 0%;
+  --primary: 276 100% 73%;     /* Purple #a366ff */
+  --primary-foreground: 0 0% 0%;
+  --secondary: 270 100% 93%;   /* Light purple #e6ccff */
+  --secondary-foreground: 0 0% 0%;
+  --muted: 0 0% 96.1%;
+  --muted-foreground: 0 0% 45.1%;
+  --accent: 276 59% 48%;       /* Purple accent #7b3fc2 */
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 0%;           /* Solid black borders */
+  --input: 0 0% 0%;
+  --ring: 276 59% 48%;
+  --chart-1: 276 59% 48%;
+  --chart-2: 270 50% 60%;
+  --chart-3: 260 45% 55%;
+  --chart-4: 280 50% 65%;
+  --chart-5: 290 45% 60%;
+}
+
+/* Dark: Custom turquoise theme */
+.dark-mode {
+  --background: 0 0% 3.9%;  /* near-black */
+  --foreground: 0 0% 98%;   /* near-white */
+  --card: 0 0% 6%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 6%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 174 72% 45%; /* turquoise */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 14.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 0 0% 14.9%;
+  --muted-foreground: 0 0% 63.9%;
+  --accent: 174 72% 45%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 18%;
+  --input: 0 0% 18%;
+  --ring: 174 72% 45%;
+  --chart-1: 174 72% 45%;
+  --chart-2: 174 60% 55%;
+  --chart-3: 174 50% 35%;
+  --chart-4: 190 70% 50%;
+  --chart-5: 160 65% 45%;
+}
+
+/* Optional: background/text application when either mode is active. Remove if undesired. */
+.light-mode,
+.dark-mode {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
