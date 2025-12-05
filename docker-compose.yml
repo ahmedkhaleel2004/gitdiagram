@@ -2,7 +2,7 @@ services:
   api:
     build: 
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: ./backend/Dockerfile
     ports:
       - "8000:8000"
     volumes:
@@ -11,4 +11,36 @@ services:
       - .env
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development} # Default to development if not set
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - NEXT_PUBLIC_API_DEV_URL=${NEXT_PUBLIC_API_DEV_URL:-http://localhost:8000}
+      - POSTGRES_URL=${POSTGRES_URL:-postgresql://postgres:postgres@postgres:5432/gitdiagram}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-gitdiagram}
     restart: unless-stopped
+  postgres:
+    image: postgres:17
+    container_name: postgres_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-gitdiagram}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - NEXT_PUBLIC_API_DEV_URL=${NEXT_PUBLIC_API_DEV_URL:-http://localhost:8000}
+      - POSTGRES_URL=${POSTGRES_URL:-postgresql://postgres:postgres@postgres:5432/gitdiagram}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    
