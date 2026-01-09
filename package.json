@@ -35,7 +35,7 @@
     "ldrs": "^1.0.2",
     "lucide-react": "^0.468.0",
     "mermaid": "^11.4.1",
-    "next": "^15.0.1",
+    "next": "15.0.7",
     "next-themes": "^0.4.6",
     "postgres": "^3.4.4",
     "posthog-js": "^1.203.1",
