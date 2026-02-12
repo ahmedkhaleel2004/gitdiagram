@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import mermaid from "mermaid";
 // Remove the direct import
 // import svgPanZoom from "svg-pan-zoom";
@@ -51,7 +51,6 @@ const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
           try {
             // Dynamically import svg-pan-zoom only when needed in the browser
             const svgPanZoom = (await import("svg-pan-zoom")).default;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             svgPanZoom(svgElement, {
               zoomEnabled: true,
               controlIconsEnabled: true,

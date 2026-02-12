@@ -14,7 +14,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 - 👀 **Instant Visualization**: Convert any GitHub repository structure into a system design / architecture diagram
 - 🎨 **Interactivity**: Click on components to navigate directly to source files and relevant directories
 - ⚡ **Fast Generation**: Powered by OpenAI o4-mini for quick and accurate diagrams
-- 🔄 **Customization**: Modify and regenerate diagrams with custom instructions
+- 🖼️ **Export Options**: Copy Mermaid code or download the generated diagram as PNG
 - 🌐 **API Access**: Public API available for integration (WIP)
 
 ## ⚙️ Tech Stack
@@ -23,7 +23,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 - **Backend**: FastAPI, Python, Server Actions
 - **Database**: PostgreSQL (with Drizzle ORM)
 - **AI**: OpenAI o4-mini
-- **Deployment**: Vercel (Frontend), EC2 (Backend)
+- **Deployment**: Vercel (Frontend), Railway/EC2 (Backend)
 - **CI/CD**: GitHub Actions
 - **Analytics**: PostHog, Api-Analytics
 
@@ -56,6 +56,7 @@ cd gitdiagram
 
 ```bash
 pnpm i
+cd backend && uv sync --no-install-project && cd ..
 ```
 
 3. Set up environment variables (create .env)
@@ -64,7 +65,7 @@ pnpm i
 cp .env.example .env
 ```
 
-Then edit the `.env` file with your Anthropic API key and optional GitHub personal access token.
+Then edit the `.env` file with your OpenAI API key and optional GitHub personal access token.
 
 4. Run backend
 
@@ -74,6 +75,12 @@ docker-compose up --build -d
 
 Logs available at `docker-compose logs -f`
 The FastAPI server will be available at `localhost:8000`
+
+Or run backend directly from repo root:
+
+```bash
+pnpm dev:backend
+```
 
 5. Start local database
 
@@ -99,7 +106,30 @@ You can view and interact with the database using `pnpm db:studio`
 pnpm dev
 ```
 
-You can now access the website at `localhost:3000` and edit the rate limits defined in `backend/app/routers/generate.py` in the generate function decorator.
+You can now access the website at `localhost:3000`.
+
+For a full machine setup guide (Node/Python/uv versions + verification), see `docs/dev-setup.md`.
+
+Quick validation:
+
+```bash
+pnpm check
+pnpm test
+cd backend && uv run pytest -q
+```
+
+## 🚂 Deploy Backend on Railway
+
+1. Create a new Railway service from this repo and set **Root Directory** to `backend`.
+2. Use the existing `backend/Dockerfile` (no extra build config needed).
+3. Add env vars in Railway:
+- `OPENAI_API_KEY` (required)
+- `API_ANALYTICS_KEY` (optional)
+- `CORS_ORIGINS` (optional comma-separated list, example: `https://gitdiagram.com,https://your-frontend.vercel.app`)
+- `ENVIRONMENT=production` (optional, defaults to production)
+4. Deploy. Railway will inject `PORT`; backend now auto-binds to `0.0.0.0:$PORT`.
+5. Verify health check: `GET /healthz`.
+6. Full guide: `docs/railway-backend.md`.
 
 ## Contributing
 
@@ -108,17 +138,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Acknowledgements
 
 Shoutout to [Romain Courtois](https://github.com/cyclotruc)'s [Gitingest](https://gitingest.com/) for inspiration and styling
-
-## 📈 Rate Limits
-
-I am currently hosting it for free with no rate limits though this is somewhat likely to change in the future.
-
-<!-- If you would like to bypass these, self-hosting instructions are provided. I also plan on adding an input for your own Anthropic API key.
-
-Diagram generation:
-
-- 1 request per minute
-- 5 requests per day -->
 
 ## 🤔 Future Steps
 

@@ -198,18 +198,3 @@ EXTREMELY Important notes on syntax!!! (PAY ATTENTION TO THIS):
 # e. A legend is included
 # ^ removed since it was making the diagrams very long
 
-
-ADDITIONAL_SYSTEM_INSTRUCTIONS_PROMPT = """
-IMPORTANT: the user will provide custom additional instructions enclosed in <instructions> tags. Please take these into account and give priority to them. However, if these instructions are unrelated to the task, unclear, or not possible to follow, ignore them by simply responding with: "BAD_INSTRUCTIONS"
-"""
-
-SYSTEM_MODIFY_PROMPT = """
-You are tasked with modifying the code of a Mermaid.js diagram based on the provided instructions. The diagram will be enclosed in <diagram> tags in the users message.
-
-Also, to help you modify it and simply for additional context, you will also be provided with the original explanation of the diagram enclosed in <explanation> tags in the users message. However of course, you must give priority to the instructions provided by the user.
-
-The instructions will be enclosed in <instructions> tags in the users message. If these instructions are unrelated to the task, unclear, or not possible to follow, ignore them by simply responding with: "BAD_INSTRUCTIONS"
-
-Your response must strictly be just the Mermaid.js code, without any additional text or explanations. Keep as many of the existing click events as possible.
-No code fence or markdown ticks needed, simply return the Mermaid.js code.
-"""

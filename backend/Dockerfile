@@ -1,28 +1,24 @@
-# Use Python 3.12 slim image for smaller size
 FROM python:3.12-slim
 
-# Set working directory
 WORKDIR /app
+ENV ENVIRONMENT=production
+ENV PORT=8000
 
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
+# Install uv inside the image
+COPY --from=ghcr.io/astral-sh/uv:0.5.24 /uv /uvx /bin/
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy dependency manifests first for better layer caching
+COPY pyproject.toml uv.lock ./
+
+# Install pinned runtime dependencies from uv lockfile
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy application code
 COPY . .
-
-# Create and set permissions for entrypoint script
-COPY entrypoint.sh /app/
 RUN chmod +x /app/entrypoint.sh && \
-    # Ensure the script uses Unix line endings
     sed -i 's/\r$//' /app/entrypoint.sh && \
-    # Double check permissions
     ls -la /app/entrypoint.sh
 
-# Expose port
 EXPOSE 8000
 
-# Use entrypoint script
 CMD ["/bin/bash", "/app/entrypoint.sh"]

@@ -48,6 +48,8 @@ yarn-error.log*
 
 __pycache__/
 venv
+backend/.venv
+.venv
 
 # vscode
 .vscode/
