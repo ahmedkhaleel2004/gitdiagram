@@ -1,4 +1,4 @@
-import { parseSSEChunk } from "~/features/diagram/sse";
+import { parseSSEStreamBuffer } from "~/features/diagram/sse";
 import type {
   DiagramCostResponse,
   DiagramStreamMessage,
@@ -11,16 +11,28 @@ interface StreamHandlers {
   ) => boolean | void | Promise<boolean | void>;
 }
 
-const getApiBaseUrl = () =>
-  process.env.NEXT_PUBLIC_API_DEV_URL ?? "https://api.gitdiagram.com";
+const getGenerateBasePath = () => {
+  const useLegacyBackend =
+    process.env.NEXT_PUBLIC_USE_LEGACY_BACKEND?.trim() === "true";
+  if (!useLegacyBackend) {
+    return "/api/generate";
+  }
+
+  const legacyApiBase = process.env.NEXT_PUBLIC_API_DEV_URL?.trim();
+  if (legacyApiBase) {
+    return `${legacyApiBase.replace(/\/$/, "")}/generate`;
+  }
+  return "/api/generate";
+};
 
 export async function getGenerationCost(
   username: string,
   repo: string,
   githubPat?: string,
+  apiKey?: string,
 ): Promise<DiagramCostResponse> {
   try {
-    const response = await fetch(`${getApiBaseUrl()}/generate/cost`, {
+    const response = await fetch(`${getGenerateBasePath()}/cost`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -28,6 +40,7 @@ export async function getGenerationCost(
       body: JSON.stringify({
         username,
         repo,
+        api_key: apiKey,
         github_pat: githubPat,
       }),
     });
@@ -52,7 +65,7 @@ export async function streamDiagramGeneration(
   params: StreamGenerationParams,
   handlers: StreamHandlers,
 ): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/generate/stream`, {
+  const response = await fetch(`${getGenerateBasePath()}/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -75,16 +88,26 @@ export async function streamDiagramGeneration(
   }
 
   try {
+    let streamBuffer = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const chunk = new TextDecoder().decode(value);
-      const messages = parseSSEChunk(chunk);
+      streamBuffer += new TextDecoder().decode(value);
+      const { messages, remainder } = parseSSEStreamBuffer(streamBuffer);
+      streamBuffer = remainder;
       for (const message of messages) {
         const shouldContinue = await handlers.onMessage(message);
         if (shouldContinue === false) {
           return;
         }
+      }
+    }
+
+    const { messages } = parseSSEStreamBuffer(`${streamBuffer}\n\n`);
+    for (const message of messages) {
+      const shouldContinue = await handlers.onMessage(message);
+      if (shouldContinue === false) {
+        return;
       }
     }
   } finally {

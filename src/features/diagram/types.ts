@@ -10,6 +10,10 @@ export type DiagramStreamStatus =
   | "diagram_sent"
   | "diagram"
   | "diagram_chunk"
+  | "diagram_fixing"
+  | "diagram_fix_attempt"
+  | "diagram_fix_chunk"
+  | "diagram_fix_validating"
   | "complete"
   | "error";
 
@@ -21,6 +25,10 @@ export interface DiagramStreamState {
   diagram?: string;
   error?: string;
   errorCode?: string;
+  parserError?: string;
+  fixAttempt?: number;
+  fixMaxAttempts?: number;
+  fixDiagramDraft?: string;
 }
 
 export interface DiagramStreamMessage {
@@ -32,6 +40,9 @@ export interface DiagramStreamMessage {
   diagram?: string;
   error?: string;
   error_code?: string;
+  parser_error?: string;
+  fix_attempt?: number;
+  fix_max_attempts?: number;
 }
 
 export interface DiagramCostResponse {

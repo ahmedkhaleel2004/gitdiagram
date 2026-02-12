@@ -1,14 +1,18 @@
 name: Deploy to EC2
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**" # Only trigger on backend changes
-      - ".github/workflows/**"
+  # Disabled for automatic deploys after migrating to Next.js/Vercel backend.
+  # Kept as legacy workflow for historical reference / manual fallback use.
+  workflow_dispatch:
+    inputs:
+      confirm_legacy_ec2_deploy:
+        description: "Type true to run legacy EC2 deploy"
+        required: false
+        default: "false"
 
 jobs:
   deploy:
+    if: ${{ github.event.inputs.confirm_legacy_ec2_deploy == 'true' }}
     runs-on: ubuntu-latest
 
     # Add concurrency to prevent multiple deployments running at once

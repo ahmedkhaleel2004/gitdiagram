@@ -24,13 +24,19 @@ export function useDiagramStream({
   const handleStreamMessage = useCallback(
     async (
       data: DiagramStreamMessage,
-      buffers: { explanation: string; mapping: string; diagram: string },
+      buffers: {
+        explanation: string;
+        mapping: string;
+        diagram: string;
+        fixDiagramDraft: string;
+      },
     ) => {
       if (data.error) {
         setState({
           status: "error",
           error: data.error,
           errorCode: data.error_code,
+          parserError: data.parser_error,
         });
         onError(data.error);
         return false;
@@ -44,11 +50,32 @@ export function useDiagramStream({
         case "mapping":
         case "diagram_sent":
         case "diagram":
+        case "diagram_fixing":
+        case "diagram_fix_attempt":
+        case "diagram_fix_validating":
           setState((prev) => ({
             ...prev,
             status: data.status,
             message: data.message,
+            parserError: data.parser_error,
+            fixAttempt: data.fix_attempt,
+            fixMaxAttempts: data.fix_max_attempts,
+            ...(data.status === "diagram_fix_attempt"
+              ? { fixDiagramDraft: "" }
+              : {}),
           }));
+          break;
+        case "diagram_fix_chunk":
+          if (data.chunk) {
+            buffers.fixDiagramDraft += data.chunk;
+            setState((prev) => ({
+              ...prev,
+              status: "diagram_fix_chunk",
+              fixDiagramDraft: buffers.fixDiagramDraft,
+              fixAttempt: data.fix_attempt ?? prev.fixAttempt,
+              fixMaxAttempts: data.fix_max_attempts ?? prev.fixMaxAttempts,
+            }));
+          }
           break;
         case "explanation_chunk":
           if (data.chunk) {
@@ -93,7 +120,11 @@ export function useDiagramStream({
           return false;
         }
         case "error":
-          setState({ status: "error", error: data.error });
+          setState({
+            status: "error",
+            error: data.error,
+            parserError: data.parser_error,
+          });
           if (data.error) onError(data.error);
           return false;
       }
@@ -106,7 +137,12 @@ export function useDiagramStream({
   const runGeneration = useCallback(
     async (githubPat?: string) => {
       setState({ status: "started", message: "Starting generation process..." });
-      const buffers = { explanation: "", mapping: "", diagram: "" };
+      const buffers = {
+        explanation: "",
+        mapping: "",
+        diagram: "",
+        fixDiagramDraft: "",
+      };
 
       await streamDiagramGeneration(
         {

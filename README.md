@@ -20,12 +20,18 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 ## ⚙️ Tech Stack
 
 - **Frontend**: Next.js, TypeScript, Tailwind CSS, ShadCN
-- **Backend**: FastAPI, Python, Server Actions
+- **Backend**: Next.js Route Handlers (Vercel Functions), Server Actions
 - **Database**: PostgreSQL (with Drizzle ORM)
 - **AI**: OpenAI o4-mini
-- **Deployment**: Vercel (Frontend), Railway/EC2 (Backend)
+- **Deployment**: Vercel
 - **CI/CD**: GitHub Actions
 - **Analytics**: PostHog, Api-Analytics
+
+## 🔄 Backend Architecture Update
+
+GitDiagram now runs its active backend on Next.js Route Handlers (Vercel Functions) with streaming endpoints under `/api/generate/*`.
+
+The original FastAPI backend remains intact under `/backend` as a legacy fallback if you ever want to switch back.
 
 ## 🤔 About
 
@@ -35,7 +41,7 @@ Given any public (or private!) GitHub repository it generates diagrams in Mermai
 
 I extract information from the file tree and README for details and interactivity (you can click components to be taken to relevant files and directories)
 
-Most of what you might call the "processing" of this app is done with prompt engineering - see `/backend/app/prompts.py`. This basically extracts and pipelines data and analysis for a larger action workflow, ending in the diagram code.
+Most of what you might call the "processing" of this app is done with prompt engineering and a 3-step streaming pipeline. Legacy FastAPI implementation remains under `/backend` as historical architecture/reference.
 
 ## 🔒 How to diagram private repositories
 
@@ -56,7 +62,6 @@ cd gitdiagram
 
 ```bash
 pnpm i
-cd backend && uv sync --no-install-project && cd ..
 ```
 
 3. Set up environment variables (create .env)
@@ -67,22 +72,7 @@ cp .env.example .env
 
 Then edit the `.env` file with your OpenAI API key and optional GitHub personal access token.
 
-4. Run backend
-
-```bash
-docker-compose up --build -d
-```
-
-Logs available at `docker-compose logs -f`
-The FastAPI server will be available at `localhost:8000`
-
-Or run backend directly from repo root:
-
-```bash
-pnpm dev:backend
-```
-
-5. Start local database
+4. Start local database
 
 ```bash
 chmod +x start-database.sh
@@ -92,7 +82,7 @@ chmod +x start-database.sh
 When prompted to generate a random password, input yes.
 The Postgres database will start in a container at `localhost:5432`
 
-6. Initialize the database schema
+5. Initialize the database schema
 
 ```bash
 pnpm db:push
@@ -100,13 +90,24 @@ pnpm db:push
 
 You can view and interact with the database using `pnpm db:studio`
 
-7. Run Frontend
+6. Run Frontend (includes API backend)
 
 ```bash
 pnpm dev
 ```
 
 You can now access the website at `localhost:3000`.
+
+Optional: run legacy FastAPI backend for comparison/testing:
+
+```bash
+docker-compose up --build -d
+docker-compose logs -f api
+```
+
+To route frontend calls to legacy backend, set:
+- `NEXT_PUBLIC_USE_LEGACY_BACKEND=true`
+- `NEXT_PUBLIC_API_DEV_URL=http://localhost:8000`
 
 For a full machine setup guide (Node/Python/uv versions + verification), see `docs/dev-setup.md`.
 
@@ -115,21 +116,10 @@ Quick validation:
 ```bash
 pnpm check
 pnpm test
-cd backend && uv run pytest -q
+pnpm build
 ```
 
-## 🚂 Deploy Backend on Railway
-
-1. Create a new Railway service from this repo and set **Root Directory** to `backend`.
-2. Use the existing `backend/Dockerfile` (no extra build config needed).
-3. Add env vars in Railway:
-- `OPENAI_API_KEY` (required)
-- `API_ANALYTICS_KEY` (optional)
-- `CORS_ORIGINS` (optional comma-separated list, example: `https://gitdiagram.com,https://your-frontend.vercel.app`)
-- `ENVIRONMENT=production` (optional, defaults to production)
-4. Deploy. Railway will inject `PORT`; backend now auto-binds to `0.0.0.0:$PORT`.
-5. Verify health check: `GET /healthz`.
-6. Full guide: `docs/railway-backend.md`.
+Legacy backend docs: `docs/railway-backend.md`.
 
 ## Contributing
 

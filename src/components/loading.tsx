@@ -7,7 +7,7 @@ const messages = [
   "Checking if its cached...",
   "Generating diagram...",
   "Analyzing repository...",
-  "Prompting o3-mini...",
+  "Prompting GPT-5.2...",
   "Inspecting file paths...",
   "Finding component relationships...",
   "Linking components to code...",
@@ -26,6 +26,11 @@ const messages = [
 interface LoadingProps {
   cost?: string;
   status: DiagramStreamStatus;
+  message?: string;
+  parserError?: string;
+  fixAttempt?: number;
+  fixMaxAttempts?: number;
+  fixDiagramDraft?: string;
   explanation?: string;
   mapping?: string;
   diagram?: string;
@@ -67,6 +72,11 @@ const StepDots = ({ currentStep }: { currentStep: number }) => {
 
 export default function Loading({
   status = "idle",
+  message,
+  parserError,
+  fixAttempt,
+  fixMaxAttempts,
+  fixDiagramDraft,
   explanation,
   mapping,
   diagram,
@@ -88,9 +98,27 @@ export default function Loading({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [explanation, mapping, diagram]);
+  }, [
+    status,
+    message,
+    parserError,
+    fixAttempt,
+    fixMaxAttempts,
+    fixDiagramDraft,
+    explanation,
+    mapping,
+    diagram,
+  ]);
 
   const shouldShowReasoning = (currentStatus: string) => {
+    if (
+      currentStatus === "diagram_fixing" ||
+      currentStatus === "diagram_fix_attempt" ||
+      currentStatus === "diagram_fix_chunk" ||
+      currentStatus === "diagram_fix_validating"
+    ) {
+      return null;
+    }
     if (
       currentStatus === "explanation_sent" ||
       (currentStatus.startsWith("explanation") && !explanation)
@@ -156,6 +184,14 @@ export default function Loading({
             : "Generating diagram...",
           isReasoning: !!reasoningType,
         };
+      case "diagram_fixing":
+      case "diagram_fix_attempt":
+      case "diagram_fix_chunk":
+      case "diagram_fix_validating":
+        return {
+          text: message ?? "Fixing Mermaid syntax...",
+          isReasoning: false,
+        };
       default:
         return {
           text: messages[currentMessageIndex],
@@ -166,6 +202,14 @@ export default function Loading({
 
   const statusDisplay = getStatusDisplay();
   const reasoningMessage = renderReasoningMessage();
+  const hasFixTelemetry =
+    status === "diagram_fixing" ||
+    status === "diagram_fix_attempt" ||
+    status === "diagram_fix_chunk" ||
+    status === "diagram_fix_validating" ||
+    typeof fixAttempt === "number" ||
+    !!parserError ||
+    !!fixDiagramDraft;
 
   return (
     <div className="mx-auto w-full max-w-4xl p-4">
@@ -227,6 +271,35 @@ export default function Loading({
                 <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
                   {diagram}
                 </pre>
+              </div>
+            )}
+            {hasFixTelemetry && (
+              <div className="rounded-lg border border-purple-200 bg-white/70 p-4 text-sm text-gray-700">
+                <p className="font-medium text-purple-500">
+                  Syntax Repair Loop
+                </p>
+                {typeof fixAttempt === "number" &&
+                  typeof fixMaxAttempts === "number" && (
+                    <p className="mt-1 text-xs text-purple-500">
+                      Attempt {fixAttempt}/{fixMaxAttempts}
+                    </p>
+                  )}
+                {message && <p className="mt-2 leading-relaxed">{message}</p>}
+                {parserError && (
+                  <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-md bg-purple-50 p-3 text-xs text-gray-700">
+                    {parserError}
+                  </pre>
+                )}
+                {fixDiagramDraft && (
+                  <div className="mt-3">
+                    <p className="mb-2 text-xs font-medium text-purple-500">
+                      Candidate Mermaid fix (streaming)
+                    </p>
+                    <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-purple-50 p-3 text-xs text-gray-700">
+                      {fixDiagramDraft}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
           </div>
