@@ -80,6 +80,7 @@ export function useDiagram(username: string, repo: string) {
     try {
       const cached = await getCachedDiagram(username, repo);
       const githubPat = localStorage.getItem("github_pat");
+      const apiKey = localStorage.getItem("openai_key");
 
       if (cached) {
         setDiagram(cached);
@@ -93,6 +94,7 @@ export function useDiagram(username: string, repo: string) {
         username,
         repo,
         githubPat ?? undefined,
+        apiKey ?? undefined,
       );
 
       if (costEstimate.error) {
@@ -119,12 +121,14 @@ export function useDiagram(username: string, repo: string) {
     setCost("");
 
     const githubPat = localStorage.getItem("github_pat");
+    const apiKey = localStorage.getItem("openai_key");
 
     try {
       const costEstimate = await getGenerationCost(
         username,
         repo,
         githubPat ?? undefined,
+        apiKey ?? undefined,
       );
 
       if (costEstimate.error) {

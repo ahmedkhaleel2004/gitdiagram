@@ -54,6 +54,11 @@ export default function Repo() {
           <Loading
             cost={cost}
             status={state.status}
+            message={state.message}
+            parserError={state.parserError}
+            fixAttempt={state.fixAttempt}
+            fixMaxAttempts={state.fixMaxAttempts}
+            fixDiagramDraft={state.fixDiagramDraft}
             explanation={state.explanation}
             mapping={state.mapping}
             diagram={state.diagram}
@@ -63,6 +68,11 @@ export default function Repo() {
             <p className="max-w-4xl text-lg font-medium text-purple-600">
               {error || state.error}
             </p>
+            {state.parserError && (
+              <pre className="mx-auto mt-4 max-w-4xl overflow-x-auto whitespace-pre-wrap rounded-md border border-purple-200 bg-purple-50 p-4 text-left text-xs text-purple-700">
+                {state.parserError}
+              </pre>
+            )}
             {(error?.includes("API key") ||
               state.error?.includes("API key")) && (
               <div className="mt-8 flex flex-col items-center gap-2">

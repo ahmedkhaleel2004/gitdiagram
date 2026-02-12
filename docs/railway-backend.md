@@ -1,4 +1,4 @@
-# Railway Backend Deploy Guide
+# Railway Backend Deploy Guide (Legacy FastAPI)
 
 This guide deploys only the FastAPI backend from this monorepo.
 
@@ -16,6 +16,7 @@ Required:
 Optional:
 - `API_ANALYTICS_KEY`
 - `CORS_ORIGINS` (comma-separated list, example: `https://gitdiagram.com,https://your-frontend.vercel.app`)
+- `OPENAI_MODEL` (single model used for explanation/mapping/diagram)
 - `ENVIRONMENT=production` (defaults to production if unset)
 - `WEB_CONCURRENCY=2` (adjust based on plan/resources)
 
