@@ -9,6 +9,8 @@ on:
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:password@localhost:5432/gitdiagram
     steps:
       - uses: actions/checkout@v4
       - name: Setup pnpm

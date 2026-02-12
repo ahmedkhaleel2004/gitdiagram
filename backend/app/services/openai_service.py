@@ -18,9 +18,17 @@ ReasoningEffort = Literal["low", "medium", "high"]
 
 class OpenAIService:
     def __init__(self):
-        self.default_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.default_api_key = os.getenv("OPENAI_API_KEY")
         self.encoding = tiktoken.get_encoding("o200k_base")
         self.base_url = "https://api.openai.com/v1/chat/completions"
+
+    def _resolve_api_key(self, override_api_key: str | None = None) -> str:
+        api_key = override_api_key or self.default_api_key
+        if not api_key:
+            raise ValueError(
+                "Missing OpenAI API key. Set OPENAI_API_KEY or provide api_key in request."
+            )
+        return api_key
 
     def completion(
         self,
@@ -32,7 +40,7 @@ class OpenAIService:
         reasoning_effort: ReasoningEffort | None = None,
     ) -> str:
         user_message = format_user_message(data)
-        client = OpenAI(api_key=api_key) if api_key else self.default_client
+        client = OpenAI(api_key=self._resolve_api_key(api_key))
         payload: dict = {
             "model": model,
             "messages": [
@@ -61,9 +69,10 @@ class OpenAIService:
         reasoning_effort: ReasoningEffort | None = None,
     ) -> AsyncGenerator[str, None]:
         user_message = format_user_message(data)
+        resolved_api_key = self._resolve_api_key(api_key)
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key or self.default_client.api_key}",
+            "Authorization": f"Bearer {resolved_api_key}",
         }
         payload: dict = {
             "model": model,
