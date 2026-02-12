@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
 @layer base {
   :root {
     --background: 269 100% 95%;
@@ -58,9 +57,26 @@
 }
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
+  }
+  button:not(:disabled) {
+    cursor: pointer;
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
+}
+
+.star-reminder-toast [data-button],
+.star-reminder-toast button {
+  background: #e9d5ff !important;
+  color: #000 !important;
+  border: 2px solid #000 !important;
+  cursor: pointer !important;
+}
+
+.star-reminder-toast [data-button]:hover,
+.star-reminder-toast button:hover {
+  background: #d8b4fe !important;
 }

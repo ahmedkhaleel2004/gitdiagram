@@ -12,6 +12,7 @@ export function useStarReminder() {
       // Set a timeout to show the toast after 3 seconds
       const timeoutId = setTimeout(() => {
         toast("Enjoying GitDiagram?", {
+          className: "star-reminder-toast",
           action: {
             label: "Star ★",
             onClick: () =>

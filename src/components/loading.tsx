@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import type { DiagramStreamStatus } from "~/features/diagram/types";
 
 const messages = [
   "Checking if its cached...",
@@ -24,20 +25,7 @@ const messages = [
 
 interface LoadingProps {
   cost?: string;
-  status:
-    | "idle"
-    | "started"
-    | "explanation_sent"
-    | "explanation"
-    | "explanation_chunk"
-    | "mapping_sent"
-    | "mapping"
-    | "mapping_chunk"
-    | "diagram_sent"
-    | "diagram"
-    | "diagram_chunk"
-    | "complete"
-    | "error";
+  status: DiagramStreamStatus;
   explanation?: string;
   mapping?: string;
   diagram?: string;

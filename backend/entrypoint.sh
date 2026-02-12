@@ -1,20 +1,25 @@
 #!/bin/bash
 
-echo "Current ENVIRONMENT: $ENVIRONMENT"
+set -euo pipefail
 
-if [ "$ENVIRONMENT" = "development" ]; then
+ENVIRONMENT="${ENVIRONMENT:-production}"
+HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-8000}"
+WEB_CONCURRENCY="${WEB_CONCURRENCY:-2}"
+
+echo "Current ENVIRONMENT: ${ENVIRONMENT}"
+echo "Binding to ${HOST}:${PORT}"
+
+if [ "${ENVIRONMENT}" = "development" ]; then
     echo "Starting in development mode with hot reload..."
-    exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-elif [ "$ENVIRONMENT" = "production" ]; then
-    echo "Starting in production mode with multiple workers..."
-    exec uvicorn app.main:app \
-        --host 0.0.0.0 \
-        --port 8000 \
-        --timeout-keep-alive 300 \
-        --workers 2 \
-        --loop uvloop \
-        --http httptools
-else
-    echo "ENVIRONMENT must be set to either 'development' or 'production'"
-    exit 1
+    exec uv run --no-dev uvicorn app.main:app --host "${HOST}" --port "${PORT}" --reload
 fi
+
+echo "Starting in production mode..."
+exec uv run --no-dev uvicorn app.main:app \
+    --host "${HOST}" \
+    --port "${PORT}" \
+    --timeout-keep-alive 300 \
+    --workers "${WEB_CONCURRENCY}" \
+    --loop uvloop \
+    --http httptools

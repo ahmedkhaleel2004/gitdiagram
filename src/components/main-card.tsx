@@ -7,22 +7,20 @@ import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
 import { Sparkles } from "lucide-react";
 import React from "react";
-import { CustomizationDropdown } from "./customization-dropdown";
-import { exampleRepos } from "~/lib/exampleRepos";
+import { exampleRepos, isExampleRepo } from "~/lib/exampleRepos";
 import { ExportDropdown } from "./export-dropdown";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
+import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
 
 interface MainCardProps {
   isHome?: boolean;
   username?: string;
   repo?: string;
-  showCustomization?: boolean;
-  onModify?: (instructions: string) => void;
-  onRegenerate?: (instructions: string) => void;
   onCopy?: () => void;
   lastGenerated?: Date;
   onExportImage?: () => void;
+  onRegenerate?: () => void;
   zoomingEnabled?: boolean;
   onZoomToggle?: () => void;
   loading?: boolean;
@@ -32,22 +30,20 @@ export default function MainCard({
   isHome = true,
   username,
   repo,
-  showCustomization,
-  onModify,
-  onRegenerate,
   onCopy,
   lastGenerated,
   onExportImage,
+  onRegenerate,
   zoomingEnabled,
   onZoomToggle,
   loading,
 }: MainCardProps) {
   const [repoUrl, setRepoUrl] = useState("");
   const [error, setError] = useState("");
-  const [activeDropdown, setActiveDropdown] = useState<
-    "customize" | "export" | null
-  >(null);
+  const [activeDropdown, setActiveDropdown] = useState<"export" | null>(null);
   const router = useRouter();
+  const isExampleRepoSelected =
+    !isHome && !!username && !!repo && isExampleRepo(username, repo);
 
   useEffect(() => {
     if (username && repo) {
@@ -65,20 +61,13 @@ export default function MainCard({
     e.preventDefault();
     setError("");
 
-    const githubUrlPattern =
-      /^https?:\/\/github\.com\/([a-zA-Z0-9-_]+)\/([a-zA-Z0-9-_\.]+)\/?$/;
-    const match = githubUrlPattern.exec(repoUrl.trim());
-
-    if (!match) {
+    const parsed = parseGitHubRepoUrl(repoUrl);
+    if (!parsed) {
       setError("Please enter a valid GitHub repository URL");
       return;
     }
 
-    const [, username, repo] = match || [];
-    if (!username || !repo) {
-      setError("Invalid repository URL format");
-      return;
-    }
+    const { username, repo } = parsed;
     const sanitizedUsername = encodeURIComponent(username);
     const sanitizedRepo = encodeURIComponent(repo);
     router.push(`/${sanitizedUsername}/${sanitizedRepo}`);
@@ -89,7 +78,7 @@ export default function MainCard({
     router.push(repoPath);
   };
 
-  const handleDropdownToggle = (dropdown: "customize" | "export") => {
+  const handleDropdownToggle = (dropdown: "export") => {
     setActiveDropdown(activeDropdown === dropdown ? null : dropdown);
   };
 
@@ -122,30 +111,29 @@ export default function MainCard({
               <>
                 {/* Buttons Container */}
                 <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-4">
-                  {showCustomization &&
-                    onModify &&
-                    onRegenerate &&
-                    lastGenerated && (
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleDropdownToggle("customize");
-                        }}
-                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
-                          activeDropdown === "customize"
-                            ? "bg-purple-400"
-                            : "bg-purple-300 hover:bg-purple-400"
-                        }`}
-                      >
-                        <span>Customize Diagram</span>
-                        {activeDropdown === "customize" ? (
-                          <ChevronUp size={20} />
-                        ) : (
-                          <ChevronDown size={20} />
-                        )}
-                      </button>
-                    )}
-
+                  {onRegenerate && (
+                    <button
+                      type="button"
+                      disabled={isExampleRepoSelected}
+                      title={
+                        isExampleRepoSelected
+                          ? "Regeneration is disabled for example repositories."
+                          : undefined
+                      }
+                      className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
+                        isExampleRepoSelected
+                          ? "cursor-not-allowed bg-purple-200 opacity-70"
+                          : "bg-purple-300 hover:bg-purple-400"
+                      }`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (isExampleRepoSelected) return;
+                        onRegenerate();
+                      }}
+                    >
+                      Regenerate Diagram
+                    </button>
+                  )}
                   {onCopy && lastGenerated && onExportImage && (
                     <div className="flex flex-col items-center justify-center gap-2">
                       <button
@@ -153,7 +141,7 @@ export default function MainCard({
                           e.preventDefault();
                           handleDropdownToggle("export");
                         }}
-                        className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
+                        className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] ${
                           activeDropdown === "export"
                             ? "bg-purple-400"
                             : "bg-purple-300 hover:bg-purple-400"
@@ -189,14 +177,6 @@ export default function MainCard({
                       : "pointer-events-none max-h-0 opacity-0"
                   }`}
                 >
-                  {activeDropdown === "customize" && (
-                    <CustomizationDropdown
-                      onModify={onModify!}
-                      onRegenerate={onRegenerate!}
-                      lastGenerated={lastGenerated!}
-                      isOpen={true}
-                    />
-                  )}
                   {activeDropdown === "export" && (
                     <ExportDropdown
                       onCopy={onCopy!}

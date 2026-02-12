@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Deploy to EC2
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
@@ -28,7 +28,8 @@ jobs:
           script: |
             cd ~/gitdiagram
             git fetch origin main
-            git reset --hard origin/main  # Force local to match remote main
+            git checkout main
+            git pull --ff-only origin main
             sudo chmod +x ./backend/nginx/setup_nginx.sh
             sudo ./backend/nginx/setup_nginx.sh
             chmod +x ./backend/deploy.sh

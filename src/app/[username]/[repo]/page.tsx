@@ -24,13 +24,12 @@ export default function Repo() {
     lastGenerated,
     cost,
     showApiKeyDialog,
-    handleModify,
-    handleRegenerate,
     handleCopy,
     handleApiKeySubmit,
     handleCloseApiKeyDialog,
     handleOpenApiKeyDialog,
     handleExportImage,
+    handleRegenerate,
     state,
   } = useDiagram(params.username.toLowerCase(), params.repo.toLowerCase());
 
@@ -41,12 +40,10 @@ export default function Repo() {
           isHome={false}
           username={params.username.toLowerCase()}
           repo={params.repo.toLowerCase()}
-          showCustomization={!loading && !error}
-          onModify={handleModify}
-          onRegenerate={handleRegenerate}
           onCopy={handleCopy}
           lastGenerated={lastGenerated}
           onExportImage={handleExportImage}
+          onRegenerate={handleRegenerate}
           zoomingEnabled={zoomingEnabled}
           onZoomToggle={() => setZoomingEnabled(!zoomingEnabled)}
           loading={loading}

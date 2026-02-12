@@ -1,0 +1,29 @@
+[project]
+name = "gitdiagram-backend"
+version = "0.1.0"
+description = "FastAPI backend for GitDiagram"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "aiohttp==3.13.3",
+  "api-analytics==1.2.7",
+  "fastapi==0.128.8",
+  "openai==2.20.0",
+  "PyJWT[crypto]==2.11.0",
+  "python-dotenv==1.2.1",
+  "requests==2.32.5",
+  "tiktoken==0.12.0",
+  "uvicorn[standard]==0.40.0",
+]
+
+[dependency-groups]
+dev = [
+  "httpx==0.28.1",
+  "pytest==8.3.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false

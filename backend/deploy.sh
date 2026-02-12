@@ -7,7 +7,7 @@ set -e
 cd ~/gitdiagram
 
 # Pull latest changes
-git pull origin main
+git pull --ff-only origin main
 
 # Build and restart containers with production environment
 docker-compose down
