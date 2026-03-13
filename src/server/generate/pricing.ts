@@ -3,15 +3,18 @@ export interface ModelPricing {
   outputPerMillionUsd: number;
 }
 
-const DEFAULT_PRICING_MODEL = "gpt-5.2";
+const DEFAULT_PRICING_MODEL = "gpt-5-mini";
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
+  "gpt-5.4": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
+  "gpt-5.4-pro": { inputPerMillionUsd: 30.0, outputPerMillionUsd: 180.0 },
+
+  // Legacy fallbacks kept for older env values.
   "gpt-5.2": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
   "gpt-5.2-chat-latest": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
   "gpt-5.2-codex": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
   "gpt-5.2-pro": { inputPerMillionUsd: 21.0, outputPerMillionUsd: 168.0 },
 
-  // Legacy fallbacks kept for older env values.
   "gpt-5.1": { inputPerMillionUsd: 1.25, outputPerMillionUsd: 10.0 },
   "gpt-5": { inputPerMillionUsd: 1.25, outputPerMillionUsd: 10.0 },
   "gpt-5-mini": { inputPerMillionUsd: 0.25, outputPerMillionUsd: 2.0 },
@@ -35,6 +38,8 @@ export function resolvePricingModel(model: string): string {
   const withoutDate = stripDateSnapshotSuffix(normalized);
   if (MODEL_PRICING[withoutDate]) return withoutDate;
 
+  if (withoutDate.startsWith("gpt-5.4-pro")) return "gpt-5.4-pro";
+  if (withoutDate.startsWith("gpt-5.4")) return "gpt-5.4";
   if (withoutDate.startsWith("gpt-5.2-pro")) return "gpt-5.2-pro";
   if (withoutDate.startsWith("gpt-5.2-codex")) return "gpt-5.2-codex";
   if (withoutDate.startsWith("gpt-5.2-chat")) return "gpt-5.2-chat-latest";

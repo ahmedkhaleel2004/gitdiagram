@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_MODEL = "gpt-5.2"
+DEFAULT_MODEL = "gpt-5-mini"
 
 
 def get_model() -> str:
