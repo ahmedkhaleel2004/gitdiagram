@@ -7,16 +7,18 @@ import MermaidChart from "~/components/mermaid-diagram";
 vi.mock("mermaid", () => ({
   default: {
     initialize: vi.fn(),
-    contentLoaded: vi.fn(),
+    registerLayoutLoaders: vi.fn(),
+    render: vi.fn().mockResolvedValue({ svg: "<svg></svg>" }),
   },
 }));
 
 describe("MermaidChart", () => {
   it("renders chart container", () => {
-    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />);
+    const { container } = render(
+      <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />,
+    );
 
-    expect(
-      screen.getByText((content) => content.includes("flowchart TD")),
-    ).toBeInTheDocument();
+    expect(container.querySelector(".mermaid")).toBeInTheDocument();
+    expect(screen.queryByText(/Mermaid render failed:/)).not.toBeInTheDocument();
   });
 });

@@ -1,29 +1,70 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
+import elkLayouts from "@mermaid-js/layout-elk";
 import { useTheme } from "next-themes";
-// Remove the direct import
-// import svgPanZoom from "svg-pan-zoom";
 
 interface MermaidChartProps {
   chart: string;
   zoomingEnabled?: boolean;
 }
 
+type SvgPanZoomInstance = {
+  destroy: () => void;
+};
+
+let elkLayoutRegistered = false;
+let domToJsonPatched = false;
+
+function ensureDomNodesSerializeSafely() {
+  if (domToJsonPatched || typeof window === "undefined") return;
+
+  const elementProto = window.Element?.prototype;
+  if (!elementProto || "toJSON" in elementProto) {
+    domToJsonPatched = true;
+    return;
+  }
+
+  Object.defineProperty(elementProto, "toJSON", {
+    configurable: true,
+    value: function toJSON(this: Element) {
+      return {
+        tagName: this.tagName,
+        id: this.id || undefined,
+        className:
+          typeof this.className === "string" ? this.className : undefined,
+      };
+    },
+  });
+
+  domToJsonPatched = true;
+}
+
 const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const panZoomRef = useRef<SvgPanZoomInstance | null>(null);
+  const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
 
   useEffect(() => {
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: "base",
+    ensureDomNodesSerializeSafely();
+
+    if (!elkLayoutRegistered) {
+      mermaid.registerLayoutLoaders(elkLayouts);
+      elkLayoutRegistered = true;
+    }
+
+    const baseConfig = {
+      startOnLoad: false,
+      suppressErrorRendering: true,
+      securityLevel: "loose" as const,
+      theme: "base" as const,
       htmlLabels: true,
       flowchart: {
-        htmlLabels: true,
-        curve: "basis",
+        defaultRenderer: "elk" as const,
+        curve: "linear" as const,
         nodeSpacing: 50,
         rankSpacing: 50,
         padding: 15,
@@ -59,58 +100,87 @@ const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
           filter: brightness(0.85);
         }
       `,
-    });
+      };
 
-    const initializePanZoom = async () => {
-      const svgElement = containerRef.current?.querySelector("svg");
-      if (svgElement && zoomingEnabled) {
-        // Remove any max-width constraints
+    const initializeMermaid = () => {
+      mermaid.initialize({
+        ...baseConfig,
+      });
+    };
+
+    const renderDiagram = async () => {
+      const mermaidElement = containerRef.current?.querySelector(".mermaid");
+      if (!(mermaidElement instanceof HTMLDivElement)) return;
+
+      setRenderMessage(null);
+      panZoomRef.current?.destroy();
+      panZoomRef.current = null;
+
+      const applyPanZoom = async () => {
+        const svgElement = containerRef.current?.querySelector("svg");
+        if (!(svgElement instanceof SVGSVGElement) || !zoomingEnabled) return;
+
         svgElement.style.maxWidth = "none";
         svgElement.style.width = "100%";
         svgElement.style.height = "100%";
 
-        if (zoomingEnabled) {
-          try {
-            // Dynamically import svg-pan-zoom only when needed in the browser
-            const svgPanZoom = (await import("svg-pan-zoom")).default;
-            svgPanZoom(svgElement, {
-              zoomEnabled: true,
-              controlIconsEnabled: true,
-              fit: true,
-              center: true,
-              minZoom: 0.1,
-              maxZoom: 10,
-              zoomScaleSensitivity: 0.3,
-            });
-          } catch (error) {
-            console.error("Failed to load svg-pan-zoom:", error);
-          }
+        try {
+          const svgPanZoom = (await import("svg-pan-zoom")).default;
+          panZoomRef.current = svgPanZoom(svgElement, {
+            zoomEnabled: true,
+            controlIconsEnabled: true,
+            fit: true,
+            center: true,
+            minZoom: 0.1,
+            maxZoom: 10,
+            zoomScaleSensitivity: 0.3,
+          }) as SvgPanZoomInstance;
+        } catch (error) {
+          console.error("Failed to load svg-pan-zoom:", error);
         }
+      };
+
+      initializeMermaid();
+      mermaidElement.removeAttribute("data-processed");
+      mermaidElement.textContent = "";
+
+      try {
+        const renderId = `gitdiagram-${Math.random().toString(36).slice(2)}`;
+        const { svg, bindFunctions } = await mermaid.render(
+          renderId,
+          chart,
+          mermaidElement,
+        );
+        mermaidElement.innerHTML = svg;
+        bindFunctions?.(mermaidElement);
+        await applyPanZoom();
+        return;
+      } catch (error) {
+        console.error("Mermaid render failed:", error);
+        const message =
+          error instanceof Error ? error.message : "Unknown Mermaid render error.";
+        setRenderMessage(`Mermaid render failed: ${message}`);
       }
     };
 
-    const mermaidElement = containerRef.current?.querySelector(".mermaid");
-    if (mermaidElement) {
-      mermaidElement.removeAttribute("data-processed");
-      mermaidElement.innerHTML = chart;
-    }
-
-    mermaid.contentLoaded();
-    // Wait for the SVG to be rendered
-    setTimeout(() => {
-      void initializePanZoom();
-    }, 100);
+    void renderDiagram();
 
     return () => {
-      // Cleanup not needed with dynamic import approach
+      panZoomRef.current?.destroy();
+      panZoomRef.current = null;
     };
-  }, [chart, zoomingEnabled, isDark]); // Added zoomingEnabled to dependencies
+  }, [chart, zoomingEnabled, isDark]);
 
   return (
     <div
       ref={containerRef}
       className={`w-full max-w-full p-4 ${zoomingEnabled ? "h-[600px]" : ""}`}
     >
+      {renderMessage && (
+        <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+          {renderMessage}
+        </div>
+      )}
       <div
         key={`${chart}-${zoomingEnabled}-${resolvedTheme ?? "light"}`}
         className={`mermaid h-full text-foreground ${
