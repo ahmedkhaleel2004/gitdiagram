@@ -55,7 +55,7 @@ Then set at least:
 - `OPENAI_API_KEY`
 
 Optional:
-- `OPENAI_MODEL` (single model used for all generation stages)
+- `OPENAI_MODEL` (single model used for all generation stages, defaults to `gpt-5.4-mini`)
 - `GITHUB_PAT`
 - `NEXT_PUBLIC_POSTHOG_KEY`
 - `NEXT_PUBLIC_USE_LEGACY_BACKEND=true` and `NEXT_PUBLIC_API_DEV_URL` (to route frontend calls to an external backend such as Railway/local FastAPI)

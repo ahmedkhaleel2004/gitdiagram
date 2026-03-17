@@ -13,7 +13,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 
 - 👀 **Instant Visualization**: Convert any GitHub repository structure into a system design / architecture diagram
 - 🎨 **Interactivity**: Click on components to navigate directly to source files and relevant directories
-- ⚡ **Fast Generation**: Powered by OpenAI GPT-5.2 (configurable) for quick and accurate diagrams
+- ⚡ **Fast Generation**: Powered by OpenAI GPT-5.4 mini (configurable) for quick and accurate diagrams
 - 🖼️ **Export Options**: Copy Mermaid code or download the generated diagram as PNG
 - 🌐 **API Access**: Public API available for integration (WIP)
 
@@ -22,7 +22,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 - **Frontend**: Next.js, TypeScript, Tailwind CSS, ShadCN
 - **Backend**: FastAPI (Railway), with Next.js Route Handlers available as a fallback path
 - **Database**: PostgreSQL (with Drizzle ORM)
-- **AI**: OpenAI GPT-5.2 (via `OPENAI_MODEL`)
+- **AI**: OpenAI GPT-5.4 mini (via `OPENAI_MODEL`)
 - **Deployment**: Vercel (frontend) + Railway (backend)
 - **CI/CD**: GitHub Actions
 - **Analytics**: PostHog, Api-Analytics
@@ -41,7 +41,7 @@ The variable name contains "LEGACY" for backward compatibility, but it now point
 
 I created this because I wanted to contribute to open-source projects but quickly realized their codebases are too massive for me to dig through manually, so this helps me get started - but it's definitely got many more use cases!
 
-Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with OpenAI's GPT-5.2! (Previously Claude 3.5 Sonnet)
+Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with OpenAI's GPT-5.4 mini! (Previously Claude 3.5 Sonnet)
 
 I extract information from the file tree and README for details and interactivity (you can click components to be taken to relevant files and directories).
 

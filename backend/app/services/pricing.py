@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-DEFAULT_PRICING_MODEL = "gpt-5-mini"
+DEFAULT_PRICING_MODEL = "gpt-5.4-mini"
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,8 @@ class ModelPricing:
 MODEL_PRICING: dict[str, ModelPricing] = {
     "gpt-5.4": ModelPricing(input_per_million_usd=2.5, output_per_million_usd=15.0),
     "gpt-5.4-pro": ModelPricing(input_per_million_usd=30.0, output_per_million_usd=180.0),
+    "gpt-5.4-mini": ModelPricing(input_per_million_usd=0.75, output_per_million_usd=4.5),
+    "gpt-5.4-nano": ModelPricing(input_per_million_usd=0.2, output_per_million_usd=1.25),
     "gpt-5.2": ModelPricing(input_per_million_usd=1.75, output_per_million_usd=14.0),
     "gpt-5.2-chat-latest": ModelPricing(
         input_per_million_usd=1.75,
@@ -48,6 +50,10 @@ def resolve_pricing_model(model: str) -> str:
 
     if without_date.startswith("gpt-5.4-pro"):
         return "gpt-5.4-pro"
+    if without_date.startswith("gpt-5.4-mini"):
+        return "gpt-5.4-mini"
+    if without_date.startswith("gpt-5.4-nano"):
+        return "gpt-5.4-nano"
     if without_date.startswith("gpt-5.4"):
         return "gpt-5.4"
     if without_date.startswith("gpt-5.2-pro"):

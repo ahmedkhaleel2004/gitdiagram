@@ -3,11 +3,13 @@ export interface ModelPricing {
   outputPerMillionUsd: number;
 }
 
-const DEFAULT_PRICING_MODEL = "gpt-5-mini";
+const DEFAULT_PRICING_MODEL = "gpt-5.4-mini";
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.4": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
   "gpt-5.4-pro": { inputPerMillionUsd: 30.0, outputPerMillionUsd: 180.0 },
+  "gpt-5.4-mini": { inputPerMillionUsd: 0.75, outputPerMillionUsd: 4.5 },
+  "gpt-5.4-nano": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 1.25 },
 
   // Legacy fallbacks kept for older env values.
   "gpt-5.2": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
@@ -39,6 +41,8 @@ export function resolvePricingModel(model: string): string {
   if (MODEL_PRICING[withoutDate]) return withoutDate;
 
   if (withoutDate.startsWith("gpt-5.4-pro")) return "gpt-5.4-pro";
+  if (withoutDate.startsWith("gpt-5.4-mini")) return "gpt-5.4-mini";
+  if (withoutDate.startsWith("gpt-5.4-nano")) return "gpt-5.4-nano";
   if (withoutDate.startsWith("gpt-5.4")) return "gpt-5.4";
   if (withoutDate.startsWith("gpt-5.2-pro")) return "gpt-5.2-pro";
   if (withoutDate.startsWith("gpt-5.2-codex")) return "gpt-5.2-codex";

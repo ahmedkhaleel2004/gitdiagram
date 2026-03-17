@@ -29,7 +29,7 @@ Required:
 - `OPENAI_API_KEY`
 
 Recommended:
-- `OPENAI_MODEL=gpt-5-mini`
+- `OPENAI_MODEL=gpt-5.4-mini`
 - `ENVIRONMENT=production`
 - `WEB_CONCURRENCY=2`
 - `CORS_ORIGINS=https://gitdiagram.com,https://www.gitdiagram.com,https://<your-vercel-domain>`
@@ -45,7 +45,7 @@ Set variables via CLI:
 
 ```bash
 railway variables --service gitdiagram-api --set "OPENAI_API_KEY=..."
-railway variables --service gitdiagram-api --set "OPENAI_MODEL=gpt-5-mini"
+railway variables --service gitdiagram-api --set "OPENAI_MODEL=gpt-5.4-mini"
 railway variables --service gitdiagram-api --set "ENVIRONMENT=production"
 railway variables --service gitdiagram-api --set "WEB_CONCURRENCY=2"
 railway variables --service gitdiagram-api --set "CORS_ORIGINS=https://gitdiagram.com,https://www.gitdiagram.com,https://<your-vercel-domain>"

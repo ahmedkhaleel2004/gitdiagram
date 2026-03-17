@@ -1,4 +1,4 @@
-const DEFAULT_MODEL = "gpt-5-mini";
+const DEFAULT_MODEL = "gpt-5.4-mini";
 
 function readEnvValue(name: string): string | undefined {
   const value = process.env[name]?.trim();
