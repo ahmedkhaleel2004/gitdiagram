@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.observability import Timer, log_event
 from app.prompts import SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT
+from app.services.cost_estimator import estimate_generation_cost
 from app.services.diagram_state_repository import DiagramStateRepository
 from app.services.github_service import GitHubService
 from app.services.graph_service import (
@@ -32,16 +33,17 @@ from app.services.model_config import (
     supports_exact_input_token_count,
 )
 from app.services.openai_service import OpenAIService
-from app.services.pricing import estimate_text_token_cost_usd
+from app.services.pricing import (
+    EXPLANATION_MAX_OUTPUT_TOKENS,
+    GRAPH_MAX_OUTPUT_TOKENS,
+    create_cost_summary,
+    sum_generation_usage,
+)
 
 router = APIRouter(prefix="/generate", tags=["AI"])
 
 openai_service = OpenAIService()
 diagram_state_repository = DiagramStateRepository()
-
-MULTI_STAGE_INPUT_MULTIPLIER = 2
-INPUT_OVERHEAD_TOKENS = 3000
-ESTIMATED_OUTPUT_TOKENS = 6000
 
 
 class GenerateRequest(BaseModel):
@@ -121,6 +123,7 @@ def _create_session_audit(*, session_id: str, provider: str, model: str) -> dict
         "stage": "started",
         "provider": provider,
         "model": model,
+        "stageUsages": [],
         "graph": None,
         "graphAttempts": [],
         "timeline": [{"stage": "started", "createdAt": created_at}],
@@ -155,6 +158,27 @@ def _set_success(audit: dict[str, Any]) -> dict[str, Any]:
     return next_audit
 
 
+def _set_estimated_cost(audit: dict[str, Any], cost_summary: dict[str, Any]) -> dict[str, Any]:
+    next_audit = dict(audit)
+    next_audit["estimatedCost"] = cost_summary
+    next_audit["updatedAt"] = _now_iso()
+    return next_audit
+
+
+def _set_final_cost(audit: dict[str, Any], cost_summary: dict[str, Any]) -> dict[str, Any]:
+    next_audit = dict(audit)
+    next_audit["finalCost"] = cost_summary
+    next_audit["updatedAt"] = _now_iso()
+    return next_audit
+
+
+def _append_stage_usage(audit: dict[str, Any], stage_usage: dict[str, Any]) -> dict[str, Any]:
+    next_audit = dict(audit)
+    next_audit["stageUsages"] = [*audit.get("stageUsages", []), stage_usage]
+    next_audit["updatedAt"] = _now_iso()
+    return next_audit
+
+
 @router.post("/cost")
 async def get_generation_cost(request: Request):
     timer = Timer()
@@ -167,28 +191,25 @@ async def get_generation_cost(request: Request):
         github_data = _get_github_data(parsed.username, parsed.repo, parsed.github_pat)
         provider = get_provider()
         model = get_model(provider)
-        base_input_tokens = await _estimate_repo_input_tokens(
+        estimate = await estimate_generation_cost(
             provider=provider,
             model=model,
             file_tree=github_data.file_tree,
             readme=github_data.readme,
+            username=parsed.username,
+            repo=parsed.repo,
             api_key=parsed.api_key,
         )
-        estimated_input_tokens = base_input_tokens * MULTI_STAGE_INPUT_MULTIPLIER + INPUT_OVERHEAD_TOKENS
-        estimated_output_tokens = ESTIMATED_OUTPUT_TOKENS
-        cost_usd, pricing_model, pricing = estimate_text_token_cost_usd(
-            model=model,
-            input_tokens=estimated_input_tokens,
-            output_tokens=estimated_output_tokens,
-        )
+        pricing = estimate["pricing"]
 
         response_payload = {
             "ok": True,
-            "cost": f"${cost_usd:.2f} USD",
+            "cost": estimate["cost_summary"]["display"],
+            "cost_summary": estimate["cost_summary"],
             "model": model,
-            "pricing_model": pricing_model,
-            "estimated_input_tokens": estimated_input_tokens,
-            "estimated_output_tokens": estimated_output_tokens,
+            "pricing_model": estimate["pricing_model"],
+            "estimated_input_tokens": estimate["estimated_input_tokens"],
+            "estimated_output_tokens": estimate["estimated_output_tokens"],
             "pricing": {
                 "input_per_million_usd": pricing.input_per_million_usd,
                 "output_per_million_usd": pricing.output_per_million_usd,
@@ -257,9 +278,37 @@ async def generate_stream(request: Request):
                 readme=github_data.readme,
                 api_key=parsed.api_key,
             )
+            estimate = await estimate_generation_cost(
+                provider=provider,
+                model=model,
+                file_tree=github_data.file_tree,
+                readme=github_data.readme,
+                username=parsed.username,
+                repo=parsed.repo,
+                api_key=parsed.api_key,
+            )
+            actual_usages = []
+            has_complete_measured_usage = True
+
+            audit = _append_stage_usage(
+                _set_estimated_cost(audit, estimate["cost_summary"]),
+                {
+                    "stage": "estimate",
+                    "model": model,
+                    "costSummary": estimate["cost_summary"],
+                    "createdAt": _now_iso(),
+                },
+            )
 
             await persist_audit()
-            yield send({"status": "started", "session_id": audit["sessionId"], "message": "Starting generation process..."})
+            yield send(
+                {
+                    "status": "started",
+                    "session_id": audit["sessionId"],
+                    "message": "Starting generation process...",
+                    "cost_summary": estimate["cost_summary"],
+                }
+            )
 
             if token_count > 50000 and token_count < 195000 and not parsed.api_key:
                 error_message = (
@@ -276,6 +325,7 @@ async def generate_stream(request: Request):
                         "error_code": "API_KEY_REQUIRED",
                         "validation_error": error_message,
                         "failure_stage": "started",
+                        "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
                         "latest_session_audit": audit,
                     }
                 )
@@ -293,6 +343,7 @@ async def generate_stream(request: Request):
                         "error_code": "TOKEN_LIMIT_EXCEEDED",
                         "validation_error": error_message,
                         "failure_stage": "started",
+                        "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
                         "latest_session_audit": audit,
                     }
                 )
@@ -314,16 +365,37 @@ async def generate_stream(request: Request):
             yield send({"status": "explanation", "session_id": audit["sessionId"], "message": "Analyzing repository structure..."})
 
             explanation_response = ""
-            async for chunk in openai_service.stream_completion(
+            explanation_stream, explanation_usage_future = await openai_service.stream_completion(
                 provider=provider,
                 model=model,
                 system_prompt=SYSTEM_FIRST_PROMPT,
                 data={"file_tree": github_data.file_tree, "readme": github_data.readme},
                 api_key=parsed.api_key,
                 reasoning_effort="medium",
-            ):
+                max_output_tokens=EXPLANATION_MAX_OUTPUT_TOKENS,
+            )
+            async for chunk in explanation_stream:
                 explanation_response += chunk
                 yield send({"status": "explanation_chunk", "session_id": audit["sessionId"], "chunk": chunk})
+            explanation_usage = await explanation_usage_future
+            if explanation_usage is not None:
+                actual_usages.append(explanation_usage)
+                audit = _append_stage_usage(
+                    audit,
+                    {
+                        "stage": "explanation",
+                        "model": model,
+                        "costSummary": create_cost_summary(
+                            kind="actual",
+                            model=model,
+                            usage=explanation_usage,
+                            approximate=False,
+                        ),
+                        "createdAt": _now_iso(),
+                    },
+                )
+            else:
+                has_complete_measured_usage = False
 
             explanation = _extract_tagged_section(explanation_response, "explanation")
             audit["explanation"] = explanation
@@ -361,7 +433,7 @@ async def generate_stream(request: Request):
                     }
                 )
 
-                graph, raw_output = await openai_service.generate_structured_output(
+                graph, raw_output, usage = await openai_service.generate_structured_output(
                     provider=provider,
                     model=model,
                     system_prompt=SYSTEM_GRAPH_PROMPT,
@@ -376,8 +448,28 @@ async def generate_stream(request: Request):
                     text_format=DiagramGraph,
                     api_key=parsed.api_key,
                     reasoning_effort="low",
-                    max_output_tokens=6000,
+                    max_output_tokens=GRAPH_MAX_OUTPUT_TOKENS,
                 )
+
+                if usage is not None:
+                    actual_usages.append(usage)
+                    audit = _append_stage_usage(
+                        audit,
+                        {
+                            "stage": "graph_attempt",
+                            "attempt": attempt,
+                            "model": model,
+                            "costSummary": create_cost_summary(
+                                kind="actual",
+                                model=model,
+                                usage=usage,
+                                approximate=False,
+                            ),
+                            "createdAt": _now_iso(),
+                        },
+                    )
+                else:
+                    has_complete_measured_usage = False
 
                 yield send({"status": status, "session_id": audit["sessionId"], "graph": graph.model_dump(by_alias=True)})
 
@@ -432,6 +524,7 @@ async def generate_stream(request: Request):
                         "error_code": "GRAPH_VALIDATION_FAILED",
                         "validation_error": error_message,
                         "failure_stage": "graph_validating",
+                        "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
                         "latest_session_audit": audit,
                     }
                 )
@@ -475,11 +568,27 @@ async def generate_stream(request: Request):
                         "error_code": "COMPILER_VALIDATION_FAILED",
                         "validation_error": compiler_error,
                         "failure_stage": "diagram_compiling",
+                        "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
                         "latest_session_audit": audit,
                     }
                 )
                 return
 
+            final_cost = (
+                create_cost_summary(
+                    kind="actual",
+                    model=model,
+                    usage=sum_generation_usage(*actual_usages),
+                    approximate=False,
+                )
+                if has_complete_measured_usage
+                else {
+                    **estimate["cost_summary"],
+                    "kind": "actual",
+                    "note": "Some stage usage was unavailable, so the final cost remains approximate.",
+                }
+            )
+            audit = _set_final_cost(audit, final_cost)
             audit = _set_success(_timeline(audit, "complete", "Diagram generation complete."))
             await asyncio.to_thread(
                 diagram_state_repository.save_successful_diagram_state,
@@ -496,6 +605,7 @@ async def generate_stream(request: Request):
                 {
                     "status": "complete",
                     "session_id": audit["sessionId"],
+                    "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
                     "diagram": diagram,
                     "explanation": explanation,
                     "graph": valid_graph.model_dump(by_alias=True),
@@ -519,6 +629,7 @@ async def generate_stream(request: Request):
                     "error_code": "STREAM_FAILED",
                     "validation_error": error_message,
                     "failure_stage": audit.get("failureStage"),
+                    "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
                     "latest_session_audit": audit,
                 }
             )

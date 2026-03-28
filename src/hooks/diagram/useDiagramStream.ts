@@ -39,6 +39,7 @@ export function useDiagramStream({
         setState({
           status: "error",
           sessionId: data.session_id,
+          costSummary: data.cost_summary,
           error: data.error,
           errorCode: data.error_code,
           validationError: data.validation_error,
@@ -63,6 +64,7 @@ export function useDiagramStream({
             status: data.status,
             sessionId: data.session_id ?? prev.sessionId,
             message: data.message,
+            costSummary: data.cost_summary ?? prev.costSummary,
             graph: data.graph ?? prev.graph,
             graphAttempts: data.graph_attempts ?? prev.graphAttempts,
             diagram: data.diagram ?? prev.diagram,
@@ -77,6 +79,7 @@ export function useDiagramStream({
               ...prev,
               status: "explanation_chunk",
               sessionId: data.session_id ?? prev.sessionId,
+              costSummary: data.cost_summary ?? prev.costSummary,
               explanation: buffers.explanation,
             }));
           }
@@ -87,6 +90,7 @@ export function useDiagramStream({
           setState({
             status: "complete",
             sessionId: data.session_id,
+            costSummary: data.cost_summary,
             explanation,
             diagram,
             graph: data.graph,
@@ -106,6 +110,7 @@ export function useDiagramStream({
           setState({
             status: "error",
             sessionId: data.session_id,
+            costSummary: data.cost_summary,
             error: data.error,
             validationError: data.validation_error,
             failureStage: data.failure_stage,
@@ -122,7 +127,11 @@ export function useDiagramStream({
 
   const runGeneration = useCallback(
     async (githubPat?: string) => {
-      setState({ status: "started", message: "Starting generation process..." });
+      setState({
+        status: "started",
+        message: "Starting generation process...",
+        costSummary: undefined,
+      });
       const buffers = {
         explanation: "",
       };

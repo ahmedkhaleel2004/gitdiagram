@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import AsyncGenerator, Literal, TypeVar
 import math
 import os
@@ -9,6 +10,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from app.services.model_config import AIProvider, get_provider_label
+from app.services.pricing import GenerationTokenUsage, normalize_generation_usage
 from app.utils.format_message import format_user_message
 
 load_dotenv()
@@ -84,7 +86,7 @@ class OpenAIService:
         api_key: str | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_output_tokens: int | None = None,
-    ) -> AsyncGenerator[str, None]:
+    ) -> tuple[AsyncGenerator[str, None], asyncio.Future[GenerationTokenUsage | None]]:
         user_prompt = format_user_message(data)
         resolved_api_key = self._resolve_api_key(provider, api_key)
         payload: dict = {
@@ -99,20 +101,52 @@ class OpenAIService:
 
         client = self._create_client(provider, resolved_api_key)
         stream = await client.responses.create(**payload)
-        try:
-            async for event in stream:
-                if event.type == "response.output_text.delta":
-                    delta = getattr(event, "delta", None)
-                    if isinstance(delta, str) and delta:
-                        yield delta
-                    continue
+        loop = asyncio.get_running_loop()
+        usage_future: asyncio.Future[GenerationTokenUsage | None] = loop.create_future()
 
-                if event.type == "error":
-                    message = getattr(event, "message", None) or "OpenAI stream failed."
-                    raise ValueError(str(message))
-        finally:
-            await stream.close()
-            await client.close()
+        async def text_stream() -> AsyncGenerator[str, None]:
+            response_id: str | None = None
+            final_usage: GenerationTokenUsage | None = None
+            try:
+                async for event in stream:
+                    response = getattr(event, "response", None)
+                    event_response_id = getattr(response, "id", None)
+                    if isinstance(event_response_id, str) and event_response_id:
+                        response_id = event_response_id
+
+                    if event.type == "response.output_text.delta":
+                        delta = getattr(event, "delta", None)
+                        if isinstance(delta, str) and delta:
+                            yield delta
+                        continue
+
+                    if event.type == "response.completed":
+                        final_usage = normalize_generation_usage(
+                            getattr(response, "usage", None)
+                        )
+                        continue
+
+                    if event.type == "error":
+                        message = getattr(event, "message", None) or "OpenAI stream failed."
+                        raise ValueError(str(message))
+
+                if final_usage is None and response_id:
+                    response = await client.responses.retrieve(response_id)
+                    final_usage = normalize_generation_usage(getattr(response, "usage", None))
+
+                if not usage_future.done():
+                    usage_future.set_result(final_usage)
+            except Exception as exc:
+                if not usage_future.done():
+                    usage_future.set_exception(exc)
+                raise
+            finally:
+                if not usage_future.done():
+                    usage_future.set_result(None)
+                await stream.close()
+                await client.close()
+
+        return text_stream(), usage_future
 
     async def count_input_tokens(
         self,
@@ -154,7 +188,7 @@ class OpenAIService:
         api_key: str | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_output_tokens: int | None = None,
-    ) -> tuple[StructuredOutputModel, str]:
+    ) -> tuple[StructuredOutputModel, str, GenerationTokenUsage | None]:
         user_prompt = format_user_message(data)
         resolved_api_key = self._resolve_api_key(provider, api_key)
         payload: dict = {
@@ -175,7 +209,7 @@ class OpenAIService:
                 raise ValueError("Structured output parsing returned no parsed payload.")
             output_text = getattr(response, "output_text", None)
             raw_text = output_text.strip() if isinstance(output_text, str) and output_text.strip() else parsed.model_dump_json(indent=2)
-            return parsed, raw_text
+            return parsed, raw_text, normalize_generation_usage(getattr(response, "usage", None))
         except Exception as exc:
             if provider == "openrouter":
                 raise ValueError(

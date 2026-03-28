@@ -1,7 +1,27 @@
+import type {
+  GenerationCostSummary,
+  GenerationTokenUsage,
+} from "~/features/diagram/cost";
+
 export interface ModelPricing {
   inputPerMillionUsd: number;
   outputPerMillionUsd: number;
 }
+
+interface RawResponseUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  input_tokens_details?: {
+    cached_tokens?: number;
+  };
+  output_tokens_details?: {
+    reasoning_tokens?: number;
+  };
+}
+
+export const EXPLANATION_MAX_OUTPUT_TOKENS = 4000;
+export const GRAPH_MAX_OUTPUT_TOKENS = 6000;
 
 const DEFAULT_PRICING_MODEL = "gpt-5.4-mini";
 
@@ -77,4 +97,120 @@ export function estimateTextTokenCostUsd(
     pricingModel,
     pricing,
   };
+}
+
+export function normalizeGenerationUsage(
+  usage: RawResponseUsage | null | undefined,
+): GenerationTokenUsage | null {
+  if (!usage) {
+    return null;
+  }
+
+  const inputTokens = usage.input_tokens ?? 0;
+  const outputTokens = usage.output_tokens ?? 0;
+  const totalTokens = usage.total_tokens ?? inputTokens + outputTokens;
+  const cachedInputTokens = usage.input_tokens_details?.cached_tokens;
+  const reasoningTokens = usage.output_tokens_details?.reasoning_tokens;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    ...(typeof cachedInputTokens === "number"
+      ? { cachedInputTokens }
+      : {}),
+    ...(typeof reasoningTokens === "number" ? { reasoningTokens } : {}),
+  };
+}
+
+export function sumGenerationUsage(
+  ...usages: Array<GenerationTokenUsage | null | undefined>
+): GenerationTokenUsage {
+  return usages.reduce<GenerationTokenUsage>(
+    (total, usage) => ({
+      inputTokens: total.inputTokens + (usage?.inputTokens ?? 0),
+      outputTokens: total.outputTokens + (usage?.outputTokens ?? 0),
+      totalTokens: total.totalTokens + (usage?.totalTokens ?? 0),
+      cachedInputTokens:
+        (total.cachedInputTokens ?? 0) + (usage?.cachedInputTokens ?? 0),
+      reasoningTokens:
+        (total.reasoningTokens ?? 0) + (usage?.reasoningTokens ?? 0),
+    }),
+    {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      cachedInputTokens: 0,
+      reasoningTokens: 0,
+    },
+  );
+}
+
+function formatCostUsd(costUsd: number): string {
+  if (costUsd === 0) {
+    return "$0.00 USD";
+  }
+  if (costUsd >= 1) {
+    return `$${costUsd.toFixed(2)} USD`;
+  }
+  if (costUsd >= 0.01) {
+    return `$${costUsd.toFixed(3)} USD`;
+  }
+  return `$${costUsd.toFixed(4)} USD`;
+}
+
+export function createCostSummary(params: {
+  kind: GenerationCostSummary["kind"];
+  model: string;
+  usage: GenerationTokenUsage;
+  approximate: boolean;
+  note?: string;
+}): GenerationCostSummary {
+  const { costUsd, pricingModel } = estimateTextTokenCostUsd(
+    params.model,
+    params.usage.inputTokens,
+    params.usage.outputTokens,
+  );
+
+  return {
+    kind: params.kind,
+    approximate: params.approximate,
+    amountUsd: costUsd,
+    display: formatCostUsd(costUsd),
+    pricingModel,
+    usage: params.usage,
+    ...(params.note ? { note: params.note } : {}),
+  };
+}
+
+export function createEstimateCostSummary(params: {
+  model: string;
+  explanationInputTokens: number;
+  graphStaticInputTokens: number;
+  approximate: boolean;
+  note?: string;
+  graphAttemptCount?: number;
+}): GenerationCostSummary {
+  const graphAttemptCount = params.graphAttemptCount ?? 1;
+  const usage: GenerationTokenUsage = {
+    inputTokens:
+      params.explanationInputTokens +
+      params.graphStaticInputTokens +
+      EXPLANATION_MAX_OUTPUT_TOKENS,
+    outputTokens:
+      EXPLANATION_MAX_OUTPUT_TOKENS +
+      GRAPH_MAX_OUTPUT_TOKENS * graphAttemptCount,
+    totalTokens: 0,
+  };
+  usage.totalTokens = usage.inputTokens + usage.outputTokens;
+
+  return createCostSummary({
+    kind: "estimate",
+    model: params.model,
+    usage,
+    approximate: params.approximate,
+    note:
+      params.note ??
+      "Estimate assumes one graph-planning attempt and the configured output caps.",
+  });
 }

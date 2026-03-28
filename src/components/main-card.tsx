@@ -20,6 +20,7 @@ interface MainCardProps {
   hasDiagram?: boolean;
   onCopy?: () => void;
   lastGenerated?: Date;
+  actualCost?: string;
   onExportImage?: () => void;
   onRegenerate?: () => void;
   zoomingEnabled?: boolean;
@@ -34,6 +35,7 @@ export default function MainCard({
   hasDiagram = false,
   onCopy,
   lastGenerated,
+  actualCost,
   onExportImage,
   onRegenerate,
   zoomingEnabled,
@@ -183,6 +185,7 @@ export default function MainCard({
                     <ExportDropdown
                       onCopy={onCopy!}
                       lastGenerated={lastGenerated}
+                      actualCost={actualCost}
                       onExportImage={onExportImage!}
                       isOpen={true}
                     />

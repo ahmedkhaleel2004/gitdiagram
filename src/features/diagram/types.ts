@@ -1,3 +1,4 @@
+import type { GenerationCostSummary } from "~/features/diagram/cost";
 import type {
   DiagramGraph,
   GenerationSessionAudit,
@@ -22,6 +23,7 @@ export interface DiagramStreamState {
   status: DiagramStreamStatus;
   sessionId?: string;
   message?: string;
+  costSummary?: GenerationCostSummary;
   explanation?: string;
   diagram?: string;
   graph?: DiagramGraph;
@@ -37,6 +39,7 @@ export interface DiagramStreamMessage {
   status: DiagramStreamStatus;
   session_id?: string;
   message?: string;
+  cost_summary?: GenerationCostSummary;
   chunk?: string;
   explanation?: string;
   diagram?: string;
@@ -52,6 +55,15 @@ export interface DiagramStreamMessage {
 
 export interface DiagramCostResponse {
   cost?: string;
+  cost_summary?: GenerationCostSummary;
+  model?: string;
+  pricing_model?: string;
+  estimated_input_tokens?: number;
+  estimated_output_tokens?: number;
+  pricing?: {
+    input_per_million_usd: number;
+    output_per_million_usd: number;
+  };
   error?: string;
   error_code?: string;
   ok?: boolean;

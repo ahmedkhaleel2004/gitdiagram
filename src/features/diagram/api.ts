@@ -82,6 +82,7 @@ export async function getGenerationCost(
     const data = (await response.json()) as DiagramCostResponse;
     return {
       cost: data.cost,
+      cost_summary: data.cost_summary,
       error: data.error,
       error_code: data.error_code,
       ok: data.ok,

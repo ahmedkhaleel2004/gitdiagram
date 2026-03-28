@@ -6,8 +6,6 @@ import { useDiagram } from "~/hooks/useDiagram";
 const {
   getDiagramState,
   persistDiagramRenderError,
-  getGenerationCost,
-  getStoredOpenAiKey,
   storeOpenAiKey,
   useDiagramExport,
   runGeneration,
@@ -15,8 +13,6 @@ const {
 } = vi.hoisted(() => ({
   getDiagramState: vi.fn(),
   persistDiagramRenderError: vi.fn(),
-  getGenerationCost: vi.fn(),
-  getStoredOpenAiKey: vi.fn(),
   storeOpenAiKey: vi.fn(),
   useDiagramExport: vi.fn(),
   runGeneration: vi.fn(),
@@ -41,10 +37,6 @@ vi.mock("~/app/_actions/cache", () => ({
   persistDiagramRenderError,
 }));
 
-vi.mock("~/features/diagram/api", () => ({
-  getGenerationCost,
-}));
-
 vi.mock("~/hooks/diagram/useDiagramStream", () => ({
   useDiagramStream: (options: typeof streamOptions) => {
     streamOptions = options;
@@ -65,7 +57,6 @@ vi.mock("~/lib/exampleRepos", () => ({
 }));
 
 vi.mock("~/lib/openai-key", () => ({
-  getStoredOpenAiKey,
   storeOpenAiKey,
 }));
 
@@ -83,8 +74,6 @@ describe("useDiagram", () => {
       lastSuccessfulAt: null,
     });
     persistDiagramRenderError.mockResolvedValue(undefined);
-    getGenerationCost.mockResolvedValue({ cost: "$0.01" });
-    getStoredOpenAiKey.mockReturnValue(null);
     useDiagramExport.mockReturnValue({
       handleCopy: vi.fn(),
       handleExportImage: vi.fn(),

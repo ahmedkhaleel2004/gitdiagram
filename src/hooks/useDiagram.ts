@@ -4,19 +4,17 @@ import {
   getDiagramState,
   persistDiagramRenderError,
 } from "~/app/_actions/cache";
-import { getGenerationCost } from "~/features/diagram/api";
 import { type DiagramStreamState } from "~/features/diagram/types";
 import { useDiagramStream } from "~/hooks/diagram/useDiagramStream";
 import { useDiagramExport } from "~/hooks/diagram/useDiagramExport";
 import { isExampleRepo } from "~/lib/exampleRepos";
-import { getStoredOpenAiKey, storeOpenAiKey } from "~/lib/openai-key";
+import { storeOpenAiKey } from "~/lib/openai-key";
 
 export function useDiagram(username: string, repo: string) {
   const [diagram, setDiagram] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [lastGenerated, setLastGenerated] = useState<Date | undefined>();
-  const [cost, setCost] = useState<string>("");
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
   const hasUsedFreeGenerationRef = useRef<boolean>(
     typeof window !== "undefined" &&
@@ -75,12 +73,10 @@ export function useDiagram(username: string, repo: string) {
   const getDiagram = useCallback(async () => {
     setLoading(true);
     setError("");
-    setCost("");
 
     try {
       const stateRecord = await getDiagramState(username, repo);
       const githubPat = localStorage.getItem("github_pat");
-      const apiKey = getStoredOpenAiKey();
 
       if (stateRecord.diagram) {
         setDiagram(stateRecord.diagram);
@@ -93,6 +89,8 @@ export function useDiagram(username: string, repo: string) {
         setState((prev) => ({
           ...prev,
           latestSessionAudit: latestAudit,
+          costSummary:
+            latestAudit.finalCost ?? latestAudit.estimatedCost ?? prev.costSummary,
           graph: latestAudit.graph ?? prev.graph,
           graphAttempts: latestAudit.graphAttempts ?? prev.graphAttempts,
           failureStage: latestAudit.failureStage ?? prev.failureStage,
@@ -111,21 +109,6 @@ export function useDiagram(username: string, repo: string) {
         setLoading(false);
         return;
       }
-
-      const costEstimate = await getGenerationCost(
-        username,
-        repo,
-        githubPat ?? undefined,
-        apiKey ?? undefined,
-      );
-
-      if (costEstimate.error) {
-        setError(costEstimate.error);
-        setLoading(false);
-        return;
-      }
-
-      setCost(costEstimate.cost ?? "");
       await runGeneration(githubPat ?? undefined);
     } catch {
       setError("Something went wrong. Please try again later.");
@@ -140,26 +123,10 @@ export function useDiagram(username: string, repo: string) {
 
     setLoading(true);
     setError("");
-    setCost("");
 
     const githubPat = localStorage.getItem("github_pat");
-    const apiKey = getStoredOpenAiKey();
 
     try {
-      const costEstimate = await getGenerationCost(
-        username,
-        repo,
-        githubPat ?? undefined,
-        apiKey ?? undefined,
-      );
-
-      if (costEstimate.error) {
-        setError(costEstimate.error);
-        setLoading(false);
-        return;
-      }
-
-      setCost(costEstimate.cost ?? "");
       await runGeneration(githubPat ?? undefined);
     } catch {
       setError("Something went wrong. Please try again later.");
@@ -217,7 +184,6 @@ export function useDiagram(username: string, repo: string) {
     error,
     loading,
     lastGenerated,
-    cost,
     handleCopy,
     showApiKeyDialog,
     handleApiKeySubmit,

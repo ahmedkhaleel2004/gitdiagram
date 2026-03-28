@@ -28,7 +28,6 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
     error,
     loading,
     lastGenerated,
-    cost,
     showApiKeyDialog,
     handleCopy,
     handleApiKeySubmit,
@@ -50,6 +49,11 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
           hasDiagram={Boolean(diagram)}
           onCopy={handleCopy}
           lastGenerated={lastGenerated}
+          actualCost={
+            state.costSummary?.kind === "actual"
+              ? state.costSummary.display
+              : undefined
+          }
           onExportImage={handleExportImage}
           onRegenerate={handleRegenerate}
           zoomingEnabled={zoomingEnabled}
@@ -60,7 +64,7 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
       <div className="mt-8 flex w-full flex-col items-center gap-8">
         {loading ? (
           <Loading
-            cost={cost}
+            costSummary={state.costSummary}
             status={state.status}
             message={state.message}
             explanation={state.explanation}

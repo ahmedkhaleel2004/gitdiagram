@@ -2,10 +2,12 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import type { ZodType } from "zod";
 
+import type { GenerationTokenUsage } from "~/features/diagram/cost";
 import {
   getProviderLabel,
   type AIProvider,
 } from "~/server/generate/model-config";
+import { normalizeGenerationUsage } from "~/server/generate/pricing";
 
 export type ReasoningEffort = "low" | "medium" | "high";
 
@@ -84,7 +86,24 @@ interface StructuredCompletionParams<T> {
   maxOutputTokens?: number;
 }
 
-export async function* streamCompletion({
+interface StreamCompletionResult {
+  stream: AsyncGenerator<string, void, void>;
+  usagePromise: Promise<GenerationTokenUsage | null>;
+}
+
+async function retrieveUsageFromResponseId(
+  client: OpenAI,
+  responseId: string | undefined,
+): Promise<GenerationTokenUsage | null> {
+  if (!responseId) {
+    return null;
+  }
+
+  const response = await client.responses.retrieve(responseId);
+  return normalizeGenerationUsage(response.usage);
+}
+
+export async function streamCompletion({
   provider,
   model,
   systemPrompt,
@@ -92,9 +111,8 @@ export async function* streamCompletion({
   apiKey,
   reasoningEffort,
   maxOutputTokens,
-}: StreamCompletionParams): AsyncGenerator<string, void, void> {
+}: StreamCompletionParams): Promise<StreamCompletionResult> {
   const client = createClient(provider, resolveApiKey(provider, apiKey));
-
   const stream = await client.responses.create({
     model,
     stream: true,
@@ -106,19 +124,66 @@ export async function* streamCompletion({
     ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
   });
 
-  for await (const event of stream) {
-    if (event.type === "response.output_text.delta") {
-      if (event.delta) {
-        yield event.delta;
-      }
-      continue;
-    }
+  let usageSettled = false;
+  let resolveUsage!: (usage: GenerationTokenUsage | null) => void;
+  let rejectUsage!: (error: unknown) => void;
+  const usagePromise = new Promise<GenerationTokenUsage | null>(
+    (resolve, reject) => {
+      resolveUsage = resolve;
+      rejectUsage = reject;
+    },
+  );
 
-    if (event.type === "error") {
-      const message = event.message ?? "OpenAI stream failed.";
-      throw new Error(message);
+  async function* outputStream(): AsyncGenerator<string, void, void> {
+    let responseId: string | undefined;
+    let finalUsage: GenerationTokenUsage | null = null;
+
+    try {
+      for await (const event of stream) {
+        const response = "response" in event ? event.response : undefined;
+        if (response?.id) {
+          responseId = response.id;
+        }
+
+        if (event.type === "response.output_text.delta") {
+          if (event.delta) {
+            yield event.delta;
+          }
+          continue;
+        }
+
+        if (event.type === "response.completed") {
+          finalUsage = normalizeGenerationUsage(event.response.usage);
+          continue;
+        }
+
+        if (event.type === "error") {
+          const message = event.message ?? "OpenAI stream failed.";
+          throw new Error(message);
+        }
+      }
+
+      if (!finalUsage) {
+        finalUsage = await retrieveUsageFromResponseId(client, responseId);
+      }
+
+      usageSettled = true;
+      resolveUsage(finalUsage);
+    } catch (error) {
+      usageSettled = true;
+      rejectUsage(error);
+      throw error;
+    } finally {
+      if (!usageSettled) {
+        resolveUsage(null);
+      }
     }
   }
+
+  return {
+    stream: outputStream(),
+    usagePromise,
+  };
 }
 
 interface CountInputTokensParams {
@@ -162,7 +227,11 @@ export async function generateStructuredOutput<T>({
   apiKey,
   reasoningEffort,
   maxOutputTokens,
-}: StructuredCompletionParams<T>): Promise<{ output: T; rawText: string }> {
+}: StructuredCompletionParams<T>): Promise<{
+  output: T;
+  rawText: string;
+  usage: GenerationTokenUsage | null;
+}> {
   const client = createClient(provider, resolveApiKey(provider, apiKey));
 
   try {
@@ -190,6 +259,7 @@ export async function generateStructuredOutput<T>({
     return {
       output: response.output_parsed,
       rawText,
+      usage: normalizeGenerationUsage(response.usage),
     };
   } catch (error) {
     const message =

@@ -1,51 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { toTaggedMessage } from "~/server/generate/format";
+import { estimateGenerationCost } from "~/server/generate/cost-estimate";
 import { getGithubData } from "~/server/generate/github";
-import {
-  getModel,
-  getProvider,
-  supportsExactInputTokenCount,
-} from "~/server/generate/model-config";
-import { countInputTokens, estimateTokens } from "~/server/generate/openai";
-import { SYSTEM_FIRST_PROMPT } from "~/server/generate/prompts";
-import { estimateTextTokenCostUsd } from "~/server/generate/pricing";
+import { getModel, getProvider } from "~/server/generate/model-config";
 import { generateRequestSchema } from "~/server/generate/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-const MULTI_STAGE_INPUT_MULTIPLIER = 2;
-const INPUT_OVERHEAD_TOKENS = 3000;
-const ESTIMATED_OUTPUT_TOKENS = 8000;
-
-async function estimateRepoInputTokens(
-  provider: ReturnType<typeof getProvider>,
-  model: string,
-  fileTree: string,
-  readme: string,
-  apiKey?: string,
-) {
-  if (!supportsExactInputTokenCount(provider)) {
-    return estimateTokens(`${fileTree}\n${readme}`);
-  }
-
-  try {
-    return await countInputTokens({
-      provider,
-      model,
-      systemPrompt: SYSTEM_FIRST_PROMPT,
-      userPrompt: toTaggedMessage({
-        file_tree: fileTree,
-        readme,
-      }),
-      apiKey,
-      reasoningEffort: "medium",
-    });
-  } catch {
-    return estimateTokens(`${fileTree}\n${readme}`);
-  }
-}
 
 export async function POST(request: Request) {
   try {
@@ -67,34 +29,27 @@ export async function POST(request: Request) {
     const githubData = await getGithubData(username, repo, githubPat);
     const provider = getProvider();
     const model = getModel(provider);
-
-    const baseInputTokens = await estimateRepoInputTokens(
+    const estimate = await estimateGenerationCost({
       provider,
       model,
-      githubData.fileTree,
-      githubData.readme,
+      fileTree: githubData.fileTree,
+      readme: githubData.readme,
+      username,
+      repo,
       apiKey,
-    );
-    const estimatedInputTokens =
-      baseInputTokens * MULTI_STAGE_INPUT_MULTIPLIER + INPUT_OVERHEAD_TOKENS;
-    const estimatedOutputTokens = ESTIMATED_OUTPUT_TOKENS;
-
-    const { costUsd, pricingModel, pricing } = estimateTextTokenCostUsd(
-      model,
-      estimatedInputTokens,
-      estimatedOutputTokens,
-    );
+    });
 
     return NextResponse.json({
       ok: true,
-      cost: `$${costUsd.toFixed(2)} USD`,
+      cost: estimate.costSummary.display,
+      cost_summary: estimate.costSummary,
       model,
-      pricing_model: pricingModel,
-      estimated_input_tokens: estimatedInputTokens,
-      estimated_output_tokens: estimatedOutputTokens,
+      pricing_model: estimate.pricingModel,
+      estimated_input_tokens: estimate.estimatedInputTokens,
+      estimated_output_tokens: estimate.estimatedOutputTokens,
       pricing: {
-        input_per_million_usd: pricing.inputPerMillionUsd,
-        output_per_million_usd: pricing.outputPerMillionUsd,
+        input_per_million_usd: estimate.pricing.inputPerMillionUsd,
+        output_per_million_usd: estimate.pricing.outputPerMillionUsd,
       },
     });
   } catch (error) {

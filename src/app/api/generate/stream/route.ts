@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import type { GenerationTokenUsage } from "~/features/diagram/cost";
 import { diagramGraphSchema, MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
 import { saveSuccessfulDiagramState, upsertLatestSessionAudit } from "~/server/db/diagram-state";
+import { estimateGenerationCost } from "~/server/generate/cost-estimate";
 import { extractTaggedSection, toTaggedMessage } from "~/server/generate/format";
 import { getGithubData } from "~/server/generate/github";
 import {
@@ -27,13 +29,22 @@ import { SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT } from "~/server/generate/prom
 import {
   createGenerationSessionAudit,
   withCompiledDiagram,
+  withEstimatedCost,
   withExplanation,
+  withFinalCost,
   withFailure,
   withGraph,
   withGraphAttempt,
+  withStageUsage,
   withSuccess,
   withTimelineEvent,
 } from "~/server/generate/session-audit";
+import {
+  createCostSummary,
+  EXPLANATION_MAX_OUTPUT_TOKENS,
+  GRAPH_MAX_OUTPUT_TOKENS,
+  sumGenerationUsage,
+} from "~/server/generate/pricing";
 import { generateRequestSchema, sseMessage } from "~/server/generate/types";
 
 export const runtime = "nodejs";
@@ -134,18 +145,41 @@ export async function POST(request: Request) {
             githubData.readme,
             apiKey,
           );
-
-          audit = {
-            ...audit,
+          const estimate = await estimateGenerationCost({
             provider,
             model,
-          };
+            fileTree: githubData.fileTree,
+            readme: githubData.readme,
+            username,
+            repo,
+            apiKey,
+          });
+          const actualUsages: GenerationTokenUsage[] = [];
+          let hasCompleteMeasuredUsage = true;
+
+          audit = withStageUsage(
+            withEstimatedCost(
+              {
+                ...audit,
+                provider,
+                model,
+              },
+              estimate.costSummary,
+            ),
+            {
+              stage: "estimate",
+              model,
+              costSummary: estimate.costSummary,
+              createdAt: new Date().toISOString(),
+            },
+          );
           await upsertLatestSessionAudit({ username, repo, audit });
 
           send({
             status: "started",
             session_id: audit.sessionId,
             message: "Starting generation process...",
+            cost_summary: estimate.costSummary,
           });
 
           if (tokenCount > 50000 && tokenCount < 195000 && !apiKey) {
@@ -163,6 +197,7 @@ export async function POST(request: Request) {
               error_code: "API_KEY_REQUIRED",
               validation_error: error,
               failure_stage: "started",
+              cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
             controller.close();
@@ -184,6 +219,7 @@ export async function POST(request: Request) {
               error_code: "TOKEN_LIMIT_EXCEEDED",
               validation_error: error,
               failure_stage: "started",
+              cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
             controller.close();
@@ -212,7 +248,7 @@ export async function POST(request: Request) {
           });
 
           let explanationResponse = "";
-          for await (const chunk of streamCompletion({
+          const explanationStream = await streamCompletion({
             provider,
             model,
             systemPrompt: SYSTEM_FIRST_PROMPT,
@@ -222,9 +258,28 @@ export async function POST(request: Request) {
             }),
             apiKey,
             reasoningEffort: "medium",
-          })) {
+            maxOutputTokens: EXPLANATION_MAX_OUTPUT_TOKENS,
+          });
+          for await (const chunk of explanationStream.stream) {
             explanationResponse += chunk;
             send({ status: "explanation_chunk", session_id: audit.sessionId, chunk });
+          }
+          const explanationUsage = await explanationStream.usagePromise;
+          if (explanationUsage) {
+            actualUsages.push(explanationUsage);
+            audit = withStageUsage(audit, {
+              stage: "explanation",
+              model,
+              costSummary: createCostSummary({
+                kind: "actual",
+                model,
+                usage: explanationUsage,
+                approximate: false,
+              }),
+              createdAt: new Date().toISOString(),
+            });
+          } else {
+            hasCompleteMeasuredUsage = false;
           }
 
           const explanation = extractTaggedSection(explanationResponse, "explanation");
@@ -258,7 +313,7 @@ export async function POST(request: Request) {
               graph_attempts: audit.graphAttempts,
             });
 
-            const { output: graph, rawText } = await generateStructuredOutput({
+            const { output: graph, rawText, usage } = await generateStructuredOutput({
               provider,
               model,
               systemPrompt: SYSTEM_GRAPH_PROMPT,
@@ -274,8 +329,26 @@ export async function POST(request: Request) {
               schemaName: "diagram_graph",
               apiKey,
               reasoningEffort: "low",
-              maxOutputTokens: 6000,
+              maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
             });
+
+            if (usage) {
+              actualUsages.push(usage);
+              audit = withStageUsage(audit, {
+                stage: "graph_attempt",
+                attempt,
+                model,
+                costSummary: createCostSummary({
+                  kind: "actual",
+                  model,
+                  usage,
+                  approximate: false,
+                }),
+                createdAt: new Date().toISOString(),
+              });
+            } else {
+              hasCompleteMeasuredUsage = false;
+            }
 
             send({
               status,
@@ -340,6 +413,7 @@ export async function POST(request: Request) {
               error_code: "GRAPH_VALIDATION_FAILED",
               validation_error: latestValidationError,
               failure_stage: "graph_validating",
+              cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
             controller.close();
@@ -389,12 +463,27 @@ export async function POST(request: Request) {
               error_code: "COMPILER_VALIDATION_FAILED",
               failure_stage: "diagram_compiling",
               validation_error: compilerError,
+              cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
             controller.close();
             return;
           }
 
+          const finalCost = hasCompleteMeasuredUsage
+            ? createCostSummary({
+                kind: "actual",
+                model,
+                usage: sumGenerationUsage(...actualUsages),
+                approximate: false,
+              })
+            : {
+                ...estimate.costSummary,
+                kind: "actual" as const,
+                note:
+                  "Some stage usage was unavailable, so the final cost remains approximate.",
+              };
+          audit = withFinalCost(audit, finalCost);
           audit = withSuccess(withTimelineEvent(audit, "complete", "Diagram generation complete."));
           await saveSuccessfulDiagramState({
             username,
@@ -409,6 +498,7 @@ export async function POST(request: Request) {
           send({
             status: "complete",
             session_id: audit.sessionId,
+            cost_summary: audit.finalCost ?? audit.estimatedCost,
             diagram,
             explanation,
             graph: validGraph,
@@ -436,6 +526,7 @@ export async function POST(request: Request) {
             error_code: "STREAM_FAILED",
             failure_stage: failedAudit.failureStage,
             validation_error: failedAudit.validationError,
+            cost_summary: failedAudit.finalCost ?? failedAudit.estimatedCost,
             latest_session_audit: failedAudit,
           });
         } finally {

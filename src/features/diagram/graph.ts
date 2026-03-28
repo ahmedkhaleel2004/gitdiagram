@@ -1,4 +1,8 @@
 import { z } from "zod";
+import type {
+  GenerationCostSummary,
+  GenerationStageUsage,
+} from "~/features/diagram/cost";
 
 export const MAX_GRAPH_GROUPS = 10;
 export const MAX_GRAPH_NODES = 34;
@@ -92,9 +96,12 @@ export interface GenerationSessionAudit {
   stage: string;
   provider: string;
   model: string;
+  estimatedCost?: GenerationCostSummary;
+  finalCost?: GenerationCostSummary;
   explanation?: string;
   graph: DiagramGraph | null;
   graphAttempts: GraphAttemptAudit[];
+  stageUsages: GenerationStageUsage[];
   compiledDiagram?: string;
   validationError?: string;
   failureStage?: string;

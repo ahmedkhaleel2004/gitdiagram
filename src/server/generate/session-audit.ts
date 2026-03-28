@@ -1,4 +1,8 @@
 import type {
+  GenerationCostSummary,
+  GenerationStageUsage,
+} from "~/features/diagram/cost";
+import type {
   DiagramGraph,
   GenerationSessionAudit,
   GraphAttemptAudit,
@@ -22,6 +26,7 @@ export function createGenerationSessionAudit(params: {
     model: params.model,
     graph: null,
     graphAttempts: [],
+    stageUsages: [],
     timeline: [{ stage: "started", createdAt }],
     createdAt,
     updatedAt: createdAt,
@@ -49,6 +54,39 @@ export function withExplanation(
   return {
     ...audit,
     explanation,
+    updatedAt: nowIso(),
+  };
+}
+
+export function withEstimatedCost(
+  audit: GenerationSessionAudit,
+  estimatedCost: GenerationCostSummary,
+): GenerationSessionAudit {
+  return {
+    ...audit,
+    estimatedCost,
+    updatedAt: nowIso(),
+  };
+}
+
+export function withFinalCost(
+  audit: GenerationSessionAudit,
+  finalCost: GenerationCostSummary,
+): GenerationSessionAudit {
+  return {
+    ...audit,
+    finalCost,
+    updatedAt: nowIso(),
+  };
+}
+
+export function withStageUsage(
+  audit: GenerationSessionAudit,
+  stageUsage: GenerationStageUsage,
+): GenerationSessionAudit {
+  return {
+    ...audit,
+    stageUsages: [...audit.stageUsages, stageUsage],
     updatedAt: nowIso(),
   };
 }

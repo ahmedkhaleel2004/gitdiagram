@@ -1,3 +1,4 @@
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routers import generate
 from app.services.mermaid_service import MermaidValidationResult
+from app.services.pricing import GenerationTokenUsage
 
 client = TestClient(app)
 
@@ -50,6 +52,8 @@ def test_generate_cost_success(monkeypatch):
     assert data["ok"] is True
     assert data["model"] == "gpt-5.4-mini"
     assert data["pricing_model"] == "gpt-5.4-mini"
+    assert data["cost_summary"]["kind"] == "estimate"
+    assert data["cost"] == data["cost_summary"]["display"]
 
 
 def test_generate_stream_retries_invalid_graph_once(monkeypatch):
@@ -90,7 +94,15 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
         max_output_tokens=None,
     ):
         assert "explain its architecture clearly" in system_prompt
-        yield "<explanation>Repo explanation</explanation>"
+
+        async def generator():
+            yield "<explanation>Repo explanation</explanation>"
+
+        future = asyncio.get_running_loop().create_future()
+        future.set_result(
+            GenerationTokenUsage(input_tokens=100, output_tokens=50, total_tokens=150)
+        )
+        return generator(), future
 
     graph_outputs = iter(
         [
@@ -111,6 +123,7 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
                     }
                 ),
                 '{"groups":[],"nodes":[{"id":"api","label":"API","type":"service","path":"missing.py"}],"edges":[]}',
+                GenerationTokenUsage(input_tokens=60, output_tokens=30, total_tokens=90),
             ),
             (
                 generate.DiagramGraph.model_validate(
@@ -129,6 +142,7 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
                     }
                 ),
                 '{"groups":[],"nodes":[{"id":"api","label":"API","type":"service","path":"src/main.py"}],"edges":[]}',
+                GenerationTokenUsage(input_tokens=70, output_tokens=35, total_tokens=105),
             ),
         ]
     )
@@ -167,6 +181,8 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
     assert "diagram_compiling" in events
     assert events[-1] == "complete"
     assert payloads[-1]["graph"]["nodes"][0]["path"] == "src/main.py"
+    assert payloads[0]["cost_summary"]["kind"] == "estimate"
+    assert payloads[-1]["cost_summary"]["kind"] == "actual"
 
 
 def test_modify_route_removed():

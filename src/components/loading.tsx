@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import type { GenerationCostSummary } from "~/features/diagram/cost";
 import type { GraphAttemptAudit, DiagramGraph } from "~/features/diagram/graph";
 import type { DiagramStreamStatus } from "~/features/diagram/types";
 
@@ -14,7 +15,7 @@ const messages = [
 ];
 
 interface LoadingProps {
-  cost?: string;
+  costSummary?: GenerationCostSummary;
   status: DiagramStreamStatus;
   message?: string;
   explanation?: string;
@@ -61,7 +62,7 @@ export default function Loading({
   graphAttempts,
   validationError,
   diagram,
-  cost,
+  costSummary,
 }: LoadingProps) {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
   const [graphPlanningSeconds, setGraphPlanningSeconds] = useState(0);
@@ -128,6 +129,8 @@ export default function Loading({
     status === "idle" || status === "complete" || status === "error"
       ? baseHeaderMessage
       : `${baseHeaderMessage.replace(/\.*\s*$/, "")}${animatedDots}`;
+  const costLabel =
+    costSummary?.kind === "actual" ? "Actual cost" : "Estimated cost";
 
   return (
     <div className="mx-auto w-full max-w-4xl p-4">
@@ -141,7 +144,11 @@ export default function Loading({
               {headerMessage}
             </div>
             <div className="flex shrink-0 items-center gap-3 text-xs font-medium text-purple-500 dark:text-[hsl(var(--foreground))]">
-              {cost && <span>Estimated cost: {cost}</span>}
+              {costSummary && (
+                <span>
+                  {costLabel}: {costSummary.display}
+                </span>
+              )}
               <span className="rounded-full bg-purple-100 px-2 py-0.5 dark:bg-[#251b3a]">
                 Step {getStepNumber(status)}/3
               </span>
