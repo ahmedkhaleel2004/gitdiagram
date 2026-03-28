@@ -1,72 +1,30 @@
 "use server";
 
-import { db } from "~/server/db";
-import { eq, and } from "drizzle-orm";
-import { diagramCache } from "~/server/db/schema";
 import { sql } from "drizzle-orm";
 
-export async function getCachedDiagram(username: string, repo: string) {
-  try {
-    const cached = await db
-      .select()
-      .from(diagramCache)
-      .where(
-        and(eq(diagramCache.username, username), eq(diagramCache.repo, repo)),
-      )
-      .limit(1);
+import type { DiagramStateResponse } from "~/features/diagram/types";
+import { db } from "~/server/db";
+import {
+  getDiagramStateRecord,
+  recordLatestSessionRenderError,
+} from "~/server/db/diagram-state";
+import { diagramCache } from "~/server/db/schema";
 
-    return cached[0]?.diagram ?? null;
-  } catch (error) {
-    console.error("Error fetching cached diagram:", error);
-    return null;
-  }
-}
-
-export async function getCachedExplanation(username: string, repo: string) {
-  try {
-    const cached = await db
-      .select()
-      .from(diagramCache)
-      .where(
-        and(eq(diagramCache.username, username), eq(diagramCache.repo, repo)),
-      )
-      .limit(1);
-
-    return cached[0]?.explanation ?? null;
-  } catch (error) {
-    console.error("Error fetching cached explanation:", error);
-    return null;
-  }
-}
-
-export async function cacheDiagramAndExplanation(
+export async function getDiagramState(
   username: string,
   repo: string,
-  diagram: string,
-  explanation: string,
-  usedOwnKey = false,
-) {
+): Promise<DiagramStateResponse> {
   try {
-    await db
-      .insert(diagramCache)
-      .values({
-        username,
-        repo,
-        diagram,
-        explanation,
-        usedOwnKey,
-      })
-      .onConflictDoUpdate({
-        target: [diagramCache.username, diagramCache.repo],
-        set: {
-          diagram,
-          explanation,
-          usedOwnKey,
-          updatedAt: new Date(),
-        },
-      });
+    return await getDiagramStateRecord(username, repo);
   } catch (error) {
-    console.error("Error caching diagram:", error);
+    console.error("Error fetching diagram state:", error);
+    return {
+      diagram: null,
+      explanation: null,
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: null,
+    };
   }
 }
 
@@ -84,5 +42,17 @@ export async function getDiagramStats() {
   } catch (error) {
     console.error("Error getting diagram stats:", error);
     return null;
+  }
+}
+
+export async function persistDiagramRenderError(
+  username: string,
+  repo: string,
+  renderError: string,
+) {
+  try {
+    await recordLatestSessionRenderError({ username, repo, renderError });
+  } catch (error) {
+    console.error("Error recording diagram render error:", error);
   }
 }

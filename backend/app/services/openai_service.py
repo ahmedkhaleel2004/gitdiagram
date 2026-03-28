@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import AsyncGenerator, Literal
+from typing import AsyncGenerator, Literal, TypeVar
 import math
 import os
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from app.services.model_config import AIProvider, get_provider_label
 from app.utils.format_message import format_user_message
@@ -13,6 +14,7 @@ from app.utils.format_message import format_user_message
 load_dotenv()
 
 ReasoningEffort = Literal["low", "medium", "high"]
+StructuredOutputModel = TypeVar("StructuredOutputModel", bound=BaseModel)
 
 
 class OpenAIService:
@@ -138,5 +140,47 @@ class OpenAIService:
             if not isinstance(input_tokens, int):
                 raise ValueError("OpenAI input token count returned invalid payload.")
             return input_tokens
+        finally:
+            await client.close()
+
+    async def generate_structured_output(
+        self,
+        *,
+        provider: AIProvider,
+        model: str,
+        system_prompt: str,
+        data: dict[str, str | None],
+        text_format: type[StructuredOutputModel],
+        api_key: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        max_output_tokens: int | None = None,
+    ) -> tuple[StructuredOutputModel, str]:
+        user_prompt = format_user_message(data)
+        resolved_api_key = self._resolve_api_key(provider, api_key)
+        payload: dict = {
+            "model": model,
+            "input": self._build_input(system_prompt, user_prompt),
+            "text_format": text_format,
+        }
+        if reasoning_effort:
+            payload["reasoning"] = {"effort": reasoning_effort}
+        if max_output_tokens:
+            payload["max_output_tokens"] = max_output_tokens
+
+        client = self._create_client(provider, resolved_api_key)
+        try:
+            response = await client.responses.parse(**payload)
+            parsed = getattr(response, "output_parsed", None)
+            if parsed is None:
+                raise ValueError("Structured output parsing returned no parsed payload.")
+            output_text = getattr(response, "output_text", None)
+            raw_text = output_text.strip() if isinstance(output_text, str) and output_text.strip() else parsed.model_dump_json(indent=2)
+            return parsed, raw_text
+        except Exception as exc:
+            if provider == "openrouter":
+                raise ValueError(
+                    f"OpenRouter model does not support the required structured graph output: {exc}"
+                ) from exc
+            raise
         finally:
             await client.close()

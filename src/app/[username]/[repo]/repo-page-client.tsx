@@ -4,6 +4,7 @@ import { useState } from "react";
 import MainCard from "~/components/main-card";
 import Loading from "~/components/loading";
 import MermaidChart from "~/components/mermaid-diagram";
+import { GenerationAuditPanel } from "~/components/generation-audit-panel";
 import { useDiagram } from "~/hooks/useDiagram";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
 import { ApiKeyButton } from "~/components/api-key-button";
@@ -46,6 +47,7 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
           isHome={false}
           username={normalizedUsername}
           repo={normalizedRepo}
+          hasDiagram={Boolean(diagram)}
           onCopy={handleCopy}
           lastGenerated={lastGenerated}
           onExportImage={handleExportImage}
@@ -61,28 +63,31 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
             cost={cost}
             status={state.status}
             message={state.message}
-            parserError={state.parserError}
-            fixAttempt={state.fixAttempt}
-            fixMaxAttempts={state.fixMaxAttempts}
-            fixDiagramDraft={state.fixDiagramDraft}
             explanation={state.explanation}
-            mapping={state.mapping}
+            graph={state.graph}
+            graphAttempts={state.graphAttempts}
+            validationError={state.validationError}
             diagram={state.diagram}
           />
         ) : error || state.error ? (
           <div className="mt-12 text-center">
-            <p className="max-w-4xl text-lg font-medium text-red-700 dark:text-red-300">
-              {error || state.error}
-            </p>
-            {state.parserError && (
-              <pre className="mx-auto mt-4 max-w-4xl overflow-x-auto whitespace-pre-wrap rounded-md border border-neutral-300 bg-neutral-100 p-4 text-left text-xs text-neutral-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200">
-                {state.parserError}
-              </pre>
-            )}
+            <GenerationAuditPanel
+              audit={state.latestSessionAudit}
+              error={error || state.error}
+            />
             {(error?.includes("API key") ||
               state.error?.includes("API key")) && (
               <div className="mt-8 flex flex-col items-center gap-2">
                 <ApiKeyButton onClick={handleOpenApiKeyDialog} />
+              </div>
+            )}
+            {diagram && (
+              <div className="mt-8 flex w-full justify-center px-4">
+                <MermaidChart
+                  chart={diagram}
+                  zoomingEnabled={zoomingEnabled}
+                  onRenderError={handleDiagramRenderError}
+                />
               </div>
             )}
           </div>

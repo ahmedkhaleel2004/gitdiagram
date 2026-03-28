@@ -8,7 +8,13 @@ import {
   varchar,
   primaryKey,
   boolean,
+  jsonb,
+  text,
 } from "drizzle-orm/pg-core";
+import type {
+  DiagramGraph,
+  GenerationSessionAudit,
+} from "~/features/diagram/graph";
 
 /**
  * This is an example of how to use the multi-project schema feature of Drizzle ORM. Use the same
@@ -23,10 +29,22 @@ export const diagramCache = createTable(
   {
     username: varchar("username", { length: 256 }).notNull(),
     repo: varchar("repo", { length: 256 }).notNull(),
-    diagram: varchar("diagram", { length: 10000 }).notNull(), // Adjust length as needed
-    explanation: varchar("explanation", { length: 10000 })
+    diagram: text("diagram").notNull().default(""),
+    explanation: text("explanation")
       .notNull()
       .default("No explanation provided"), // Default explanation to avoid data loss of existing rows
+    graph: jsonb("graph").$type<DiagramGraph | null>().default(null),
+    latestSessionId: varchar("latest_session_id", { length: 128 }),
+    latestSessionStatus: varchar("latest_session_status", { length: 32 })
+      .notNull()
+      .default("idle"),
+    latestSessionStage: varchar("latest_session_stage", { length: 64 }),
+    latestSessionProvider: varchar("latest_session_provider", { length: 64 }),
+    latestSessionModel: varchar("latest_session_model", { length: 256 }),
+    latestSessionAudit: jsonb("latest_session_audit")
+      .$type<GenerationSessionAudit | null>()
+      .default(null),
+    lastSuccessfulAt: timestamp("last_successful_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),

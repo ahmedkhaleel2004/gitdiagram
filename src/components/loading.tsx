@@ -1,91 +1,73 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import type { GraphAttemptAudit, DiagramGraph } from "~/features/diagram/graph";
 import type { DiagramStreamStatus } from "~/features/diagram/types";
 
 const messages = [
-  "Checking if its cached...",
-  "Generating diagram...",
+  "Checking cached state...",
   "Analyzing repository...",
-  "Prompting GPT-5.2...",
-  "Inspecting file paths...",
-  "Finding component relationships...",
-  "Linking components to code...",
-  "Extracting relevant directories...",
-  "Reasoning about the diagram...",
-  "Prompt engineers needed -> Check out the GitHub",
-  "Shoutout to GitIngest for inspiration",
-  "I need to find a way to make this faster...",
-  "Finding the meaning of life...",
-  "I'm tired...",
-  "Please just give me the diagram...",
-  "...NOW!",
-  "guess not...",
+  "Planning graph structure...",
+  "Compiling Mermaid...",
+  "Trying to keep this fast...",
 ];
 
 interface LoadingProps {
   cost?: string;
   status: DiagramStreamStatus;
   message?: string;
-  parserError?: string;
-  fixAttempt?: number;
-  fixMaxAttempts?: number;
-  fixDiagramDraft?: string;
   explanation?: string;
-  mapping?: string;
+  graph?: DiagramGraph;
+  graphAttempts?: GraphAttemptAudit[];
+  validationError?: string;
   diagram?: string;
 }
 
-const getStepNumber = (status: string): number => {
-  if (status.startsWith("diagram")) return 3;
-  if (status.startsWith("mapping")) return 2;
-  if (status.startsWith("explanation")) return 1;
+function getStepNumber(status: DiagramStreamStatus): number {
+  if (status === "diagram_compiling" || status === "complete") return 3;
+  if (
+    status === "graph_sent" ||
+    status === "graph" ||
+    status === "graph_retry" ||
+    status === "graph_validating"
+  ) {
+    return 2;
+  }
+  if (
+    status === "explanation_sent" ||
+    status === "explanation" ||
+    status === "explanation_chunk"
+  ) {
+    return 1;
+  }
   return 0;
-};
+}
 
-const SequentialDots = () => {
+function isGraphPlanningStatus(status: DiagramStreamStatus): boolean {
   return (
-    <span className="inline-flex w-8 justify-start">
-      <span className="flex gap-0.5">
-        <span className="h-1 w-1 animate-[dot1_1.5s_steps(1)_infinite] rounded-full bg-[hsl(var(--neo-dot-active))]" />
-        <span className="h-1 w-1 animate-[dot2_1.5s_steps(1)_infinite] rounded-full bg-[hsl(var(--neo-dot-active))]" />
-        <span className="h-1 w-1 animate-[dot3_1.5s_steps(1)_infinite] rounded-full bg-[hsl(var(--neo-dot-active))]" />
-      </span>
-    </span>
+    status === "graph_sent" ||
+    status === "graph" ||
+    status === "graph_retry" ||
+    status === "graph_validating"
   );
-};
-
-const StepDots = ({ currentStep }: { currentStep: number }) => {
-  return (
-    <div className="flex gap-1">
-      {[1, 2, 3].map((step) => (
-        <div
-          key={step}
-          className={`h-1.5 w-1.5 rounded-full transition-colors duration-300 ${
-            step <= currentStep
-              ? "bg-[hsl(var(--neo-dot-active))]"
-              : "bg-[hsl(var(--neo-dot-inactive))]"
-          }`}
-        />
-      ))}
-    </div>
-  );
-};
+}
 
 export default function Loading({
   status = "idle",
   message,
-  parserError,
-  fixAttempt,
-  fixMaxAttempts,
-  fixDiagramDraft,
   explanation,
-  mapping,
+  graph,
+  graphAttempts,
+  validationError,
   diagram,
   cost,
 }: LoadingProps) {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+  const [graphPlanningSeconds, setGraphPlanningSeconds] = useState(0);
+  const [animatedDots, setAnimatedDots] = useState(".");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -95,219 +77,167 @@ export default function Loading({
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-scroll effect
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (status === "idle" || status === "complete" || status === "error") {
+      setAnimatedDots(".");
+      return;
     }
-  }, [
-    status,
-    message,
-    parserError,
-    fixAttempt,
-    fixMaxAttempts,
-    fixDiagramDraft,
-    explanation,
-    mapping,
-    diagram,
-  ]);
 
-  const shouldShowReasoning = (currentStatus: string) => {
-    if (
-      currentStatus === "diagram_fixing" ||
-      currentStatus === "diagram_fix_attempt" ||
-      currentStatus === "diagram_fix_chunk" ||
-      currentStatus === "diagram_fix_validating"
-    ) {
-      return null;
-    }
-    if (
-      currentStatus === "explanation_sent" ||
-      (currentStatus.startsWith("explanation") && !explanation)
-    ) {
-      return "explanation";
-    }
-    if (
-      currentStatus === "mapping_sent" ||
-      (currentStatus.startsWith("mapping") && !mapping)
-    ) {
-      return "mapping";
-    }
-    if (
-      currentStatus === "diagram_sent" ||
-      (currentStatus.startsWith("diagram") && !diagram)
-    ) {
-      return "diagram";
-    }
-    return null;
-  };
+    const dotStates = [".", "..", "..."];
+    let dotIndex = 0;
+    const interval = setInterval(() => {
+      dotIndex = (dotIndex + 1) % dotStates.length;
+      setAnimatedDots(dotStates[dotIndex] ?? ".");
+    }, 450);
 
-  const renderReasoningMessage = () => {
-    const reasoningType = shouldShowReasoning(status);
-    switch (reasoningType) {
-      case "explanation":
-        return "Model is analyzing the repository structure and codebase...";
-      case "mapping":
-        return "Model is identifying component relationships and dependencies...";
-      case "diagram":
-        return "Model is planning the diagram layout and connections...";
-      default:
-        return null;
-    }
-  };
+    return () => clearInterval(interval);
+  }, [status]);
 
-  const getStatusDisplay = () => {
-    const reasoningType = shouldShowReasoning(status);
-    switch (status) {
-      case "explanation_sent":
-      case "explanation":
-      case "explanation_chunk":
-        return {
-          text: reasoningType
-            ? "Model is reasoning about repository structure"
-            : "Explaining repository structure...",
-          isReasoning: !!reasoningType,
-        };
-      case "mapping_sent":
-      case "mapping":
-      case "mapping_chunk":
-        return {
-          text: reasoningType
-            ? "Model is reasoning about component relationships"
-            : "Creating component mapping...",
-          isReasoning: !!reasoningType,
-        };
-      case "diagram_sent":
-      case "diagram":
-      case "diagram_chunk":
-        return {
-          text: reasoningType
-            ? "Model is reasoning about diagram structure"
-            : "Generating diagram...",
-          isReasoning: !!reasoningType,
-        };
-      case "diagram_fixing":
-      case "diagram_fix_attempt":
-      case "diagram_fix_chunk":
-      case "diagram_fix_validating":
-        return {
-          text: message ?? "Fixing Mermaid syntax...",
-          isReasoning: false,
-        };
-      default:
-        return {
-          text: messages[currentMessageIndex],
-          isReasoning: false,
-        };
+  useEffect(() => {
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer) {
+      return;
     }
-  };
 
-  const statusDisplay = getStatusDisplay();
-  const reasoningMessage = renderReasoningMessage();
-  const hasFixTelemetry =
-    status === "diagram_fixing" ||
-    status === "diagram_fix_attempt" ||
-    status === "diagram_fix_chunk" ||
-    status === "diagram_fix_validating" ||
-    typeof fixAttempt === "number" ||
-    !!parserError ||
-    !!fixDiagramDraft;
+    requestAnimationFrame(() => {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      bottomRef.current?.scrollIntoView({ block: "end" });
+    });
+  }, [status, message, explanation, graph, graphAttempts, validationError, diagram]);
+
+  useEffect(() => {
+    if (!isGraphPlanningStatus(status) || graph) {
+      setGraphPlanningSeconds(0);
+      return;
+    }
+
+    setGraphPlanningSeconds(0);
+    const interval = setInterval(() => {
+      setGraphPlanningSeconds((seconds) => seconds + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [graph, status]);
+
+  const latestRawGraphAttempt = graphAttempts?.at(-1)?.rawOutput;
+  const graphAttemptNumber = Math.min((graphAttempts?.length ?? 0) + 1, 3);
+  const showGraphPlanningCard = isGraphPlanningStatus(status) && !graph;
+  const showGraphAttemptBadge = graphAttemptNumber > 1;
+  const baseHeaderMessage = message ?? messages[currentMessageIndex] ?? "";
+  const headerMessage =
+    status === "idle" || status === "complete" || status === "error"
+      ? baseHeaderMessage
+      : `${baseHeaderMessage.replace(/\.*\s*$/, "")}${animatedDots}`;
 
   return (
     <div className="mx-auto w-full max-w-4xl p-4">
-      <div className="overflow-hidden rounded-xl border-2 border-purple-200 bg-purple-50/30 backdrop-blur-sm dark:border-[#2d1d4e] dark:bg-[linear-gradient(160deg,#1a1228,#150f22)]">
-        <div className="border-b border-purple-100 bg-purple-100/50 px-6 py-3 dark:border-[#2d1d4e] dark:bg-[#1e1832]/90">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-purple-500 dark:text-[hsl(var(--neo-button-hover))]">
-                {statusDisplay.text}
-              </span>
-              {statusDisplay.isReasoning && <SequentialDots />}
+      <div
+        ref={scrollRef}
+        className="max-h-[560px] overflow-y-auto rounded-xl border-2 border-purple-200 bg-purple-50/30 backdrop-blur-sm dark:border-[#2d1d4e] dark:bg-[linear-gradient(160deg,#1a1228,#150f22)]"
+      >
+        <div className="sticky top-0 z-20 border-b border-purple-100 bg-purple-100/95 px-6 py-3 backdrop-blur-sm dark:border-[#2d1d4e] dark:bg-[#1e1832]/95">
+          <div className="flex items-center justify-between gap-4">
+            <div className="text-sm font-medium text-purple-500 dark:text-[hsl(var(--neo-button-hover))]">
+              {headerMessage}
             </div>
-            <div className="flex items-center gap-3 text-xs font-medium text-purple-500 dark:text-[hsl(var(--foreground))]">
+            <div className="flex shrink-0 items-center gap-3 text-xs font-medium text-purple-500 dark:text-[hsl(var(--foreground))]">
               {cost && <span>Estimated cost: {cost}</span>}
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-purple-100 px-2 py-0.5 dark:bg-[#251b3a]">
-                  Step {getStepNumber(status)}/3
-                </span>
-                <StepDots currentStep={getStepNumber(status)} />
-              </div>
+              <span className="rounded-full bg-purple-100 px-2 py-0.5 dark:bg-[#251b3a]">
+                Step {getStepNumber(status)}/3
+              </span>
             </div>
           </div>
         </div>
-
-        {/* Scrollable content */}
-        <div ref={scrollRef} className="max-h-[400px] overflow-y-auto p-6">
-          <div className="flex flex-col gap-6">
-            {/* Only show reasoning message if we have some content */}
-            {reasoningMessage &&
-              statusDisplay.isReasoning &&
-              (explanation ?? mapping ?? diagram) && (
-                <div className="rounded-lg bg-purple-100/50 p-4 text-sm text-purple-500 dark:bg-[#1d1530] dark:text-[hsl(var(--foreground))]">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium">Reasoning</p>
-                    <SequentialDots />
-                  </div>
-                  <p className="mt-2 leading-relaxed">{reasoningMessage}</p>
-                </div>
-            )}
+        <div className="p-6">
+          <div className="flex flex-col gap-4">
             {explanation && (
-              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-600 dark:bg-[#1a1228]/80 dark:text-[hsl(var(--foreground))]">
+              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-700 dark:bg-[#1a1228]/80 dark:text-[hsl(var(--foreground))]">
                 <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
-                  Explanation:
+                  Explanation
                 </p>
-                <p className="mt-2 leading-relaxed">{explanation}</p>
+                <p className="mt-2 whitespace-pre-wrap leading-relaxed">{explanation}</p>
               </div>
             )}
-            {mapping && (
-              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-600 dark:bg-[#1a1228]/80 dark:text-[hsl(var(--foreground))]">
+            {showGraphPlanningCard ? (
+              <div className="rounded-lg border border-purple-200 bg-purple-100/70 p-4 text-sm text-purple-950 dark:border-[#2d1d4e] dark:bg-[#221736]/70 dark:text-[hsl(var(--foreground))]">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="font-medium">Planning graph JSON...</p>
+                  {showGraphAttemptBadge ? (
+                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-purple-700 dark:text-[hsl(var(--neo-link-hover))]">
+                      Attempt {graphAttemptNumber}/3
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-2 leading-relaxed text-purple-900 dark:text-[hsl(var(--foreground))]">
+                  The explanation is done. The model is now building the structured graph that
+                  gets compiled into Mermaid.
+                </p>
+                <div className="mt-3 flex items-center gap-3 text-xs font-medium text-purple-700 dark:text-[hsl(var(--neo-link-hover))]">
+                  <span className="inline-flex gap-1">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-purple-500 [animation-delay:-0.3s] dark:bg-[hsl(var(--neo-button-hover))]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-purple-500 [animation-delay:-0.15s] dark:bg-[hsl(var(--neo-button-hover))]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-purple-500 dark:bg-[hsl(var(--neo-button-hover))]" />
+                  </span>
+                  <span>{graphPlanningSeconds}s in this step</span>
+                </div>
+                <pre className="mt-4 overflow-x-auto rounded-md bg-purple-50/90 p-3 text-xs leading-relaxed text-purple-950 dark:bg-[#181126] dark:text-[hsl(var(--foreground))]">
+{`{
+  "groups": [...],
+  "nodes": [...],
+  "edges": [...]
+}`}
+                </pre>
+              </div>
+            ) : null}
+            {graph && (
+              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-700 dark:bg-[#1a1228]/80 dark:text-[hsl(var(--foreground))]">
                 <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
-                  Mapping:
+                  Graph JSON
                 </p>
                 <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
-                  {mapping}
+                  {JSON.stringify(graph, null, 2)}
+                </pre>
+              </div>
+            )}
+            {graphAttempts?.length ? (
+              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-700 dark:bg-[#1a1228]/80 dark:text-[hsl(var(--foreground))]">
+                <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
+                  Graph attempts
+                </p>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                  {JSON.stringify(graphAttempts, null, 2)}
+                </pre>
+              </div>
+            ) : null}
+            {latestRawGraphAttempt ? (
+              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-700 dark:bg-[#1a1228]/80 dark:text-[hsl(var(--foreground))]">
+                <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
+                  Latest graph raw output
+                </p>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                  {latestRawGraphAttempt}
+                </pre>
+              </div>
+            ) : null}
+            {validationError && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                <p className="font-medium">Validation feedback</p>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                  {validationError}
                 </pre>
               </div>
             )}
             {diagram && (
-              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-600 dark:bg-[#1a1228]/80 dark:text-[hsl(var(--foreground))]">
+              <div className="rounded-lg bg-white/50 p-4 text-sm text-gray-700 dark:bg-[#1a1228]/80 dark:text-[hsl(var(--foreground))]">
                 <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
-                  Mermaid.js diagram:
+                  Compiled Mermaid
                 </p>
                 <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
                   {diagram}
                 </pre>
               </div>
             )}
-            {hasFixTelemetry && (
-              <div className="rounded-lg border border-purple-200 bg-white/70 p-4 text-sm text-gray-600 dark:border-[#2d1d4e] dark:bg-[#1a1228]/85 dark:text-[hsl(var(--foreground))]">
-                <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
-                  Syntax Repair Loop
-                </p>
-                {typeof fixAttempt === "number" &&
-                  typeof fixMaxAttempts === "number" && (
-                    <p className="mt-1 text-xs text-purple-500 dark:text-[hsl(var(--foreground))]">
-                      Attempt {fixAttempt}/{fixMaxAttempts}
-                    </p>
-                  )}
-                {message && <p className="mt-2 leading-relaxed">{message}</p>}
-                {parserError && (
-                  <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-md bg-purple-50 p-3 text-xs text-gray-700 dark:bg-[#130f22] dark:text-[hsl(var(--foreground))]">
-                    {parserError}
-                  </pre>
-                )}
-                {fixDiagramDraft && (
-                  <div className="mt-3">
-                    <p className="mb-2 text-xs font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
-                      Candidate Mermaid fix (streaming)
-                    </p>
-                    <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-purple-50 p-3 text-xs text-gray-700 dark:bg-[#130f22] dark:text-[hsl(var(--foreground))]">
-                      {fixDiagramDraft}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
+            <div ref={bottomRef} />
           </div>
         </div>
       </div>

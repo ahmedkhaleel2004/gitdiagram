@@ -1,7 +1,6 @@
 import { parseSSEStreamBuffer } from "~/features/diagram/sse";
 import type {
   DiagramCostResponse,
-  DiagramRepairResponse,
   DiagramStreamMessage,
   StreamGenerationParams,
 } from "~/features/diagram/types";
@@ -67,6 +66,19 @@ export async function getGenerationCost(
       return { error: "Rate limit exceeded. Please try again later." };
     }
 
+    if (!response.ok) {
+      try {
+        const data = (await response.json()) as DiagramCostResponse;
+        return {
+          error: data.error ?? "Failed to get cost estimate.",
+          error_code: data.error_code,
+          ok: data.ok,
+        };
+      } catch {
+        return { error: "Failed to get cost estimate." };
+      }
+    }
+
     const data = (await response.json()) as DiagramCostResponse;
     return {
       cost: data.cost,
@@ -97,7 +109,15 @@ export async function streamDiagramGeneration(
   });
 
   if (!response.ok) {
-    throw new Error("Failed to start streaming");
+    try {
+      const data = (await response.json()) as DiagramStreamMessage;
+      throw new Error(data.error ?? "Failed to start streaming");
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error("Failed to start streaming");
+    }
   }
 
   const reader = response.body?.getReader();
@@ -130,46 +150,5 @@ export async function streamDiagramGeneration(
     }
   } finally {
     reader.releaseLock();
-  }
-}
-
-export async function repairGeneratedDiagram(params: {
-  username: string;
-  repo: string;
-  diagram: string;
-  explanation: string;
-  mapping: string;
-  parserError: string;
-  apiKey?: string;
-  defaultBranch?: string;
-}): Promise<DiagramRepairResponse> {
-  try {
-    const response = await fetch(`${getGenerateBasePath()}/repair`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username: params.username,
-        repo: params.repo,
-        diagram: params.diagram,
-        explanation: params.explanation,
-        mapping: params.mapping,
-        parser_error: params.parserError,
-        api_key: params.apiKey,
-        default_branch: params.defaultBranch,
-      }),
-    });
-
-    const data = (await response.json()) as DiagramRepairResponse;
-    return {
-      ok: data.ok,
-      diagram: data.diagram,
-      error: data.error,
-      error_code: data.error_code,
-      parser_error: data.parser_error,
-    };
-  } catch {
-    return { error: "Failed to repair Mermaid diagram." };
   }
 }
