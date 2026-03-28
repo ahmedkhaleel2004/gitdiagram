@@ -33,6 +33,8 @@ export interface GenerationEstimateResult {
   estimatedOutputTokens: number;
   pricingModel: string;
   pricing: ReturnType<typeof estimateTextTokenCostUsd>["pricing"];
+  explanationInputTokens: number;
+  graphStaticInputTokens: number;
 }
 
 async function countPromptInputTokens({
@@ -141,5 +143,7 @@ export async function estimateGenerationCost(params: {
       EXPLANATION_MAX_OUTPUT_TOKENS + GRAPH_MAX_OUTPUT_TOKENS,
     pricingModel,
     pricing,
+    explanationInputTokens: explanationCount.inputTokens,
+    graphStaticInputTokens: graphStaticCount.inputTokens,
   };
 }

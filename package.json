@@ -17,6 +17,7 @@
     "preview": "next build && next start",
     "start": "next start",
     "start:backend": "cd backend && ENVIRONMENT=production uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}",
+    "quota:today": "node scripts/complimentary-quota-today.mjs",
     "test": "vitest run",
     "test:backend": "cd backend && uv run pytest -q",
     "test:watch": "vitest",

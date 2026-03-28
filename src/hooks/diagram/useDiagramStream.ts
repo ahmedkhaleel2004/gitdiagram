@@ -40,6 +40,7 @@ export function useDiagramStream({
           status: "error",
           sessionId: data.session_id,
           costSummary: data.cost_summary,
+          quotaResetAt: data.quota_reset_at,
           error: data.error,
           errorCode: data.error_code,
           validationError: data.validation_error,
@@ -65,6 +66,7 @@ export function useDiagramStream({
             sessionId: data.session_id ?? prev.sessionId,
             message: data.message,
             costSummary: data.cost_summary ?? prev.costSummary,
+            quotaResetAt: data.quota_reset_at ?? prev.quotaResetAt,
             graph: data.graph ?? prev.graph,
             graphAttempts: data.graph_attempts ?? prev.graphAttempts,
             diagram: data.diagram ?? prev.diagram,
@@ -78,10 +80,11 @@ export function useDiagramStream({
             setState((prev) => ({
               ...prev,
               status: "explanation_chunk",
-              sessionId: data.session_id ?? prev.sessionId,
-              costSummary: data.cost_summary ?? prev.costSummary,
-              explanation: buffers.explanation,
-            }));
+            sessionId: data.session_id ?? prev.sessionId,
+            costSummary: data.cost_summary ?? prev.costSummary,
+            quotaResetAt: data.quota_reset_at ?? prev.quotaResetAt,
+            explanation: buffers.explanation,
+          }));
           }
           break;
         case "complete": {
@@ -91,6 +94,7 @@ export function useDiagramStream({
             status: "complete",
             sessionId: data.session_id,
             costSummary: data.cost_summary,
+            quotaResetAt: data.quota_reset_at,
             explanation,
             diagram,
             graph: data.graph,
@@ -111,6 +115,7 @@ export function useDiagramStream({
             status: "error",
             sessionId: data.session_id,
             costSummary: data.cost_summary,
+            quotaResetAt: data.quota_reset_at,
             error: data.error,
             validationError: data.validation_error,
             failureStage: data.failure_stage,

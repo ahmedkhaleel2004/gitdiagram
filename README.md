@@ -94,7 +94,12 @@ Example OpenAI setup:
 AI_PROVIDER=openai
 OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-5.4-mini
+OPENAI_COMPLIMENTARY_GATE_ENABLED=false
+OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS=10000000
+OPENAI_COMPLIMENTARY_MODEL_FAMILY=gpt-5.4-mini
 ```
+
+If you want GitDiagram to use only the complimentary OpenAI daily mini quota on the default server key, set `OPENAI_COMPLIMENTARY_GATE_ENABLED=true`. When enabled, the backend stops default-key generations before a request would exceed the configured daily limit, while user-supplied API keys still bypass the gate.
 
 4. Start local database
 

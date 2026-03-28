@@ -13,6 +13,14 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.observability import Timer, log_event
 from app.prompts import SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT
+from app.services.complimentary_gate import (
+    build_complimentary_reservation_tokens,
+    finalize_complimentary_quota,
+    get_complimentary_denial_message,
+    model_matches_complimentary_family,
+    reserve_complimentary_quota,
+    should_apply_complimentary_gate,
+)
 from app.services.cost_estimator import estimate_generation_cost
 from app.services.diagram_state_repository import DiagramStateRepository
 from app.services.github_service import GitHubService
@@ -26,11 +34,9 @@ from app.services.graph_service import (
 )
 from app.services.mermaid_service import validate_mermaid_syntax
 from app.services.model_config import (
-    AIProvider,
     get_model,
     get_provider,
     get_provider_label,
-    supports_exact_input_token_count,
 )
 from app.services.openai_service import OpenAIService
 from app.services.pricing import (
@@ -73,32 +79,6 @@ def _get_github_data(username: str, repo: str, github_pat: str | None):
         file_tree=github_data.file_tree,
         readme=github_data.readme,
     )
-
-
-async def _estimate_repo_input_tokens(
-    provider: AIProvider,
-    model: str,
-    file_tree: str,
-    readme: str,
-    api_key: str | None = None,
-) -> int:
-    if not supports_exact_input_token_count(provider):
-        return openai_service.estimate_tokens(f"{file_tree}\n{readme}")
-
-    try:
-        return await openai_service.count_input_tokens(
-            provider=provider,
-            model=model,
-            system_prompt=SYSTEM_FIRST_PROMPT,
-            data={
-                "file_tree": file_tree,
-                "readme": readme,
-            },
-            api_key=api_key,
-            reasoning_effort="medium",
-        )
-    except Exception:
-        return openai_service.estimate_tokens(f"{file_tree}\n{readme}")
 
 
 def _extract_tagged_section(text: str, tag: str) -> str:
@@ -256,6 +236,9 @@ async def generate_stream(request: Request):
         provider = get_provider()
         model = get_model(provider)
         audit = _create_session_audit(session_id=str(uuid4()), provider=provider, model=model)
+        quota_reservation = None
+        actual_usages = []
+        has_complete_measured_usage = True
 
         async def persist_audit() -> None:
             await asyncio.to_thread(
@@ -271,13 +254,6 @@ async def generate_stream(request: Request):
         try:
             github_data = _get_github_data(parsed.username, parsed.repo, parsed.github_pat)
             provider_label = get_provider_label(provider)
-            token_count = await _estimate_repo_input_tokens(
-                provider=provider,
-                model=model,
-                file_tree=github_data.file_tree,
-                readme=github_data.readme,
-                api_key=parsed.api_key,
-            )
             estimate = await estimate_generation_cost(
                 provider=provider,
                 model=model,
@@ -287,8 +263,7 @@ async def generate_stream(request: Request):
                 repo=parsed.repo,
                 api_key=parsed.api_key,
             )
-            actual_usages = []
-            has_complete_measured_usage = True
+            token_count = estimate["explanation_input_tokens"]
 
             audit = _append_stage_usage(
                 _set_estimated_cost(audit, estimate["cost_summary"]),
@@ -309,6 +284,86 @@ async def generate_stream(request: Request):
                     "cost_summary": estimate["cost_summary"],
                 }
             )
+
+            if should_apply_complimentary_gate(
+                provider=provider,
+                model=model,
+                api_key=parsed.api_key,
+            ):
+                if not model_matches_complimentary_family(model):
+                    error_message = (
+                        "GitDiagram's complimentary usage gate only supports the "
+                        "gpt-5.4-mini model family for the default server key."
+                    )
+                    audit = _set_failure(
+                        {
+                            **audit,
+                            "quotaStatus": "denied",
+                        },
+                        failure_stage="started",
+                        validation_error=error_message,
+                    )
+                    await persist_audit()
+                    yield send(
+                        {
+                            "status": "error",
+                            "session_id": audit["sessionId"],
+                            "error": error_message,
+                            "error_code": "COMPLIMENTARY_GATE_MODEL_MISMATCH",
+                            "validation_error": error_message,
+                            "failure_stage": "started",
+                            "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
+                            "latest_session_audit": audit,
+                        }
+                    )
+                    return
+
+                reservation_tokens = build_complimentary_reservation_tokens(
+                    explanation_input_tokens=estimate["explanation_input_tokens"],
+                    graph_static_input_tokens=estimate["graph_static_input_tokens"],
+                )
+                admitted, quota_reservation, quota_reset_at = await asyncio.to_thread(
+                    reserve_complimentary_quota,
+                    repository=diagram_state_repository,
+                    model=model,
+                    reservation_tokens=reservation_tokens,
+                )
+                if not admitted or quota_reservation is None:
+                    error_message = get_complimentary_denial_message()
+                    audit = _set_failure(
+                        {
+                            **audit,
+                            "quotaStatus": "denied",
+                            "quotaResetAt": quota_reset_at,
+                        },
+                        failure_stage="started",
+                        validation_error=error_message,
+                    )
+                    await persist_audit()
+                    yield send(
+                        {
+                            "status": "error",
+                            "session_id": audit["sessionId"],
+                            "error": error_message,
+                            "error_code": "DAILY_FREE_TOKEN_LIMIT_REACHED",
+                            "validation_error": error_message,
+                            "failure_stage": "started",
+                            "quota_reset_at": quota_reset_at,
+                            "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
+                            "latest_session_audit": audit,
+                        }
+                    )
+                    return
+
+                audit = {
+                    **audit,
+                    "quotaStatus": "admitted",
+                    "quotaBucket": quota_reservation.quota_bucket,
+                    "quotaDateUtc": quota_reservation.quota_date_utc,
+                    "reservedTokens": quota_reservation.reserved_tokens,
+                    "quotaResetAt": quota_reservation.quota_reset_at,
+                }
+                await persist_audit()
 
             if token_count > 50000 and token_count < 195000 and not parsed.api_key:
                 error_message = (
@@ -615,6 +670,7 @@ async def generate_stream(request: Request):
                 }
             )
         except Exception as exc:
+            has_complete_measured_usage = False
             error_message = str(exc)
             audit = _set_failure(audit, failure_stage=audit.get("stage", "started"), validation_error=error_message)
             try:
@@ -641,5 +697,30 @@ async def generate_stream(request: Request):
                 elapsed_ms=timer.elapsed_ms(),
                 model=model,
             )
+            if quota_reservation is not None:
+                actual_committed_tokens = (
+                    sum_generation_usage(*actual_usages).total_tokens
+                    if has_complete_measured_usage
+                    else quota_reservation.reserved_tokens
+                )
+                audit = {
+                    **audit,
+                    "quotaStatus": "finalized",
+                    "quotaBucket": quota_reservation.quota_bucket,
+                    "quotaDateUtc": quota_reservation.quota_date_utc,
+                    "reservedTokens": quota_reservation.reserved_tokens,
+                    "actualCommittedTokens": actual_committed_tokens,
+                    "quotaResetAt": quota_reservation.quota_reset_at,
+                }
+                try:
+                    await asyncio.to_thread(
+                        finalize_complimentary_quota,
+                        repository=diagram_state_repository,
+                        reservation=quota_reservation,
+                        committed_tokens=actual_committed_tokens,
+                    )
+                    await persist_audit()
+                except Exception:
+                    pass
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

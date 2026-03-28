@@ -10,6 +10,7 @@ import {
   boolean,
   jsonb,
   text,
+  integer,
 } from "drizzle-orm/pg-core";
 import type {
   DiagramGraph,
@@ -55,5 +56,22 @@ export const diagramCache = createTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.username, table.repo] }),
+  }),
+);
+
+export const openaiDailyQuota = createTable(
+  "openai_daily_quota",
+  {
+    quotaDateUtc: varchar("quota_date_utc", { length: 10 }).notNull(),
+    quotaBucket: varchar("quota_bucket", { length: 128 }).notNull(),
+    usedTokens: integer("used_tokens").notNull().default(0),
+    reservedTokens: integer("reserved_tokens").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.quotaDateUtc, table.quotaBucket] }),
   }),
 );

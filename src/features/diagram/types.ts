@@ -24,6 +24,7 @@ export interface DiagramStreamState {
   sessionId?: string;
   message?: string;
   costSummary?: GenerationCostSummary;
+  quotaResetAt?: string;
   explanation?: string;
   diagram?: string;
   graph?: DiagramGraph;
@@ -40,6 +41,7 @@ export interface DiagramStreamMessage {
   session_id?: string;
   message?: string;
   cost_summary?: GenerationCostSummary;
+  quota_reset_at?: string;
   chunk?: string;
   explanation?: string;
   diagram?: string;

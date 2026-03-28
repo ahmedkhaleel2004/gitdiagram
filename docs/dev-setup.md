@@ -57,6 +57,9 @@ Then set at least:
 
 Optional:
 - `OPENAI_MODEL` when `AI_PROVIDER=openai` (defaults to `gpt-5.4-mini`)
+- `OPENAI_COMPLIMENTARY_GATE_ENABLED` to hard-stop default-key OpenAI mini usage at the configured daily free-token ceiling
+- `OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS` when the complimentary gate is enabled (defaults to `10000000`)
+- `OPENAI_COMPLIMENTARY_MODEL_FAMILY` when the complimentary gate is enabled (defaults to `gpt-5.4-mini`)
 - `OPENROUTER_MODEL` when `AI_PROVIDER=openrouter` (defaults to `openai/gpt-5.4`)
 - `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME` for OpenRouter attribution headers
 - `GITHUB_PAT`

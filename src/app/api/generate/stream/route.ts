@@ -3,6 +3,15 @@ import { randomUUID } from "node:crypto";
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
 import { diagramGraphSchema, MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
 import { saveSuccessfulDiagramState, upsertLatestSessionAudit } from "~/server/db/diagram-state";
+import {
+  buildComplimentaryReservationTokens,
+  finalizeComplimentaryQuota,
+  getComplimentaryDenialMessage,
+  modelMatchesComplimentaryFamily,
+  reserveComplimentaryQuota,
+  shouldApplyComplimentaryGate,
+  type ComplimentaryQuotaReservation,
+} from "~/server/generate/complimentary-gate";
 import { estimateGenerationCost } from "~/server/generate/cost-estimate";
 import { extractTaggedSection, toTaggedMessage } from "~/server/generate/format";
 import { getGithubData } from "~/server/generate/github";
@@ -16,14 +25,8 @@ import {
   getModel,
   getProvider,
   getProviderLabel,
-  supportsExactInputTokenCount,
 } from "~/server/generate/model-config";
-import {
-  countInputTokens,
-  estimateTokens,
-  generateStructuredOutput,
-  streamCompletion,
-} from "~/server/generate/openai";
+import { generateStructuredOutput, streamCompletion } from "~/server/generate/openai";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
 import { SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT } from "~/server/generate/prompts";
 import {
@@ -53,34 +56,6 @@ export const maxDuration = 300;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function estimateRepoTokenCount(
-  provider: ReturnType<typeof getProvider>,
-  model: string,
-  fileTree: string,
-  readme: string,
-  apiKey?: string,
-) {
-  if (!supportsExactInputTokenCount(provider)) {
-    return estimateTokens(`${fileTree}\n${readme}`);
-  }
-
-  try {
-    return await countInputTokens({
-      provider,
-      model,
-      systemPrompt: SYSTEM_FIRST_PROMPT,
-      userPrompt: toTaggedMessage({
-        file_tree: fileTree,
-        readme,
-      }),
-      apiKey,
-      reasoningEffort: "medium",
-    });
-  } catch {
-    return estimateTokens(`${fileTree}\n${readme}`);
-  }
 }
 
 export async function POST(request: Request) {
@@ -132,19 +107,15 @@ export async function POST(request: Request) {
           provider: "unknown",
           model: "unknown",
         });
+        let quotaReservation: ComplimentaryQuotaReservation | null = null;
+        const actualUsages: GenerationTokenUsage[] = [];
+        let hasCompleteMeasuredUsage = true;
 
         try {
           const githubData = await getGithubData(username, repo, githubPat);
           const provider = getProvider();
           const providerLabel = getProviderLabel(provider);
           const model = getModel(provider);
-          const tokenCount = await estimateRepoTokenCount(
-            provider,
-            model,
-            githubData.fileTree,
-            githubData.readme,
-            apiKey,
-          );
           const estimate = await estimateGenerationCost({
             provider,
             model,
@@ -154,8 +125,7 @@ export async function POST(request: Request) {
             repo,
             apiKey,
           });
-          const actualUsages: GenerationTokenUsage[] = [];
-          let hasCompleteMeasuredUsage = true;
+          const tokenCount = estimate.explanationInputTokens;
 
           audit = withStageUsage(
             withEstimatedCost(
@@ -181,6 +151,85 @@ export async function POST(request: Request) {
             message: "Starting generation process...",
             cost_summary: estimate.costSummary,
           });
+
+          if (shouldApplyComplimentaryGate({ provider, model, apiKey })) {
+            if (!modelMatchesComplimentaryFamily(model)) {
+              const error =
+                "GitDiagram's complimentary usage gate only supports the gpt-5.4-mini model family for the default server key.";
+              audit = withFailure(
+                {
+                  ...audit,
+                  quotaStatus: "denied",
+                },
+                {
+                  failureStage: "started",
+                  validationError: error,
+                },
+              );
+              await upsertLatestSessionAudit({ username, repo, audit });
+              send({
+                status: "error",
+                session_id: audit.sessionId,
+                error,
+                error_code: "COMPLIMENTARY_GATE_MODEL_MISMATCH",
+                failure_stage: "started",
+                validation_error: error,
+                cost_summary: audit.finalCost ?? audit.estimatedCost,
+                latest_session_audit: audit,
+              });
+              controller.close();
+              return;
+            }
+
+            const reservationTokens = buildComplimentaryReservationTokens({
+              explanationInputTokens: estimate.explanationInputTokens,
+              graphStaticInputTokens: estimate.graphStaticInputTokens,
+            });
+            const reservation = await reserveComplimentaryQuota({
+              model,
+              reservationTokens,
+            });
+
+            if (!reservation.admitted) {
+              const error = reservation.message || getComplimentaryDenialMessage();
+              audit = withFailure(
+                {
+                  ...audit,
+                  quotaStatus: "denied",
+                  quotaResetAt: reservation.quotaResetAt,
+                },
+                {
+                  failureStage: "started",
+                  validationError: error,
+                },
+              );
+              await upsertLatestSessionAudit({ username, repo, audit });
+              send({
+                status: "error",
+                session_id: audit.sessionId,
+                error,
+                error_code: "DAILY_FREE_TOKEN_LIMIT_REACHED",
+                failure_stage: "started",
+                validation_error: error,
+                quota_reset_at: reservation.quotaResetAt,
+                cost_summary: audit.finalCost ?? audit.estimatedCost,
+                latest_session_audit: audit,
+              });
+              controller.close();
+              return;
+            }
+
+            quotaReservation = reservation.reservation;
+            audit = {
+              ...audit,
+              quotaStatus: "admitted",
+              quotaBucket: quotaReservation.quotaBucket,
+              quotaDateUtc: quotaReservation.quotaDateUtc,
+              reservedTokens: quotaReservation.reservedTokens,
+              quotaResetAt: quotaReservation.quotaResetAt,
+            };
+            await upsertLatestSessionAudit({ username, repo, audit });
+          }
 
           if (tokenCount > 50000 && tokenCount < 195000 && !apiKey) {
             const error =
@@ -507,6 +556,7 @@ export async function POST(request: Request) {
             generated_at: audit.updatedAt,
           });
         } catch (error) {
+          hasCompleteMeasuredUsage = false;
           const message =
             error instanceof Error ? error.message : "Streaming generation failed.";
           const failedAudit = withFailure(audit, {
@@ -530,6 +580,31 @@ export async function POST(request: Request) {
             latest_session_audit: failedAudit,
           });
         } finally {
+          if (quotaReservation) {
+            const actualCommittedTokens = hasCompleteMeasuredUsage
+              ? sumGenerationUsage(...actualUsages).totalTokens
+              : quotaReservation.reservedTokens;
+
+            audit = {
+              ...audit,
+              quotaStatus: "finalized",
+              quotaBucket: quotaReservation.quotaBucket,
+              quotaDateUtc: quotaReservation.quotaDateUtc,
+              reservedTokens: quotaReservation.reservedTokens,
+              actualCommittedTokens,
+              quotaResetAt: quotaReservation.quotaResetAt,
+            };
+
+            try {
+              await finalizeComplimentaryQuota({
+                reservation: quotaReservation,
+                committedTokens: actualCommittedTokens,
+              });
+              await upsertLatestSessionAudit({ username, repo, audit });
+            } catch {
+              // Best effort quota finalization and audit persistence.
+            }
+          }
           controller.close();
         }
       };

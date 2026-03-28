@@ -104,4 +104,6 @@ async def estimate_generation_cost(
         + GRAPH_MAX_OUTPUT_TOKENS,
         "pricing_model": pricing_model,
         "pricing": pricing,
+        "explanation_input_tokens": explanation_count,
+        "graph_static_input_tokens": graph_static_count,
     }
