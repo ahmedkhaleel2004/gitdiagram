@@ -11,6 +11,9 @@ class DiagramStateRepository:
     def __init__(self) -> None:
         self.database_url = (os.getenv("POSTGRES_URL") or "").strip()
 
+    def is_configured(self) -> bool:
+        return bool(self.database_url)
+
     def _connect(self):
         if not self.database_url:
             raise ValueError("Missing POSTGRES_URL for diagram state persistence.")

@@ -241,12 +241,52 @@ async def generate_stream(request: Request):
         has_complete_measured_usage = True
 
         async def persist_audit() -> None:
-            await asyncio.to_thread(
-                diagram_state_repository.upsert_latest_session_audit,
-                username=parsed.username,
-                repo=parsed.repo,
-                audit=audit,
-            )
+            if not diagram_state_repository.is_configured():
+                return
+            try:
+                await asyncio.to_thread(
+                    diagram_state_repository.upsert_latest_session_audit,
+                    username=parsed.username,
+                    repo=parsed.repo,
+                    audit=audit,
+                )
+            except Exception as exc:
+                log_event(
+                    "generate.persistence.audit_failed",
+                    username=parsed.username,
+                    repo=parsed.repo,
+                    session_id=audit["sessionId"],
+                    error=str(exc),
+                )
+
+        async def persist_successful_state(
+            *,
+            explanation: str,
+            graph: dict[str, Any],
+            diagram: str,
+            used_own_key: bool,
+        ) -> None:
+            if not diagram_state_repository.is_configured():
+                return
+            try:
+                await asyncio.to_thread(
+                    diagram_state_repository.save_successful_diagram_state,
+                    username=parsed.username,
+                    repo=parsed.repo,
+                    explanation=explanation,
+                    graph=graph,
+                    diagram=diagram,
+                    audit=audit,
+                    used_own_key=used_own_key,
+                )
+            except Exception as exc:
+                log_event(
+                    "generate.persistence.success_state_failed",
+                    username=parsed.username,
+                    repo=parsed.repo,
+                    session_id=audit["sessionId"],
+                    error=str(exc),
+                )
 
         def send(payload: dict[str, Any]) -> str:
             return _sse_message(payload)
@@ -290,6 +330,34 @@ async def generate_stream(request: Request):
                 model=model,
                 api_key=parsed.api_key,
             ):
+                if not diagram_state_repository.is_configured():
+                    error_message = (
+                        "OPENAI_COMPLIMENTARY_GATE_ENABLED requires POSTGRES_URL on the backend "
+                        "service because quota tracking is stored in Postgres."
+                    )
+                    audit = _set_failure(
+                        {
+                            **audit,
+                            "quotaStatus": "storage_unavailable",
+                        },
+                        failure_stage="started",
+                        validation_error=error_message,
+                    )
+                    await persist_audit()
+                    yield send(
+                        {
+                            "status": "error",
+                            "session_id": audit["sessionId"],
+                            "error": error_message,
+                            "error_code": "COMPLIMENTARY_GATE_STORAGE_UNAVAILABLE",
+                            "validation_error": error_message,
+                            "failure_stage": "started",
+                            "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
+                            "latest_session_audit": audit,
+                        }
+                    )
+                    return
+
                 if not model_matches_complimentary_family(model):
                     error_message = (
                         "GitDiagram's complimentary usage gate only supports the "
@@ -645,14 +713,10 @@ async def generate_stream(request: Request):
             )
             audit = _set_final_cost(audit, final_cost)
             audit = _set_success(_timeline(audit, "complete", "Diagram generation complete."))
-            await asyncio.to_thread(
-                diagram_state_repository.save_successful_diagram_state,
-                username=parsed.username,
-                repo=parsed.repo,
+            await persist_successful_state(
                 explanation=explanation,
                 graph=valid_graph.model_dump(by_alias=True),
                 diagram=diagram,
-                audit=audit,
                 used_own_key=bool(parsed.api_key),
             )
 

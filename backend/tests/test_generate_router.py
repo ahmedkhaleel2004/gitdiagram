@@ -336,6 +336,131 @@ def test_generate_stream_bypasses_quota_gate_for_user_api_keys(monkeypatch):
     assert payloads[-1]["status"] == "complete"
 
 
+def test_generate_stream_completes_without_postgres_when_quota_gate_disabled(monkeypatch):
+    monkeypatch.setattr(
+        generate,
+        "_get_github_data",
+        lambda username, repo, github_pat=None: SimpleNamespace(
+            default_branch="main",
+            file_tree="src/main.py",
+            readme="# readme",
+        ),
+    )
+    monkeypatch.setattr(generate, "get_provider", lambda: "openai")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate.diagram_state_repository, "database_url", "")
+    monkeypatch.setattr(
+        generate.diagram_state_repository,
+        "upsert_latest_session_audit",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("audit persistence should be skipped")),
+    )
+    monkeypatch.setattr(
+        generate.diagram_state_repository,
+        "save_successful_diagram_state",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("state persistence should be skipped")),
+    )
+
+    async def fake_estimate_generation_cost(**kwargs):
+        return {
+            "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
+            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
+            "pricing_model": "gpt-5.4-mini",
+            "estimated_input_tokens": 100,
+            "estimated_output_tokens": 10_000,
+            "explanation_input_tokens": 100,
+            "graph_static_input_tokens": 200,
+        }
+
+    async def fake_stream_completion(**kwargs):
+        async def generator():
+            yield "<explanation>Repo explanation</explanation>"
+
+        future = asyncio.get_running_loop().create_future()
+        future.set_result(
+            GenerationTokenUsage(input_tokens=100, output_tokens=50, total_tokens=150)
+        )
+        return generator(), future
+
+    async def fake_generate_structured_output(**kwargs):
+        return (
+            generate.DiagramGraph.model_validate(
+                {
+                    "groups": [],
+                    "nodes": [{
+                        "id": "api",
+                        "label": "API",
+                        "type": "service",
+                        "description": None,
+                        "groupId": None,
+                        "path": "src/main.py",
+                        "shape": None,
+                    }],
+                    "edges": [],
+                }
+            ),
+            '{"groups":[],"nodes":[{"id":"api","label":"API","type":"service","path":"src/main.py"}],"edges":[]}',
+            GenerationTokenUsage(input_tokens=60, output_tokens=30, total_tokens=90),
+        )
+
+    monkeypatch.setattr(generate, "estimate_generation_cost", fake_estimate_generation_cost)
+    monkeypatch.setattr(generate, "should_apply_complimentary_gate", lambda **kwargs: False)
+    monkeypatch.setattr(generate.openai_service, "stream_completion", fake_stream_completion)
+    monkeypatch.setattr(generate.openai_service, "generate_structured_output", fake_generate_structured_output)
+    monkeypatch.setattr(
+        generate,
+        "validate_mermaid_syntax",
+        lambda diagram: MermaidValidationResult(valid=True),
+    )
+
+    response = client.post("/generate/stream", json={"username": "acme", "repo": "demo"})
+
+    assert response.status_code == 200
+    payloads = parse_sse_payloads(response.text)
+    assert payloads[-1]["status"] == "complete"
+
+
+def test_generate_stream_errors_when_quota_gate_enabled_without_postgres(monkeypatch):
+    monkeypatch.setattr(
+        generate,
+        "_get_github_data",
+        lambda username, repo, github_pat=None: SimpleNamespace(
+            default_branch="main",
+            file_tree="src/main.py",
+            readme="# readme",
+        ),
+    )
+    monkeypatch.setattr(generate, "get_provider", lambda: "openai")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate.diagram_state_repository, "database_url", "")
+    monkeypatch.setattr(
+        generate,
+        "reserve_complimentary_quota",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("quota reservation should not run")),
+    )
+
+    async def fake_estimate_generation_cost(**kwargs):
+        return {
+            "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
+            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
+            "pricing_model": "gpt-5.4-mini",
+            "estimated_input_tokens": 100,
+            "estimated_output_tokens": 10_000,
+            "explanation_input_tokens": 100,
+            "graph_static_input_tokens": 200,
+        }
+
+    monkeypatch.setattr(generate, "estimate_generation_cost", fake_estimate_generation_cost)
+    monkeypatch.setattr(generate, "should_apply_complimentary_gate", lambda **kwargs: True)
+
+    response = client.post("/generate/stream", json={"username": "acme", "repo": "demo"})
+
+    assert response.status_code == 200
+    payloads = parse_sse_payloads(response.text)
+    assert payloads[-1]["status"] == "error"
+    assert payloads[-1]["error_code"] == "COMPLIMENTARY_GATE_STORAGE_UNAVAILABLE"
+    assert "POSTGRES_URL" in payloads[-1]["error"]
+
+
 def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
     monkeypatch.setattr(
         generate,
