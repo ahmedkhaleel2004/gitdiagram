@@ -11,6 +11,21 @@ vi.mock("~/features/diagram/api", () => ({
       status: "complete",
       diagram: "flowchart TD\nA-->B",
       explanation: "done",
+      graph: {
+        groups: [],
+        nodes: [
+          {
+            id: "a",
+            label: "A",
+            type: "component",
+            description: null,
+            groupId: null,
+            path: null,
+            shape: null,
+          },
+        ],
+        edges: [],
+      },
     });
   }),
 }));
@@ -35,6 +50,7 @@ describe("useDiagramStream", () => {
 
     expect(result.current.state.status).toBe("complete");
     expect(result.current.state.diagram).toContain("flowchart TD");
+    expect(result.current.state.graph?.nodes).toHaveLength(1);
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onError).not.toHaveBeenCalled();
   });

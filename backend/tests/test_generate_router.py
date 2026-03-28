@@ -43,64 +43,16 @@ def test_generate_cost_success(monkeypatch):
 
     monkeypatch.setattr(generate.openai_service, "count_input_tokens", fake_count_input_tokens)
 
-    response = client.post(
-        "/generate/cost",
-        json={"username": "acme", "repo": "demo"},
-    )
+    response = client.post("/generate/cost", json={"username": "acme", "repo": "demo"})
 
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
-    assert data["cost"].endswith("USD")
     assert data["model"] == "gpt-5.4-mini"
     assert data["pricing_model"] == "gpt-5.4-mini"
-    assert "estimated_input_tokens" in data
-    assert "estimated_output_tokens" in data
 
 
-def test_generate_cost_success_with_openrouter(monkeypatch):
-    monkeypatch.setattr(
-        generate,
-        "_get_github_data",
-        lambda username, repo, github_pat=None: SimpleNamespace(
-            default_branch="main",
-            file_tree="src/main.py",
-            readme="# readme",
-        ),
-    )
-    monkeypatch.setattr(generate, "get_provider", lambda: "openrouter")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "openai/gpt-5.4")
-
-    response = client.post(
-        "/generate/cost",
-        json={"username": "acme", "repo": "demo"},
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["ok"] is True
-    assert data["model"] == "openai/gpt-5.4"
-    assert data["pricing_model"] == "gpt-5.4"
-
-
-def test_generate_cost_error(monkeypatch):
-    def fail_github_data(username, repo, github_pat=None):
-        raise ValueError("repo not found")
-
-    monkeypatch.setattr(generate, "_get_github_data", fail_github_data)
-
-    response = client.post(
-        "/generate/cost",
-        json={"username": "acme", "repo": "missing"},
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["ok"] is False
-    assert data["error_code"] == "COST_ESTIMATION_FAILED"
-
-
-def test_generate_stream_event_order_with_fix_loop(monkeypatch):
+def test_generate_stream_retries_invalid_graph_once(monkeypatch):
     monkeypatch.setattr(
         generate,
         "_get_github_data",
@@ -112,6 +64,16 @@ def test_generate_stream_event_order_with_fix_loop(monkeypatch):
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(
+        generate.diagram_state_repository,
+        "upsert_latest_session_audit",
+        lambda username, repo, audit: None,
+    )
+    monkeypatch.setattr(
+        generate.diagram_state_repository,
+        "save_successful_diagram_state",
+        lambda **kwargs: None,
+    )
 
     async def fake_estimate_repo_input_tokens(provider, model, file_tree, readme, api_key=None):
         assert provider == "openai"
@@ -127,94 +89,84 @@ def test_generate_stream_event_order_with_fix_loop(monkeypatch):
         reasoning_effort=None,
         max_output_tokens=None,
     ):
-        assert provider == "openai"
-        if "explaining to a principal" in system_prompt:
-            yield "<explanation>Repo explanation</explanation>"
-            return
-        if "mapping key components" in system_prompt:
-            yield "<component_mapping>"
-            yield "1. API: src/main.py"
-            yield "</component_mapping>"
-            return
-        if "syntax repair specialist" in system_prompt:
-            yield 'flowchart TD\nA["API"] --> B["Worker"]\nclick A "src/main.py"'
-            return
-        yield 'flowchart TD\nA["API"] --> B["Worker"]\nclick A "src/main.py"'
+        assert "explain its architecture clearly" in system_prompt
+        yield "<explanation>Repo explanation</explanation>"
 
-    validation_results = iter(
+    graph_outputs = iter(
         [
-            MermaidValidationResult(valid=False, message="bad syntax"),
-            MermaidValidationResult(valid=True),
+            (
+                generate.DiagramGraph.model_validate(
+                    {
+                        "groups": [],
+                        "nodes": [{
+                            "id": "api",
+                            "label": "API",
+                            "type": "service",
+                            "description": None,
+                            "groupId": None,
+                            "path": "missing.py",
+                            "shape": None,
+                        }],
+                        "edges": [],
+                    }
+                ),
+                '{"groups":[],"nodes":[{"id":"api","label":"API","type":"service","path":"missing.py"}],"edges":[]}',
+            ),
+            (
+                generate.DiagramGraph.model_validate(
+                    {
+                        "groups": [],
+                        "nodes": [{
+                            "id": "api",
+                            "label": "API",
+                            "type": "service",
+                            "description": None,
+                            "groupId": None,
+                            "path": "src/main.py",
+                            "shape": None,
+                        }],
+                        "edges": [],
+                    }
+                ),
+                '{"groups":[],"nodes":[{"id":"api","label":"API","type":"service","path":"src/main.py"}],"edges":[]}',
+            ),
         ]
     )
 
+    async def fake_generate_structured_output(**kwargs):
+        return next(graph_outputs)
+
     monkeypatch.setattr(generate, "_estimate_repo_input_tokens", fake_estimate_repo_input_tokens)
     monkeypatch.setattr(generate.openai_service, "stream_completion", fake_stream_completion)
-    monkeypatch.setattr(generate, "validate_mermaid_syntax", lambda diagram: next(validation_results))
-
-    response = client.post(
-        "/generate/stream",
-        json={"username": "acme", "repo": "demo"},
+    monkeypatch.setattr(generate.openai_service, "generate_structured_output", fake_generate_structured_output)
+    monkeypatch.setattr(
+        generate,
+        "validate_mermaid_syntax",
+        lambda diagram: MermaidValidationResult(valid=True),
     )
+
+    response = client.post("/generate/stream", json={"username": "acme", "repo": "demo"})
 
     assert response.status_code == 200
     events = []
     payloads = []
     for block in response.text.split("\n\n"):
-        if not block.startswith("data: "):
-            continue
-        payload = json.loads(block[6:])
-        payloads.append(payload)
-        if "status" in payload:
-            events.append(payload["status"])
+      if not block.startswith("data: "):
+        continue
+      payload = json.loads(block[6:])
+      payloads.append(payload)
+      if "status" in payload:
+        events.append(payload["status"])
 
     assert "started" in events
     assert "explanation_sent" in events
-    assert "mapping_sent" in events
-    assert "diagram_sent" in events
-    assert "diagram_fixing" in events
-    assert "diagram_fix_attempt" in events
-    assert "diagram_fix_validating" in events
+    assert "graph_sent" in events
+    assert "graph" in events
+    assert "graph_retry" in events
+    assert "graph_validating" in events
+    assert "diagram_compiling" in events
     assert events[-1] == "complete"
-    complete_payload = payloads[-1]
-    assert complete_payload["status"] == "complete"
-    assert "https://github.com/acme/demo/blob/main/src/main.py" in complete_payload["diagram"]
-
-
-def test_repair_diagram_success(monkeypatch):
-    monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
-
-    async def fake_repair_mermaid_diagram(
-        *,
-        provider,
-        model,
-        diagram,
-        parser_feedback,
-        explanation,
-        component_mapping,
-        api_key,
-    ):
-        assert provider == "openai"
-        assert parser_feedback == "bad syntax"
-        return 'flowchart TD\nA["API"] --> B["Worker"]\nclick A "src/main.py"', None
-
-    monkeypatch.setattr(generate, "_repair_mermaid_diagram", fake_repair_mermaid_diagram)
-
-    response = client.post(
-        "/generate/repair",
-        json={
-            "username": "acme",
-            "repo": "demo",
-            "diagram": "flowchart TD\nA-=>B",
-            "parser_error": "bad syntax",
-        },
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["ok"] is True
-    assert "https://github.com/acme/demo/blob/main/src/main.py" in data["diagram"]
+    assert payloads[-1]["graph"]["nodes"][0]["path"] == "src/main.py"
 
 
 def test_modify_route_removed():

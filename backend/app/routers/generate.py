@@ -2,22 +2,28 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.observability import Timer, log_event
-from app.prompts import (
-    SYSTEM_FIRST_PROMPT,
-    SYSTEM_FIX_MERMAID_PROMPT,
-    SYSTEM_SECOND_PROMPT,
-    SYSTEM_THIRD_PROMPT,
-)
+from app.prompts import SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT
+from app.services.diagram_state_repository import DiagramStateRepository
 from app.services.github_service import GitHubService
-from app.services.mermaid_service import format_validation_feedback, validate_mermaid_syntax
+from app.services.graph_service import (
+    MAX_GRAPH_ATTEMPTS,
+    DiagramGraph,
+    build_file_tree_lookup,
+    compile_diagram_graph,
+    format_graph_validation_feedback,
+    validate_diagram_graph,
+)
+from app.services.mermaid_service import validate_mermaid_syntax
 from app.services.model_config import (
     AIProvider,
     get_model,
@@ -31,11 +37,11 @@ from app.services.pricing import estimate_text_token_cost_usd
 router = APIRouter(prefix="/generate", tags=["AI"])
 
 openai_service = OpenAIService()
+diagram_state_repository = DiagramStateRepository()
 
-MAX_MERMAID_FIX_ATTEMPTS = 3
 MULTI_STAGE_INPUT_MULTIPLIER = 2
 INPUT_OVERHEAD_TOKENS = 3000
-ESTIMATED_OUTPUT_TOKENS = 8000
+ESTIMATED_OUTPUT_TOKENS = 6000
 
 
 class GenerateRequest(BaseModel):
@@ -45,49 +51,8 @@ class GenerateRequest(BaseModel):
     github_pat: str | None = Field(default=None, min_length=1)
 
 
-class RepairRequest(BaseModel):
-    username: str = Field(min_length=1)
-    repo: str = Field(min_length=1)
-    diagram: str = Field(min_length=1)
-    parser_error: str = Field(min_length=1)
-    explanation: str = ""
-    mapping: str = ""
-    default_branch: str = Field(default="main", min_length=1)
-    api_key: str | None = Field(default=None, min_length=1)
-
-
 def _sse_message(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload)}\n\n"
-
-
-def _strip_mermaid_code_fences(text: str) -> str:
-    return text.replace("```mermaid", "").replace("```", "").strip()
-
-
-def _extract_component_mapping(response: str) -> str:
-    start_tag = "<component_mapping>"
-    end_tag = "</component_mapping>"
-    start_index = response.find(start_tag)
-    end_index = response.find(end_tag)
-    if start_index == -1 or end_index == -1:
-        return response
-    return response[start_index:end_index]
-
-
-def process_click_events(diagram: str, username: str, repo: str, branch: str) -> str:
-    click_pattern = r'click ([^\s"]+)\s+"([^"]+)"'
-
-    def replace_path(match: re.Match[str]) -> str:
-        node_id = match.group(1)
-        trimmed_path = match.group(2).strip().strip("\"'")
-        if trimmed_path.lower().startswith(("http://", "https://")):
-            return f'click {node_id} "{trimmed_path}"'
-        is_file = "." in trimmed_path and not trimmed_path.endswith("/")
-        path_type = "blob" if is_file else "tree"
-        full_url = f"https://github.com/{username}/{repo}/{path_type}/{branch}/{trimmed_path}"
-        return f'click {node_id} "{full_url}"'
-
-    return re.sub(click_pattern, replace_path, diagram)
 
 
 def _parse_request_payload(payload: Any) -> tuple[GenerateRequest | None, str | None]:
@@ -98,17 +63,14 @@ def _parse_request_payload(payload: Any) -> tuple[GenerateRequest | None, str | 
         return None, "Invalid request payload."
 
 
-def _parse_repair_payload(payload: Any) -> tuple[RepairRequest | None, str | None]:
-    try:
-        parsed = RepairRequest.model_validate(payload)
-        return parsed, None
-    except ValidationError:
-        return None, "Invalid request payload."
-
-
 def _get_github_data(username: str, repo: str, github_pat: str | None):
     github_service = GitHubService(pat=github_pat)
-    return github_service.get_github_data(username, repo)
+    github_data = github_service.get_github_data(username, repo)
+    return SimpleNamespace(
+        default_branch=github_data.default_branch,
+        file_tree=github_data.file_tree,
+        readme=github_data.readme,
+    )
 
 
 async def _estimate_repo_input_tokens(
@@ -137,48 +99,60 @@ async def _estimate_repo_input_tokens(
         return openai_service.estimate_tokens(f"{file_tree}\n{readme}")
 
 
-async def _repair_mermaid_diagram(
-    *,
-    provider: AIProvider,
-    model: str,
-    diagram: str,
-    parser_feedback: str,
-    explanation: str,
-    component_mapping: str,
-    api_key: str | None,
-) -> tuple[str | None, str | None]:
-    candidate_diagram = _strip_mermaid_code_fences(diagram)
-    attempt = 1
+def _extract_tagged_section(text: str, tag: str) -> str:
+    start_tag = f"<{tag}>"
+    end_tag = f"</{tag}>"
+    start_index = text.find(start_tag)
+    end_index = text.find(end_tag)
+    if start_index == -1 or end_index == -1:
+        return text.strip()
+    return text[start_index + len(start_tag) : end_index].strip()
 
-    while attempt <= MAX_MERMAID_FIX_ATTEMPTS:
-        repaired_diagram = ""
-        async for chunk in openai_service.stream_completion(
-            provider=provider,
-            model=model,
-            system_prompt=SYSTEM_FIX_MERMAID_PROMPT,
-            data={
-                "mermaid_code": candidate_diagram,
-                "parser_error": parser_feedback,
-                "explanation": explanation,
-                "component_mapping": component_mapping,
-            },
-            api_key=api_key,
-            reasoning_effort="low",
-        ):
-            repaired_diagram += chunk
 
-        candidate_diagram = _strip_mermaid_code_fences(repaired_diagram)
-        validation_result = await asyncio.to_thread(
-            validate_mermaid_syntax,
-            candidate_diagram,
-        )
-        if validation_result.valid:
-            return candidate_diagram, None
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-        parser_feedback = format_validation_feedback(validation_result)
-        attempt += 1
 
-    return None, parser_feedback
+def _create_session_audit(*, session_id: str, provider: str, model: str) -> dict[str, Any]:
+    created_at = _now_iso()
+    return {
+        "sessionId": session_id,
+        "status": "running",
+        "stage": "started",
+        "provider": provider,
+        "model": model,
+        "graph": None,
+        "graphAttempts": [],
+        "timeline": [{"stage": "started", "createdAt": created_at}],
+        "createdAt": created_at,
+        "updatedAt": created_at,
+    }
+
+
+def _timeline(audit: dict[str, Any], stage: str, message: str | None = None) -> dict[str, Any]:
+    created_at = _now_iso()
+    next_audit = dict(audit)
+    next_audit["stage"] = stage
+    next_audit["updatedAt"] = created_at
+    next_audit["timeline"] = [*audit.get("timeline", []), {"stage": stage, "message": message, "createdAt": created_at}]
+    return next_audit
+
+
+def _set_failure(audit: dict[str, Any], *, failure_stage: str, validation_error: str | None = None, compiler_error: str | None = None) -> dict[str, Any]:
+    next_audit = dict(audit)
+    next_audit["status"] = "failed"
+    next_audit["failureStage"] = failure_stage
+    next_audit["validationError"] = validation_error
+    next_audit["compilerError"] = compiler_error
+    next_audit["updatedAt"] = _now_iso()
+    return next_audit
+
+
+def _set_success(audit: dict[str, Any]) -> dict[str, Any]:
+    next_audit = dict(audit)
+    next_audit["status"] = "succeeded"
+    next_audit["updatedAt"] = _now_iso()
+    return next_audit
 
 
 @router.post("/cost")
@@ -188,13 +162,7 @@ async def get_generation_cost(request: Request):
         payload = await request.json()
         parsed, error = _parse_request_payload(payload)
         if not parsed:
-            return JSONResponse(
-                {
-                    "ok": False,
-                    "error": error,
-                    "error_code": "VALIDATION_ERROR",
-                }
-            )
+            return JSONResponse({"ok": False, "error": error, "error_code": "VALIDATION_ERROR"})
 
         github_data = _get_github_data(parsed.username, parsed.repo, parsed.github_pat)
         provider = get_provider()
@@ -206,9 +174,7 @@ async def get_generation_cost(request: Request):
             readme=github_data.readme,
             api_key=parsed.api_key,
         )
-        estimated_input_tokens = (
-            base_input_tokens * MULTI_STAGE_INPUT_MULTIPLIER + INPUT_OVERHEAD_TOKENS
-        )
+        estimated_input_tokens = base_input_tokens * MULTI_STAGE_INPUT_MULTIPLIER + INPUT_OVERHEAD_TOKENS
         estimated_output_tokens = ESTIMATED_OUTPUT_TOKENS
         cost_usd, pricing_model, pricing = estimate_text_token_cost_usd(
             model=model,
@@ -237,11 +203,7 @@ async def get_generation_cost(request: Request):
         )
         return JSONResponse(response_payload)
     except Exception as exc:
-        log_event(
-            "generate.cost.failed",
-            elapsed_ms=timer.elapsed_ms(),
-            error=str(exc),
-        )
+        log_event("generate.cost.failed", elapsed_ms=timer.elapsed_ms(), error=str(exc))
         return JSONResponse(
             {
                 "ok": False,
@@ -257,36 +219,37 @@ async def generate_stream(request: Request):
         payload = await request.json()
     except Exception:
         return JSONResponse(
-            {
-                "ok": False,
-                "error": "Invalid request payload.",
-                "error_code": "VALIDATION_ERROR",
-            },
+            {"ok": False, "error": "Invalid request payload.", "error_code": "VALIDATION_ERROR"},
             status_code=400,
         )
 
     parsed, error = _parse_request_payload(payload)
     if not parsed:
         return JSONResponse(
-            {
-                "ok": False,
-                "error": error,
-                "error_code": "VALIDATION_ERROR",
-            },
+            {"ok": False, "error": error, "error_code": "VALIDATION_ERROR"},
             status_code=400,
         )
 
     async def event_generator():
         timer = Timer()
+        provider = get_provider()
+        model = get_model(provider)
+        audit = _create_session_audit(session_id=str(uuid4()), provider=provider, model=model)
+
+        async def persist_audit() -> None:
+            await asyncio.to_thread(
+                diagram_state_repository.upsert_latest_session_audit,
+                username=parsed.username,
+                repo=parsed.repo,
+                audit=audit,
+            )
 
         def send(payload: dict[str, Any]) -> str:
             return _sse_message(payload)
 
         try:
             github_data = _get_github_data(parsed.username, parsed.repo, parsed.github_pat)
-            provider = get_provider()
             provider_label = get_provider_label(provider)
-            model = get_model(provider)
             token_count = await _estimate_repo_input_tokens(
                 provider=provider,
                 model=model,
@@ -295,328 +258,277 @@ async def generate_stream(request: Request):
                 api_key=parsed.api_key,
             )
 
-            yield send(
-                {
-                    "status": "started",
-                    "message": "Starting generation process...",
-                }
-            )
+            await persist_audit()
+            yield send({"status": "started", "session_id": audit["sessionId"], "message": "Starting generation process..."})
 
             if token_count > 50000 and token_count < 195000 and not parsed.api_key:
+                error_message = (
+                    "File tree and README combined exceeds token limit (50,000). "
+                    f"This repository is too large for free generation. Provide your own {provider_label} API key to continue."
+                )
+                audit = _set_failure(audit, failure_stage="started", validation_error=error_message)
+                await persist_audit()
                 yield send(
                     {
                         "status": "error",
-                        "error": "File tree and README combined exceeds token limit "
-                        "(50,000). This repository is too large for free generation. "
-                        f"Provide your own {provider_label} API key to continue.",
+                        "session_id": audit["sessionId"],
+                        "error": error_message,
                         "error_code": "API_KEY_REQUIRED",
+                        "validation_error": error_message,
+                        "failure_stage": "started",
+                        "latest_session_audit": audit,
                     }
                 )
                 return
 
             if token_count > 195000:
+                error_message = "Repository is too large (>195k tokens) for analysis. Try a smaller repo."
+                audit = _set_failure(audit, failure_stage="started", validation_error=error_message)
+                await persist_audit()
                 yield send(
                     {
                         "status": "error",
-                        "error": "Repository is too large (>195k tokens) for analysis. Try a smaller repo.",
+                        "session_id": audit["sessionId"],
+                        "error": error_message,
                         "error_code": "TOKEN_LIMIT_EXCEEDED",
+                        "validation_error": error_message,
+                        "failure_stage": "started",
+                        "latest_session_audit": audit,
                     }
                 )
                 return
 
+            audit = _timeline(audit, "explanation_sent", f"Sending explanation request to {model}...")
+            await persist_audit()
             yield send(
                 {
                     "status": "explanation_sent",
+                    "session_id": audit["sessionId"],
                     "message": f"Sending explanation request to {model}...",
                 }
             )
             await asyncio.sleep(0.08)
-            yield send(
-                {
-                    "status": "explanation",
-                    "message": "Analyzing repository structure...",
-                }
-            )
 
-            explanation = ""
+            audit = _timeline(audit, "explanation", "Analyzing repository structure...")
+            await persist_audit()
+            yield send({"status": "explanation", "session_id": audit["sessionId"], "message": "Analyzing repository structure..."})
+
+            explanation_response = ""
             async for chunk in openai_service.stream_completion(
                 provider=provider,
                 model=model,
                 system_prompt=SYSTEM_FIRST_PROMPT,
-                data={
-                    "file_tree": github_data.file_tree,
-                    "readme": github_data.readme,
-                },
+                data={"file_tree": github_data.file_tree, "readme": github_data.readme},
                 api_key=parsed.api_key,
                 reasoning_effort="medium",
             ):
-                explanation += chunk
-                yield send({"status": "explanation_chunk", "chunk": chunk})
+                explanation_response += chunk
+                yield send({"status": "explanation_chunk", "session_id": audit["sessionId"], "chunk": chunk})
+
+            explanation = _extract_tagged_section(explanation_response, "explanation")
+            audit["explanation"] = explanation
+            audit["updatedAt"] = _now_iso()
+            await persist_audit()
+
+            file_tree_lookup = build_file_tree_lookup(github_data.file_tree)
+            valid_graph: DiagramGraph | None = None
+            validation_feedback: str | None = None
+            previous_graph: str | None = None
 
             yield send(
                 {
-                    "status": "mapping_sent",
-                    "message": f"Sending component mapping request to {model}...",
-                }
-            )
-            await asyncio.sleep(0.08)
-            yield send(
-                {
-                    "status": "mapping",
-                    "message": "Creating component mapping...",
+                    "status": "graph_sent",
+                    "session_id": audit["sessionId"],
+                    "message": f"Sending graph planning request to {model}...",
                 }
             )
 
-            full_mapping_response = ""
-            async for chunk in openai_service.stream_completion(
-                provider=provider,
-                model=model,
-                system_prompt=SYSTEM_SECOND_PROMPT,
-                data={
-                    "explanation": explanation,
-                    "file_tree": github_data.file_tree,
-                },
-                api_key=parsed.api_key,
-                reasoning_effort="low",
-            ):
-                full_mapping_response += chunk
-                yield send({"status": "mapping_chunk", "chunk": chunk})
-
-            component_mapping = _extract_component_mapping(full_mapping_response)
-
-            yield send(
-                {
-                    "status": "diagram_sent",
-                    "message": f"Sending diagram generation request to {model}...",
-                }
-            )
-            await asyncio.sleep(0.08)
-            yield send(
-                {
-                    "status": "diagram",
-                    "message": "Generating diagram...",
-                }
-            )
-
-            mermaid_code = ""
-            async for chunk in openai_service.stream_completion(
-                provider=provider,
-                model=model,
-                system_prompt=SYSTEM_THIRD_PROMPT,
-                data={
-                    "explanation": explanation,
-                    "component_mapping": component_mapping,
-                },
-                api_key=parsed.api_key,
-                reasoning_effort="low",
-            ):
-                mermaid_code += chunk
-                yield send({"status": "diagram_chunk", "chunk": chunk})
-
-            candidate_diagram = _strip_mermaid_code_fences(mermaid_code)
-            validation_result = await asyncio.to_thread(
-                validate_mermaid_syntax,
-                candidate_diagram,
-            )
-            had_fix_loop = not validation_result.valid
-
-            if not validation_result.valid:
-                parser_feedback = format_validation_feedback(validation_result)
+            for attempt in range(1, MAX_GRAPH_ATTEMPTS + 1):
+                status = "graph" if attempt == 1 else "graph_retry"
+                message = (
+                    "Planning repository graph..."
+                    if attempt == 1
+                    else f"Retrying graph planning ({attempt}/{MAX_GRAPH_ATTEMPTS})..."
+                )
+                audit = _timeline(audit, status, message)
+                await persist_audit()
                 yield send(
                     {
-                        "status": "diagram_fixing",
-                        "message": "Diagram generated. Mermaid syntax validation failed, starting auto-fix loop...",
-                        "parser_error": parser_feedback,
+                        "status": status,
+                        "session_id": audit["sessionId"],
+                        "message": message,
+                        "graph_attempts": audit["graphAttempts"],
                     }
                 )
 
-            attempt = 1
-            while (not validation_result.valid) and attempt <= MAX_MERMAID_FIX_ATTEMPTS:
-                parser_feedback = format_validation_feedback(validation_result)
-                yield send(
-                    {
-                        "status": "diagram_fix_attempt",
-                        "message": f"Fixing Mermaid syntax (attempt {attempt}/{MAX_MERMAID_FIX_ATTEMPTS})...",
-                        "fix_attempt": attempt,
-                        "fix_max_attempts": MAX_MERMAID_FIX_ATTEMPTS,
-                        "parser_error": parser_feedback,
-                    }
-                )
-
-                repaired_diagram = ""
-                async for chunk in openai_service.stream_completion(
+                graph, raw_output = await openai_service.generate_structured_output(
                     provider=provider,
                     model=model,
-                    system_prompt=SYSTEM_FIX_MERMAID_PROMPT,
+                    system_prompt=SYSTEM_GRAPH_PROMPT,
                     data={
-                        "mermaid_code": candidate_diagram,
-                        "parser_error": parser_feedback,
                         "explanation": explanation,
-                        "component_mapping": component_mapping,
+                        "file_tree": github_data.file_tree,
+                        "repo_owner": parsed.username,
+                        "repo_name": parsed.repo,
+                        "previous_graph": previous_graph,
+                        "validation_feedback": validation_feedback,
                     },
+                    text_format=DiagramGraph,
                     api_key=parsed.api_key,
                     reasoning_effort="low",
-                ):
-                    repaired_diagram += chunk
+                    max_output_tokens=6000,
+                )
+
+                yield send({"status": status, "session_id": audit["sessionId"], "graph": graph.model_dump(by_alias=True)})
+
+                issues = validate_diagram_graph(graph, file_tree_lookup)
+                feedback = None if not issues else format_graph_validation_feedback(issues)
+                audit["graphAttempts"] = [
+                    *audit.get("graphAttempts", []),
+                    {
+                        "attempt": attempt,
+                        "rawOutput": raw_output,
+                        "graph": graph.model_dump(by_alias=True),
+                        "validationFeedback": feedback,
+                        "status": "succeeded" if not issues else "failed",
+                        "createdAt": _now_iso(),
+                    },
+                ]
+
+                if issues:
+                    validation_feedback = feedback
+                    previous_graph = raw_output
+                    audit = _timeline(
+                        audit,
+                        "graph_validating",
+                        f"Graph validation failed on attempt {attempt}/{MAX_GRAPH_ATTEMPTS}.",
+                    )
+                    await persist_audit()
                     yield send(
                         {
-                            "status": "diagram_fix_chunk",
-                            "chunk": chunk,
-                            "fix_attempt": attempt,
-                            "fix_max_attempts": MAX_MERMAID_FIX_ATTEMPTS,
+                            "status": "graph_validating",
+                            "session_id": audit["sessionId"],
+                            "message": f"Graph validation failed on attempt {attempt}/{MAX_GRAPH_ATTEMPTS}.",
+                            "validation_error": validation_feedback,
+                            "graph_attempts": audit["graphAttempts"],
                         }
                     )
+                    continue
 
-                candidate_diagram = _strip_mermaid_code_fences(repaired_diagram)
-                yield send(
-                    {
-                        "status": "diagram_fix_validating",
-                        "message": f"Validating Mermaid syntax after attempt {attempt}/{MAX_MERMAID_FIX_ATTEMPTS}...",
-                        "fix_attempt": attempt,
-                        "fix_max_attempts": MAX_MERMAID_FIX_ATTEMPTS,
-                    }
-                )
-                validation_result = await asyncio.to_thread(
-                    validate_mermaid_syntax,
-                    candidate_diagram,
-                )
-                attempt += 1
+                valid_graph = graph
+                audit["graph"] = graph.model_dump(by_alias=True)
+                audit["updatedAt"] = _now_iso()
+                break
 
-            if not validation_result.valid:
+            if valid_graph is None:
+                error_message = validation_feedback or "Graph generation failed validation."
+                audit = _set_failure(audit, failure_stage="graph_validating", validation_error=error_message)
+                await persist_audit()
                 yield send(
                     {
                         "status": "error",
-                        "error": "Generated Mermaid remained syntactically invalid after auto-fix attempts. Please retry generation.",
-                        "error_code": "MERMAID_SYNTAX_UNRESOLVED",
-                        "parser_error": format_validation_feedback(validation_result),
+                        "session_id": audit["sessionId"],
+                        "error": "Graph generation remained invalid after retry attempts. Please retry generation.",
+                        "error_code": "GRAPH_VALIDATION_FAILED",
+                        "validation_error": error_message,
+                        "failure_stage": "graph_validating",
+                        "latest_session_audit": audit,
                     }
                 )
                 return
 
-            processed_diagram = process_click_events(
-                candidate_diagram,
+            audit = _timeline(audit, "diagram_compiling", "Compiling Mermaid diagram...")
+            await persist_audit()
+            yield send(
+                {
+                    "status": "diagram_compiling",
+                    "session_id": audit["sessionId"],
+                    "message": "Compiling Mermaid diagram...",
+                    "graph": valid_graph.model_dump(by_alias=True),
+                    "graph_attempts": audit["graphAttempts"],
+                }
+            )
+
+            diagram = compile_diagram_graph(
+                valid_graph,
                 parsed.username,
                 parsed.repo,
                 github_data.default_branch,
             )
+            audit["compiledDiagram"] = diagram
+            audit["updatedAt"] = _now_iso()
 
-            if had_fix_loop:
+            validation_result = await asyncio.to_thread(validate_mermaid_syntax, diagram)
+            if not validation_result.valid:
+                compiler_error = validation_result.message or "Compiled Mermaid failed validation."
+                audit = _set_failure(
+                    audit,
+                    failure_stage="diagram_compiling",
+                    compiler_error=compiler_error,
+                )
+                await persist_audit()
                 yield send(
                     {
-                        "status": "diagram_fixing",
-                        "message": "Mermaid syntax validated. Finalizing diagram output...",
+                        "status": "error",
+                        "session_id": audit["sessionId"],
+                        "error": "Compiled Mermaid failed validation.",
+                        "error_code": "COMPILER_VALIDATION_FAILED",
+                        "validation_error": compiler_error,
+                        "failure_stage": "diagram_compiling",
+                        "latest_session_audit": audit,
                     }
                 )
+                return
+
+            audit = _set_success(_timeline(audit, "complete", "Diagram generation complete."))
+            await asyncio.to_thread(
+                diagram_state_repository.save_successful_diagram_state,
+                username=parsed.username,
+                repo=parsed.repo,
+                explanation=explanation,
+                graph=valid_graph.model_dump(by_alias=True),
+                diagram=diagram,
+                audit=audit,
+                used_own_key=bool(parsed.api_key),
+            )
 
             yield send(
                 {
                     "status": "complete",
-                    "diagram": processed_diagram,
+                    "session_id": audit["sessionId"],
+                    "diagram": diagram,
                     "explanation": explanation,
-                    "mapping": component_mapping,
+                    "graph": valid_graph.model_dump(by_alias=True),
+                    "graph_attempts": audit["graphAttempts"],
+                    "latest_session_audit": audit,
+                    "generated_at": audit["updatedAt"],
                 }
             )
+        except Exception as exc:
+            error_message = str(exc)
+            audit = _set_failure(audit, failure_stage=audit.get("stage", "started"), validation_error=error_message)
+            try:
+                await persist_audit()
+            except Exception:
+                pass
+            yield send(
+                {
+                    "status": "error",
+                    "session_id": audit["sessionId"],
+                    "error": error_message,
+                    "error_code": "STREAM_FAILED",
+                    "validation_error": error_message,
+                    "failure_stage": audit.get("failureStage"),
+                    "latest_session_audit": audit,
+                }
+            )
+        finally:
             log_event(
-                "generate.stream.success",
+                "generate.stream.finished",
                 username=parsed.username,
                 repo=parsed.repo,
                 elapsed_ms=timer.elapsed_ms(),
                 model=model,
             )
-        except Exception as exc:
-            yield send(
-                {
-                    "status": "error",
-                    "error": str(exc) if isinstance(exc, Exception) else "Streaming generation failed.",
-                    "error_code": "STREAM_FAILED",
-                }
-            )
-            log_event(
-                "generate.stream.failed",
-                username=parsed.username,
-                repo=parsed.repo,
-                elapsed_ms=timer.elapsed_ms(),
-                error=str(exc),
-            )
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Content-Type": "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-@router.post("/repair")
-async def repair_diagram(request: Request):
-    try:
-        payload = await request.json()
-    except Exception:
-        return JSONResponse(
-            {
-                "ok": False,
-                "error": "Invalid request payload.",
-                "error_code": "VALIDATION_ERROR",
-            },
-            status_code=400,
-        )
-
-    parsed, error = _parse_repair_payload(payload)
-    if not parsed:
-        return JSONResponse(
-            {
-                "ok": False,
-                "error": error,
-                "error_code": "VALIDATION_ERROR",
-            },
-            status_code=400,
-        )
-
-    try:
-        provider = get_provider()
-        model = get_model(provider)
-        repaired_diagram, parser_error = await _repair_mermaid_diagram(
-            provider=provider,
-            model=model,
-            diagram=parsed.diagram,
-            parser_feedback=parsed.parser_error,
-            explanation=parsed.explanation,
-            component_mapping=parsed.mapping,
-            api_key=parsed.api_key,
-        )
-
-        if not repaired_diagram:
-            return JSONResponse(
-                {
-                    "ok": False,
-                    "error": "Generated Mermaid remained syntactically invalid after auto-fix attempts. Please retry generation.",
-                    "error_code": "MERMAID_REPAIR_FAILED",
-                    "parser_error": parser_error,
-                },
-                status_code=422,
-            )
-
-        return JSONResponse(
-            {
-                "ok": True,
-                "diagram": process_click_events(
-                    repaired_diagram,
-                    parsed.username,
-                    parsed.repo,
-                    parsed.default_branch,
-                ),
-            }
-        )
-    except Exception as exc:
-        return JSONResponse(
-            {
-                "ok": False,
-                "error": str(exc) if isinstance(exc, Exception) else "Mermaid repair failed.",
-                "error_code": "MERMAID_REPAIR_FAILED",
-            },
-            status_code=500,
-        )
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

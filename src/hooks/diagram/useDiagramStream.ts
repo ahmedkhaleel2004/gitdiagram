@@ -10,7 +10,13 @@ import { getStoredOpenAiKey } from "~/lib/openai-key";
 interface UseDiagramStreamOptions {
   username: string;
   repo: string;
-  onComplete: (result: { diagram: string; explanation: string }) => Promise<void>;
+  onComplete: (result: {
+    diagram: string;
+    explanation: string;
+    graph: DiagramStreamState["graph"];
+    latestSessionAudit: DiagramStreamState["latestSessionAudit"];
+    generatedAt?: string;
+  }) => Promise<void>;
   onError: (message: string) => void;
 }
 
@@ -27,17 +33,17 @@ export function useDiagramStream({
       data: DiagramStreamMessage,
       buffers: {
         explanation: string;
-        mapping: string;
-        diagram: string;
-        fixDiagramDraft: string;
       },
     ) => {
       if (data.error) {
         setState({
           status: "error",
+          sessionId: data.session_id,
           error: data.error,
           errorCode: data.error_code,
-          parserError: data.parser_error,
+          validationError: data.validation_error,
+          failureStage: data.failure_stage,
+          latestSessionAudit: data.latest_session_audit,
         });
         onError(data.error);
         return false;
@@ -47,36 +53,22 @@ export function useDiagramStream({
         case "started":
         case "explanation_sent":
         case "explanation":
-        case "mapping_sent":
-        case "mapping":
-        case "diagram_sent":
-        case "diagram":
-        case "diagram_fixing":
-        case "diagram_fix_attempt":
-        case "diagram_fix_validating":
+        case "graph_sent":
+        case "graph":
+        case "graph_retry":
+        case "graph_validating":
+        case "diagram_compiling":
           setState((prev) => ({
             ...prev,
             status: data.status,
+            sessionId: data.session_id ?? prev.sessionId,
             message: data.message,
-            parserError: data.parser_error,
-            fixAttempt: data.fix_attempt,
-            fixMaxAttempts: data.fix_max_attempts,
-            ...(data.status === "diagram_fix_attempt"
-              ? { fixDiagramDraft: "" }
-              : {}),
+            graph: data.graph ?? prev.graph,
+            graphAttempts: data.graph_attempts ?? prev.graphAttempts,
+            diagram: data.diagram ?? prev.diagram,
+            validationError: data.validation_error ?? prev.validationError,
+            failureStage: data.failure_stage ?? prev.failureStage,
           }));
-          break;
-        case "diagram_fix_chunk":
-          if (data.chunk) {
-            buffers.fixDiagramDraft += data.chunk;
-            setState((prev) => ({
-              ...prev,
-              status: "diagram_fix_chunk",
-              fixDiagramDraft: buffers.fixDiagramDraft,
-              fixAttempt: data.fix_attempt ?? prev.fixAttempt,
-              fixMaxAttempts: data.fix_max_attempts ?? prev.fixMaxAttempts,
-            }));
-          }
           break;
         case "explanation_chunk":
           if (data.chunk) {
@@ -84,47 +76,40 @@ export function useDiagramStream({
             setState((prev) => ({
               ...prev,
               status: "explanation_chunk",
+              sessionId: data.session_id ?? prev.sessionId,
               explanation: buffers.explanation,
-            }));
-          }
-          break;
-        case "mapping_chunk":
-          if (data.chunk) {
-            buffers.mapping += data.chunk;
-            setState((prev) => ({
-              ...prev,
-              status: "mapping_chunk",
-              mapping: buffers.mapping,
-            }));
-          }
-          break;
-        case "diagram_chunk":
-          if (data.chunk) {
-            buffers.diagram += data.chunk;
-            setState((prev) => ({
-              ...prev,
-              status: "diagram_chunk",
-              diagram: buffers.diagram,
             }));
           }
           break;
         case "complete": {
           const explanation = data.explanation ?? buffers.explanation;
-          const diagram = data.diagram ?? buffers.diagram;
+          const diagram = data.diagram ?? "";
           setState({
             status: "complete",
+            sessionId: data.session_id,
             explanation,
             diagram,
-            mapping: data.mapping ?? buffers.mapping,
+            graph: data.graph,
+            graphAttempts: data.graph_attempts,
+            latestSessionAudit: data.latest_session_audit,
           });
-          await onComplete({ explanation, diagram });
+          await onComplete({
+            explanation,
+            diagram,
+            graph: data.graph,
+            latestSessionAudit: data.latest_session_audit,
+            generatedAt: data.generated_at,
+          });
           return false;
         }
         case "error":
           setState({
             status: "error",
+            sessionId: data.session_id,
             error: data.error,
-            parserError: data.parser_error,
+            validationError: data.validation_error,
+            failureStage: data.failure_stage,
+            latestSessionAudit: data.latest_session_audit,
           });
           if (data.error) onError(data.error);
           return false;
@@ -140,9 +125,6 @@ export function useDiagramStream({
       setState({ status: "started", message: "Starting generation process..." });
       const buffers = {
         explanation: "",
-        mapping: "",
-        diagram: "",
-        fixDiagramDraft: "",
       };
 
       await streamDiagramGeneration(

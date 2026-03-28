@@ -4,45 +4,45 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDiagram } from "~/hooks/useDiagram";
 
 const {
-  getCachedDiagram,
-  cacheDiagramAndExplanation,
-  getLastGeneratedDate,
+  getDiagramState,
+  persistDiagramRenderError,
   getGenerationCost,
-  repairGeneratedDiagram,
   getStoredOpenAiKey,
   storeOpenAiKey,
   useDiagramExport,
   runGeneration,
+  setStreamState,
 } = vi.hoisted(() => ({
-  getCachedDiagram: vi.fn(),
-  cacheDiagramAndExplanation: vi.fn(),
-  getLastGeneratedDate: vi.fn(),
+  getDiagramState: vi.fn(),
+  persistDiagramRenderError: vi.fn(),
   getGenerationCost: vi.fn(),
-  repairGeneratedDiagram: vi.fn(),
   getStoredOpenAiKey: vi.fn(),
   storeOpenAiKey: vi.fn(),
   useDiagramExport: vi.fn(),
   runGeneration: vi.fn(),
+  setStreamState: vi.fn(),
 }));
+
 let streamOptions:
   | {
-      onComplete: (result: { diagram: string; explanation: string }) => Promise<void>;
+      onComplete: (result: {
+        diagram: string;
+        explanation: string;
+        graph: unknown;
+        latestSessionAudit: unknown;
+        generatedAt?: string;
+      }) => Promise<void>;
       onError: (message: string) => void;
     }
   | undefined;
 
 vi.mock("~/app/_actions/cache", () => ({
-  getCachedDiagram,
-  cacheDiagramAndExplanation,
-}));
-
-vi.mock("~/app/_actions/repo", () => ({
-  getLastGeneratedDate,
+  getDiagramState,
+  persistDiagramRenderError,
 }));
 
 vi.mock("~/features/diagram/api", () => ({
   getGenerationCost,
-  repairGeneratedDiagram,
 }));
 
 vi.mock("~/hooks/diagram/useDiagramStream", () => ({
@@ -51,7 +51,7 @@ vi.mock("~/hooks/diagram/useDiagramStream", () => ({
     return {
       state: { status: "idle" },
       runGeneration,
-      setState: vi.fn(),
+      setState: setStreamState,
     };
   },
 }));
@@ -75,23 +75,42 @@ describe("useDiagram", () => {
     localStorage.clear();
     streamOptions = undefined;
 
-    getCachedDiagram.mockResolvedValue(null);
-    cacheDiagramAndExplanation.mockResolvedValue(undefined);
-    getLastGeneratedDate.mockResolvedValue(new Date("2026-03-28T12:00:00.000Z"));
-    getGenerationCost.mockResolvedValue({ cost: "$0.01" });
-    repairGeneratedDiagram.mockResolvedValue({
-      ok: true,
-      diagram: "flowchart TD\nA-->C",
+    getDiagramState.mockResolvedValue({
+      diagram: null,
+      explanation: null,
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: null,
     });
+    persistDiagramRenderError.mockResolvedValue(undefined);
+    getGenerationCost.mockResolvedValue({ cost: "$0.01" });
     getStoredOpenAiKey.mockReturnValue(null);
     useDiagramExport.mockReturnValue({
       handleCopy: vi.fn(),
       handleExportImage: vi.fn(),
     });
+    setStreamState.mockReset();
     runGeneration.mockImplementation(async () => {
       await streamOptions?.onComplete({
         diagram: "flowchart TD\nA-->B",
         explanation: "done",
+        graph: {
+          groups: [],
+          nodes: [
+            {
+              id: "a",
+              label: "A",
+              type: "component",
+              description: null,
+              groupId: null,
+              path: null,
+              shape: null,
+            },
+          ],
+          edges: [],
+        },
+        latestSessionAudit: null,
+        generatedAt: "2026-03-28T12:00:00.000Z",
       });
     });
   });
@@ -102,12 +121,11 @@ describe("useDiagram", () => {
     await waitFor(() => expect(runGeneration).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(getCachedDiagram).toHaveBeenCalledTimes(1);
-    expect(cacheDiagramAndExplanation).toHaveBeenCalledTimes(1);
+    expect(getDiagramState).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem("has_used_free_generation")).toBe("true");
   });
 
-  it("repairs a completed diagram when client-side Mermaid rendering fails", async () => {
+  it("records browser render failures without re-entering LLM repair", async () => {
     const { result } = renderHook(() => useDiagram("acme", "demo"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -115,16 +133,14 @@ describe("useDiagram", () => {
     await result.current.handleDiagramRenderError("Parse error on line 3");
 
     await waitFor(() =>
-      expect(repairGeneratedDiagram).toHaveBeenCalledWith(
-        expect.objectContaining({
-          username: "acme",
-          repo: "demo",
-          diagram: "flowchart TD\nA-->B",
-          parserError: "Parse error on line 3",
-        }),
+      expect(persistDiagramRenderError).toHaveBeenCalledWith(
+        "acme",
+        "demo",
+        "Parse error on line 3",
       ),
     );
-    await waitFor(() => expect(result.current.diagram).toBe("flowchart TD\nA-->C"));
-    expect(cacheDiagramAndExplanation).toHaveBeenCalledTimes(2);
+    await waitFor(() =>
+      expect(result.current.error).toContain("Diagram render failed"),
+    );
   });
 });

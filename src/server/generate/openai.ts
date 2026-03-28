@@ -1,4 +1,6 @@
 import OpenAI from "openai";
+import { zodTextFormat } from "openai/helpers/zod";
+import type { ZodType } from "zod";
 
 import {
   getProviderLabel,
@@ -70,6 +72,18 @@ interface StreamCompletionParams {
   maxOutputTokens?: number;
 }
 
+interface StructuredCompletionParams<T> {
+  provider: AIProvider;
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+  schema: ZodType<T>;
+  schemaName: string;
+  apiKey?: string;
+  reasoningEffort?: ReasoningEffort;
+  maxOutputTokens?: number;
+}
+
 export async function* streamCompletion({
   provider,
   model,
@@ -136,4 +150,55 @@ export async function countInputTokens({
   });
 
   return response.input_tokens;
+}
+
+export async function generateStructuredOutput<T>({
+  provider,
+  model,
+  systemPrompt,
+  userPrompt,
+  schema,
+  schemaName,
+  apiKey,
+  reasoningEffort,
+  maxOutputTokens,
+}: StructuredCompletionParams<T>): Promise<{ output: T; rawText: string }> {
+  const client = createClient(provider, resolveApiKey(provider, apiKey));
+
+  try {
+    const response = await client.responses.parse({
+      model,
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      text: {
+        format: zodTextFormat(schema, schemaName),
+      },
+      ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+      ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
+    });
+
+    if (!response.output_parsed) {
+      throw new Error("Structured output parsing returned no parsed payload.");
+    }
+
+    const rawText =
+      response.output_text?.trim() ||
+      JSON.stringify(response.output_parsed, null, 2);
+
+    return {
+      output: response.output_parsed,
+      rawText,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Structured output request failed.";
+    if (provider === "openrouter") {
+      throw new Error(
+        `OpenRouter model does not support the required structured graph output: ${message}`,
+      );
+    }
+    throw error;
+  }
 }

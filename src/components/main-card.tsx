@@ -17,6 +17,7 @@ interface MainCardProps {
   isHome?: boolean;
   username?: string;
   repo?: string;
+  hasDiagram?: boolean;
   onCopy?: () => void;
   lastGenerated?: Date;
   onExportImage?: () => void;
@@ -30,6 +31,7 @@ export default function MainCard({
   isHome = true,
   username,
   repo,
+  hasDiagram = false,
   onCopy,
   lastGenerated,
   onExportImage,
@@ -129,9 +131,10 @@ export default function MainCard({
                       Regenerate Diagram
                     </button>
                   )}
-                  {onCopy && lastGenerated && onExportImage && (
+                  {hasDiagram && onCopy && onExportImage && (
                     <div className="flex flex-col items-center justify-center gap-2">
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.preventDefault();
                           handleDropdownToggle("export");
@@ -151,7 +154,7 @@ export default function MainCard({
                       </button>
                     </div>
                   )}
-                  {lastGenerated && (
+                  {hasDiagram && (
                     <>
                       <label
                         htmlFor="zoom-toggle"
@@ -179,7 +182,7 @@ export default function MainCard({
                   {activeDropdown === "export" && (
                     <ExportDropdown
                       onCopy={onCopy!}
-                      lastGenerated={lastGenerated!}
+                      lastGenerated={lastGenerated}
                       onExportImage={onExportImage!}
                       isOpen={true}
                     />

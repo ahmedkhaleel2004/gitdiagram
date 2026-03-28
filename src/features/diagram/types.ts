@@ -1,48 +1,53 @@
+import type {
+  DiagramGraph,
+  GenerationSessionAudit,
+  GraphAttemptAudit,
+} from "~/features/diagram/graph";
+
 export type DiagramStreamStatus =
   | "idle"
   | "started"
   | "explanation_sent"
   | "explanation"
   | "explanation_chunk"
-  | "mapping_sent"
-  | "mapping"
-  | "mapping_chunk"
-  | "diagram_sent"
-  | "diagram"
-  | "diagram_chunk"
-  | "diagram_fixing"
-  | "diagram_fix_attempt"
-  | "diagram_fix_chunk"
-  | "diagram_fix_validating"
+  | "graph_sent"
+  | "graph"
+  | "graph_retry"
+  | "graph_validating"
+  | "diagram_compiling"
   | "complete"
   | "error";
 
 export interface DiagramStreamState {
   status: DiagramStreamStatus;
+  sessionId?: string;
   message?: string;
   explanation?: string;
-  mapping?: string;
   diagram?: string;
+  graph?: DiagramGraph;
+  graphAttempts?: GraphAttemptAudit[];
   error?: string;
   errorCode?: string;
-  parserError?: string;
-  fixAttempt?: number;
-  fixMaxAttempts?: number;
-  fixDiagramDraft?: string;
+  validationError?: string;
+  failureStage?: string;
+  latestSessionAudit?: GenerationSessionAudit;
 }
 
 export interface DiagramStreamMessage {
   status: DiagramStreamStatus;
+  session_id?: string;
   message?: string;
   chunk?: string;
   explanation?: string;
-  mapping?: string;
   diagram?: string;
+  graph?: DiagramGraph;
+  graph_attempts?: GraphAttemptAudit[];
   error?: string;
   error_code?: string;
-  parser_error?: string;
-  fix_attempt?: number;
-  fix_max_attempts?: number;
+  validation_error?: string;
+  failure_stage?: string;
+  latest_session_audit?: GenerationSessionAudit;
+  generated_at?: string;
 }
 
 export interface DiagramCostResponse {
@@ -52,17 +57,17 @@ export interface DiagramCostResponse {
   ok?: boolean;
 }
 
-export interface DiagramRepairResponse {
-  ok?: boolean;
-  diagram?: string;
-  error?: string;
-  error_code?: string;
-  parser_error?: string;
-}
-
 export interface StreamGenerationParams {
   username: string;
   repo: string;
   apiKey?: string;
   githubPat?: string;
+}
+
+export interface DiagramStateResponse {
+  diagram: string | null;
+  explanation: string | null;
+  graph: DiagramGraph | null;
+  latestSessionAudit: GenerationSessionAudit | null;
+  lastSuccessfulAt: string | null;
 }
