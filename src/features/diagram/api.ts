@@ -1,6 +1,7 @@
 import { parseSSEStreamBuffer } from "~/features/diagram/sse";
 import type {
   DiagramCostResponse,
+  DiagramRepairResponse,
   DiagramStreamMessage,
   StreamGenerationParams,
 } from "~/features/diagram/types";
@@ -11,19 +12,36 @@ interface StreamHandlers {
   ) => boolean | void | Promise<boolean | void>;
 }
 
-const getGenerateBasePath = () => {
-  const useLegacyBackend =
-    process.env.NEXT_PUBLIC_USE_LEGACY_BACKEND?.trim() === "true";
-  if (!useLegacyBackend) {
+type GenerationBackendMode = "next" | "fastapi";
+
+function getGenerationBackendMode(): GenerationBackendMode {
+  const mode = process.env.NEXT_PUBLIC_GENERATION_BACKEND?.trim().toLowerCase();
+
+  if (mode === "next" || mode === "fastapi") {
+    return mode;
+  }
+
+  throw new Error(
+    "Missing NEXT_PUBLIC_GENERATION_BACKEND. Set it to 'next' or 'fastapi'.",
+  );
+}
+
+function getGenerateBasePath() {
+  const mode = getGenerationBackendMode();
+
+  if (mode === "next") {
     return "/api/generate";
   }
 
-  const legacyApiBase = process.env.NEXT_PUBLIC_API_DEV_URL?.trim();
-  if (legacyApiBase) {
-    return `${legacyApiBase.replace(/\/$/, "")}/generate`;
+  const apiBaseUrl = process.env.NEXT_PUBLIC_GENERATE_API_BASE_URL?.trim();
+  if (!apiBaseUrl) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_GENERATE_API_BASE_URL for fastapi generation mode.",
+    );
   }
-  return "/api/generate";
-};
+
+  return apiBaseUrl.replace(/\/$/, "");
+}
 
 export async function getGenerationCost(
   username: string,
@@ -112,5 +130,46 @@ export async function streamDiagramGeneration(
     }
   } finally {
     reader.releaseLock();
+  }
+}
+
+export async function repairGeneratedDiagram(params: {
+  username: string;
+  repo: string;
+  diagram: string;
+  explanation: string;
+  mapping: string;
+  parserError: string;
+  apiKey?: string;
+  defaultBranch?: string;
+}): Promise<DiagramRepairResponse> {
+  try {
+    const response = await fetch(`${getGenerateBasePath()}/repair`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username: params.username,
+        repo: params.repo,
+        diagram: params.diagram,
+        explanation: params.explanation,
+        mapping: params.mapping,
+        parser_error: params.parserError,
+        api_key: params.apiKey,
+        default_branch: params.defaultBranch,
+      }),
+    });
+
+    const data = (await response.json()) as DiagramRepairResponse;
+    return {
+      ok: data.ok,
+      diagram: data.diagram,
+      error: data.error,
+      error_code: data.error_code,
+      parser_error: data.parser_error,
+    };
+  } catch {
+    return { error: "Failed to repair Mermaid diagram." };
   }
 }

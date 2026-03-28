@@ -5,6 +5,7 @@ import type {
   DiagramStreamMessage,
   DiagramStreamState,
 } from "~/features/diagram/types";
+import { getStoredOpenAiKey } from "~/lib/openai-key";
 
 interface UseDiagramStreamOptions {
   username: string;
@@ -148,7 +149,7 @@ export function useDiagramStream({
         {
           username,
           repo,
-          apiKey: localStorage.getItem("openai_key") ?? undefined,
+          apiKey: getStoredOpenAiKey(),
           githubPat,
         },
         {

@@ -17,6 +17,9 @@ export function processClickEvents(
 
   return diagram.replace(clickPattern, (_, nodeId: string, path: string) => {
     const trimmedPath = path.trim().replace(/^['"]|['"]$/g, "");
+    if (/^https?:\/\//i.test(trimmedPath)) {
+      return `click ${nodeId} "${trimmedPath}"`;
+    }
     const isFile = trimmedPath.includes(".") && !trimmedPath.endsWith("/");
     const pathType = isFile ? "blob" : "tree";
     const fullUrl = `https://github.com/${username}/${repo}/${pathType}/${branch}/${trimmedPath}`;

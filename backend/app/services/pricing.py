@@ -39,12 +39,18 @@ def _strip_date_snapshot_suffix(model: str) -> str:
     return re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model, flags=re.IGNORECASE)
 
 
+def _strip_provider_prefix(model: str) -> str:
+    if "/" not in model:
+        return model
+    return model.rsplit("/", maxsplit=1)[-1]
+
+
 def resolve_pricing_model(model: str) -> str:
     normalized = model.strip().lower()
     if normalized in MODEL_PRICING:
         return normalized
 
-    without_date = _strip_date_snapshot_suffix(normalized)
+    without_date = _strip_date_snapshot_suffix(_strip_provider_prefix(normalized))
     if without_date in MODEL_PRICING:
         return without_date
 

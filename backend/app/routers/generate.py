@@ -18,11 +18,17 @@ from app.prompts import (
 )
 from app.services.github_service import GitHubService
 from app.services.mermaid_service import format_validation_feedback, validate_mermaid_syntax
-from app.services.model_config import get_model
+from app.services.model_config import (
+    AIProvider,
+    get_model,
+    get_provider,
+    get_provider_label,
+    supports_exact_input_token_count,
+)
 from app.services.openai_service import OpenAIService
 from app.services.pricing import estimate_text_token_cost_usd
 
-router = APIRouter(prefix="/generate", tags=["OpenAI"])
+router = APIRouter(prefix="/generate", tags=["AI"])
 
 openai_service = OpenAIService()
 
@@ -37,6 +43,17 @@ class GenerateRequest(BaseModel):
     repo: str = Field(min_length=1)
     api_key: str | None = Field(default=None, min_length=1)
     github_pat: str | None = Field(default=None, min_length=1)
+
+
+class RepairRequest(BaseModel):
+    username: str = Field(min_length=1)
+    repo: str = Field(min_length=1)
+    diagram: str = Field(min_length=1)
+    parser_error: str = Field(min_length=1)
+    explanation: str = ""
+    mapping: str = ""
+    default_branch: str = Field(default="main", min_length=1)
+    api_key: str | None = Field(default=None, min_length=1)
 
 
 def _sse_message(payload: dict[str, Any]) -> str:
@@ -63,6 +80,8 @@ def process_click_events(diagram: str, username: str, repo: str, branch: str) ->
     def replace_path(match: re.Match[str]) -> str:
         node_id = match.group(1)
         trimmed_path = match.group(2).strip().strip("\"'")
+        if trimmed_path.lower().startswith(("http://", "https://")):
+            return f'click {node_id} "{trimmed_path}"'
         is_file = "." in trimmed_path and not trimmed_path.endswith("/")
         path_type = "blob" if is_file else "tree"
         full_url = f"https://github.com/{username}/{repo}/{path_type}/{branch}/{trimmed_path}"
@@ -79,19 +98,32 @@ def _parse_request_payload(payload: Any) -> tuple[GenerateRequest | None, str | 
         return None, "Invalid request payload."
 
 
+def _parse_repair_payload(payload: Any) -> tuple[RepairRequest | None, str | None]:
+    try:
+        parsed = RepairRequest.model_validate(payload)
+        return parsed, None
+    except ValidationError:
+        return None, "Invalid request payload."
+
+
 def _get_github_data(username: str, repo: str, github_pat: str | None):
     github_service = GitHubService(pat=github_pat)
     return github_service.get_github_data(username, repo)
 
 
 async def _estimate_repo_input_tokens(
+    provider: AIProvider,
     model: str,
     file_tree: str,
     readme: str,
     api_key: str | None = None,
 ) -> int:
+    if not supports_exact_input_token_count(provider):
+        return openai_service.estimate_tokens(f"{file_tree}\n{readme}")
+
     try:
         return await openai_service.count_input_tokens(
+            provider=provider,
             model=model,
             system_prompt=SYSTEM_FIRST_PROMPT,
             data={
@@ -103,6 +135,50 @@ async def _estimate_repo_input_tokens(
         )
     except Exception:
         return openai_service.estimate_tokens(f"{file_tree}\n{readme}")
+
+
+async def _repair_mermaid_diagram(
+    *,
+    provider: AIProvider,
+    model: str,
+    diagram: str,
+    parser_feedback: str,
+    explanation: str,
+    component_mapping: str,
+    api_key: str | None,
+) -> tuple[str | None, str | None]:
+    candidate_diagram = _strip_mermaid_code_fences(diagram)
+    attempt = 1
+
+    while attempt <= MAX_MERMAID_FIX_ATTEMPTS:
+        repaired_diagram = ""
+        async for chunk in openai_service.stream_completion(
+            provider=provider,
+            model=model,
+            system_prompt=SYSTEM_FIX_MERMAID_PROMPT,
+            data={
+                "mermaid_code": candidate_diagram,
+                "parser_error": parser_feedback,
+                "explanation": explanation,
+                "component_mapping": component_mapping,
+            },
+            api_key=api_key,
+            reasoning_effort="low",
+        ):
+            repaired_diagram += chunk
+
+        candidate_diagram = _strip_mermaid_code_fences(repaired_diagram)
+        validation_result = await asyncio.to_thread(
+            validate_mermaid_syntax,
+            candidate_diagram,
+        )
+        if validation_result.valid:
+            return candidate_diagram, None
+
+        parser_feedback = format_validation_feedback(validation_result)
+        attempt += 1
+
+    return None, parser_feedback
 
 
 @router.post("/cost")
@@ -121,8 +197,10 @@ async def get_generation_cost(request: Request):
             )
 
         github_data = _get_github_data(parsed.username, parsed.repo, parsed.github_pat)
-        model = get_model()
+        provider = get_provider()
+        model = get_model(provider)
         base_input_tokens = await _estimate_repo_input_tokens(
+            provider=provider,
             model=model,
             file_tree=github_data.file_tree,
             readme=github_data.readme,
@@ -206,8 +284,11 @@ async def generate_stream(request: Request):
 
         try:
             github_data = _get_github_data(parsed.username, parsed.repo, parsed.github_pat)
-            model = get_model()
+            provider = get_provider()
+            provider_label = get_provider_label(provider)
+            model = get_model(provider)
             token_count = await _estimate_repo_input_tokens(
+                provider=provider,
                 model=model,
                 file_tree=github_data.file_tree,
                 readme=github_data.readme,
@@ -225,7 +306,9 @@ async def generate_stream(request: Request):
                 yield send(
                     {
                         "status": "error",
-                        "error": "File tree and README combined exceeds token limit (50,000). This repository is too large for free generation. Provide your own OpenAI API key to continue.",
+                        "error": "File tree and README combined exceeds token limit "
+                        "(50,000). This repository is too large for free generation. "
+                        f"Provide your own {provider_label} API key to continue.",
                         "error_code": "API_KEY_REQUIRED",
                     }
                 )
@@ -257,6 +340,7 @@ async def generate_stream(request: Request):
 
             explanation = ""
             async for chunk in openai_service.stream_completion(
+                provider=provider,
                 model=model,
                 system_prompt=SYSTEM_FIRST_PROMPT,
                 data={
@@ -285,6 +369,7 @@ async def generate_stream(request: Request):
 
             full_mapping_response = ""
             async for chunk in openai_service.stream_completion(
+                provider=provider,
                 model=model,
                 system_prompt=SYSTEM_SECOND_PROMPT,
                 data={
@@ -315,6 +400,7 @@ async def generate_stream(request: Request):
 
             mermaid_code = ""
             async for chunk in openai_service.stream_completion(
+                provider=provider,
                 model=model,
                 system_prompt=SYSTEM_THIRD_PROMPT,
                 data={
@@ -359,6 +445,7 @@ async def generate_stream(request: Request):
 
                 repaired_diagram = ""
                 async for chunk in openai_service.stream_completion(
+                    provider=provider,
                     model=model,
                     system_prompt=SYSTEM_FIX_MERMAID_PROMPT,
                     data={
@@ -462,3 +549,74 @@ async def generate_stream(request: Request):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/repair")
+async def repair_diagram(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Invalid request payload.",
+                "error_code": "VALIDATION_ERROR",
+            },
+            status_code=400,
+        )
+
+    parsed, error = _parse_repair_payload(payload)
+    if not parsed:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": error,
+                "error_code": "VALIDATION_ERROR",
+            },
+            status_code=400,
+        )
+
+    try:
+        provider = get_provider()
+        model = get_model(provider)
+        repaired_diagram, parser_error = await _repair_mermaid_diagram(
+            provider=provider,
+            model=model,
+            diagram=parsed.diagram,
+            parser_feedback=parsed.parser_error,
+            explanation=parsed.explanation,
+            component_mapping=parsed.mapping,
+            api_key=parsed.api_key,
+        )
+
+        if not repaired_diagram:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "Generated Mermaid remained syntactically invalid after auto-fix attempts. Please retry generation.",
+                    "error_code": "MERMAID_REPAIR_FAILED",
+                    "parser_error": parser_error,
+                },
+                status_code=422,
+            )
+
+        return JSONResponse(
+            {
+                "ok": True,
+                "diagram": process_click_events(
+                    repaired_diagram,
+                    parsed.username,
+                    parsed.repo,
+                    parsed.default_branch,
+                ),
+            }
+        )
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": str(exc) if isinstance(exc, Exception) else "Mermaid repair failed.",
+                "error_code": "MERMAID_REPAIR_FAILED",
+            },
+            status_code=500,
+        )

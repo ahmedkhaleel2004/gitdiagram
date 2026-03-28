@@ -12,7 +12,7 @@ export function ApiKeyButton({ onClick }: ApiKeyButtonProps) {
       className="neo-button px-4 py-2"
     >
       <Key className="mr-2 h-5 w-5" />
-      Use Your API Key
+      Use Your AI Key
     </Button>
   );
 }

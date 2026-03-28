@@ -1,4 +1,9 @@
-import { getModel } from "~/server/generate/model-config";
+import {
+  getModel,
+  getProvider,
+  getProviderLabel,
+  supportsExactInputTokenCount,
+} from "~/server/generate/model-config";
 import {
   extractComponentMapping,
   processClickEvents,
@@ -7,39 +12,40 @@ import {
 } from "~/server/generate/format";
 import { getGithubData } from "~/server/generate/github";
 import {
-  formatValidationFeedback,
-  validateMermaidSyntax,
-} from "~/server/generate/mermaid";
-import {
   countInputTokens,
   estimateTokens,
   streamCompletion,
 } from "~/server/generate/openai";
 import {
   SYSTEM_FIRST_PROMPT,
-  SYSTEM_FIX_MERMAID_PROMPT,
   SYSTEM_SECOND_PROMPT,
   SYSTEM_THIRD_PROMPT,
 } from "~/server/generate/prompts";
+import { repairMermaidDiagram } from "~/server/generate/repair";
 import { generateRequestSchema, sseMessage } from "~/server/generate/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-const MAX_MERMAID_FIX_ATTEMPTS = 3;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function estimateRepoTokenCount(
+  provider: ReturnType<typeof getProvider>,
   model: string,
   fileTree: string,
   readme: string,
   apiKey?: string,
 ) {
+  if (!supportsExactInputTokenCount(provider)) {
+    return estimateTokens(`${fileTree}\n${readme}`);
+  }
+
   try {
     return await countInputTokens({
+      provider,
       model,
       systemPrompt: SYSTEM_FIRST_PROMPT,
       userPrompt: toTaggedMessage({
@@ -68,7 +74,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const { username, repo, api_key: apiKey, github_pat: githubPat } = parsed.data;
+  const {
+    username,
+    repo,
+    api_key: apiKey,
+    github_pat: githubPat,
+  } = parsed.data;
 
   const encoder = new TextEncoder();
 
@@ -81,8 +92,11 @@ export async function POST(request: Request) {
       const run = async () => {
         try {
           const githubData = await getGithubData(username, repo, githubPat);
-          const model = getModel();
+          const provider = getProvider();
+          const providerLabel = getProviderLabel(provider);
+          const model = getModel(provider);
           const tokenCount = await estimateRepoTokenCount(
+            provider,
             model,
             githubData.fileTree,
             githubData.readme,
@@ -96,11 +110,11 @@ export async function POST(request: Request) {
 
           if (tokenCount > 50000 && tokenCount < 195000 && !apiKey) {
             send({
-              status: "error",
-              error:
-                "File tree and README combined exceeds token limit (50,000). This repository is too large for free generation. Provide your own OpenAI API key to continue.",
-              error_code: "API_KEY_REQUIRED",
-            });
+                status: "error",
+                error:
+                  `File tree and README combined exceeds token limit (50,000). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`,
+                error_code: "API_KEY_REQUIRED",
+              });
             controller.close();
             return;
           }
@@ -128,6 +142,7 @@ export async function POST(request: Request) {
 
           let explanation = "";
           for await (const chunk of streamCompletion({
+            provider,
             model,
             systemPrompt: SYSTEM_FIRST_PROMPT,
             userPrompt: toTaggedMessage({
@@ -153,6 +168,7 @@ export async function POST(request: Request) {
 
           let fullMappingResponse = "";
           for await (const chunk of streamCompletion({
+            provider,
             model,
             systemPrompt: SYSTEM_SECOND_PROMPT,
             userPrompt: toTaggedMessage({
@@ -180,6 +196,7 @@ export async function POST(request: Request) {
 
           let mermaidCode = "";
           for await (const chunk of streamCompletion({
+            provider,
             model,
             systemPrompt: SYSTEM_THIRD_PROMPT,
             userPrompt: toTaggedMessage({
@@ -193,85 +210,34 @@ export async function POST(request: Request) {
             send({ status: "diagram_chunk", chunk });
           }
 
-          let candidateDiagram = stripMermaidCodeFences(mermaidCode);
-          let validationResult = await validateMermaidSyntax(candidateDiagram);
-          const hadFixLoop = !validationResult.valid;
+          const repairResult = await repairMermaidDiagram({
+            provider,
+            model,
+            apiKey,
+            diagram: stripMermaidCodeFences(mermaidCode),
+            explanation,
+            componentMapping,
+            onStatus: (payload) => send(payload),
+          });
 
-          if (!validationResult.valid) {
-            const parserFeedback = formatValidationFeedback(validationResult);
-            send({
-              status: "diagram_fixing",
-              message:
-                "Diagram generated. Mermaid syntax validation failed, starting auto-fix loop...",
-              parser_error: parserFeedback,
-            });
-          }
-
-          for (
-            let attempt = 1;
-            !validationResult.valid && attempt <= MAX_MERMAID_FIX_ATTEMPTS;
-            attempt++
-          ) {
-            const parserFeedback = formatValidationFeedback(validationResult);
-            send({
-              status: "diagram_fix_attempt",
-              message: `Fixing Mermaid syntax (attempt ${attempt}/${MAX_MERMAID_FIX_ATTEMPTS})...`,
-              fix_attempt: attempt,
-              fix_max_attempts: MAX_MERMAID_FIX_ATTEMPTS,
-              parser_error: parserFeedback,
-            });
-
-            let repairedDiagram = "";
-            for await (const chunk of streamCompletion({
-              model,
-              systemPrompt: SYSTEM_FIX_MERMAID_PROMPT,
-              userPrompt: toTaggedMessage({
-                mermaid_code: candidateDiagram,
-                parser_error: parserFeedback,
-                explanation,
-                component_mapping: componentMapping,
-              }),
-              apiKey,
-              reasoningEffort: "low",
-            })) {
-              repairedDiagram += chunk;
-              send({
-                status: "diagram_fix_chunk",
-                chunk,
-                fix_attempt: attempt,
-                fix_max_attempts: MAX_MERMAID_FIX_ATTEMPTS,
-              });
-            }
-
-            candidateDiagram = stripMermaidCodeFences(repairedDiagram);
-            send({
-              status: "diagram_fix_validating",
-              message: `Validating Mermaid syntax after attempt ${attempt}/${MAX_MERMAID_FIX_ATTEMPTS}...`,
-              fix_attempt: attempt,
-              fix_max_attempts: MAX_MERMAID_FIX_ATTEMPTS,
-            });
-            validationResult = await validateMermaidSyntax(candidateDiagram);
-          }
-
-          if (!validationResult.valid) {
+          if (!repairResult.ok) {
             send({
               status: "error",
-              error:
-                "Generated Mermaid remained syntactically invalid after auto-fix attempts. Please retry generation.",
+              error: repairResult.error,
               error_code: "MERMAID_SYNTAX_UNRESOLVED",
-              parser_error: formatValidationFeedback(validationResult),
+              parser_error: repairResult.parserError,
             });
             return;
           }
 
           const processedDiagram = processClickEvents(
-            candidateDiagram,
+            repairResult.diagram,
             username,
             repo,
             githubData.defaultBranch,
           );
 
-          if (hadFixLoop) {
+          if (repairResult.hadFixLoop) {
             send({
               status: "diagram_fixing",
               message: "Mermaid syntax validated. Finalizing diagram output...",

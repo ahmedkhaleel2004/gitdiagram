@@ -1,8 +1,8 @@
 # Local Development Setup
 
-This project runs generation primarily through the FastAPI backend in `backend/` (Railway in production).
-
-Next.js Route Handlers under `/api/generate/*` remain available as an optional fallback path.
+This project supports two explicit generation backends:
+- FastAPI in `backend/` (recommended for production and Railway parity)
+- Next.js Route Handlers under `/api/generate/*`
 
 ## 1) Install tool versions
 
@@ -52,13 +52,27 @@ cp .env.example .env
 
 Then set at least:
 - `POSTGRES_URL`
-- `OPENAI_API_KEY`
+- `AI_PROVIDER`
+- `OPENAI_API_KEY` or `OPENROUTER_API_KEY`
 
 Optional:
-- `OPENAI_MODEL` (single model used for all generation stages, defaults to `gpt-5.4-mini`)
+- `OPENAI_MODEL` when `AI_PROVIDER=openai` (defaults to `gpt-5.4-mini`)
+- `OPENROUTER_MODEL` when `AI_PROVIDER=openrouter` (defaults to `openai/gpt-5.4`)
+- `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME` for OpenRouter attribution headers
 - `GITHUB_PAT`
 - `NEXT_PUBLIC_POSTHOG_KEY`
-- `NEXT_PUBLIC_USE_LEGACY_BACKEND=true` and `NEXT_PUBLIC_API_DEV_URL` (to route frontend calls to an external backend such as Railway/local FastAPI)
+- `NEXT_PUBLIC_GENERATION_BACKEND`
+- `NEXT_PUBLIC_GENERATE_API_BASE_URL` when `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
+
+Example OpenRouter local config:
+
+```bash
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=openai/gpt-5.4
+OPENROUTER_SITE_URL=http://localhost:3000
+OPENROUTER_APP_NAME=GitDiagram
+```
 
 ## 5) Start local services
 
@@ -95,8 +109,11 @@ pnpm dev:backend
 ```
 
 If the FastAPI backend is running locally at `http://localhost:8000`, set:
-- `NEXT_PUBLIC_USE_LEGACY_BACKEND=true`
-- `NEXT_PUBLIC_API_DEV_URL=http://localhost:8000`
+- `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
+- `NEXT_PUBLIC_GENERATE_API_BASE_URL=http://localhost:8000/generate`
+
+If you want to use the Next.js Route Handlers instead, set:
+- `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
 ## 6) Verification commands
 

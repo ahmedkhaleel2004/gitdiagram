@@ -1,10 +1,16 @@
 "use client";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Input } from "./ui/input";
-import { Button } from "./ui/button";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+
+import {
+  clearStoredOpenAiKey,
+  getStoredOpenAiKey,
+} from "~/lib/openai-key";
+
+import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Input } from "./ui/input";
 
 interface ApiKeyDialogProps {
   isOpen: boolean;
@@ -16,7 +22,7 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
   const [apiKey, setApiKey] = useState<string>("");
 
   useEffect(() => {
-    const storedKey = localStorage.getItem("openai_key");
+    const storedKey = getStoredOpenAiKey();
     if (storedKey) {
       setApiKey(storedKey);
     }
@@ -29,7 +35,7 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
   };
 
   const handleClear = () => {
-    localStorage.removeItem("openai_key");
+    clearStoredOpenAiKey();
     setApiKey("");
   };
 
@@ -38,7 +44,7 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
       <DialogContent className="neo-panel p-6 sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-black dark:text-neutral-100">
-            Enter OpenAI API Key
+            Enter API Key
           </DialogTitle>
         </DialogHeader>
         <form
@@ -47,11 +53,8 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
         >
           <div className="text-sm">
             GitDiagram offers infinite free diagram generations! You can also
-            provide an OpenAI API key to generate diagrams at your own cost. The
-            key will be stored locally in your browser.
-            {/* GitDiagram offers one free diagram generation. For additional
-            diagrams, you&apos;ll need to provide an OpenAI API key. The key
-            will be stored locally in your browser. */}
+            provide your own OpenAI API key to generate diagrams at your own cost.
+            The key is stored locally in your browser.
             <br />
             <br />
             <span className="font-medium">Get your OpenAI API key </span>
@@ -108,7 +111,7 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
               </Button>
               <Button
                 type="submit"
-                disabled={!apiKey.startsWith("sk-")}
+                disabled={apiKey.trim().length === 0}
                 className="neo-button px-4 py-2 disabled:opacity-50"
               >
                 Save Key

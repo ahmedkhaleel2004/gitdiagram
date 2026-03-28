@@ -3,6 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { FaGithub } from "react-icons/fa";
+
+import { storeOpenAiKey } from "~/lib/openai-key";
+
 import { ApiKeyDialog } from "./api-key-dialog";
 import { PrivateReposDialog } from "./private-repos-dialog";
 import { ThemeToggle } from "./theme-toggle";
@@ -31,7 +34,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
   };
 
   const handleApiKeySubmit = (apiKey: string) => {
-    localStorage.setItem("openai_key", apiKey);
+    storeOpenAiKey(apiKey);
     setIsApiKeyDialogOpen(false);
   };
 

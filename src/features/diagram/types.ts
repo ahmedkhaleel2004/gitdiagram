@@ -52,6 +52,14 @@ export interface DiagramCostResponse {
   ok?: boolean;
 }
 
+export interface DiagramRepairResponse {
+  ok?: boolean;
+  diagram?: string;
+  error?: string;
+  error_code?: string;
+  parser_error?: string;
+}
+
 export interface StreamGenerationParams {
   username: string;
   repo: string;

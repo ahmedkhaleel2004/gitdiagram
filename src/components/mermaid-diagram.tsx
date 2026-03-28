@@ -8,6 +8,7 @@ import { useTheme } from "next-themes";
 interface MermaidChartProps {
   chart: string;
   zoomingEnabled?: boolean;
+  onRenderError?: (message: string) => void;
 }
 
 type SvgPanZoomInstance = {
@@ -41,9 +42,14 @@ function ensureDomNodesSerializeSafely() {
   domToJsonPatched = true;
 }
 
-const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
+const MermaidChart = ({
+  chart,
+  zoomingEnabled = true,
+  onRenderError,
+}: MermaidChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const panZoomRef = useRef<SvgPanZoomInstance | null>(null);
+  const reportedRenderErrorRef = useRef<string | null>(null);
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -160,6 +166,11 @@ const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
         const message =
           error instanceof Error ? error.message : "Unknown Mermaid render error.";
         setRenderMessage(`Mermaid render failed: ${message}`);
+        const reportKey = `${chart}::${message}`;
+        if (reportedRenderErrorRef.current !== reportKey) {
+          reportedRenderErrorRef.current = reportKey;
+          onRenderError?.(message);
+        }
       }
     };
 
@@ -169,7 +180,7 @@ const MermaidChart = ({ chart, zoomingEnabled = true }: MermaidChartProps) => {
       panZoomRef.current?.destroy();
       panZoomRef.current = null;
     };
-  }, [chart, zoomingEnabled, isDark]);
+  }, [chart, zoomingEnabled, isDark, onRenderError]);
 
   return (
     <div

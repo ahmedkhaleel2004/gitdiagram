@@ -35,6 +35,7 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
     handleOpenApiKeyDialog,
     handleExportImage,
     handleRegenerate,
+    handleDiagramRenderError,
     state,
   } = useDiagram(normalizedUsername, normalizedRepo);
 
@@ -87,7 +88,11 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
           </div>
         ) : (
           <div className="flex w-full justify-center px-4">
-            <MermaidChart chart={diagram} zoomingEnabled={zoomingEnabled} />
+            <MermaidChart
+              chart={diagram}
+              zoomingEnabled={zoomingEnabled}
+              onRenderError={handleDiagramRenderError}
+            />
           </div>
         )}
       </div>

@@ -26,15 +26,19 @@ railway link --service gitdiagram-api
 ## 3) Set backend environment variables
 
 Required:
-- `OPENAI_API_KEY`
+- `AI_PROVIDER`
+- `OPENAI_API_KEY` or `OPENROUTER_API_KEY`
 
 Recommended:
-- `OPENAI_MODEL=gpt-5.4-mini`
+- `OPENAI_MODEL=gpt-5.4-mini` when `AI_PROVIDER=openai`
+- `OPENROUTER_MODEL=openai/gpt-5.4` when `AI_PROVIDER=openrouter`
 - `ENVIRONMENT=production`
 - `WEB_CONCURRENCY=2`
 - `CORS_ORIGINS=https://gitdiagram.com,https://www.gitdiagram.com,https://<your-vercel-domain>`
 
 Optional:
+- `OPENROUTER_SITE_URL`
+- `OPENROUTER_APP_NAME`
 - `GITHUB_PAT` (higher GitHub API rate limits for repository fetches)
 - `GITHUB_CLIENT_ID`
 - `GITHUB_PRIVATE_KEY`
@@ -44,6 +48,7 @@ Optional:
 Set variables via CLI:
 
 ```bash
+railway variables --service gitdiagram-api --set "AI_PROVIDER=openai"
 railway variables --service gitdiagram-api --set "OPENAI_API_KEY=..."
 railway variables --service gitdiagram-api --set "OPENAI_MODEL=gpt-5.4-mini"
 railway variables --service gitdiagram-api --set "ENVIRONMENT=production"
@@ -73,12 +78,10 @@ Copy the generated URL, for example:
 
 In your Vercel project environment variables, set:
 
-- `NEXT_PUBLIC_USE_LEGACY_BACKEND=true`
-- `NEXT_PUBLIC_API_DEV_URL=https://<your-railway-domain>`
+- `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
+- `NEXT_PUBLIC_GENERATE_API_BASE_URL=https://<your-railway-domain>/generate`
 
 Then redeploy Vercel.
-
-Note: the variable name includes "LEGACY" for backward compatibility, but this is now the primary external backend path.
 
 ## 7) Verify
 

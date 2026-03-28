@@ -1,15 +1,22 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 import {
   cacheDiagramAndExplanation,
   getCachedDiagram,
 } from "~/app/_actions/cache";
 import { getLastGeneratedDate } from "~/app/_actions/repo";
-import { getGenerationCost } from "~/features/diagram/api";
+import {
+  getGenerationCost,
+  repairGeneratedDiagram,
+} from "~/features/diagram/api";
 import { type DiagramStreamState } from "~/features/diagram/types";
 import { useDiagramStream } from "~/hooks/diagram/useDiagramStream";
 import { useDiagramExport } from "~/hooks/diagram/useDiagramExport";
 import { isExampleRepo } from "~/lib/exampleRepos";
+import {
+  getStoredOpenAiKey,
+  storeOpenAiKey,
+} from "~/lib/openai-key";
 
 export function useDiagram(username: string, repo: string) {
   const [diagram, setDiagram] = useState<string>("");
@@ -18,14 +25,13 @@ export function useDiagram(username: string, repo: string) {
   const [lastGenerated, setLastGenerated] = useState<Date | undefined>();
   const [cost, setCost] = useState<string>("");
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
-  const [hasUsedFreeGeneration, setHasUsedFreeGeneration] = useState<boolean>(
-    () => {
-      if (typeof window === "undefined") return false;
-      return localStorage.getItem("has_used_free_generation") === "true";
-    },
+  const hasUsedFreeGenerationRef = useRef<boolean>(
+    typeof window !== "undefined" &&
+      localStorage.getItem("has_used_free_generation") === "true",
   );
+  const lastRepairAttemptRef = useRef<string | null>(null);
 
-  const onStreamComplete = useCallback(
+  const applyCompletedDiagram = useCallback(
     async ({
       diagram: nextDiagram,
       explanation,
@@ -33,7 +39,7 @@ export function useDiagram(username: string, repo: string) {
       diagram: string;
       explanation: string;
     }) => {
-      const hasApiKey = !!localStorage.getItem("openai_key");
+      const hasApiKey = !!getStoredOpenAiKey();
       await cacheDiagramAndExplanation(
         username,
         repo,
@@ -45,13 +51,21 @@ export function useDiagram(username: string, repo: string) {
       setDiagram(nextDiagram);
       const date = await getLastGeneratedDate(username, repo);
       setLastGenerated(date ?? undefined);
-      if (!hasUsedFreeGeneration) {
+      if (!hasUsedFreeGenerationRef.current) {
         localStorage.setItem("has_used_free_generation", "true");
-        setHasUsedFreeGeneration(true);
+        hasUsedFreeGenerationRef.current = true;
       }
+      lastRepairAttemptRef.current = null;
       setLoading(false);
     },
-    [hasUsedFreeGeneration, repo, username],
+    [repo, username],
+  );
+
+  const onStreamComplete = useCallback(
+    async (result: { diagram: string; explanation: string }) => {
+      await applyCompletedDiagram(result);
+    },
+    [applyCompletedDiagram],
   );
 
   const onStreamError = useCallback((message: string) => {
@@ -59,7 +73,7 @@ export function useDiagram(username: string, repo: string) {
     setLoading(false);
   }, []);
 
-  const { state, runGeneration } = useDiagramStream({
+  const { state, runGeneration, setState } = useDiagramStream({
     username,
     repo,
     onComplete: onStreamComplete,
@@ -80,7 +94,7 @@ export function useDiagram(username: string, repo: string) {
     try {
       const cached = await getCachedDiagram(username, repo);
       const githubPat = localStorage.getItem("github_pat");
-      const apiKey = localStorage.getItem("openai_key");
+      const apiKey = getStoredOpenAiKey();
 
       if (cached) {
         setDiagram(cached);
@@ -121,7 +135,7 @@ export function useDiagram(username: string, repo: string) {
     setCost("");
 
     const githubPat = localStorage.getItem("github_pat");
-    const apiKey = localStorage.getItem("openai_key");
+    const apiKey = getStoredOpenAiKey();
 
     try {
       const costEstimate = await getGenerationCost(
@@ -156,7 +170,7 @@ export function useDiagram(username: string, repo: string) {
     setLoading(true);
     setError("");
 
-    localStorage.setItem("openai_key", apiKey);
+    storeOpenAiKey(apiKey);
 
     const githubPat = localStorage.getItem("github_pat");
     try {
@@ -175,6 +189,83 @@ export function useDiagram(username: string, repo: string) {
     setShowApiKeyDialog(true);
   };
 
+  const handleDiagramRenderError = useCallback(
+    async (parserError: string) => {
+      if (!diagram) {
+        setError(`Mermaid render failed: ${parserError}`);
+        setLoading(false);
+        return;
+      }
+
+      const repairKey = `${diagram}::${parserError}`;
+      if (lastRepairAttemptRef.current === repairKey) {
+        setError(`Mermaid render failed after auto-repair: ${parserError}`);
+        setLoading(false);
+        return;
+      }
+
+      lastRepairAttemptRef.current = repairKey;
+      setLoading(true);
+      setError("");
+      setState({
+        status: "diagram_fixing",
+        message: "Browser render failed. Starting Mermaid auto-fix loop...",
+        parserError,
+        explanation: state.explanation,
+        mapping: state.mapping,
+        diagram,
+      });
+
+      try {
+        const repairResult = await repairGeneratedDiagram({
+          username,
+          repo,
+          diagram,
+          explanation: state.explanation ?? "",
+          mapping: state.mapping ?? "",
+          parserError,
+          apiKey: getStoredOpenAiKey() ?? undefined,
+        });
+
+        if (!repairResult.ok || !repairResult.diagram) {
+          const message =
+            repairResult.error ?? "Failed to repair Mermaid diagram.";
+          setState({
+            status: "error",
+            error: message,
+            parserError: repairResult.parser_error ?? parserError,
+          });
+          setError(message);
+          setLoading(false);
+          return;
+        }
+
+        setState({
+          status: "complete",
+          diagram: repairResult.diagram,
+          explanation: state.explanation,
+          mapping: state.mapping,
+        });
+        await applyCompletedDiagram({
+          diagram: repairResult.diagram,
+          explanation: state.explanation ?? "No explanation provided",
+        });
+      } catch {
+        setError("Failed to repair Mermaid diagram.");
+        setLoading(false);
+      }
+    },
+    [
+      applyCompletedDiagram,
+      diagram,
+      repo,
+      setState,
+      state.explanation,
+      state.mapping,
+      username,
+    ],
+  );
+
   return {
     diagram,
     error,
@@ -188,6 +279,7 @@ export function useDiagram(username: string, repo: string) {
     handleOpenApiKeyDialog,
     handleExportImage,
     handleRegenerate,
+    handleDiagramRenderError,
     state: state as DiagramStreamState,
   };
 }

@@ -1,12 +1,55 @@
 import OpenAI from "openai";
 
+import {
+  getProviderLabel,
+  type AIProvider,
+} from "~/server/generate/model-config";
+
 export type ReasoningEffort = "low" | "medium" | "high";
 
-function resolveApiKey(overrideApiKey?: string): string {
-  const apiKey = overrideApiKey?.trim() || process.env.OPENAI_API_KEY?.trim();
+function getEnvApiKey(provider: AIProvider): string | undefined {
+  if (provider === "openrouter") {
+    return process.env.OPENROUTER_API_KEY?.trim();
+  }
+
+  return process.env.OPENAI_API_KEY?.trim();
+}
+
+function getOpenRouterHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const siteUrl = process.env.OPENROUTER_SITE_URL?.trim();
+  const appName = process.env.OPENROUTER_APP_NAME?.trim() || "GitDiagram";
+
+  if (siteUrl) {
+    headers["HTTP-Referer"] = siteUrl;
+  }
+
+  if (appName) {
+    headers["X-OpenRouter-Title"] = appName;
+  }
+
+  return headers;
+}
+
+function createClient(provider: AIProvider, apiKey: string): OpenAI {
+  if (provider === "openrouter") {
+    return new OpenAI({
+      apiKey,
+      baseURL: "https://openrouter.ai/api/v1",
+      defaultHeaders: getOpenRouterHeaders(),
+    });
+  }
+
+  return new OpenAI({ apiKey });
+}
+
+function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
+  const apiKey = overrideApiKey?.trim() || getEnvApiKey(provider);
   if (!apiKey) {
     throw new Error(
-      "Missing OpenAI API key. Set OPENAI_API_KEY or provide api_key in request.",
+      `Missing ${getProviderLabel(provider)} API key. Set ${
+        provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY"
+      } or provide api_key in request.`,
     );
   }
   return apiKey;
@@ -18,6 +61,7 @@ export function estimateTokens(text: string): number {
 }
 
 interface StreamCompletionParams {
+  provider: AIProvider;
   model: string;
   systemPrompt: string;
   userPrompt: string;
@@ -27,6 +71,7 @@ interface StreamCompletionParams {
 }
 
 export async function* streamCompletion({
+  provider,
   model,
   systemPrompt,
   userPrompt,
@@ -34,7 +79,7 @@ export async function* streamCompletion({
   reasoningEffort,
   maxOutputTokens,
 }: StreamCompletionParams): AsyncGenerator<string, void, void> {
-  const client = new OpenAI({ apiKey: resolveApiKey(apiKey) });
+  const client = createClient(provider, resolveApiKey(provider, apiKey));
 
   const stream = await client.responses.create({
     model,
@@ -63,6 +108,7 @@ export async function* streamCompletion({
 }
 
 interface CountInputTokensParams {
+  provider: AIProvider;
   model: string;
   systemPrompt: string;
   userPrompt: string;
@@ -71,13 +117,14 @@ interface CountInputTokensParams {
 }
 
 export async function countInputTokens({
+  provider,
   model,
   systemPrompt,
   userPrompt,
   apiKey,
   reasoningEffort,
 }: CountInputTokensParams): Promise<number> {
-  const client = new OpenAI({ apiKey: resolveApiKey(apiKey) });
+  const client = createClient(provider, resolveApiKey(provider, apiKey));
 
   const response = await client.responses.inputTokens.count({
     model,

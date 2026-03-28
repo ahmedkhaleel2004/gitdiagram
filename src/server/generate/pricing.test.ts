@@ -7,6 +7,11 @@ describe("resolvePricingModel", () => {
     expect(resolvePricingModel("gpt-5.4-mini")).toBe("gpt-5.4-mini");
     expect(resolvePricingModel("gpt-5.4-mini-2026-03-17")).toBe("gpt-5.4-mini");
   });
+
+  it("maps OpenRouter model ids onto their underlying pricing tier", () => {
+    expect(resolvePricingModel("openai/gpt-5.4")).toBe("gpt-5.4");
+    expect(resolvePricingModel("openai/gpt-5.4-mini")).toBe("gpt-5.4-mini");
+  });
 });
 
 describe("estimateTextTokenCostUsd", () => {

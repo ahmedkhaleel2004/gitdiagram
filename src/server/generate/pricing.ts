@@ -11,7 +11,7 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.4-mini": { inputPerMillionUsd: 0.75, outputPerMillionUsd: 4.5 },
   "gpt-5.4-nano": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 1.25 },
 
-  // Legacy fallbacks kept for older env values.
+  // Retain pricing entries for older model ids that may still appear in stored data or requests.
   "gpt-5.2": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
   "gpt-5.2-chat-latest": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
   "gpt-5.2-codex": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
@@ -33,11 +33,15 @@ function stripDateSnapshotSuffix(model: string): string {
   return model.replace(/-\d{4}-\d{2}-\d{2}$/i, "");
 }
 
+function stripProviderPrefix(model: string): string {
+  return model.includes("/") ? model.split("/").at(-1) ?? model : model;
+}
+
 export function resolvePricingModel(model: string): string {
   const normalized = normalizeModelId(model);
   if (MODEL_PRICING[normalized]) return normalized;
 
-  const withoutDate = stripDateSnapshotSuffix(normalized);
+  const withoutDate = stripDateSnapshotSuffix(stripProviderPrefix(normalized));
   if (MODEL_PRICING[withoutDate]) return withoutDate;
 
   if (withoutDate.startsWith("gpt-5.4-pro")) return "gpt-5.4-pro";

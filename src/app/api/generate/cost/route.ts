@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 
 import { toTaggedMessage } from "~/server/generate/format";
 import { getGithubData } from "~/server/generate/github";
-import { getModel } from "~/server/generate/model-config";
+import {
+  getModel,
+  getProvider,
+  supportsExactInputTokenCount,
+} from "~/server/generate/model-config";
 import { countInputTokens, estimateTokens } from "~/server/generate/openai";
 import { SYSTEM_FIRST_PROMPT } from "~/server/generate/prompts";
 import { estimateTextTokenCostUsd } from "~/server/generate/pricing";
@@ -16,13 +20,19 @@ const INPUT_OVERHEAD_TOKENS = 3000;
 const ESTIMATED_OUTPUT_TOKENS = 8000;
 
 async function estimateRepoInputTokens(
+  provider: ReturnType<typeof getProvider>,
   model: string,
   fileTree: string,
   readme: string,
   apiKey?: string,
 ) {
+  if (!supportsExactInputTokenCount(provider)) {
+    return estimateTokens(`${fileTree}\n${readme}`);
+  }
+
   try {
     return await countInputTokens({
+      provider,
       model,
       systemPrompt: SYSTEM_FIRST_PROMPT,
       userPrompt: toTaggedMessage({
@@ -55,9 +65,11 @@ export async function POST(request: Request) {
       github_pat: githubPat,
     } = parsed.data;
     const githubData = await getGithubData(username, repo, githubPat);
-    const model = getModel();
+    const provider = getProvider();
+    const model = getModel(provider);
 
     const baseInputTokens = await estimateRepoInputTokens(
+      provider,
       model,
       githubData.fileTree,
       githubData.readme,

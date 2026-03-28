@@ -13,35 +13,35 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 
 - 👀 **Instant Visualization**: Convert any GitHub repository structure into a system design / architecture diagram
 - 🎨 **Interactivity**: Click on components to navigate directly to source files and relevant directories
-- ⚡ **Fast Generation**: Powered by OpenAI GPT-5.4 mini (configurable) for quick and accurate diagrams
+- ⚡ **Fast Generation**: Powered by GPT-5-family models, with OpenAI for user-supplied browser keys and optional OpenRouter for self-hosted deployments
 - 🖼️ **Export Options**: Copy Mermaid code or download the generated diagram as PNG
 - 🌐 **API Access**: Public API available for integration (WIP)
 
 ## ⚙️ Tech Stack
 
 - **Frontend**: Next.js, TypeScript, Tailwind CSS, ShadCN
-- **Backend**: FastAPI (Railway), with Next.js Route Handlers available as a fallback path
+- **Backend**: FastAPI (Railway) or Next.js Route Handlers, selected explicitly via environment
 - **Database**: PostgreSQL (with Drizzle ORM)
-- **AI**: OpenAI GPT-5.4 mini (via `OPENAI_MODEL`)
+- **AI**: OpenAI or OpenRouter (via `AI_PROVIDER`)
 - **Deployment**: Vercel (frontend) + Railway (backend)
 - **CI/CD**: GitHub Actions
 - **Analytics**: PostHog, Api-Analytics
 
-## 🔄 Backend Architecture Update
+## 🔄 Backend Architecture
 
-GitDiagram now runs its primary generation backend on FastAPI (deployed on Railway).
+GitDiagram supports two generation backends:
+- `fastapi`: external FastAPI service (recommended for production and parity with Railway)
+- `next`: Next.js Route Handlers inside this repo
 
-Frontend calls are routed to the external backend by setting:
-- `NEXT_PUBLIC_USE_LEGACY_BACKEND=true`
-- `NEXT_PUBLIC_API_DEV_URL=https://<your-railway-domain>`
-
-The variable name contains "LEGACY" for backward compatibility, but it now points to the primary external backend in production.
+Frontend routing is explicit:
+- `NEXT_PUBLIC_GENERATION_BACKEND=fastapi` with `NEXT_PUBLIC_GENERATE_API_BASE_URL=https://<your-backend>/generate`
+- or `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
 ## 🤔 About
 
 I created this because I wanted to contribute to open-source projects but quickly realized their codebases are too massive for me to dig through manually, so this helps me get started - but it's definitely got many more use cases!
 
-Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with OpenAI's GPT-5.4 mini! (Previously Claude 3.5 Sonnet)
+Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with GPT-5-family models. The default setup uses GPT-5.4 mini through OpenAI, while self-hosted operators can optionally point the backend at OpenRouter via environment configuration.
 
 I extract information from the file tree and README for details and interactivity (you can click components to be taken to relevant files and directories).
 
@@ -74,7 +74,25 @@ pnpm i
 cp .env.example .env
 ```
 
-Then edit the `.env` file with your OpenAI API key and optional GitHub personal access token.
+Then edit the `.env` file with your backend AI credentials and optional GitHub personal access token.
+
+Example local OpenRouter setup:
+
+```bash
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=openai/gpt-5.4
+OPENROUTER_SITE_URL=http://localhost:3000
+OPENROUTER_APP_NAME=GitDiagram
+```
+
+Example OpenAI setup:
+
+```bash
+AI_PROVIDER=openai
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-5.4-mini
+```
 
 4. Start local database
 
@@ -109,9 +127,12 @@ docker-compose up --build -d
 docker-compose logs -f api
 ```
 
-To route frontend calls to the external backend, set:
-- `NEXT_PUBLIC_USE_LEGACY_BACKEND=true`
-- `NEXT_PUBLIC_API_DEV_URL=http://localhost:8000`
+To use the FastAPI backend from the frontend, set:
+- `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
+- `NEXT_PUBLIC_GENERATE_API_BASE_URL=http://localhost:8000/generate`
+
+To use the built-in Next.js Route Handlers instead, set:
+- `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
 For a full machine setup guide (Node/Python/uv versions + verification), see `docs/dev-setup.md`.
 
