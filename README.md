@@ -43,9 +43,11 @@ I created this because I wanted to contribute to open-source projects but quickl
 
 Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with GPT-5-family models. The default setup uses GPT-5.4 mini through OpenAI, while self-hosted operators can optionally point the backend at OpenRouter via environment configuration.
 
-I extract information from the file tree and README for details and interactivity (you can click components to be taken to relevant files and directories).
+## ⚙️ How GitDiagram Works
 
-Most of what you might call the "processing" of this app is done with prompt engineering and a 3-step streaming pipeline in the FastAPI backend under `/backend`.
+When you submit a GitHub repo URL, GitDiagram asks the GitHub API for the repo's default branch, a recursive file tree, and the README, while filtering out noisy assets and dependency folders. It feeds that repo snapshot into a streamed generation pipeline where one model pass writes a plain-English architecture explanation and a second pass turns that explanation plus the file tree into a structured graph of systems, nodes, edges, and real repo paths.
+
+That graph is validated against the actual file tree, retried with feedback if it contains bad paths or invalid connections, then compiled into Mermaid and validated again before it is shown. Any node tied to a real path becomes clickable back to GitHub, and the final explanation, graph, diagram, and generation audit are cached in Postgres so the app can reopen an existing result or show where a run failed.
 
 ## 🔒 How to diagram private repositories
 
