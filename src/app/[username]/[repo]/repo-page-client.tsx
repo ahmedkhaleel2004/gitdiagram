@@ -39,6 +39,9 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
     state,
   } = useDiagram(normalizedUsername, normalizedRepo);
 
+  const hasDiagram = Boolean(diagram);
+  const hasError = Boolean(error || state.error);
+
   return (
     <div className="flex flex-col items-center p-4">
       <div className="flex w-full justify-center pt-8">
@@ -46,7 +49,7 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
           isHome={false}
           username={normalizedUsername}
           repo={normalizedRepo}
-          hasDiagram={Boolean(diagram)}
+          hasDiagram={hasDiagram}
           onCopy={handleCopy}
           lastGenerated={lastGenerated}
           actualCost={
@@ -73,20 +76,10 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
             validationError={state.validationError}
             diagram={state.diagram}
           />
-        ) : error || state.error ? (
-          <div className="mt-12 text-center">
-            <GenerationAuditPanel
-              audit={state.latestSessionAudit}
-              error={error || state.error}
-            />
-            {(error?.includes("API key") ||
-              state.error?.includes("API key")) && (
-              <div className="mt-8 flex flex-col items-center gap-2">
-                <ApiKeyButton onClick={handleOpenApiKeyDialog} />
-              </div>
-            )}
-            {diagram && (
-              <div className="mt-8 flex w-full justify-center px-4">
+        ) : (
+          <div className="flex w-full flex-col items-center gap-8">
+            {hasDiagram && (
+              <div className="flex w-full justify-center px-4">
                 <MermaidChart
                   chart={diagram}
                   zoomingEnabled={zoomingEnabled}
@@ -94,14 +87,20 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
                 />
               </div>
             )}
-          </div>
-        ) : (
-          <div className="flex w-full justify-center px-4">
-            <MermaidChart
-              chart={diagram}
-              zoomingEnabled={zoomingEnabled}
-              onRenderError={handleDiagramRenderError}
-            />
+            {hasError && (
+              <div className="w-full max-w-5xl text-center">
+                <GenerationAuditPanel
+                  audit={state.latestSessionAudit}
+                  error={error || state.error}
+                />
+                {(error?.includes("API key") ||
+                  state.error?.includes("API key")) && (
+                  <div className="mt-8 flex flex-col items-center gap-2">
+                    <ApiKeyButton onClick={handleOpenApiKeyDialog} />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
