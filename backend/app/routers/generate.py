@@ -242,15 +242,15 @@ async def generate_stream(request: Request):
         has_complete_measured_usage = True
         storage_visibility = "private" if parsed.github_pat else "public"
 
-        async def persist_audit() -> None:
+        async def persist_terminal_audit(next_audit: dict[str, Any] | None = None) -> None:
             if not diagram_state_repository.is_configured():
                 return
             try:
                 await asyncio.to_thread(
-                    diagram_state_repository.upsert_latest_session_audit,
+                    diagram_state_repository.persist_terminal_session_audit,
                     username=parsed.username,
                     repo=parsed.repo,
-                    audit=audit,
+                    audit=next_audit or audit,
                     visibility=storage_visibility,
                     github_pat=parsed.github_pat,
                 )
@@ -270,7 +270,7 @@ async def generate_stream(request: Request):
             diagram: str,
             used_own_key: bool,
         ) -> None:
-            if not diagram_state_repository.is_configured():
+            if not diagram_state_repository.artifact_storage_is_configured():
                 return
             try:
                 await asyncio.to_thread(
@@ -321,8 +321,6 @@ async def generate_stream(request: Request):
                     "createdAt": _now_iso(),
                 },
             )
-
-            await persist_audit()
             yield send(
                 {
                     "status": "started",
@@ -350,7 +348,7 @@ async def generate_stream(request: Request):
                         failure_stage="started",
                         validation_error=error_message,
                     )
-                    await persist_audit()
+                    await persist_terminal_audit()
                     yield send(
                         {
                             "status": "error",
@@ -378,7 +376,7 @@ async def generate_stream(request: Request):
                         failure_stage="started",
                         validation_error=error_message,
                     )
-                    await persist_audit()
+                    await persist_terminal_audit()
                     yield send(
                         {
                             "status": "error",
@@ -414,7 +412,7 @@ async def generate_stream(request: Request):
                         failure_stage="started",
                         validation_error=error_message,
                     )
-                    await persist_audit()
+                    await persist_terminal_audit()
                     yield send(
                         {
                             "status": "error",
@@ -438,7 +436,6 @@ async def generate_stream(request: Request):
                     "reservedTokens": quota_reservation.reserved_tokens,
                     "quotaResetAt": quota_reservation.quota_reset_at,
                 }
-                await persist_audit()
 
             if token_count > 50000 and token_count < 195000 and not parsed.api_key:
                 error_message = (
@@ -446,7 +443,7 @@ async def generate_stream(request: Request):
                     f"This repository is too large for free generation. Provide your own {provider_label} API key to continue."
                 )
                 audit = _set_failure(audit, failure_stage="started", validation_error=error_message)
-                await persist_audit()
+                await persist_terminal_audit()
                 yield send(
                     {
                         "status": "error",
@@ -464,7 +461,7 @@ async def generate_stream(request: Request):
             if token_count > 195000:
                 error_message = "Repository is too large (>195k tokens) for analysis. Try a smaller repo."
                 audit = _set_failure(audit, failure_stage="started", validation_error=error_message)
-                await persist_audit()
+                await persist_terminal_audit()
                 yield send(
                     {
                         "status": "error",
@@ -480,7 +477,6 @@ async def generate_stream(request: Request):
                 return
 
             audit = _timeline(audit, "explanation_sent", f"Sending explanation request to {model}...")
-            await persist_audit()
             yield send(
                 {
                     "status": "explanation_sent",
@@ -491,7 +487,6 @@ async def generate_stream(request: Request):
             await asyncio.sleep(0.08)
 
             audit = _timeline(audit, "explanation", "Analyzing repository structure...")
-            await persist_audit()
             yield send({"status": "explanation", "session_id": audit["sessionId"], "message": "Analyzing repository structure..."})
 
             explanation_response = ""
@@ -530,7 +525,6 @@ async def generate_stream(request: Request):
             explanation = _extract_tagged_section(explanation_response, "explanation")
             audit["explanation"] = explanation
             audit["updatedAt"] = _now_iso()
-            await persist_audit()
 
             file_tree_lookup = build_file_tree_lookup(github_data.file_tree)
             valid_graph: DiagramGraph | None = None
@@ -553,7 +547,6 @@ async def generate_stream(request: Request):
                     else f"Retrying graph planning ({attempt}/{MAX_GRAPH_ATTEMPTS})..."
                 )
                 audit = _timeline(audit, status, message)
-                await persist_audit()
                 yield send(
                     {
                         "status": status,
@@ -625,7 +618,6 @@ async def generate_stream(request: Request):
                         "graph_validating",
                         f"Graph validation failed on attempt {attempt}/{MAX_GRAPH_ATTEMPTS}.",
                     )
-                    await persist_audit()
                     yield send(
                         {
                             "status": "graph_validating",
@@ -645,7 +637,7 @@ async def generate_stream(request: Request):
             if valid_graph is None:
                 error_message = validation_feedback or "Graph generation failed validation."
                 audit = _set_failure(audit, failure_stage="graph_validating", validation_error=error_message)
-                await persist_audit()
+                await persist_terminal_audit()
                 yield send(
                     {
                         "status": "error",
@@ -661,7 +653,6 @@ async def generate_stream(request: Request):
                 return
 
             audit = _timeline(audit, "diagram_compiling", "Compiling Mermaid diagram...")
-            await persist_audit()
             yield send(
                 {
                     "status": "diagram_compiling",
@@ -689,7 +680,7 @@ async def generate_stream(request: Request):
                     failure_stage="diagram_compiling",
                     compiler_error=compiler_error,
                 )
-                await persist_audit()
+                await persist_terminal_audit()
                 yield send(
                     {
                         "status": "error",
@@ -745,7 +736,7 @@ async def generate_stream(request: Request):
             error_message = str(exc)
             audit = _set_failure(audit, failure_stage=audit.get("stage", "started"), validation_error=error_message)
             try:
-                await persist_audit()
+                await persist_terminal_audit()
             except Exception:
                 pass
             yield send(
@@ -790,7 +781,7 @@ async def generate_stream(request: Request):
                         reservation=quota_reservation,
                         committed_tokens=actual_committed_tokens,
                     )
-                    await persist_audit()
+                    await persist_terminal_audit()
                 except Exception:
                     pass
 

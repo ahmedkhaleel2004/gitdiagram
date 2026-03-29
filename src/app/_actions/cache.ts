@@ -2,7 +2,7 @@
 
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import {
-  getCachedDiagramStateRecord,
+  getDiagramStateRecord,
   recordLatestSessionRenderError,
 } from "~/server/storage/diagram-state";
 
@@ -12,7 +12,7 @@ export async function getDiagramState(
   githubPat?: string,
 ): Promise<DiagramStateResponse> {
   try {
-    return await getCachedDiagramStateRecord(username, repo, githubPat);
+    return await getDiagramStateRecord(username, repo, githubPat);
   } catch (error) {
     console.error("Error fetching diagram state:", error);
     return {

@@ -63,22 +63,14 @@ export async function getDiagramStateRecord(
   };
 }
 
-export async function getCachedDiagramStateRecord(
-  username: string,
-  repo: string,
-  githubPat?: string,
-): Promise<DiagramStateRecord> {
-  return getDiagramStateRecord(username, repo, githubPat);
-}
-
-export async function upsertLatestSessionAudit(params: {
+export async function persistTerminalSessionAudit(params: {
   username: string;
   repo: string;
   githubPat?: string;
   visibility?: ArtifactVisibility;
   audit: GenerationSessionAudit;
 }) {
-  if (params.audit.status !== "failed") {
+  if (params.audit.status !== "failed" && params.audit.status !== "succeeded") {
     return;
   }
 
@@ -92,7 +84,7 @@ export async function upsertLatestSessionAudit(params: {
     latestSessionSummary: slimAudit,
   });
 
-  if (!artifactUpdated) {
+  if (!artifactUpdated && params.audit.status === "failed") {
     await writeFailureSummary({
       username: params.username,
       repo: params.repo,
@@ -103,12 +95,14 @@ export async function upsertLatestSessionAudit(params: {
     return;
   }
 
-  await clearFailureSummary({
-    username: params.username,
-    repo: params.repo,
-    githubPat: params.githubPat,
-    visibility,
-  });
+  if (artifactUpdated || params.audit.status === "succeeded") {
+    await clearFailureSummary({
+      username: params.username,
+      repo: params.repo,
+      githubPat: params.githubPat,
+      visibility,
+    });
+  }
 }
 
 export async function saveSuccessfulDiagramState(params: {
@@ -188,7 +182,7 @@ export async function recordLatestSessionRenderError(params: {
     ],
   };
 
-  await upsertLatestSessionAudit({
+  await persistTerminalSessionAudit({
     username: params.username,
     repo: params.repo,
     githubPat: params.githubPat,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 import {
   getDiagramState,
@@ -16,10 +16,6 @@ export function useDiagram(username: string, repo: string) {
   const [loading, setLoading] = useState<boolean>(true);
   const [lastGenerated, setLastGenerated] = useState<Date | undefined>();
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
-  const hasUsedFreeGenerationRef = useRef<boolean>(
-    typeof window !== "undefined" &&
-      localStorage.getItem("has_used_free_generation") === "true",
-  );
 
   const applyCompletedDiagram = useCallback(
     async ({
@@ -32,10 +28,6 @@ export function useDiagram(username: string, repo: string) {
       setDiagram(nextDiagram);
       if (generatedAt) {
         setLastGenerated(new Date(generatedAt));
-      }
-      if (!hasUsedFreeGenerationRef.current) {
-        localStorage.setItem("has_used_free_generation", "true");
-        hasUsedFreeGenerationRef.current = true;
       }
       setLoading(false);
     },

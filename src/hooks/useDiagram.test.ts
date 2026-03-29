@@ -104,14 +104,14 @@ describe("useDiagram", () => {
     });
   });
 
-  it("does not rerun the initial load effect after marking the free generation flag", async () => {
+  it("loads once and finishes after the initial generation completes", async () => {
     const { result } = renderHook(() => useDiagram("acme", "demo"));
 
     await waitFor(() => expect(runGeneration).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(getDiagramState).toHaveBeenCalledTimes(1);
-    expect(localStorage.getItem("has_used_free_generation")).toBe("true");
+    expect(result.current.diagram).toContain("flowchart TD");
   });
 
   it("records browser render failures without re-entering LLM repair", async () => {

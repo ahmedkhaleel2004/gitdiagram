@@ -44,6 +44,8 @@ cd ..
 
 This creates `backend/.venv` and installs pinned Python dependencies from `backend/uv.lock`.
 
+The FastAPI backend also invokes `backend/scripts/validate_mermaid.mjs`, so the backend runtime depends on Node being available in addition to Python.
+
 ## 4) Configure environment variables
 
 ```bash

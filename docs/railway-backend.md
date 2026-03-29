@@ -2,6 +2,8 @@
 
 This guide deploys the production FastAPI backend from this monorepo.
 
+The backend is intentionally mixed-runtime: FastAPI handles generation, and Mermaid syntax validation shells out to `backend/scripts/validate_mermaid.mjs`, so the deploy environment must support both Python and Node.
+
 ## 1) Prerequisites
 
 - Railway account + project access

@@ -80,8 +80,8 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
     monkeypatch.setattr(
         generate.diagram_state_repository,
-        "upsert_latest_session_audit",
-        lambda username, repo, audit: None,
+        "persist_terminal_session_audit",
+        lambda **kwargs: None,
     )
     monkeypatch.setattr(
         generate.diagram_state_repository,
@@ -212,8 +212,8 @@ def test_generate_stream_blocks_when_daily_free_quota_is_exhausted(monkeypatch):
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
         generate.diagram_state_repository,
-        "upsert_latest_session_audit",
-        lambda username, repo, audit: None,
+        "persist_terminal_session_audit",
+        lambda **kwargs: None,
     )
 
     async def fake_estimate_generation_cost(**kwargs):
@@ -259,8 +259,8 @@ def test_generate_stream_bypasses_quota_gate_for_user_api_keys(monkeypatch):
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
     monkeypatch.setattr(
         generate.diagram_state_repository,
-        "upsert_latest_session_audit",
-        lambda username, repo, audit: None,
+        "persist_terminal_session_audit",
+        lambda **kwargs: None,
     )
     monkeypatch.setattr(
         generate.diagram_state_repository,
@@ -354,7 +354,7 @@ def test_generate_stream_completes_without_storage_when_quota_gate_disabled(monk
     monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: False)
     monkeypatch.setattr(
         generate.diagram_state_repository,
-        "upsert_latest_session_audit",
+        "persist_terminal_session_audit",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("audit persistence should be skipped")),
     )
     monkeypatch.setattr(
@@ -480,8 +480,8 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
         generate.diagram_state_repository,
-        "upsert_latest_session_audit",
-        lambda username, repo, audit: None,
+        "persist_terminal_session_audit",
+        lambda **kwargs: None,
     )
     monkeypatch.setattr(
         generate.diagram_state_repository,
@@ -612,8 +612,8 @@ def test_generate_stream_finalizes_with_reserved_tokens_after_failure(monkeypatc
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
         generate.diagram_state_repository,
-        "upsert_latest_session_audit",
-        lambda username, repo, audit: None,
+        "persist_terminal_session_audit",
+        lambda **kwargs: None,
     )
 
     async def fake_estimate_generation_cost(**kwargs):

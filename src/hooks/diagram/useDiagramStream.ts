@@ -80,11 +80,11 @@ export function useDiagramStream({
             setState((prev) => ({
               ...prev,
               status: "explanation_chunk",
-            sessionId: data.session_id ?? prev.sessionId,
-            costSummary: data.cost_summary ?? prev.costSummary,
-            quotaResetAt: data.quota_reset_at ?? prev.quotaResetAt,
-            explanation: buffers.explanation,
-          }));
+              sessionId: data.session_id ?? prev.sessionId,
+              costSummary: data.cost_summary ?? prev.costSummary,
+              quotaResetAt: data.quota_reset_at ?? prev.quotaResetAt,
+              explanation: buffers.explanation,
+            }));
           }
           break;
         case "complete": {

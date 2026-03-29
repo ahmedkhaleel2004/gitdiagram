@@ -27,15 +27,32 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 - **CI/CD**: GitHub Actions
 - **Analytics**: PostHog, Api-Analytics
 
-## 🔄 Backend Architecture
+## 🧭 Production Architecture
+
+- **Vercel** serves the Next.js frontend
+- **Railway** runs the long-lived FastAPI generation backend in production
+- **Cloudflare R2** stores successful diagram artifacts
+- **Upstash Redis** stores complimentary quota state and short-lived terminal failure summaries
+- **OpenAI `gpt-5.4-mini`** is the default server-side generation model
+
+There is no Postgres or Neon runtime path anymore.
+
+## 🔄 Generation Backends
 
 GitDiagram supports two generation backends:
-- `fastapi`: external FastAPI service (recommended for production and parity with Railway)
-- `next`: Next.js Route Handlers inside this repo
+- `fastapi`: external FastAPI service
+- `next`: in-repo Next.js Route Handlers for local/dev generation
 
 Frontend routing is explicit:
-- `NEXT_PUBLIC_GENERATION_BACKEND=fastapi` with `NEXT_PUBLIC_GENERATE_API_BASE_URL=https://<your-backend>/generate`
+- `NEXT_PUBLIC_GENERATION_BACKEND=fastapi` with `NEXT_PUBLIC_GENERATE_API_BASE_URL=https://<your-backend>/generate` for the production-style path
 - or `NEXT_PUBLIC_GENERATION_BACKEND=next`
+
+## 🗂️ Where State Lives
+
+- **Successful generations**: R2 object per repo artifact
+- **Terminal failures with no saved artifact**: Upstash Redis TTL summary
+- **Complimentary daily quota**: Upstash Redis hash
+- **Private repo persistence**: separate R2 namespace derived from the provided GitHub token
 
 ## 🤔 About
 
@@ -48,6 +65,8 @@ Given any public (or private!) GitHub repository it generates diagrams in Mermai
 When you submit a GitHub repo URL, GitDiagram asks the GitHub API for the repo's default branch, a recursive file tree, and the README, while filtering out noisy assets and dependency folders. It feeds that repo snapshot into a streamed generation pipeline where one model pass writes a plain-English architecture explanation and a second pass turns that explanation plus the file tree into a structured graph of systems, nodes, edges, and real repo paths.
 
 That graph is validated against the actual file tree, retried with feedback if it contains bad paths or invalid connections, then compiled into Mermaid and validated again before it is shown. Any node tied to a real path becomes clickable back to GitHub, and the final explanation, graph, diagram, and terminal generation state are stored in Cloudflare R2 and Upstash Redis so the app can reopen an existing result or show where a run failed.
+
+One implementation detail worth knowing: the FastAPI backend validates Mermaid by invoking a small Node script in [`backend/scripts/validate_mermaid.mjs`](/Users/ahmedkhaleel/repos/gitdiagram/backend/scripts/validate_mermaid.mjs), so the backend runtime is intentionally mixed Python + Node.
 
 ## 🔒 How to diagram private repositories
 
@@ -100,6 +119,11 @@ OPENAI_COMPLIMENTARY_MODEL_FAMILY=gpt-5.4-mini
 ```
 
 If you want GitDiagram to use only the complimentary OpenAI daily mini quota on the default server key, set `OPENAI_COMPLIMENTARY_GATE_ENABLED=true`. When enabled, the backend stops default-key generations before a request would exceed the configured daily limit, while user-supplied API keys still bypass the gate.
+
+Storage notes:
+- successful diagrams live in R2 as JSON artifacts
+- short-lived failure summaries live in Upstash
+- there is no Postgres/Neon runtime path anymore
 
 4. Set up Cloudflare R2 and Upstash Redis
 

@@ -1,5 +1,5 @@
-// app/providers.js
 "use client";
+
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
 import { ThemeProvider } from "next-themes";
@@ -15,10 +15,6 @@ if (typeof window !== "undefined") {
       ui_host: "https://us.posthog.com",
       person_profiles: "always",
     });
-  } else {
-    console.log(
-      "PostHog environment variables are not set. Analytics will be disabled. Skipping PostHog initialization.",
-    );
   }
 }
 

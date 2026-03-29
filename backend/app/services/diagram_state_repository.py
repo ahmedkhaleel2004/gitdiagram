@@ -92,8 +92,14 @@ class DiagramStateRepository:
     def _has_upstash_config(self) -> bool:
         return bool(self.upstash_url and self.upstash_token)
 
+    def artifact_storage_is_configured(self) -> bool:
+        return self._has_r2_config()
+
+    def status_store_is_configured(self) -> bool:
+        return self._has_upstash_config()
+
     def is_configured(self) -> bool:
-        return self._has_r2_config() and self._has_upstash_config()
+        return self.artifact_storage_is_configured() or self.status_store_is_configured()
 
     def quota_is_configured(self) -> bool:
         return self._has_upstash_config()
@@ -305,7 +311,7 @@ class DiagramStateRepository:
         self._put_json_object(bucket, artifact_key, artifact)
         return True
 
-    def upsert_latest_session_audit(
+    def persist_terminal_session_audit(
         self,
         *,
         username: str,
@@ -314,7 +320,7 @@ class DiagramStateRepository:
         visibility: ArtifactVisibility | None = None,
         github_pat: str | None = None,
     ) -> None:
-        if audit.get("status") != "failed":
+        if audit.get("status") not in {"failed", "succeeded"}:
             return
 
         resolved_visibility = self._resolve_visibility(
@@ -322,31 +328,35 @@ class DiagramStateRepository:
             github_pat=github_pat,
         )
         latest_session_summary = self._slim_audit(audit)
-        artifact_updated = self._update_artifact_latest_session_summary(
-            username=username,
-            repo=repo,
-            visibility=resolved_visibility,
-            github_pat=github_pat,
-            latest_session_summary=latest_session_summary,
-        )
-        if artifact_updated:
-            self._clear_failure_summary(
-                self._resolve_location(
-                    username=username,
-                    repo=repo,
-                    visibility=resolved_visibility,
-                    github_pat=github_pat,
-                )[2]
+
+        artifact_updated = False
+        if self.artifact_storage_is_configured():
+            artifact_updated = self._update_artifact_latest_session_summary(
+                username=username,
+                repo=repo,
+                visibility=resolved_visibility,
+                github_pat=github_pat,
+                latest_session_summary=latest_session_summary,
+            )
+
+        if audit.get("status") == "failed" and not artifact_updated and self.status_store_is_configured():
+            self._write_failure_summary(
+                username=username,
+                repo=repo,
+                visibility=resolved_visibility,
+                github_pat=github_pat,
+                latest_session_summary=latest_session_summary,
             )
             return
 
-        self._write_failure_summary(
-            username=username,
-            repo=repo,
-            visibility=resolved_visibility,
-            github_pat=github_pat,
-            latest_session_summary=latest_session_summary,
-        )
+        if self.status_store_is_configured():
+            _bucket, _artifact_key, status_key = self._resolve_location(
+                username=username,
+                repo=repo,
+                visibility=resolved_visibility,
+                github_pat=github_pat,
+            )
+            self._clear_failure_summary(status_key)
 
     def save_successful_diagram_state(
         self,
@@ -361,6 +371,9 @@ class DiagramStateRepository:
         visibility: ArtifactVisibility = "public",
         github_pat: str | None = None,
     ) -> None:
+        if not self.artifact_storage_is_configured():
+            raise ValueError("Missing R2 configuration.")
+
         bucket, artifact_key, status_key = self._resolve_location(
             username=username,
             repo=repo,
