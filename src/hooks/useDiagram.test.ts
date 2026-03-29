@@ -1,6 +1,8 @@
+import * as React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { DiagramStreamState } from "~/features/diagram/types";
 import { useDiagram } from "~/hooks/useDiagram";
 
 const {
@@ -19,18 +21,20 @@ const {
   setStreamState: vi.fn(),
 }));
 
-let streamOptions:
-  | {
-      onComplete: (result: {
-        diagram: string;
-        explanation: string;
-        graph: unknown;
-        latestSessionAudit: unknown;
-        generatedAt?: string;
-      }) => Promise<void>;
-      onError: (message: string) => void;
-    }
-  | undefined;
+type StreamCompletePayload = {
+  diagram: string;
+  explanation: string;
+  graph: DiagramStreamState["graph"];
+  latestSessionAudit: DiagramStreamState["latestSessionAudit"];
+  generatedAt?: string;
+};
+
+type StreamOptions = {
+  onComplete: (result: StreamCompletePayload) => Promise<void>;
+  onError: (message: string) => void;
+};
+
+let streamOptions: StreamOptions | undefined;
 
 vi.mock("~/app/_actions/cache", () => ({
   getDiagramState,
@@ -38,12 +42,41 @@ vi.mock("~/app/_actions/cache", () => ({
 }));
 
 vi.mock("~/hooks/diagram/useDiagramStream", () => ({
-  useDiagramStream: (options: typeof streamOptions) => {
-    streamOptions = options;
+  useDiagramStream: (options: StreamOptions) => {
+    const [state, setState] = React.useState<DiagramStreamState>({
+      status: "idle",
+    });
+    const trackedSetState = React.useCallback(
+      (
+        next:
+          | DiagramStreamState
+          | ((prev: DiagramStreamState) => DiagramStreamState),
+      ) => {
+        setStreamState(next);
+        setState((prev) =>
+          typeof next === "function" ? next(prev) : next,
+        );
+      },
+      [setState],
+    );
+    streamOptions = {
+      onError: options.onError,
+      onComplete: async (result: StreamCompletePayload) => {
+        trackedSetState({
+          status: "complete",
+          diagram: result.diagram,
+          explanation: result.explanation,
+          graph: result.graph ?? undefined,
+          latestSessionAudit: result.latestSessionAudit ?? undefined,
+        });
+        await options.onComplete(result);
+      },
+    };
+
     return {
-      state: { status: "idle" },
+      state,
       runGeneration,
-      setState: setStreamState,
+      setState: trackedSetState,
     };
   },
 }));
@@ -98,7 +131,7 @@ describe("useDiagram", () => {
           ],
           edges: [],
         },
-        latestSessionAudit: null,
+        latestSessionAudit: undefined,
         generatedAt: "2026-03-28T12:00:00.000Z",
       });
     });

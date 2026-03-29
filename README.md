@@ -149,7 +149,10 @@ pnpm dev
 
 You can now access the website at `localhost:3000`.
 
-Run FastAPI backend (recommended if you want parity with production):
+This is the simplest local mode and works with:
+- `NEXT_PUBLIC_GENERATION_BACKEND=next`
+
+Run FastAPI backend only if you want production parity:
 
 ```bash
 docker-compose up --build -d

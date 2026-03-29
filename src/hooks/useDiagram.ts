@@ -11,21 +11,16 @@ import { isExampleRepo } from "~/lib/exampleRepos";
 import { storeOpenAiKey } from "~/lib/openai-key";
 
 export function useDiagram(username: string, repo: string) {
-  const [diagram, setDiagram] = useState<string>("");
-  const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [lastGenerated, setLastGenerated] = useState<Date | undefined>();
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
 
   const applyCompletedDiagram = useCallback(
     async ({
-      diagram: nextDiagram,
       generatedAt,
     }: {
-      diagram: string;
       generatedAt?: string;
     }) => {
-      setDiagram(nextDiagram);
       if (generatedAt) {
         setLastGenerated(new Date(generatedAt));
       }
@@ -43,15 +38,13 @@ export function useDiagram(username: string, repo: string) {
       generatedAt?: string;
     }) => {
       await applyCompletedDiagram({
-        diagram: result.diagram,
         generatedAt: result.generatedAt,
       });
     },
     [applyCompletedDiagram],
   );
 
-  const onStreamError = useCallback((message: string) => {
-    setError(message);
+  const onStreamError = useCallback((_message: string) => {
     setLoading(false);
   }, []);
 
@@ -64,7 +57,10 @@ export function useDiagram(username: string, repo: string) {
 
   const getDiagram = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setState((prev) => ({
+      ...prev,
+      error: undefined,
+    }));
 
     try {
       const githubPat = localStorage.getItem("github_pat");
@@ -74,9 +70,6 @@ export function useDiagram(username: string, repo: string) {
         githubPat ?? undefined,
       );
 
-      if (stateRecord.diagram) {
-        setDiagram(stateRecord.diagram);
-      }
       if (stateRecord.lastSuccessfulAt) {
         setLastGenerated(new Date(stateRecord.lastSuccessfulAt));
       }
@@ -84,6 +77,14 @@ export function useDiagram(username: string, repo: string) {
         const latestAudit = stateRecord.latestSessionAudit;
         setState((prev) => ({
           ...prev,
+          status:
+            stateRecord.diagram
+              ? "complete"
+              : latestAudit.status === "failed"
+                ? "error"
+                : prev.status,
+          diagram: stateRecord.diagram ?? prev.diagram,
+          explanation: stateRecord.explanation ?? prev.explanation,
           latestSessionAudit: latestAudit,
           costSummary:
             latestAudit.finalCost ?? latestAudit.estimatedCost ?? prev.costSummary,
@@ -91,7 +92,6 @@ export function useDiagram(username: string, repo: string) {
           graphAttempts: latestAudit.graphAttempts ?? prev.graphAttempts,
           failureStage: latestAudit.failureStage ?? prev.failureStage,
           validationError: latestAudit.validationError ?? prev.validationError,
-          status: latestAudit.status === "failed" ? "error" : prev.status,
           error:
             latestAudit.status === "failed"
               ? latestAudit.renderError ??
@@ -99,6 +99,17 @@ export function useDiagram(username: string, repo: string) {
                 latestAudit.validationError
               : prev.error,
         }));
+      } else {
+        const storedDiagram = stateRecord.diagram;
+        if (storedDiagram) {
+          setState((prev) => ({
+            ...prev,
+            status: "complete",
+            diagram: storedDiagram,
+            explanation: stateRecord.explanation ?? prev.explanation,
+            graph: stateRecord.graph ?? prev.graph,
+          }));
+        }
       }
 
       if (stateRecord.diagram) {
@@ -107,7 +118,11 @@ export function useDiagram(username: string, repo: string) {
       }
       await runGeneration(githubPat ?? undefined);
     } catch {
-      setError("Something went wrong. Please try again later.");
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        error: "Something went wrong. Please try again later.",
+      }));
       setLoading(false);
     }
   }, [repo, runGeneration, setState, username]);
@@ -118,28 +133,40 @@ export function useDiagram(username: string, repo: string) {
     }
 
     setLoading(true);
-    setError("");
+    setState((prev) => ({
+      ...prev,
+      error: undefined,
+    }));
 
     const githubPat = localStorage.getItem("github_pat");
 
     try {
       await runGeneration(githubPat ?? undefined);
     } catch {
-      setError("Something went wrong. Please try again later.");
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        error: "Something went wrong. Please try again later.",
+      }));
       setLoading(false);
     }
-  }, [repo, runGeneration, username]);
+  }, [repo, runGeneration, setState, username]);
 
   useEffect(() => {
     void getDiagram();
   }, [getDiagram]);
 
+  const diagram = state.diagram ?? "";
+  const error = state.error ?? "";
   const { handleCopy, handleExportImage } = useDiagramExport(diagram);
 
   const handleApiKeySubmit = async (apiKey: string) => {
     setShowApiKeyDialog(false);
     setLoading(true);
-    setError("");
+    setState((prev) => ({
+      ...prev,
+      error: undefined,
+    }));
 
     storeOpenAiKey(apiKey);
 
@@ -147,7 +174,11 @@ export function useDiagram(username: string, repo: string) {
     try {
       await runGeneration(githubPat ?? undefined);
     } catch {
-      setError("Failed to generate diagram with provided API key.");
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        error: "Failed to generate diagram with provided API key.",
+      }));
       setLoading(false);
     }
   };
@@ -169,7 +200,6 @@ export function useDiagram(username: string, repo: string) {
         renderMessage,
         githubPat ?? undefined,
       );
-      setError(`Diagram render failed: ${renderMessage}`);
       setState((prev) => ({
         ...prev,
         status: "error",

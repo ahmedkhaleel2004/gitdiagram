@@ -88,7 +88,16 @@ OPENROUTER_APP_NAME=GitDiagram
 
 ## 5) Start local services
 
-Start frontend:
+Simplest local mode:
+
+```bash
+pnpm dev
+```
+
+with:
+- `NEXT_PUBLIC_GENERATION_BACKEND=next`
+
+Production-parity mode:
 
 ```bash
 pnpm dev
