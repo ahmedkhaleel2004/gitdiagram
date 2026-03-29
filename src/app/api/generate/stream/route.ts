@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
 import { diagramGraphSchema, MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
+import type { ArtifactVisibility } from "~/server/storage/types";
 import { saveSuccessfulDiagramState, upsertLatestSessionAudit } from "~/server/db/diagram-state";
 import {
   buildComplimentaryReservationTokens,
@@ -110,9 +111,23 @@ export async function POST(request: Request) {
         let quotaReservation: ComplimentaryQuotaReservation | null = null;
         const actualUsages: GenerationTokenUsage[] = [];
         let hasCompleteMeasuredUsage = true;
+        let storageVisibility: ArtifactVisibility = githubPat?.trim()
+          ? "private"
+          : "public";
+
+        const persistAudit = async (nextAudit = audit) => {
+          await upsertLatestSessionAudit({
+            username,
+            repo,
+            githubPat,
+            visibility: storageVisibility,
+            audit: nextAudit,
+          });
+        };
 
         try {
           const githubData = await getGithubData(username, repo, githubPat);
+          storageVisibility = githubData.isPrivate ? "private" : "public";
           const provider = getProvider();
           const providerLabel = getProviderLabel(provider);
           const model = getModel(provider);
@@ -143,7 +158,7 @@ export async function POST(request: Request) {
               createdAt: new Date().toISOString(),
             },
           );
-          await upsertLatestSessionAudit({ username, repo, audit });
+          await persistAudit();
 
           send({
             status: "started",
@@ -166,7 +181,7 @@ export async function POST(request: Request) {
                   validationError: error,
                 },
               );
-              await upsertLatestSessionAudit({ username, repo, audit });
+              await persistAudit();
               send({
                 status: "error",
                 session_id: audit.sessionId,
@@ -203,7 +218,7 @@ export async function POST(request: Request) {
                   validationError: error,
                 },
               );
-              await upsertLatestSessionAudit({ username, repo, audit });
+              await persistAudit();
               send({
                 status: "error",
                 session_id: audit.sessionId,
@@ -228,7 +243,7 @@ export async function POST(request: Request) {
               reservedTokens: quotaReservation.reservedTokens,
               quotaResetAt: quotaReservation.quotaResetAt,
             };
-            await upsertLatestSessionAudit({ username, repo, audit });
+            await persistAudit();
           }
 
           if (tokenCount > 50000 && tokenCount < 195000 && !apiKey) {
@@ -238,7 +253,7 @@ export async function POST(request: Request) {
               failureStage: "started",
               validationError: error,
             });
-            await upsertLatestSessionAudit({ username, repo, audit });
+            await persistAudit();
             send({
               status: "error",
               session_id: audit.sessionId,
@@ -260,7 +275,7 @@ export async function POST(request: Request) {
               failureStage: "started",
               validationError: error,
             });
-            await upsertLatestSessionAudit({ username, repo, audit });
+            await persistAudit();
             send({
               status: "error",
               session_id: audit.sessionId,
@@ -280,7 +295,7 @@ export async function POST(request: Request) {
             "explanation_sent",
             `Sending explanation request to ${model}...`,
           );
-          await upsertLatestSessionAudit({ username, repo, audit });
+          await persistAudit();
           send({
             status: "explanation_sent",
             session_id: audit.sessionId,
@@ -289,7 +304,7 @@ export async function POST(request: Request) {
           await sleep(80);
 
           audit = withTimelineEvent(audit, "explanation", "Analyzing repository structure...");
-          await upsertLatestSessionAudit({ username, repo, audit });
+          await persistAudit();
           send({
             status: "explanation",
             session_id: audit.sessionId,
@@ -333,7 +348,7 @@ export async function POST(request: Request) {
 
           const explanation = extractTaggedSection(explanationResponse, "explanation");
           audit = withExplanation(audit, explanation);
-          await upsertLatestSessionAudit({ username, repo, audit });
+          await persistAudit();
 
           const fileTreeLookup = buildFileTreeLookup(githubData.fileTree);
           let validGraph = null;
@@ -354,7 +369,7 @@ export async function POST(request: Request) {
                 : `Retrying graph planning (${attempt}/${MAX_GRAPH_ATTEMPTS})...`;
 
             audit = withTimelineEvent(audit, status, message);
-            await upsertLatestSessionAudit({ username, repo, audit });
+            await persistAudit();
             send({
               status,
               session_id: audit.sessionId,
@@ -429,7 +444,7 @@ export async function POST(request: Request) {
                 "graph_validating",
                 `Graph validation failed on attempt ${attempt}/${MAX_GRAPH_ATTEMPTS}.`,
               );
-              await upsertLatestSessionAudit({ username, repo, audit });
+              await persistAudit();
               send({
                 status: "graph_validating",
                 session_id: audit.sessionId,
@@ -453,7 +468,7 @@ export async function POST(request: Request) {
               failureStage: "graph_validating",
               validationError: latestValidationError,
             });
-            await upsertLatestSessionAudit({ username, repo, audit });
+            await persistAudit();
             send({
               status: "error",
               session_id: audit.sessionId,
@@ -470,7 +485,7 @@ export async function POST(request: Request) {
           }
 
           audit = withTimelineEvent(audit, "diagram_compiling", "Compiling Mermaid diagram...");
-          await upsertLatestSessionAudit({ username, repo, audit });
+          await persistAudit();
           send({
             status: "diagram_compiling",
             session_id: audit.sessionId,
@@ -486,7 +501,7 @@ export async function POST(request: Request) {
             branch: githubData.defaultBranch,
           });
           audit = withCompiledDiagram(audit, diagram);
-          await upsertLatestSessionAudit({ username, repo, audit });
+          await persistAudit();
           send({
             status: "diagram_compiling",
             session_id: audit.sessionId,
@@ -504,7 +519,7 @@ export async function POST(request: Request) {
               failureStage: "diagram_compiling",
               compilerError,
             });
-            await upsertLatestSessionAudit({ username, repo, audit });
+            await persistAudit();
             send({
               status: "error",
               session_id: audit.sessionId,
@@ -537,6 +552,8 @@ export async function POST(request: Request) {
           await saveSuccessfulDiagramState({
             username,
             repo,
+            githubPat,
+            visibility: storageVisibility,
             explanation,
             graph: validGraph,
             diagram,
@@ -564,7 +581,7 @@ export async function POST(request: Request) {
             validationError: message,
           });
           try {
-            await upsertLatestSessionAudit({ username, repo, audit: failedAudit });
+            await persistAudit(failedAudit);
           } catch {
             // Best effort persistence.
           }
@@ -600,7 +617,7 @@ export async function POST(request: Request) {
                 reservation: quotaReservation,
                 committedTokens: actualCommittedTokens,
               });
-              await upsertLatestSessionAudit({ username, repo, audit });
+              await persistAudit();
             } catch {
               // Best effort quota finalization and audit persistence.
             }

@@ -1,5 +1,6 @@
 interface GitHubRepoResponse {
   default_branch?: string;
+  private?: boolean;
 }
 
 interface GitHubTreeItem {
@@ -19,6 +20,7 @@ export interface GithubData {
   defaultBranch: string;
   fileTree: string;
   readme: string;
+  isPrivate: boolean;
 }
 
 const EXCLUDED_PATTERNS = [
@@ -94,18 +96,21 @@ async function fetchJson<T>(
   return (await response.json()) as T;
 }
 
-async function getDefaultBranch(
+async function getRepoMetadata(
   username: string,
   repo: string,
   headers: HeadersInit,
-): Promise<string> {
+): Promise<{ defaultBranch: string; isPrivate: boolean }> {
   const data = await fetchJson<GitHubRepoResponse>(
     `https://api.github.com/repos/${username}/${repo}`,
     headers,
     "Repository not found.",
   );
 
-  return data.default_branch || "main";
+  return {
+    defaultBranch: data.default_branch || "main",
+    isPrivate: Boolean(data.private),
+  };
 }
 
 async function getFileTree(
@@ -162,7 +167,11 @@ export async function getGithubData(
   githubPat?: string,
 ): Promise<GithubData> {
   const headers = createHeaders(githubPat);
-  const defaultBranch = await getDefaultBranch(username, repo, headers);
+  const { defaultBranch, isPrivate } = await getRepoMetadata(
+    username,
+    repo,
+    headers,
+  );
   const [fileTree, readme] = await Promise.all([
     getFileTree(username, repo, defaultBranch, headers),
     getReadme(username, repo, headers),
@@ -172,5 +181,6 @@ export async function getGithubData(
     defaultBranch,
     fileTree,
     readme,
+    isPrivate,
   };
 }

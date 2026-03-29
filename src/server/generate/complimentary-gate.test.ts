@@ -3,14 +3,29 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const {
   reserveComplimentaryQuotaInDb,
   finalizeComplimentaryQuotaInDb,
+  reserveQuotaInUpstash,
+  finalizeQuotaInUpstash,
+  getQuotaBackend,
 } = vi.hoisted(() => ({
   reserveComplimentaryQuotaInDb: vi.fn(),
   finalizeComplimentaryQuotaInDb: vi.fn(),
+  reserveQuotaInUpstash: vi.fn(),
+  finalizeQuotaInUpstash: vi.fn(),
+  getQuotaBackend: vi.fn(() => "postgres"),
 }));
 
 vi.mock("~/server/db/complimentary-quota", () => ({
   reserveComplimentaryQuota: reserveComplimentaryQuotaInDb,
   finalizeComplimentaryQuota: finalizeComplimentaryQuotaInDb,
+}));
+
+vi.mock("~/server/storage/quota-store", () => ({
+  reserveQuotaInUpstash,
+  finalizeQuotaInUpstash,
+}));
+
+vi.mock("~/server/storage/config", () => ({
+  getQuotaBackend,
 }));
 
 import {
@@ -26,6 +41,7 @@ describe("complimentary gate", () => {
     delete process.env.OPENAI_COMPLIMENTARY_GATE_ENABLED;
     delete process.env.OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS;
     delete process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY;
+    getQuotaBackend.mockReturnValue("postgres");
     vi.clearAllMocks();
   });
 
@@ -114,5 +130,49 @@ describe("complimentary gate", () => {
       reservationTokens: 50_700,
       committedTokens: 345,
     });
+  });
+
+  it("routes quota operations through Upstash when configured", async () => {
+    getQuotaBackend.mockReturnValue("upstash");
+    reserveQuotaInUpstash.mockResolvedValue({
+      admitted: true,
+      usage: { usedTokens: 1_000, reservedTokens: 2_000 },
+    });
+    finalizeQuotaInUpstash.mockResolvedValue({
+      usedTokens: 1_345,
+      reservedTokens: 1_655,
+    });
+
+    const reservation = await reserveComplimentaryQuota({
+      model: "gpt-5.4-mini",
+      reservationTokens: 1_000,
+      now: new Date("2026-03-28T12:34:56.000Z"),
+    });
+
+    expect(reserveQuotaInUpstash).toHaveBeenCalledWith({
+      quotaDateUtc: "2026-03-28",
+      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      reservationTokens: 1_000,
+      tokenLimit: 10_000_000,
+    });
+    expect(reserveComplimentaryQuotaInDb).not.toHaveBeenCalled();
+    expect(reservation.admitted).toBe(true);
+
+    if (!reservation.admitted) {
+      throw new Error("expected admitted reservation");
+    }
+
+    await finalizeComplimentaryQuota({
+      reservation: reservation.reservation,
+      committedTokens: 345,
+    });
+
+    expect(finalizeQuotaInUpstash).toHaveBeenCalledWith({
+      quotaDateUtc: "2026-03-28",
+      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      reservationTokens: 1_000,
+      committedTokens: 345,
+    });
+    expect(finalizeComplimentaryQuotaInDb).not.toHaveBeenCalled();
   });
 });

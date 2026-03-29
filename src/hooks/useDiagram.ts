@@ -75,8 +75,12 @@ export function useDiagram(username: string, repo: string) {
     setError("");
 
     try {
-      const stateRecord = await getDiagramState(username, repo);
       const githubPat = localStorage.getItem("github_pat");
+      const stateRecord = await getDiagramState(
+        username,
+        repo,
+        githubPat ?? undefined,
+      );
 
       if (stateRecord.diagram) {
         setDiagram(stateRecord.diagram);
@@ -166,7 +170,13 @@ export function useDiagram(username: string, repo: string) {
 
   const handleDiagramRenderError = useCallback(
     async (renderMessage: string) => {
-      await persistDiagramRenderError(username, repo, renderMessage);
+      const githubPat = localStorage.getItem("github_pat");
+      await persistDiagramRenderError(
+        username,
+        repo,
+        renderMessage,
+        githubPat ?? undefined,
+      );
       setError(`Diagram render failed: ${renderMessage}`);
       setState((prev) => ({
         ...prev,

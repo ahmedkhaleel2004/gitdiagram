@@ -17,6 +17,10 @@
     "preview": "next build && next start",
     "start": "next start",
     "start:backend": "cd backend && ENVIRONMENT=production uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}",
+    "backfill:public-cache": "node scripts/backfill-public-cache-to-r2.mjs",
+    "backfill:public-cache:loop": "node scripts/backfill-public-cache-loop.mjs",
+    "backfill:public-cache:daemon": "node scripts/backfill-public-cache-daemon.mjs",
+    "backfill:public-cache:status": "node scripts/backfill-public-cache-status.mjs",
     "quota:today": "node scripts/complimentary-quota-today.mjs",
     "test": "vitest run",
     "test:backend": "cd backend && uv run pytest -q",
@@ -26,6 +30,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.913.0",
     "@mermaid-js/layout-elk": "^0.2.1",
     "@neondatabase/serverless": "^1.0.2",
     "@radix-ui/react-dialog": "^1.1.15",

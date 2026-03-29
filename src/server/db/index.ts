@@ -14,18 +14,30 @@ type DrizzleDatabase =
   | NeonHttpDatabase<typeof schema>
   | PostgresJsDatabase<typeof schema>;
 
-// Check if we're using Neon/Vercel (production) or local Postgres
-const isNeonConnection = process.env.POSTGRES_URL?.includes("neon.tech");
+let db: DrizzleDatabase | null = null;
 
-let db: DrizzleDatabase;
-if (isNeonConnection) {
-  // Production: Use Neon HTTP connection
-  const sql = neon(process.env.POSTGRES_URL!);
-  db = drizzleNeon(sql, { schema });
-} else {
-  // Local development: Use standard Postgres connection
-  const client = postgres(process.env.POSTGRES_URL!);
-  db = drizzlePostgres(client, { schema });
+export function hasDb() {
+  return Boolean(process.env.POSTGRES_URL?.trim());
 }
 
-export { db };
+export function getDb(): DrizzleDatabase {
+  if (db) {
+    return db;
+  }
+
+  const databaseUrl = process.env.POSTGRES_URL?.trim();
+  if (!databaseUrl) {
+    throw new Error("Missing POSTGRES_URL for database access.");
+  }
+
+  const isNeonConnection = databaseUrl.includes("neon.tech");
+  if (isNeonConnection) {
+    const sql = neon(databaseUrl);
+    db = drizzleNeon(sql, { schema });
+    return db;
+  }
+
+  const client = postgres(databaseUrl);
+  db = drizzlePostgres(client, { schema });
+  return db;
+}

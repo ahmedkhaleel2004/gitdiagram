@@ -126,6 +126,7 @@ describe("useDiagram", () => {
         "acme",
         "demo",
         "Parse error on line 3",
+        undefined,
       ),
     );
     await waitFor(() =>

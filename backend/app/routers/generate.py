@@ -78,6 +78,7 @@ def _get_github_data(username: str, repo: str, github_pat: str | None):
         default_branch=github_data.default_branch,
         file_tree=github_data.file_tree,
         readme=github_data.readme,
+        is_private=github_data.is_private,
     )
 
 
@@ -239,6 +240,7 @@ async def generate_stream(request: Request):
         quota_reservation = None
         actual_usages = []
         has_complete_measured_usage = True
+        storage_visibility = "private" if parsed.github_pat else "public"
 
         async def persist_audit() -> None:
             if not diagram_state_repository.is_configured():
@@ -249,6 +251,8 @@ async def generate_stream(request: Request):
                     username=parsed.username,
                     repo=parsed.repo,
                     audit=audit,
+                    visibility=storage_visibility,
+                    github_pat=parsed.github_pat,
                 )
             except Exception as exc:
                 log_event(
@@ -278,6 +282,8 @@ async def generate_stream(request: Request):
                     diagram=diagram,
                     audit=audit,
                     used_own_key=used_own_key,
+                    visibility=storage_visibility,
+                    github_pat=parsed.github_pat,
                 )
             except Exception as exc:
                 log_event(
@@ -293,6 +299,7 @@ async def generate_stream(request: Request):
 
         try:
             github_data = _get_github_data(parsed.username, parsed.repo, parsed.github_pat)
+            storage_visibility = "private" if getattr(github_data, "is_private", False) else "public"
             provider_label = get_provider_label(provider)
             estimate = await estimate_generation_cost(
                 provider=provider,
@@ -330,10 +337,10 @@ async def generate_stream(request: Request):
                 model=model,
                 api_key=parsed.api_key,
             ):
-                if not diagram_state_repository.is_configured():
+                if not diagram_state_repository.quota_is_configured():
                     error_message = (
-                        "OPENAI_COMPLIMENTARY_GATE_ENABLED requires POSTGRES_URL on the backend "
-                        "service because quota tracking is stored in Postgres."
+                        "OPENAI_COMPLIMENTARY_GATE_ENABLED requires a quota backend "
+                        "(POSTGRES_URL or Upstash Redis REST configuration)."
                     )
                     audit = _set_failure(
                         {
