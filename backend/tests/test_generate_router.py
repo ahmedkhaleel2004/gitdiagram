@@ -168,6 +168,7 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
         return next(graph_outputs)
 
     monkeypatch.setattr(generate, "estimate_generation_cost", fake_estimate_generation_cost)
+    monkeypatch.setattr(generate, "should_apply_complimentary_gate", lambda **kwargs: False)
     monkeypatch.setattr(generate.openai_service, "stream_completion", fake_stream_completion)
     monkeypatch.setattr(generate.openai_service, "generate_structured_output", fake_generate_structured_output)
     monkeypatch.setattr(
@@ -208,6 +209,7 @@ def test_generate_stream_blocks_when_daily_free_quota_is_exhausted(monkeypatch):
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
     monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: True)
+    monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
         generate.diagram_state_repository,
         "upsert_latest_session_audit",
@@ -433,6 +435,7 @@ def test_generate_stream_errors_when_quota_gate_enabled_without_postgres(monkeyp
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
     monkeypatch.setattr(generate.diagram_state_repository, "database_url", "")
+    monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: False)
     monkeypatch.setattr(
         generate,
         "reserve_complimentary_quota",
@@ -475,6 +478,7 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
     monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: True)
+    monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
         generate.diagram_state_repository,
         "upsert_latest_session_audit",
@@ -606,6 +610,7 @@ def test_generate_stream_finalizes_with_reserved_tokens_after_failure(monkeypatc
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
     monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: True)
+    monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
         generate.diagram_state_repository,
         "upsert_latest_session_audit",
