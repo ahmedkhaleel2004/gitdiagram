@@ -21,7 +21,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 
 - **Frontend**: Next.js, TypeScript, Tailwind CSS, ShadCN
 - **Backend**: FastAPI (Railway) or Next.js Route Handlers, selected explicitly via environment
-- **Database**: PostgreSQL (with Drizzle ORM)
+- **Storage**: Cloudflare R2 (diagram artifacts) + Upstash Redis (quota and failure summaries)
 - **AI**: OpenAI or OpenRouter (via `AI_PROVIDER`)
 - **Deployment**: Vercel (frontend) + Railway (backend)
 - **CI/CD**: GitHub Actions
@@ -47,7 +47,7 @@ Given any public (or private!) GitHub repository it generates diagrams in Mermai
 
 When you submit a GitHub repo URL, GitDiagram asks the GitHub API for the repo's default branch, a recursive file tree, and the README, while filtering out noisy assets and dependency folders. It feeds that repo snapshot into a streamed generation pipeline where one model pass writes a plain-English architecture explanation and a second pass turns that explanation plus the file tree into a structured graph of systems, nodes, edges, and real repo paths.
 
-That graph is validated against the actual file tree, retried with feedback if it contains bad paths or invalid connections, then compiled into Mermaid and validated again before it is shown. Any node tied to a real path becomes clickable back to GitHub, and the final explanation, graph, diagram, and generation audit are cached in Postgres so the app can reopen an existing result or show where a run failed.
+That graph is validated against the actual file tree, retried with feedback if it contains bad paths or invalid connections, then compiled into Mermaid and validated again before it is shown. Any node tied to a real path becomes clickable back to GitHub, and the final explanation, graph, diagram, and terminal generation state are stored in Cloudflare R2 and Upstash Redis so the app can reopen an existing result or show where a run failed.
 
 ## 🔒 How to diagram private repositories
 
@@ -101,25 +101,23 @@ OPENAI_COMPLIMENTARY_MODEL_FAMILY=gpt-5.4-mini
 
 If you want GitDiagram to use only the complimentary OpenAI daily mini quota on the default server key, set `OPENAI_COMPLIMENTARY_GATE_ENABLED=true`. When enabled, the backend stops default-key generations before a request would exceed the configured daily limit, while user-supplied API keys still bypass the gate.
 
-4. Start local database
+4. Set up Cloudflare R2 and Upstash Redis
 
-```bash
-chmod +x start-database.sh
-./start-database.sh
-```
+Create:
+- two private R2 buckets, one for public artifacts and one for private artifacts
+- one Upstash Redis database
 
-When prompted to generate a random password, input yes.
-The Postgres database will start in a container at `localhost:5432`
+Then fill in these required env vars in `.env`:
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_PUBLIC_BUCKET`
+- `R2_PRIVATE_BUCKET`
+- `CACHE_KEY_SECRET`
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
 
-5. Initialize the database schema
-
-```bash
-pnpm db:push
-```
-
-You can view and interact with the database using `pnpm db:studio`
-
-6. Run frontend
+5. Run frontend
 
 ```bash
 pnpm dev

@@ -51,7 +51,14 @@ cp .env.example .env
 ```
 
 Then set at least:
-- `POSTGRES_URL`
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_PUBLIC_BUCKET`
+- `R2_PRIVATE_BUCKET`
+- `CACHE_KEY_SECRET`
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
 - `AI_PROVIDER`
 - `OPENAI_API_KEY` or `OPENROUTER_API_KEY`
 
@@ -78,19 +85,6 @@ OPENROUTER_APP_NAME=GitDiagram
 ```
 
 ## 5) Start local services
-
-Start local Postgres (if using local DB URL):
-
-```bash
-chmod +x start-database.sh
-./start-database.sh
-```
-
-Push schema:
-
-```bash
-pnpm db:push
-```
 
 Start frontend:
 

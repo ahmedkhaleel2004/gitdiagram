@@ -1,13 +1,8 @@
 import { MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
 import {
-  finalizeComplimentaryQuota as finalizeComplimentaryQuotaInDb,
-  reserveComplimentaryQuota as reserveComplimentaryQuotaInDb,
-} from "~/server/db/complimentary-quota";
-import {
   finalizeQuotaInUpstash,
   reserveQuotaInUpstash,
 } from "~/server/storage/quota-store";
-import { getQuotaBackend } from "~/server/storage/config";
 import type { AIProvider } from "~/server/generate/model-config";
 import {
   EXPLANATION_MAX_OUTPUT_TOKENS,
@@ -151,10 +146,7 @@ export async function reserveComplimentaryQuota(params: {
   const quotaDateUtc = getComplimentaryQuotaDateUtc(now);
   const quotaResetAt = getComplimentaryQuotaResetAt(now);
   const quotaBucket = getComplimentaryQuotaBucket(params.model);
-  const reserve = getQuotaBackend() === "upstash"
-    ? reserveQuotaInUpstash
-    : reserveComplimentaryQuotaInDb;
-  const result = await reserve({
+  const result = await reserveQuotaInUpstash({
     quotaDateUtc,
     quotaBucket,
     tokenLimit: getComplimentaryDailyLimitTokens(),
@@ -184,10 +176,7 @@ export async function finalizeComplimentaryQuota(params: {
   reservation: ComplimentaryQuotaReservation;
   committedTokens: number;
 }): Promise<void> {
-  const finalize = getQuotaBackend() === "upstash"
-    ? finalizeQuotaInUpstash
-    : finalizeComplimentaryQuotaInDb;
-  await finalize({
+  await finalizeQuotaInUpstash({
     quotaDateUtc: params.reservation.quotaDateUtc,
     quotaBucket: params.reservation.quotaBucket,
     reservationTokens: params.reservation.reservedTokens,

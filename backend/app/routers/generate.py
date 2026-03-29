@@ -340,7 +340,7 @@ async def generate_stream(request: Request):
                 if not diagram_state_repository.quota_is_configured():
                     error_message = (
                         "OPENAI_COMPLIMENTARY_GATE_ENABLED requires a quota backend "
-                        "(POSTGRES_URL or Upstash Redis REST configuration)."
+                        "(Upstash Redis REST configuration)."
                     )
                     audit = _set_failure(
                         {

@@ -26,7 +26,14 @@ railway link --service gitdiagram-api
 ## 3) Set backend environment variables
 
 Required:
-- `POSTGRES_URL`
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_PUBLIC_BUCKET`
+- `R2_PRIVATE_BUCKET`
+- `CACHE_KEY_SECRET`
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
 - `AI_PROVIDER`
 - `OPENAI_API_KEY` or `OPENROUTER_API_KEY`
 
@@ -52,7 +59,14 @@ Optional:
 Set variables via CLI:
 
 ```bash
-railway variables --service gitdiagram-api --set "POSTGRES_URL=postgresql://..."
+railway variables --service gitdiagram-api --set "R2_ACCOUNT_ID=..."
+railway variables --service gitdiagram-api --set "R2_ACCESS_KEY_ID=..."
+railway variables --service gitdiagram-api --set "R2_SECRET_ACCESS_KEY=..."
+railway variables --service gitdiagram-api --set "R2_PUBLIC_BUCKET=..."
+railway variables --service gitdiagram-api --set "R2_PRIVATE_BUCKET=..."
+railway variables --service gitdiagram-api --set "CACHE_KEY_SECRET=..."
+railway variables --service gitdiagram-api --set "UPSTASH_REDIS_REST_URL=..."
+railway variables --service gitdiagram-api --set "UPSTASH_REDIS_REST_TOKEN=..."
 railway variables --service gitdiagram-api --set "AI_PROVIDER=openai"
 railway variables --service gitdiagram-api --set "OPENAI_API_KEY=..."
 railway variables --service gitdiagram-api --set "OPENAI_MODEL=gpt-5.4-mini"
@@ -62,8 +76,8 @@ railway variables --service gitdiagram-api --set "CORS_ORIGINS=https://gitdiagra
 ```
 
 Important:
-- Set `POSTGRES_URL` on the Railway backend service itself. Vercel environment variables are not shared with Railway.
-- If `OPENAI_COMPLIMENTARY_GATE_ENABLED=true`, the backend must have `POSTGRES_URL` because quota reservations are stored in Postgres.
+- Set the R2 and Upstash credentials on the Railway backend service itself. Vercel environment variables are not shared with Railway.
+- If `OPENAI_COMPLIMENTARY_GATE_ENABLED=true`, the backend must have the Upstash Redis REST credentials because complimentary quota reservations are stored there.
 
 Do not set `PORT` manually unless needed. Railway injects it automatically.
 

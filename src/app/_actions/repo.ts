@@ -1,6 +1,6 @@
 "use server";
 
-import { getDiagramStateRecord } from "~/server/db/diagram-state";
+import { getDiagramStateRecord } from "~/server/storage/diagram-state";
 
 export async function getLastGeneratedDate(
   username: string,

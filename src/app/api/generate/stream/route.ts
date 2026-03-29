@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
 import { diagramGraphSchema, MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
 import type { ArtifactVisibility } from "~/server/storage/types";
-import { saveSuccessfulDiagramState, upsertLatestSessionAudit } from "~/server/db/diagram-state";
+import { saveSuccessfulDiagramState, upsertLatestSessionAudit } from "~/server/storage/diagram-state";
 import {
   buildComplimentaryReservationTokens,
   finalizeComplimentaryQuota,

@@ -9,7 +9,6 @@ dependencies = [
   "boto3==1.40.52",
   "fastapi==0.128.8",
   "openai==2.21.0",
-  "psycopg[binary]==3.2.10",
   "PyJWT[crypto]==2.11.0",
   "python-dotenv==1.2.1",
   "requests==2.32.5",

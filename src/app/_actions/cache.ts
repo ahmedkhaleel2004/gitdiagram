@@ -1,14 +1,10 @@
 "use server";
 
-import { sql } from "drizzle-orm";
-
 import type { DiagramStateResponse } from "~/features/diagram/types";
-import { getDb, hasDb } from "~/server/db";
 import {
   getCachedDiagramStateRecord,
   recordLatestSessionRenderError,
-} from "~/server/db/diagram-state";
-import { diagramCache } from "~/server/db/schema";
+} from "~/server/storage/diagram-state";
 
 export async function getDiagramState(
   username: string,
@@ -26,27 +22,6 @@ export async function getDiagramState(
       latestSessionAudit: null,
       lastSuccessfulAt: null,
     };
-  }
-}
-
-export async function getDiagramStats() {
-  try {
-    if (!hasDb()) {
-      return null;
-    }
-
-    const stats = await getDb()
-      .select({
-        totalDiagrams: sql`COUNT(*)`,
-        ownKeyUsers: sql`COUNT(CASE WHEN ${diagramCache.usedOwnKey} = true THEN 1 END)`,
-        freeUsers: sql`COUNT(CASE WHEN ${diagramCache.usedOwnKey} = false THEN 1 END)`,
-      })
-      .from(diagramCache);
-
-    return stats[0];
-  } catch (error) {
-    console.error("Error getting diagram stats:", error);
-    return null;
   }
 }
 

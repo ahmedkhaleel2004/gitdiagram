@@ -1,31 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const {
-  reserveComplimentaryQuotaInDb,
-  finalizeComplimentaryQuotaInDb,
   reserveQuotaInUpstash,
   finalizeQuotaInUpstash,
-  getQuotaBackend,
 } = vi.hoisted(() => ({
-  reserveComplimentaryQuotaInDb: vi.fn(),
-  finalizeComplimentaryQuotaInDb: vi.fn(),
   reserveQuotaInUpstash: vi.fn(),
   finalizeQuotaInUpstash: vi.fn(),
-  getQuotaBackend: vi.fn(() => "postgres"),
-}));
-
-vi.mock("~/server/db/complimentary-quota", () => ({
-  reserveComplimentaryQuota: reserveComplimentaryQuotaInDb,
-  finalizeComplimentaryQuota: finalizeComplimentaryQuotaInDb,
 }));
 
 vi.mock("~/server/storage/quota-store", () => ({
   reserveQuotaInUpstash,
   finalizeQuotaInUpstash,
-}));
-
-vi.mock("~/server/storage/config", () => ({
-  getQuotaBackend,
 }));
 
 import {
@@ -41,7 +26,6 @@ describe("complimentary gate", () => {
     delete process.env.OPENAI_COMPLIMENTARY_GATE_ENABLED;
     delete process.env.OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS;
     delete process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY;
-    getQuotaBackend.mockReturnValue("postgres");
     vi.clearAllMocks();
   });
 
@@ -86,7 +70,7 @@ describe("complimentary gate", () => {
   });
 
   it("returns a denial payload with the next UTC reset time", async () => {
-    reserveComplimentaryQuotaInDb.mockResolvedValue({
+    reserveQuotaInUpstash.mockResolvedValue({
       admitted: false,
       usage: { usedTokens: 9_000_000, reservedTokens: 1_000_000 },
     });
@@ -103,7 +87,7 @@ describe("complimentary gate", () => {
         "GitDiagram's free daily OpenAI capacity is used up for now. I'm a solo student engineer running this free and open source, so please try again after 00:00 UTC or use your own OpenAI API key.",
       quotaResetAt: "2026-03-29T00:00:00.000Z",
     });
-    expect(reserveComplimentaryQuotaInDb).toHaveBeenCalledWith({
+    expect(reserveQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai:gpt-5.4-mini:complimentary",
       reservationTokens: 50_700,
@@ -111,8 +95,11 @@ describe("complimentary gate", () => {
     });
   });
 
-  it("finalizes a reservation against the quota store", async () => {
-    finalizeComplimentaryQuotaInDb.mockResolvedValue(undefined);
+  it("finalizes a reservation against Upstash", async () => {
+    finalizeQuotaInUpstash.mockResolvedValue({
+      usedTokens: 345,
+      reservedTokens: 0,
+    });
 
     await finalizeComplimentaryQuota({
       reservation: {
@@ -124,7 +111,7 @@ describe("complimentary gate", () => {
       committedTokens: 345,
     });
 
-    expect(finalizeComplimentaryQuotaInDb).toHaveBeenCalledWith({
+    expect(finalizeQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai:gpt-5.4-mini:complimentary",
       reservationTokens: 50_700,
@@ -132,8 +119,7 @@ describe("complimentary gate", () => {
     });
   });
 
-  it("routes quota operations through Upstash when configured", async () => {
-    getQuotaBackend.mockReturnValue("upstash");
+  it("routes quota operations through Upstash", async () => {
     reserveQuotaInUpstash.mockResolvedValue({
       admitted: true,
       usage: { usedTokens: 1_000, reservedTokens: 2_000 },
@@ -155,7 +141,6 @@ describe("complimentary gate", () => {
       reservationTokens: 1_000,
       tokenLimit: 10_000_000,
     });
-    expect(reserveComplimentaryQuotaInDb).not.toHaveBeenCalled();
     expect(reservation.admitted).toBe(true);
 
     if (!reservation.admitted) {
@@ -173,6 +158,5 @@ describe("complimentary gate", () => {
       reservationTokens: 1_000,
       committedTokens: 345,
     });
-    expect(finalizeComplimentaryQuotaInDb).not.toHaveBeenCalled();
   });
 });

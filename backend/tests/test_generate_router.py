@@ -339,7 +339,7 @@ def test_generate_stream_bypasses_quota_gate_for_user_api_keys(monkeypatch):
     assert payloads[-1]["status"] == "complete"
 
 
-def test_generate_stream_completes_without_postgres_when_quota_gate_disabled(monkeypatch):
+def test_generate_stream_completes_without_storage_when_quota_gate_disabled(monkeypatch):
     monkeypatch.setattr(
         generate,
         "_get_github_data",
@@ -351,7 +351,7 @@ def test_generate_stream_completes_without_postgres_when_quota_gate_disabled(mon
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
-    monkeypatch.setattr(generate.diagram_state_repository, "database_url", "")
+    monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: False)
     monkeypatch.setattr(
         generate.diagram_state_repository,
         "upsert_latest_session_audit",
@@ -422,7 +422,7 @@ def test_generate_stream_completes_without_postgres_when_quota_gate_disabled(mon
     assert payloads[-1]["status"] == "complete"
 
 
-def test_generate_stream_errors_when_quota_gate_enabled_without_postgres(monkeypatch):
+def test_generate_stream_errors_when_quota_gate_enabled_without_upstash(monkeypatch):
     monkeypatch.setattr(
         generate,
         "_get_github_data",
@@ -434,7 +434,6 @@ def test_generate_stream_errors_when_quota_gate_enabled_without_postgres(monkeyp
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
-    monkeypatch.setattr(generate.diagram_state_repository, "database_url", "")
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: False)
     monkeypatch.setattr(
         generate,
@@ -462,7 +461,7 @@ def test_generate_stream_errors_when_quota_gate_enabled_without_postgres(monkeyp
     payloads = parse_sse_payloads(response.text)
     assert payloads[-1]["status"] == "error"
     assert payloads[-1]["error_code"] == "COMPLIMENTARY_GATE_STORAGE_UNAVAILABLE"
-    assert "POSTGRES_URL" in payloads[-1]["error"]
+    assert "Upstash Redis REST configuration" in payloads[-1]["error"]
 
 
 def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):

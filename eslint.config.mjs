@@ -1,6 +1,5 @@
 import nextCoreVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
-import drizzle from "eslint-plugin-drizzle";
 import tseslint from "@typescript-eslint/eslint-plugin";
 
 const config = [
@@ -19,7 +18,6 @@ const config = [
   {
     files: ["**/*.{ts,tsx}"],
     plugins: {
-      drizzle,
       "@typescript-eslint": tseslint,
     },
     rules: {
@@ -41,18 +39,6 @@ const config = [
       ],
       "@typescript-eslint/require-await": "off",
       "react-hooks/set-state-in-effect": "off",
-      "drizzle/enforce-delete-with-where": [
-        "error",
-        {
-          drizzleObjectName: ["db", "ctx.db"],
-        },
-      ],
-      "drizzle/enforce-update-with-where": [
-        "error",
-        {
-          drizzleObjectName: ["db", "ctx.db"],
-        },
-      ],
     },
   },
 ];
