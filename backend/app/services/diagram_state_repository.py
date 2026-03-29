@@ -163,9 +163,9 @@ class DiagramStateRepository:
         if not self.upstash_url:
             raise ValueError("Missing Upstash configuration.")
         response = requests.post(
-            f"{self.upstash_url.rstrip('/')}/eval",
+            self.upstash_url.rstrip("/"),
             headers=self._upstash_headers(),
-            json={"script": script, "keys": keys, "args": args},
+            json=["EVAL", script, len(keys), *keys, *args],
             timeout=30,
         )
         response.raise_for_status()

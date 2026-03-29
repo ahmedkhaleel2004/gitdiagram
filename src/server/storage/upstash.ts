@@ -41,9 +41,7 @@ export async function upstashEval<T>(params: {
   keys?: string[];
   args?: Array<string | number>;
 }): Promise<T> {
-  return execute<T>("/eval", {
-    script: params.script,
-    keys: params.keys ?? [],
-    args: params.args ?? [],
-  });
+  const keys = params.keys ?? [];
+  const args = params.args ?? [];
+  return execute<T>("", ["EVAL", params.script, keys.length, ...keys, ...args]);
 }
