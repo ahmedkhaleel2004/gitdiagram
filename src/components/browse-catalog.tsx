@@ -255,7 +255,15 @@ export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseC
   const deferredQuery = useDeferredValue(searchInput);
 
   useEffect(() => {
+    const urlState = parseBrowseQueryFromSearchParams(
+      new URLSearchParams(window.location.search),
+    );
+
     if (window.location.search) {
+      setSearchInput(urlState.q);
+      setSort(urlState.sort);
+      setMinStars(urlState.minStars);
+      setPage(urlState.page);
       return;
     }
 

@@ -154,4 +154,31 @@ describe("BrowseCatalog", () => {
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
     expect(window.location.search).toBe("?q=vercel&sort=stars_desc&minStars=100&page=2");
   });
+
+  it("prefers the live URL page over stale initial query state on mount", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/browse?q=vercel&sort=stars_desc&minStars=100&page=2",
+    );
+
+    render(
+      <BrowseCatalog
+        entries={Array.from({ length: 40 }, (_, index) => ({
+          username: "vercel",
+          repo: `repo-${index + 1}`,
+          lastSuccessfulAt: `2026-03-${String(29 - (index % 20)).padStart(2, "0")}T12:00:00.000Z`,
+          stargazerCount: 500 - index,
+        }))}
+        initialQuery={{
+          q: "vercel",
+          sort: "stars_desc",
+          minStars: 100,
+          page: "1",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+  });
 });
