@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FaGithub } from "react-icons/fa";
 
 import { storeOpenAiKey } from "~/lib/openai-key";
+import { preloadBrowseIndex } from "~/features/browse/index-client";
 
 import { ApiKeyDialog } from "./api-key-dialog";
 import { PrivateReposDialog } from "./private-repos-dialog";
@@ -24,9 +26,21 @@ function formatStarCount(count: number) {
 }
 
 export function HeaderClient({ starCount }: HeaderClientProps) {
+  const router = useRouter();
   const [isPrivateReposDialogOpen, setIsPrivateReposDialogOpen] =
     useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      router.prefetch("/browse");
+      void preloadBrowseIndex();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [router]);
 
   const handlePrivateReposSubmit = (pat: string) => {
     localStorage.setItem("github_pat", pat);

@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BrowseCatalog } from "~/components/browse-catalog";
 
@@ -22,19 +22,27 @@ vi.mock("next/link", () => ({
 }));
 
 describe("BrowseCatalog", () => {
+  let getEntriesByTypeSpy: ReturnType<typeof vi.spyOn>;
+
+  afterEach(() => {
+    cleanup();
+    getEntriesByTypeSpy?.mockRestore();
+    window.sessionStorage.clear();
+  });
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/browse");
+    window.scrollTo = vi.fn();
+    getEntriesByTypeSpy = vi
+      .spyOn(window.performance, "getEntriesByType")
+      .mockReturnValue([]);
+  });
+
   it("renders an empty state when no browse results match", () => {
     render(
       <BrowseCatalog
-        result={{
-          items: [],
-          total: 0,
-          page: 1,
-          pageSize: 50,
-          totalPages: 1,
-          sort: "recent_desc",
-          q: "",
-          minStars: 0,
-        }}
+        entries={[]}
+        initialQuery={{}}
       />,
     );
 
@@ -44,45 +52,106 @@ describe("BrowseCatalog", () => {
     expect(screen.queryByText("Open Diagram")).not.toBeInTheDocument();
   });
 
-  it("renders rows and preserves filters in pagination links", () => {
+  it("filters instantly as the user types and removes apply/reset controls", () => {
     render(
       <BrowseCatalog
-        result={{
-          items: [
-            {
-              username: "vercel",
-              repo: "next.js",
-              lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
-              stargazerCount: 130000,
-            },
-          ],
-          total: 60,
-          page: 2,
-          pageSize: 50,
-          totalPages: 2,
+        entries={[
+          {
+            username: "vercel",
+            repo: "next.js",
+            lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+            stargazerCount: 130000,
+          },
+          {
+            username: "acme",
+            repo: "demo",
+            lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+            stargazerCount: 20,
+          },
+        ]}
+        initialQuery={{}}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Reset" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "acme" },
+    });
+
+    expect(screen.getByRole("link", { name: "acme/demo" })).toHaveAttribute(
+      "href",
+      "/acme/demo",
+    );
+    expect(
+      screen.queryByRole("link", { name: "vercel/next.js" }),
+    ).not.toBeInTheDocument();
+    expect(window.location.search).toBe("?q=acme");
+  });
+
+  it("keeps pagination local and preserves filters in the URL", () => {
+    render(
+      <BrowseCatalog
+        entries={Array.from({ length: 60 }, (_, index) => ({
+          username: "vercel",
+          repo: `repo-${index + 1}`,
+          lastSuccessfulAt: `2026-03-${String(29 - (index % 20)).padStart(2, "0")}T12:00:00.000Z`,
+          stargazerCount: 500 - index,
+        }))}
+        initialQuery={{
+          q: "vercel",
           sort: "stars_desc",
-          q: "Vercel",
           minStars: 100,
+          page: "2",
         }}
       />,
     );
 
-    expect(screen.getByRole("link", { name: "vercel/next.js" })).toHaveAttribute(
-      "href",
-      "/vercel/next.js",
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+
+    expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    expect(window.location.search).toBe(
+      "?q=vercel&sort=stars_desc&minStars=100",
     );
-    expect(screen.getByRole("link", { name: "Open Diagram" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "vercel/repo-1" })).toHaveAttribute(
       "href",
-      "/vercel/next.js",
-    );
-    expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
-      "href",
-      "https://github.com/vercel/next.js",
-    );
-    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute(
-      "href",
-      "/browse?q=Vercel&sort=stars_desc&minStars=100",
+      "/vercel/repo-1",
     );
     expect(screen.queryByTestId("mermaid-preview")).not.toBeInTheDocument();
+  });
+
+  it("restores the last browse state on browser back when the URL returns bare", () => {
+    window.sessionStorage.setItem(
+      "gitdiagram:browse-query",
+      JSON.stringify({
+        q: "vercel",
+        sort: "stars_desc",
+        minStars: 100,
+        page: 2,
+      }),
+    );
+    getEntriesByTypeSpy.mockReturnValue([
+      { type: "back_forward" } as PerformanceNavigationTiming,
+    ]);
+
+    render(
+      <BrowseCatalog
+        entries={Array.from({ length: 40 }, (_, index) => ({
+          username: "vercel",
+          repo: `repo-${index + 1}`,
+          lastSuccessfulAt: `2026-03-${String(29 - (index % 20)).padStart(2, "0")}T12:00:00.000Z`,
+          stargazerCount: 500 - index,
+        }))}
+        initialQuery={{}}
+      />,
+    );
+
+    expect(screen.getByRole("searchbox")).toHaveValue("vercel");
+    expect(screen.getByDisplayValue("Most Stars")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("100+")).toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(window.location.search).toBe("?q=vercel&sort=stars_desc&minStars=100&page=2");
   });
 });

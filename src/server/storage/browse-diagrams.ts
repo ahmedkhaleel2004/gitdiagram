@@ -2,6 +2,19 @@ import type { DiagramArtifact } from "./types";
 import { getJsonObject, listObjects, putJsonObject } from "./r2";
 import { readRequiredEnv } from "./config";
 import { getGitHubAuthSources } from "../github-auth";
+import {
+  BROWSE_PAGE_SIZE,
+  BROWSE_SORTS,
+  getBrowsePageFromEntries,
+  MIN_STAR_FILTER_VALUES,
+  toRepoKey,
+} from "~/features/browse/catalog";
+import type {
+  BrowseIndexEntry,
+  BrowsePageResult,
+  BrowseQuery,
+  BrowseSort,
+} from "~/features/browse/catalog";
 
 const PUBLIC_BROWSE_INDEX_KEY = "public/v1/_meta/browse-index.json";
 const PUBLIC_DIAGRAM_ARTIFACT_PREFIX = "public/v1/";
@@ -13,42 +26,13 @@ const BROWSE_BACKFILL_GITHUB_BATCH_SIZE = 50;
 const BROWSE_BACKFILL_GITHUB_CONCURRENCY = 4;
 const GITHUB_SECONDARY_LIMIT_MAX_RETRIES = 8;
 
-export const BROWSE_PAGE_SIZE = 50;
-export const MIN_STAR_FILTER_VALUES = [0, 10, 100, 1000] as const;
-export const BROWSE_SORTS = [
-  "recent_desc",
-  "recent_asc",
-  "stars_desc",
-  "stars_asc",
-  "name_asc",
-] as const;
-
-export type BrowseSort = (typeof BROWSE_SORTS)[number];
-
-export interface BrowseIndexEntry {
-  username: string;
-  repo: string;
-  lastSuccessfulAt: string;
-  stargazerCount: number | null;
-}
-
-export interface BrowseQuery {
-  q?: string | null;
-  sort?: string | null;
-  minStars?: string | number | null;
-  page?: string | number | null;
-}
-
-export interface BrowsePageResult {
-  items: BrowseIndexEntry[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-  sort: BrowseSort;
-  q: string;
-  minStars: number;
-}
+export { BROWSE_PAGE_SIZE, BROWSE_SORTS, MIN_STAR_FILTER_VALUES };
+export type {
+  BrowseIndexEntry,
+  BrowsePageResult,
+  BrowseQuery,
+  BrowseSort,
+};
 
 interface BrowseIndexPayload {
   version: 1;
@@ -100,37 +84,8 @@ function getPublicBucket(): string {
   return readRequiredEnv("R2_PUBLIC_BUCKET");
 }
 
-function toRepoKey(entry: Pick<BrowseIndexEntry, "username" | "repo">) {
-  return `${entry.username.trim().toLowerCase()}/${entry.repo.trim().toLowerCase()}`;
-}
-
 function compareIsoDatesDescending(left: string, right: string) {
   return Date.parse(right) - Date.parse(left);
-}
-
-function compareIsoDatesAscending(left: string, right: string) {
-  return Date.parse(left) - Date.parse(right);
-}
-
-function compareNamesAscending(left: BrowseIndexEntry, right: BrowseIndexEntry) {
-  return toRepoKey(left).localeCompare(toRepoKey(right));
-}
-
-function compareNullableStars(
-  left: number | null,
-  right: number | null,
-  direction: "asc" | "desc",
-) {
-  if (left === null && right === null) {
-    return 0;
-  }
-  if (left === null) {
-    return 1;
-  }
-  if (right === null) {
-    return -1;
-  }
-  return direction === "asc" ? left - right : right - left;
 }
 
 function normalizeBrowseIndexEntry(entry: BrowseIndexEntry): BrowseIndexEntry {
@@ -185,85 +140,12 @@ function normalizeBrowseIndexEntries(
   );
 }
 
-function parseBrowseSort(sort: string | null | undefined): BrowseSort {
-  return BROWSE_SORTS.includes(sort as BrowseSort)
-    ? (sort as BrowseSort)
-    : "recent_desc";
-}
-
-function parseMinStars(minStars: string | number | null | undefined): number {
-  const numericValue =
-    typeof minStars === "number"
-      ? minStars
-      : Number.parseInt(minStars ?? "0", 10);
-
-  return MIN_STAR_FILTER_VALUES.includes(
-    numericValue as (typeof MIN_STAR_FILTER_VALUES)[number],
-  )
-    ? numericValue
-    : 0;
-}
-
-function parsePageNumber(page: string | number | null | undefined): number {
-  const numericPage =
-    typeof page === "number" ? page : Number.parseInt(page ?? "1", 10);
-
-  if (!Number.isFinite(numericPage) || numericPage < 1) {
-    return 1;
-  }
-
-  return Math.floor(numericPage);
-}
-
-function applyBrowseSort(
-  entries: BrowseIndexEntry[],
-  sort: BrowseSort,
-): BrowseIndexEntry[] {
-  const sortedEntries = [...entries];
-
-  switch (sort) {
-    case "recent_asc":
-      return sortedEntries.sort((left, right) => {
-        const result = compareIsoDatesAscending(
-          left.lastSuccessfulAt,
-          right.lastSuccessfulAt,
-        );
-        return result || compareNamesAscending(left, right);
-      });
-    case "stars_desc":
-      return sortedEntries.sort((left, right) => {
-        const result = compareNullableStars(
-          left.stargazerCount,
-          right.stargazerCount,
-          "desc",
-        );
-        return result || compareNamesAscending(left, right);
-      });
-    case "stars_asc":
-      return sortedEntries.sort((left, right) => {
-        const result = compareNullableStars(
-          left.stargazerCount,
-          right.stargazerCount,
-          "asc",
-        );
-        return result || compareNamesAscending(left, right);
-      });
-    case "name_asc":
-      return sortedEntries.sort(compareNamesAscending);
-    case "recent_desc":
-    default:
-      return sortedEntries.sort((left, right) => {
-        const result = compareIsoDatesDescending(
-          left.lastSuccessfulAt,
-          right.lastSuccessfulAt,
-        );
-        return result || compareNamesAscending(left, right);
-      });
-  }
-}
-
 async function readStoredBrowseIndex(): Promise<BrowseIndexEntry[] | null> {
   return readStoredBrowseIndexWith(getJsonObject);
+}
+
+export async function readBrowseIndex(): Promise<BrowseIndexEntry[] | null> {
+  return readStoredBrowseIndex();
 }
 
 async function readStoredBrowseIndexWith(
@@ -306,41 +188,12 @@ export async function upsertBrowseIndexEntry(
 export async function getBrowsePage(
   query: BrowseQuery,
 ): Promise<BrowsePageResult> {
-  const sort = parseBrowseSort(query.sort);
-  const q = (query.q ?? "").trim();
-  const normalizedQuery = q.toLowerCase();
-  const minStars = parseMinStars(query.minStars);
-  const requestedPage = parsePageNumber(query.page);
   const storedEntries = await readStoredBrowseIndex();
   if (!storedEntries) {
     throw new BrowseIndexNotFoundError();
   }
 
-  const filteredEntries = storedEntries.filter((entry) => {
-    const matchesQuery = normalizedQuery
-      ? toRepoKey(entry).includes(normalizedQuery)
-      : true;
-    const matchesStarFilter =
-      minStars === 0 ? true : (entry.stargazerCount ?? -1) >= minStars;
-    return matchesQuery && matchesStarFilter;
-  });
-
-  const sortedEntries = applyBrowseSort(filteredEntries, sort);
-  const total = sortedEntries.length;
-  const totalPages = Math.max(1, Math.ceil(total / BROWSE_PAGE_SIZE));
-  const page = Math.min(requestedPage, totalPages);
-  const startIndex = (page - 1) * BROWSE_PAGE_SIZE;
-
-  return {
-    items: sortedEntries.slice(startIndex, startIndex + BROWSE_PAGE_SIZE),
-    total,
-    page,
-    pageSize: BROWSE_PAGE_SIZE,
-    totalPages,
-    sort,
-    q,
-    minStars,
-  };
+  return getBrowsePageFromEntries(storedEntries, query);
 }
 
 export function parsePublicArtifactKey(
