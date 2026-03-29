@@ -98,7 +98,20 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      let controllerClosed = false;
+
+      const closeStream = () => {
+        if (controllerClosed) {
+          return;
+        }
+        controllerClosed = true;
+        controller.close();
+      };
+
       const send = (payload: Record<string, unknown>) => {
+        if (controllerClosed) {
+          return;
+        }
         controller.enqueue(encoder.encode(sseMessage(payload)));
       };
 
@@ -192,7 +205,7 @@ export async function POST(request: Request) {
                 cost_summary: audit.finalCost ?? audit.estimatedCost,
                 latest_session_audit: audit,
               });
-              controller.close();
+              closeStream();
               return;
             }
 
@@ -230,7 +243,7 @@ export async function POST(request: Request) {
                 cost_summary: audit.finalCost ?? audit.estimatedCost,
                 latest_session_audit: audit,
               });
-              controller.close();
+              closeStream();
               return;
             }
 
@@ -264,7 +277,7 @@ export async function POST(request: Request) {
               cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
-            controller.close();
+            closeStream();
             return;
           }
 
@@ -286,7 +299,7 @@ export async function POST(request: Request) {
               cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
-            controller.close();
+            closeStream();
             return;
           }
 
@@ -480,7 +493,7 @@ export async function POST(request: Request) {
               cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
-            controller.close();
+            closeStream();
             return;
           }
 
@@ -530,7 +543,7 @@ export async function POST(request: Request) {
               cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
-            controller.close();
+            closeStream();
             return;
           }
 
@@ -622,7 +635,7 @@ export async function POST(request: Request) {
               // Best effort quota finalization and audit persistence.
             }
           }
-          controller.close();
+          closeStream();
         }
       };
 
