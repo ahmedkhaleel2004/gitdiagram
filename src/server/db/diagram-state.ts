@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import { revalidateTag, unstable_cache } from "next/cache";
 
 import type {
   DiagramGraph,
@@ -30,10 +29,6 @@ export interface DiagramStateRecord {
   lastSuccessfulAt: string | null;
 }
 
-function getDiagramStateTag(username: string, repo: string) {
-  return `diagram-state:${username}:${repo}`;
-}
-
 function shouldUsePostgresForReads() {
   const backend = getDiagramCacheBackend();
   if (backend === "postgres") {
@@ -56,16 +51,6 @@ function inferVisibility(params: {
   githubPat?: string;
 }): ArtifactVisibility {
   return params.visibility ?? (params.githubPat?.trim() ? "private" : "public");
-}
-
-function revalidateDiagramState(params: {
-  username: string;
-  repo: string;
-  visibility: ArtifactVisibility;
-}) {
-  if (params.visibility === "public") {
-    revalidateTag(getDiagramStateTag(params.username, params.repo), "max");
-  }
 }
 
 function toIsoString(value: Date | null | undefined): string | null {
@@ -230,18 +215,7 @@ export async function getCachedDiagramStateRecord(
   repo: string,
   githubPat?: string,
 ): Promise<DiagramStateRecord> {
-  if (githubPat?.trim()) {
-    return getDiagramStateRecord(username, repo, githubPat);
-  }
-
-  return unstable_cache(
-    async () => getDiagramStateRecord(username, repo),
-    ["diagram-state", username, repo],
-    {
-      tags: [getDiagramStateTag(username, repo)],
-      revalidate: 60 * 60,
-    },
-  )();
+  return getDiagramStateRecord(username, repo, githubPat);
 }
 
 export async function upsertLatestSessionAudit(params: {
@@ -255,7 +229,6 @@ export async function upsertLatestSessionAudit(params: {
 
   if (getDiagramCacheBackend() === "postgres") {
     await upsertLatestSessionAuditInPostgres(params);
-    revalidateDiagramState({ username: params.username, repo: params.repo, visibility });
     return;
   }
 
@@ -292,9 +265,7 @@ export async function upsertLatestSessionAudit(params: {
     await upsertLatestSessionAuditInPostgres(params);
   }
 
-  if (params.audit.status === "failed") {
-    revalidateDiagramState({ username: params.username, repo: params.repo, visibility });
-  }
+  void visibility;
 }
 
 export async function saveSuccessfulDiagramState(params: {
@@ -335,12 +306,6 @@ export async function saveSuccessfulDiagramState(params: {
   if (getDiagramCacheBackend() === "postgres" || shouldDualWriteToPostgres()) {
     await saveSuccessfulDiagramStateInPostgres(params);
   }
-
-  revalidateDiagramState({
-    username: params.username,
-    repo: params.repo,
-    visibility: params.visibility,
-  });
 }
 
 export async function recordLatestSessionRenderError(params: {
