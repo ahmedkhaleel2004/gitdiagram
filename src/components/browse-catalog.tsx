@@ -423,9 +423,8 @@ export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseC
         </p>
         <h2 className="mt-3 text-3xl font-bold">Browse index unavailable</h2>
         <p className="mt-4 max-w-3xl text-base text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-          This page reads only the hosted browse index. Run{" "}
-          <code>pnpm browse:backfill</code> in the environment that has access to
-          the production R2 bucket, then refresh this page.
+          This page reads only the hosted browse index. The index is currently
+          unavailable in storage.
         </p>
       </div>
     );

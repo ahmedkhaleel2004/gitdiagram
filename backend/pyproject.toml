@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "FastAPI backend for GitDiagram"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "aiohttp==3.13.3",
   "api-analytics==1.2.7",
   "boto3==1.40.52",
   "fastapi==0.128.8",
@@ -12,7 +11,6 @@ dependencies = [
   "PyJWT[crypto]==2.11.0",
   "python-dotenv==1.2.1",
   "requests==2.32.5",
-  "tiktoken==0.12.0",
   "uvicorn[standard]==0.40.0",
 ]
 

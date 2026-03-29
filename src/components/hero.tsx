@@ -1,5 +1,3 @@
-import React from "react";
-
 const Hero = () => {
   return (
     <div className="relative mx-auto flex w-full flex-col items-start justify-center sm:flex-row sm:items-center">
