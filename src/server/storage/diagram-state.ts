@@ -14,6 +14,7 @@ import {
   getStoredFailureState,
   writeFailureSummary,
 } from "~/server/storage/status-store";
+import { upsertBrowseIndexEntry } from "~/server/storage/browse-diagrams";
 import type { ArtifactVisibility } from "~/server/storage/types";
 
 export interface DiagramStateRecord {
@@ -110,6 +111,7 @@ export async function saveSuccessfulDiagramState(params: {
   repo: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
+  stargazerCount: number | null;
   explanation: string;
   graph: DiagramGraph;
   diagram: string;
@@ -123,6 +125,7 @@ export async function saveSuccessfulDiagramState(params: {
     repo: params.repo,
     githubPat: params.githubPat,
     visibility: params.visibility,
+    stargazerCount: params.stargazerCount,
     diagram: params.diagram,
     explanation: params.explanation,
     graph: params.graph,
@@ -131,6 +134,16 @@ export async function saveSuccessfulDiagramState(params: {
     latestSessionSummary: toStoredSessionSummary(params.audit),
     lastSuccessfulAt: successfulAt,
   });
+
+  if (params.visibility === "public") {
+    await upsertBrowseIndexEntry({
+      username: params.username,
+      repo: params.repo,
+      lastSuccessfulAt: successfulAt,
+      stargazerCount: params.stargazerCount,
+    });
+  }
+
   await clearFailureSummary({
     username: params.username,
     repo: params.repo,

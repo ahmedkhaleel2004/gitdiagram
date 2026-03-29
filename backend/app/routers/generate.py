@@ -79,6 +79,7 @@ def _get_github_data(username: str, repo: str, github_pat: str | None):
         file_tree=github_data.file_tree,
         readme=github_data.readme,
         is_private=github_data.is_private,
+        stargazer_count=github_data.stargazer_count,
     )
 
 
@@ -269,6 +270,7 @@ async def generate_stream(request: Request):
             graph: dict[str, Any],
             diagram: str,
             used_own_key: bool,
+            stargazer_count: int | None,
         ) -> None:
             if not diagram_state_repository.artifact_storage_is_configured():
                 return
@@ -282,6 +284,7 @@ async def generate_stream(request: Request):
                     diagram=diagram,
                     audit=audit,
                     used_own_key=used_own_key,
+                    stargazer_count=stargazer_count,
                     visibility=storage_visibility,
                     github_pat=parsed.github_pat,
                 )
@@ -716,6 +719,7 @@ async def generate_stream(request: Request):
                 graph=valid_graph.model_dump(by_alias=True),
                 diagram=diagram,
                 used_own_key=bool(parsed.api_key),
+                stargazer_count=getattr(github_data, "stargazer_count", None),
             )
 
             yield send(

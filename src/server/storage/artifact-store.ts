@@ -96,6 +96,7 @@ export async function writeDiagramArtifact(params: {
   repo: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
+  stargazerCount: number | null;
   diagram: string;
   explanation: string;
   graph: GenerationSessionAudit["graph"];
@@ -114,6 +115,7 @@ export async function writeDiagramArtifact(params: {
     visibility: params.visibility,
     username: params.username,
     repo: params.repo,
+    stargazerCount: params.stargazerCount,
     diagram: params.diagram,
     explanation: params.explanation,
     graph: params.graph,

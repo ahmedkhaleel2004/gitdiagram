@@ -52,6 +52,12 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
           </span>
         </Link>
         <nav className="flex items-center gap-3 sm:gap-6">
+          <Link
+            href="/browse"
+            className="text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
+          >
+            Browse
+          </Link>
           <button
             type="button"
             onClick={() => setIsApiKeyDialogOpen(true)}

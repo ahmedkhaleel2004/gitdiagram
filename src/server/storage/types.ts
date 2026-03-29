@@ -7,6 +7,7 @@ export interface DiagramArtifact {
   visibility: ArtifactVisibility;
   username: string;
   repo: string;
+  stargazerCount: number | null;
   diagram: string;
   explanation: string;
   graph: GenerationSessionAudit["graph"];

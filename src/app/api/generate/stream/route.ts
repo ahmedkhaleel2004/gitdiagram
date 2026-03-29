@@ -561,6 +561,7 @@ export async function POST(request: Request) {
             repo,
             githubPat,
             visibility: storageVisibility,
+            stargazerCount: githubData.stargazerCount,
             explanation,
             graph: validGraph,
             diagram,

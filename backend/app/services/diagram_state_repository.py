@@ -15,6 +15,7 @@ ArtifactVisibility = Literal["public", "private"]
 
 STATUS_TTL_SECONDS = 3 * 24 * 60 * 60
 QUOTA_TTL_SECONDS = 3 * 24 * 60 * 60
+PUBLIC_BROWSE_INDEX_KEY = "public/v1/_meta/browse-index.json"
 
 RESERVE_QUOTA_SCRIPT = """
 local key = KEYS[1]
@@ -65,6 +66,10 @@ def _read_env(name: str) -> str | None:
 
 def _normalize_segment(value: str) -> str:
     return quote(value.strip().lower(), safe="")
+
+
+def _repo_key(username: str, repo: str) -> str:
+    return f"{username.strip().lower()}/{repo.strip().lower()}"
 
 
 class _ArtifactLocator:
@@ -192,6 +197,94 @@ class _R2ArtifactStore:
             ContentType="application/json",
         )
 
+    def _normalize_browse_index_entries(
+        self,
+        entries: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        deduped: dict[str, dict[str, Any]] = {}
+
+        for raw_entry in entries:
+            username = str(raw_entry.get("username") or "").strip().lower()
+            repo = str(raw_entry.get("repo") or "").strip().lower()
+            last_successful_at = str(raw_entry.get("lastSuccessfulAt") or "")
+            stargazer_count = raw_entry.get("stargazerCount")
+
+            if not username or not repo or not last_successful_at:
+                continue
+
+            normalized_entry = {
+                "username": username,
+                "repo": repo,
+                "lastSuccessfulAt": last_successful_at,
+                "stargazerCount": stargazer_count if isinstance(stargazer_count, int) else None,
+            }
+            repo_key = _repo_key(username, repo)
+            existing = deduped.get(repo_key)
+
+            if existing is None:
+                deduped[repo_key] = normalized_entry
+                continue
+
+            existing_time = str(existing.get("lastSuccessfulAt") or "")
+            incoming_time = normalized_entry["lastSuccessfulAt"]
+            if incoming_time > existing_time:
+                deduped[repo_key] = normalized_entry
+                continue
+
+            if (
+                incoming_time == existing_time
+                and existing.get("stargazerCount") is None
+                and normalized_entry.get("stargazerCount") is not None
+            ):
+                deduped[repo_key] = normalized_entry
+
+        return sorted(
+            deduped.values(),
+            key=lambda entry: (str(entry["lastSuccessfulAt"]), _repo_key(entry["username"], entry["repo"])),
+            reverse=True,
+        )
+
+    def upsert_browse_index_entry(
+        self,
+        *,
+        username: str,
+        repo: str,
+        last_successful_at: str,
+        stargazer_count: int | None,
+    ) -> None:
+        if not self.locator.public_bucket:
+            raise ValueError("Missing R2_PUBLIC_BUCKET.")
+
+        existing_index = self.get_json_object(self.locator.public_bucket, PUBLIC_BROWSE_INDEX_KEY) or {
+            "version": 1,
+            "entries": [],
+        }
+        existing_entries = existing_index.get("entries")
+        if not isinstance(existing_entries, list):
+            existing_entries = []
+
+        updated_entries = self._normalize_browse_index_entries(
+            [
+                *existing_entries,
+                {
+                    "username": username,
+                    "repo": repo,
+                    "lastSuccessfulAt": last_successful_at,
+                    "stargazerCount": stargazer_count,
+                },
+            ]
+        )
+
+        self.put_json_object(
+            self.locator.public_bucket,
+            PUBLIC_BROWSE_INDEX_KEY,
+            {
+                "version": 1,
+                "updatedAt": last_successful_at,
+                "entries": updated_entries,
+            },
+        )
+
     def update_artifact_latest_session_summary(
         self,
         *,
@@ -225,6 +318,7 @@ class _R2ArtifactStore:
         diagram: str,
         audit: dict[str, Any],
         used_own_key: bool,
+        stargazer_count: int | None,
         visibility: ArtifactVisibility,
         github_pat: str | None = None,
         slim_audit: dict[str, Any],
@@ -241,6 +335,7 @@ class _R2ArtifactStore:
             "visibility": visibility,
             "username": username,
             "repo": repo,
+            "stargazerCount": stargazer_count,
             "diagram": diagram,
             "explanation": explanation,
             "graph": graph,
@@ -250,6 +345,13 @@ class _R2ArtifactStore:
             "lastSuccessfulAt": updated_at,
         }
         self.put_json_object(bucket, artifact_key, payload)
+        if visibility == "public":
+            self.upsert_browse_index_entry(
+                username=username,
+                repo=repo,
+                last_successful_at=updated_at,
+                stargazer_count=stargazer_count,
+            )
         return bucket, artifact_key, status_key
 
 
@@ -513,6 +615,7 @@ class DiagramStateRepository:
         diagram: str,
         audit: dict[str, Any],
         used_own_key: bool,
+        stargazer_count: int | None,
         visibility: ArtifactVisibility = "public",
         github_pat: str | None = None,
     ) -> None:
@@ -528,6 +631,7 @@ class DiagramStateRepository:
             diagram=diagram,
             audit=audit,
             used_own_key=used_own_key,
+            stargazer_count=stargazer_count,
             visibility=visibility,
             github_pat=github_pat,
             slim_audit=slim_audit,

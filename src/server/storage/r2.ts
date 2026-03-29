@@ -2,11 +2,12 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 
-import { readRequiredEnv } from "~/server/storage/config";
+import { readRequiredEnv } from "./config";
 
 let client: S3Client | null = null;
 
@@ -108,4 +109,46 @@ export async function objectExists(
     }
     throw error;
   }
+}
+
+export interface ListedBucketObject {
+  key: string;
+  lastModified: string | null;
+  size: number | null;
+}
+
+export async function listObjects(
+  bucket: string,
+  prefix: string,
+): Promise<ListedBucketObject[]> {
+  const objects: ListedBucketObject[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await getClient().send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    for (const entry of response.Contents ?? []) {
+      if (!entry.Key) {
+        continue;
+      }
+
+      objects.push({
+        key: entry.Key,
+        lastModified: entry.LastModified?.toISOString() ?? null,
+        size: typeof entry.Size === "number" ? entry.Size : null,
+      });
+    }
+
+    continuationToken = response.IsTruncated
+      ? response.NextContinuationToken
+      : undefined;
+  } while (continuationToken);
+
+  return objects;
 }

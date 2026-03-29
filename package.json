@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "next build",
+    "browse:backfill": "tsx scripts/backfill-browse-index.ts",
+    "browse:fill-missing-stars": "tsx scripts/fill-missing-browse-stars.ts",
     "check": "pnpm lint && tsc --noEmit",
     "dev": "next dev --turbo",
     "dev:backend": "cd backend && ENVIRONMENT=development uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
@@ -69,6 +71,7 @@
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4.2.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "4.0.18"
   },

@@ -1,6 +1,9 @@
+import { getGitHubApiHeaders } from "../github-auth";
+
 interface GitHubRepoResponse {
   default_branch?: string;
   private?: boolean;
+  stargazers_count?: number;
 }
 
 interface GitHubTreeItem {
@@ -21,6 +24,7 @@ export interface GithubData {
   fileTree: string;
   readme: string;
   isPrivate: boolean;
+  stargazerCount: number | null;
 }
 
 const EXCLUDED_PATTERNS = [
@@ -58,21 +62,6 @@ function shouldIncludeFile(path: string): boolean {
   return !EXCLUDED_PATTERNS.some((pattern) => lowerPath.includes(pattern));
 }
 
-function createHeaders(githubPat?: string): HeadersInit {
-  const token = githubPat?.trim();
-
-  if (!token) {
-    return {
-      Accept: "application/vnd.github+json",
-    };
-  }
-
-  return {
-    Authorization: `token ${token}`,
-    Accept: "application/vnd.github+json",
-  };
-}
-
 async function fetchJson<T>(
   url: string,
   headers: HeadersInit,
@@ -100,7 +89,11 @@ async function getRepoMetadata(
   username: string,
   repo: string,
   headers: HeadersInit,
-): Promise<{ defaultBranch: string; isPrivate: boolean }> {
+): Promise<{
+  defaultBranch: string;
+  isPrivate: boolean;
+  stargazerCount: number | null;
+}> {
   const data = await fetchJson<GitHubRepoResponse>(
     `https://api.github.com/repos/${username}/${repo}`,
     headers,
@@ -110,6 +103,8 @@ async function getRepoMetadata(
   return {
     defaultBranch: data.default_branch || "main",
     isPrivate: Boolean(data.private),
+    stargazerCount:
+      typeof data.stargazers_count === "number" ? data.stargazers_count : null,
   };
 }
 
@@ -166,8 +161,8 @@ export async function getGithubData(
   repo: string,
   githubPat?: string,
 ): Promise<GithubData> {
-  const headers = createHeaders(githubPat);
-  const { defaultBranch, isPrivate } = await getRepoMetadata(
+  const headers = await getGitHubApiHeaders({ githubPat });
+  const { defaultBranch, isPrivate, stargazerCount } = await getRepoMetadata(
     username,
     repo,
     headers,
@@ -182,5 +177,6 @@ export async function getGithubData(
     fileTree,
     readme,
     isPrivate,
+    stargazerCount,
   };
 }
