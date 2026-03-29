@@ -44,6 +44,7 @@ class GithubData:
     default_branch: str
     file_tree: str
     readme: str
+    is_private: bool
 
 
 def _should_include_file(path: str) -> bool:
@@ -150,13 +151,13 @@ class GitHubService:
 
         return {"Accept": "application/vnd.github+json"}
 
-    def get_default_branch(self, username: str, repo: str) -> str:
+    def get_repo_metadata(self, username: str, repo: str) -> tuple[str, bool]:
         data = _fetch_json(
             f"https://api.github.com/repos/{username}/{repo}",
             self._get_headers(),
             "Repository not found.",
         )
-        return data.get("default_branch") or "main"
+        return data.get("default_branch") or "main", bool(data.get("private"))
 
     def get_github_file_paths_as_list(self, username: str, repo: str, branch: str) -> str:
         data = _fetch_json(
@@ -191,11 +192,12 @@ class GitHubService:
         return content
 
     def get_github_data(self, username: str, repo: str) -> GithubData:
-        default_branch = self.get_default_branch(username, repo)
+        default_branch, is_private = self.get_repo_metadata(username, repo)
         file_tree = self.get_github_file_paths_as_list(username, repo, default_branch)
         readme = self.get_github_readme(username, repo)
         return GithubData(
             default_branch=default_branch,
             file_tree=file_tree,
             readme=readme,
+            is_private=is_private,
         )

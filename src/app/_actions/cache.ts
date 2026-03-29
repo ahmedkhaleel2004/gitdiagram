@@ -3,9 +3,9 @@
 import { sql } from "drizzle-orm";
 
 import type { DiagramStateResponse } from "~/features/diagram/types";
-import { db } from "~/server/db";
+import { getDb, hasDb } from "~/server/db";
 import {
-  getDiagramStateRecord,
+  getCachedDiagramStateRecord,
   recordLatestSessionRenderError,
 } from "~/server/db/diagram-state";
 import { diagramCache } from "~/server/db/schema";
@@ -13,9 +13,10 @@ import { diagramCache } from "~/server/db/schema";
 export async function getDiagramState(
   username: string,
   repo: string,
+  githubPat?: string,
 ): Promise<DiagramStateResponse> {
   try {
-    return await getDiagramStateRecord(username, repo);
+    return await getCachedDiagramStateRecord(username, repo, githubPat);
   } catch (error) {
     console.error("Error fetching diagram state:", error);
     return {
@@ -30,7 +31,11 @@ export async function getDiagramState(
 
 export async function getDiagramStats() {
   try {
-    const stats = await db
+    if (!hasDb()) {
+      return null;
+    }
+
+    const stats = await getDb()
       .select({
         totalDiagrams: sql`COUNT(*)`,
         ownKeyUsers: sql`COUNT(CASE WHEN ${diagramCache.usedOwnKey} = true THEN 1 END)`,
@@ -49,9 +54,15 @@ export async function persistDiagramRenderError(
   username: string,
   repo: string,
   renderError: string,
+  githubPat?: string,
 ) {
   try {
-    await recordLatestSessionRenderError({ username, repo, renderError });
+    await recordLatestSessionRenderError({
+      username,
+      repo,
+      githubPat,
+      renderError,
+    });
   } catch (error) {
     console.error("Error recording diagram render error:", error);
   }

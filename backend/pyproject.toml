@@ -6,6 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
   "aiohttp==3.13.3",
   "api-analytics==1.2.7",
+  "boto3==1.40.52",
   "fastapi==0.128.8",
   "openai==2.21.0",
   "psycopg[binary]==3.2.10",
