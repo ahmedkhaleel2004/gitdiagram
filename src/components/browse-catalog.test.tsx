@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,18 +27,42 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+vi.mock("~/components/browse-diagram-preview", () => ({
+  BrowseDiagramPreview: ({
+    repoLabel,
+  }: {
+    repoLabel: string;
+  }) => <div data-testid="mermaid-preview">{repoLabel}</div>,
+}));
+
 describe("BrowseCatalog", () => {
   let getEntriesByTypeSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  const createMatchMediaResult = (matches: boolean): MediaQueryList =>
+    ({
+      addEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      matches,
+      media: "",
+      onchange: null,
+      removeEventListener: vi.fn(),
+    }) as unknown as MediaQueryList;
 
   afterEach(() => {
     cleanup();
     getEntriesByTypeSpy?.mockRestore();
+    fetchSpy?.mockRestore();
+    vi.useRealTimers();
     window.sessionStorage.clear();
   });
 
   beforeEach(() => {
     window.history.replaceState(null, "", "/browse");
     window.scrollTo = vi.fn();
+    window.matchMedia = vi
+      .fn()
+      .mockImplementation(() => createMatchMediaResult(false));
     getEntriesByTypeSpy = vi
       .spyOn(window.performance, "getEntriesByType")
       .mockReturnValue([]);
@@ -180,5 +210,53 @@ describe("BrowseCatalog", () => {
     );
 
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+  });
+
+  it("opens a desktop hover preview for repo name hover and reuses cached data", async () => {
+    vi.useFakeTimers();
+    window.matchMedia = vi
+      .fn()
+      .mockImplementation(() => createMatchMediaResult(true));
+    fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ diagram: "flowchart TD\nA-->B" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    render(
+      <BrowseCatalog
+        entries={[
+          {
+            username: "vercel",
+            repo: "next.js",
+            lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+            stargazerCount: 130000,
+          },
+        ]}
+        initialQuery={{}}
+      />,
+    );
+    await Promise.resolve();
+
+    const repoLink = screen.getByRole("link", { name: "vercel/next.js" });
+
+    await act(async () => {
+      fireEvent.mouseEnter(repoLink, { clientX: 120, clientY: 140 });
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    await Promise.resolve();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.mouseLeave(repoLink);
+
+    await act(async () => {
+      fireEvent.mouseEnter(repoLink, { clientX: 160, clientY: 180 });
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    await Promise.resolve();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

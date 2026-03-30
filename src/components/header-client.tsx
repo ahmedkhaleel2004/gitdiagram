@@ -33,7 +33,9 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
     useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const githubRepoUrl = "https://github.com/ahmedkhaleel2004/gitdiagram";
   const isBrowsePage = pathname === "/browse";
+  const showMobileGithubButton = pathname === "/" || isBrowsePage;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -60,7 +62,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
     <header className="border-b-[3px] border-black dark:border-black">
       <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-8">
         <Link href="/" className="flex items-center">
-          <span className="text-base font-semibold sm:text-xl">
+          <span className="text-xl font-semibold sm:text-xl">
             <span className="text-black transition-colors duration-200 hover:text-gray-600 dark:text-white dark:hover:text-[hsl(var(--neo-button-hover))]">
               Git
             </span>
@@ -70,7 +72,20 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
           </span>
         </Link>
         <div className="flex items-center gap-2 sm:hidden">
-          {!isBrowsePage ? (
+          {showMobileGithubButton ? (
+            <Link
+              href={githubRepoUrl}
+              className="browse-muted-button inline-flex min-h-[42px] items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold"
+            >
+              <FaGithub className="h-4 w-4" />
+              <span className="flex items-center gap-1">
+                <span className="text-amber-400 dark:text-[hsl(var(--neo-link))]">
+                  ★
+                </span>
+                {starCount !== null ? formatStarCount(starCount) : "GitHub"}
+              </span>
+            </Link>
+          ) : !isBrowsePage ? (
             <Link
               href="/browse"
               className="browse-muted-button inline-flex min-h-[42px] items-center rounded-md px-3 py-2 text-sm font-semibold"
@@ -122,20 +137,20 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
           </button>
           <ThemeToggle />
           <Link
-            href="https://github.com/ahmedkhaleel2004/gitdiagram"
+            href={githubRepoUrl}
             className="flex items-center gap-1 text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600 sm:gap-2 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
           >
             <FaGithub className="h-5 w-5" />
             <span className="hidden sm:inline">GitHub</span>
-          </Link>
-          {starCount !== null ? (
-            <span className="flex items-center gap-1 text-sm font-medium text-black dark:text-neutral-200">
-              <span className="text-amber-400 dark:text-[hsl(var(--neo-link))]">
-                ★
+            {starCount !== null ? (
+              <span className="flex items-center gap-1">
+                <span className="text-amber-400 dark:text-[hsl(var(--neo-link))]">
+                  ★
+                </span>
+                {formatStarCount(starCount)}
               </span>
-              {formatStarCount(starCount)}
-            </span>
-          ) : null}
+            ) : null}
+          </Link>
         </nav>
 
         {isMobileMenuOpen ? (
@@ -186,7 +201,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
                     className="browse-muted-button inline-flex min-h-[48px] items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
                   />
                   <Link
-                    href="https://github.com/ahmedkhaleel2004/gitdiagram"
+                    href={githubRepoUrl}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className="browse-muted-button inline-flex min-h-[48px] items-center justify-between gap-3 rounded-md px-4 py-3 text-sm font-semibold"
                   >

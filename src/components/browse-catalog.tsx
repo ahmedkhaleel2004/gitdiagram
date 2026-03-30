@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useEffect, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   buildBrowseHref,
@@ -15,6 +21,7 @@ import type {
   BrowseSort,
 } from "~/features/browse/catalog";
 import { preloadBrowseIndex } from "~/features/browse/index-client";
+import { BrowseDiagramPreview } from "~/components/browse-diagram-preview";
 import { Skeleton } from "~/components/ui/skeleton";
 
 interface BrowseCatalogProps {
@@ -45,6 +52,23 @@ const minStarOptions = [
 
 const browseSkeletonRows = Array.from({ length: 6 }, (_, index) => index);
 const BROWSE_SESSION_STORAGE_KEY = "gitdiagram:browse-query";
+const HOVER_PREVIEW_MEDIA_QUERY =
+  "(min-width: 1024px) and (hover: hover) and (pointer: fine)";
+const HOVER_PREVIEW_WIDTH_PX = 360;
+const HOVER_PREVIEW_HEIGHT_PX = 336;
+const HOVER_PREVIEW_CURSOR_OFFSET_PX = 18;
+const HOVER_PREVIEW_OPEN_DELAY_MS = 90;
+
+const diagramPreviewCache = new Map<string, string>();
+
+type HoverPreviewStatus = "idle" | "loading" | "ready" | "error";
+
+interface HoverPreviewState {
+  key: string;
+  repoLabel: string;
+  top: number;
+  left: number;
+}
 
 function formatStarCount(stargazerCount: number | null) {
   return stargazerCount === null
@@ -115,6 +139,36 @@ function isHistoryTraversalNavigation() {
   ) as PerformanceNavigationTiming[];
 
   return navigationEntry?.type === "back_forward";
+}
+
+function getHoverPreviewPosition(pointerX: number, pointerY: number) {
+  const margin = 16;
+  const maxLeft = Math.max(
+    margin,
+    window.innerWidth - HOVER_PREVIEW_WIDTH_PX - margin,
+  );
+  const preferredLeft = pointerX + HOVER_PREVIEW_CURSOR_OFFSET_PX;
+  const fallbackLeft =
+    pointerX - HOVER_PREVIEW_WIDTH_PX - HOVER_PREVIEW_CURSOR_OFFSET_PX;
+  const left =
+    preferredLeft <= maxLeft
+      ? preferredLeft
+      : Math.min(maxLeft, Math.max(margin, fallbackLeft));
+  const maxTop = Math.max(
+    margin,
+    window.innerHeight - HOVER_PREVIEW_HEIGHT_PX - margin,
+  );
+  const preferredTop = pointerY + HOVER_PREVIEW_CURSOR_OFFSET_PX;
+  const fallbackTop =
+    pointerY - HOVER_PREVIEW_HEIGHT_PX - HOVER_PREVIEW_CURSOR_OFFSET_PX;
+
+  return {
+    left,
+    top:
+      preferredTop <= maxTop
+        ? preferredTop
+        : Math.min(maxTop, Math.max(margin, fallbackTop)),
+  };
 }
 
 function BrowseCatalogControls(props: {
@@ -272,7 +326,36 @@ export function BrowseCatalog({
   const [sort, setSort] = useState<BrowseSort>(normalizedInitialQuery.sort);
   const [minStars, setMinStars] = useState(normalizedInitialQuery.minStars);
   const [page, setPage] = useState(normalizedInitialQuery.page);
+  const [desktopHoverEnabled, setDesktopHoverEnabled] = useState(false);
+  const [hoverPreview, setHoverPreview] = useState<HoverPreviewState | null>(
+    null,
+  );
+  const [hoverPreviewDiagram, setHoverPreviewDiagram] = useState<string | null>(
+    null,
+  );
+  const [hoverPreviewStatus, setHoverPreviewStatus] =
+    useState<HoverPreviewStatus>("idle");
   const deferredQuery = useDeferredValue(searchInput);
+  const hoverIntentTimeoutRef = useRef<number | null>(null);
+  const hoverRequestControllerRef = useRef<AbortController | null>(null);
+  const activeHoverPreviewKeyRef = useRef<string | null>(null);
+
+  const clearHoverIntentTimeout = useCallback(() => {
+    if (hoverIntentTimeoutRef.current !== null) {
+      window.clearTimeout(hoverIntentTimeoutRef.current);
+      hoverIntentTimeoutRef.current = null;
+    }
+  }, []);
+
+  const closeHoverPreview = useCallback(() => {
+    clearHoverIntentTimeout();
+    hoverRequestControllerRef.current?.abort();
+    hoverRequestControllerRef.current = null;
+    activeHoverPreviewKeyRef.current = null;
+    setHoverPreview(null);
+    setHoverPreviewDiagram(null);
+    setHoverPreviewStatus("idle");
+  }, [clearHoverIntentTimeout]);
 
   useEffect(() => {
     const urlState = parseBrowseQueryFromSearchParams(
@@ -311,6 +394,32 @@ export function BrowseCatalog({
       minStars,
     });
   }, [minStars, page, searchInput, sort]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(HOVER_PREVIEW_MEDIA_QUERY);
+    const updateDesktopHoverState = () => {
+      setDesktopHoverEnabled(mediaQuery.matches);
+    };
+
+    updateDesktopHoverState();
+    mediaQuery.addEventListener?.("change", updateDesktopHoverState);
+
+    return () => {
+      mediaQuery.removeEventListener?.("change", updateDesktopHoverState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (desktopHoverEnabled) {
+      return;
+    }
+
+    closeHoverPreview();
+  }, [closeHoverPreview, desktopHoverEnabled]);
 
   useEffect(() => {
     if (initialEntries) {
@@ -367,6 +476,27 @@ export function BrowseCatalog({
     };
   }, []);
 
+  useEffect(() => {
+    if (!hoverPreview) {
+      return;
+    }
+
+    const hidePreview = () => closeHoverPreview();
+    window.addEventListener("scroll", hidePreview, true);
+    window.addEventListener("resize", hidePreview);
+
+    return () => {
+      window.removeEventListener("scroll", hidePreview, true);
+      window.removeEventListener("resize", hidePreview);
+    };
+  }, [closeHoverPreview, hoverPreview]);
+
+  useEffect(() => {
+    return () => {
+      closeHoverPreview();
+    };
+  }, [closeHoverPreview]);
+
   const handleSearchChange = (value: string) => {
     setSearchInput(value);
     setPage(1);
@@ -421,6 +551,143 @@ export function BrowseCatalog({
       "push",
     );
   };
+
+  const loadHoverPreview = useCallback(
+    async ({
+      key,
+      repo,
+      username,
+    }: {
+      key: string;
+      repo: string;
+      username: string;
+    }) => {
+      const cachedDiagram = diagramPreviewCache.get(key);
+      if (cachedDiagram) {
+        setHoverPreviewDiagram(cachedDiagram);
+        setHoverPreviewStatus("ready");
+        return;
+      }
+
+      hoverRequestControllerRef.current?.abort();
+      const controller = new AbortController();
+      hoverRequestControllerRef.current = controller;
+      setHoverPreviewDiagram(null);
+      setHoverPreviewStatus("loading");
+
+      try {
+        const response = await fetch(
+          `/api/diagram-preview?username=${encodeURIComponent(username)}&repo=${encodeURIComponent(repo)}`,
+          {
+            method: "GET",
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to load preview (${response.status}).`);
+        }
+
+        const payload = (await response.json()) as { diagram?: string };
+        const diagram = payload.diagram?.trim();
+        if (!diagram) {
+          throw new Error("Preview diagram missing.");
+        }
+
+        diagramPreviewCache.set(key, diagram);
+        if (activeHoverPreviewKeyRef.current !== key) {
+          return;
+        }
+
+        setHoverPreviewDiagram(diagram);
+        setHoverPreviewStatus("ready");
+      } catch (error) {
+        if (
+          error instanceof DOMException &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+        if (activeHoverPreviewKeyRef.current !== key) {
+          return;
+        }
+        setHoverPreviewDiagram(null);
+        setHoverPreviewStatus("error");
+      } finally {
+        if (hoverRequestControllerRef.current === controller) {
+          hoverRequestControllerRef.current = null;
+        }
+      }
+    },
+    [],
+  );
+
+  const handleRepoHoverStart = useCallback(
+    (
+      item: BrowseIndexEntry,
+      pointerPosition: { clientX: number; clientY: number },
+    ) => {
+      if (!desktopHoverEnabled) {
+        return;
+      }
+
+      clearHoverIntentTimeout();
+      const key = `${item.username}/${item.repo}`;
+      hoverIntentTimeoutRef.current = window.setTimeout(() => {
+        activeHoverPreviewKeyRef.current = key;
+        setHoverPreview({
+          key,
+          repoLabel: key,
+          ...getHoverPreviewPosition(
+            pointerPosition.clientX,
+            pointerPosition.clientY,
+          ),
+        });
+
+        const cachedDiagram = diagramPreviewCache.get(key);
+        if (cachedDiagram) {
+          setHoverPreviewDiagram(cachedDiagram);
+          setHoverPreviewStatus("ready");
+          return;
+        }
+
+        setHoverPreviewDiagram(null);
+        setHoverPreviewStatus("loading");
+        void loadHoverPreview({
+          key,
+          repo: item.repo,
+          username: item.username,
+        });
+      }, HOVER_PREVIEW_OPEN_DELAY_MS);
+    },
+    [clearHoverIntentTimeout, desktopHoverEnabled, loadHoverPreview],
+  );
+
+  const handleRepoHoverMove = useCallback(
+    (item: BrowseIndexEntry, pointerPosition: { clientX: number; clientY: number }) => {
+      if (!desktopHoverEnabled) {
+        return;
+      }
+
+      const key = `${item.username}/${item.repo}`;
+      if (activeHoverPreviewKeyRef.current !== key) {
+        return;
+      }
+
+      setHoverPreview((currentPreview) =>
+        currentPreview
+          ? {
+              ...currentPreview,
+              ...getHoverPreviewPosition(
+                pointerPosition.clientX,
+                pointerPosition.clientY,
+              ),
+            }
+          : currentPreview,
+      );
+    },
+    [desktopHoverEnabled],
+  );
 
   const result = entries
     ? getBrowsePageFromEntries(entries, {
@@ -551,6 +818,11 @@ export function BrowseCatalog({
                           href={diagramPath}
                           title={`${item.username}/${item.repo}`}
                           className="block text-[1.4rem] leading-[1.05] font-semibold tracking-tight break-all hover:underline lg:overflow-hidden lg:text-lg lg:leading-tight lg:break-normal lg:text-ellipsis lg:whitespace-nowrap"
+                          onMouseEnter={(event) =>
+                            handleRepoHoverStart(item, event)
+                          }
+                          onMouseMove={(event) => handleRepoHoverMove(item, event)}
+                          onMouseLeave={closeHoverPreview}
                         >
                           {item.username}/{item.repo}
                         </Link>
@@ -627,6 +899,25 @@ export function BrowseCatalog({
           </div>
         </>
       )}
+
+      {desktopHoverEnabled && hoverPreview ? (
+        <div
+          className="pointer-events-none fixed z-40 hidden lg:block"
+          style={{
+            left: `${hoverPreview.left}px`,
+            top: `${hoverPreview.top}px`,
+            width: `${HOVER_PREVIEW_WIDTH_PX}px`,
+          }}
+        >
+          <BrowseDiagramPreview
+            chart={hoverPreviewDiagram}
+            repoLabel={hoverPreview.repoLabel}
+            status={
+              hoverPreviewStatus === "idle" ? "loading" : hoverPreviewStatus
+            }
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

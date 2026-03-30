@@ -91,6 +91,26 @@ export async function getStoredDiagramState(params: {
   return toDiagramStateResponse(result.artifact);
 }
 
+export async function getPublicDiagramPreview(params: {
+  username: string;
+  repo: string;
+}): Promise<{
+  diagram: string;
+  lastSuccessfulAt: string;
+} | null> {
+  const artifact = await getArtifactForLocation(
+    getPublicLocation(params.username, params.repo),
+  );
+  if (!artifact?.diagram) {
+    return null;
+  }
+
+  return {
+    diagram: artifact.diagram,
+    lastSuccessfulAt: artifact.lastSuccessfulAt,
+  };
+}
+
 export async function writeDiagramArtifact(params: {
   username: string;
   repo: string;

@@ -4,11 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
 import elkLayouts from "@mermaid-js/layout-elk";
 import { useTheme } from "next-themes";
+import { cn } from "~/lib/utils";
 
 interface MermaidChartProps {
   chart: string;
   zoomingEnabled?: boolean;
   onRenderError?: (message: string) => void;
+  containerClassName?: string;
+  diagramClassName?: string;
+  backgroundColor?: string;
 }
 
 type SvgPanZoomInstance = {
@@ -46,6 +50,9 @@ const MermaidChart = ({
   chart,
   zoomingEnabled = true,
   onRenderError,
+  containerClassName,
+  diagramClassName,
+  backgroundColor,
 }: MermaidChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const panZoomRef = useRef<SvgPanZoomInstance | null>(null);
@@ -77,7 +84,7 @@ const MermaidChart = ({
       },
       themeVariables: isDark
         ? {
-            background: "#1f2631",
+            background: backgroundColor ?? "#1f2631",
             primaryColor: "#2c3544",
             primaryBorderColor: "#6dd4e9",
             primaryTextColor: "#e8edf5",
@@ -86,7 +93,7 @@ const MermaidChart = ({
             tertiaryColor: "#323d4d",
           }
         : {
-            background: "#ffffff",
+            background: backgroundColor ?? "#ffffff",
             primaryColor: "#f7f7f7",
             primaryBorderColor: "#000000",
             primaryTextColor: "#171717",
@@ -180,12 +187,16 @@ const MermaidChart = ({
       panZoomRef.current?.destroy();
       panZoomRef.current = null;
     };
-  }, [chart, zoomingEnabled, isDark, onRenderError]);
+  }, [backgroundColor, chart, zoomingEnabled, isDark, onRenderError]);
 
   return (
     <div
       ref={containerRef}
-      className={`w-full max-w-full p-4 ${zoomingEnabled ? "h-[600px]" : ""}`}
+      className={cn(
+        "w-full max-w-full p-4",
+        zoomingEnabled && "h-[600px]",
+        containerClassName,
+      )}
     >
       {renderMessage && (
         <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
@@ -194,11 +205,12 @@ const MermaidChart = ({
       )}
       <div
         key={`${chart}-${zoomingEnabled}-${resolvedTheme ?? "light"}`}
-        className={`mermaid h-full text-foreground ${
-          zoomingEnabled
-            ? "rounded-lg border-2 border-black bg-white dark:border-[#3b4656] dark:bg-[#1f2631]"
-            : ""
-        }`}
+        className={cn(
+          "mermaid h-full text-foreground",
+          zoomingEnabled &&
+            "rounded-lg border-2 border-black bg-white dark:border-[#3b4656] dark:bg-[#1f2631]",
+          diagramClassName,
+        )}
       >
         {chart}
       </div>
