@@ -135,20 +135,25 @@ export async function saveSuccessfulDiagramState(params: {
     lastSuccessfulAt: successfulAt,
   });
 
-  if (params.visibility === "public") {
-    await upsertBrowseIndexEntry({
-      username: params.username,
-      repo: params.repo,
-      lastSuccessfulAt: successfulAt,
-      stargazerCount: params.stargazerCount,
-    });
-  }
-
   await clearFailureSummary({
     username: params.username,
     repo: params.repo,
     githubPat: params.githubPat,
     visibility: params.visibility,
+  });
+}
+
+export async function updatePublicBrowseIndexForSuccessfulDiagram(params: {
+  username: string;
+  repo: string;
+  lastSuccessfulAt: string;
+  stargazerCount: number | null;
+}) {
+  await upsertBrowseIndexEntry({
+    username: params.username,
+    repo: params.repo,
+    lastSuccessfulAt: params.lastSuccessfulAt,
+    stargazerCount: params.stargazerCount,
   });
 }
 

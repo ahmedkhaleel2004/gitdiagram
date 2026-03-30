@@ -25,7 +25,10 @@ vi.mock("~/server/storage/browse-diagrams", () => ({
   upsertBrowseIndexEntry,
 }));
 
-import { saveSuccessfulDiagramState } from "~/server/storage/diagram-state";
+import {
+  saveSuccessfulDiagramState,
+  updatePublicBrowseIndexForSuccessfulDiagram,
+} from "~/server/storage/diagram-state";
 
 const baseAudit = {
   sessionId: "session-1",
@@ -50,7 +53,7 @@ describe("saveSuccessfulDiagramState", () => {
     vi.clearAllMocks();
   });
 
-  it("updates the public browse index for public artifacts", async () => {
+  it("persists the public artifact without updating the browse index inline", async () => {
     await saveSuccessfulDiagramState({
       username: "Acme",
       repo: "Demo",
@@ -72,6 +75,17 @@ describe("saveSuccessfulDiagramState", () => {
         stargazerCount: 42,
       }),
     );
+    expect(upsertBrowseIndexEntry).not.toHaveBeenCalled();
+  });
+
+  it("updates the public browse index when scheduled separately", async () => {
+    await updatePublicBrowseIndexForSuccessfulDiagram({
+      username: "Acme",
+      repo: "Demo",
+      lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+      stargazerCount: 42,
+    });
+
     expect(upsertBrowseIndexEntry).toHaveBeenCalledWith({
       username: "Acme",
       repo: "Demo",

@@ -59,6 +59,10 @@ class GenerateRequest(BaseModel):
     github_pat: str | None = Field(default=None, min_length=1)
 
 
+class _ClientDisconnectedError(Exception):
+    pass
+
+
 def _sse_message(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
@@ -81,6 +85,11 @@ def _get_github_data(username: str, repo: str, github_pat: str | None):
         is_private=github_data.is_private,
         stargazer_count=github_data.stargazer_count,
     )
+
+
+async def _ensure_client_connected(request: Request) -> None:
+    if await request.is_disconnected():
+        raise _ClientDisconnectedError()
 
 
 def _extract_tagged_section(text: str, tag: str) -> str:
@@ -170,7 +179,12 @@ async def get_generation_cost(request: Request):
         if not parsed:
             return JSONResponse({"ok": False, "error": error, "error_code": "VALIDATION_ERROR"})
 
-        github_data = _get_github_data(parsed.username, parsed.repo, parsed.github_pat)
+        github_data = await asyncio.to_thread(
+            _get_github_data,
+            parsed.username,
+            parsed.repo,
+            parsed.github_pat,
+        )
         provider = get_provider()
         model = get_model(provider)
         estimate = await estimate_generation_cost(
@@ -242,6 +256,7 @@ async def generate_stream(request: Request):
         actual_usages = []
         has_complete_measured_usage = True
         storage_visibility = "private" if parsed.github_pat else "public"
+        was_cancelled = False
 
         async def persist_terminal_audit(next_audit: dict[str, Any] | None = None) -> None:
             if not diagram_state_repository.is_configured():
@@ -297,11 +312,44 @@ async def generate_stream(request: Request):
                     error=str(exc),
                 )
 
+        def schedule_public_browse_index_update(
+            *,
+            username: str,
+            repo: str,
+            last_successful_at: str,
+            stargazer_count: int | None,
+        ) -> None:
+            async def _run() -> None:
+                try:
+                    await asyncio.to_thread(
+                        diagram_state_repository.upsert_public_browse_index_entry,
+                        username=username,
+                        repo=repo,
+                        last_successful_at=last_successful_at,
+                        stargazer_count=stargazer_count,
+                    )
+                except Exception as exc:
+                    log_event(
+                        "generate.persistence.browse_index_failed",
+                        username=username,
+                        repo=repo,
+                        session_id=audit["sessionId"],
+                        error=str(exc),
+                    )
+
+            asyncio.create_task(_run())
+
         def send(payload: dict[str, Any]) -> str:
             return _sse_message(payload)
 
         try:
-            github_data = _get_github_data(parsed.username, parsed.repo, parsed.github_pat)
+            await _ensure_client_connected(request)
+            github_data = await asyncio.to_thread(
+                _get_github_data,
+                parsed.username,
+                parsed.repo,
+                parsed.github_pat,
+            )
             storage_visibility = "private" if getattr(github_data, "is_private", False) else "public"
             provider_label = get_provider_label(provider)
             estimate = await estimate_generation_cost(
@@ -312,6 +360,7 @@ async def generate_stream(request: Request):
                 username=parsed.username,
                 repo=parsed.repo,
                 api_key=parsed.api_key,
+                prefer_exact_input_token_count=False,
             )
             token_count = estimate["explanation_input_tokens"]
 
@@ -333,6 +382,7 @@ async def generate_stream(request: Request):
                 }
             )
 
+            await _ensure_client_connected(request)
             if should_apply_complimentary_gate(
                 provider=provider,
                 model=model,
@@ -488,6 +538,7 @@ async def generate_stream(request: Request):
                 }
             )
             await asyncio.sleep(0.08)
+            await _ensure_client_connected(request)
 
             audit = _timeline(audit, "explanation", "Analyzing repository structure...")
             yield send({"status": "explanation", "session_id": audit["sessionId"], "message": "Analyzing repository structure..."})
@@ -503,6 +554,7 @@ async def generate_stream(request: Request):
                 max_output_tokens=EXPLANATION_MAX_OUTPUT_TOKENS,
             )
             async for chunk in explanation_stream:
+                await _ensure_client_connected(request)
                 explanation_response += chunk
                 yield send({"status": "explanation_chunk", "session_id": audit["sessionId"], "chunk": chunk})
             explanation_usage = await explanation_usage_future
@@ -543,6 +595,7 @@ async def generate_stream(request: Request):
             )
 
             for attempt in range(1, MAX_GRAPH_ATTEMPTS + 1):
+                await _ensure_client_connected(request)
                 status = "graph" if attempt == 1 else "graph_retry"
                 message = (
                     "Planning repository graph..."
@@ -666,6 +719,7 @@ async def generate_stream(request: Request):
                 }
             )
 
+            await _ensure_client_connected(request)
             diagram = compile_diagram_graph(
                 valid_graph,
                 parsed.username,
@@ -714,6 +768,7 @@ async def generate_stream(request: Request):
             )
             audit = _set_final_cost(audit, final_cost)
             audit = _set_success(_timeline(audit, "complete", "Diagram generation complete."))
+            await _ensure_client_connected(request)
             await persist_successful_state(
                 explanation=explanation,
                 graph=valid_graph.model_dump(by_alias=True),
@@ -721,6 +776,14 @@ async def generate_stream(request: Request):
                 used_own_key=bool(parsed.api_key),
                 stargazer_count=getattr(github_data, "stargazer_count", None),
             )
+
+            if storage_visibility == "public":
+                schedule_public_browse_index_update(
+                    username=parsed.username,
+                    repo=parsed.repo,
+                    last_successful_at=audit["updatedAt"],
+                    stargazer_count=getattr(github_data, "stargazer_count", None),
+                )
 
             yield send(
                 {
@@ -735,6 +798,8 @@ async def generate_stream(request: Request):
                     "generated_at": audit["updatedAt"],
                 }
             )
+        except _ClientDisconnectedError:
+            was_cancelled = True
         except Exception as exc:
             has_complete_measured_usage = False
             error_message = str(exc)
@@ -765,7 +830,9 @@ async def generate_stream(request: Request):
             )
             if quota_reservation is not None:
                 actual_committed_tokens = (
-                    sum_generation_usage(*actual_usages).total_tokens
+                    0
+                    if was_cancelled
+                    else sum_generation_usage(*actual_usages).total_tokens
                     if has_complete_measured_usage
                     else quota_reservation.reserved_tokens
                 )
@@ -785,7 +852,8 @@ async def generate_stream(request: Request):
                         reservation=quota_reservation,
                         committed_tokens=actual_committed_tokens,
                     )
-                    await persist_terminal_audit()
+                    if not was_cancelled:
+                        await persist_terminal_audit()
                 except Exception:
                     pass
 

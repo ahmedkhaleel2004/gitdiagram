@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import type { DiagramStateResponse } from "~/features/diagram/types";
+import { getStoredDiagramState } from "~/server/storage/artifact-store";
 import RepoPageClient from "./repo-page-client";
 
 type RepoPageProps = {
@@ -33,5 +35,16 @@ export async function generateMetadata({
 
 export default async function Repo({ params }: RepoPageProps) {
   const { username, repo } = await params;
-  return <RepoPageClient username={username} repo={repo} />;
+  const initialState = (await getStoredDiagramState({
+    username,
+    repo,
+  })) as DiagramStateResponse | null;
+
+  return (
+    <RepoPageClient
+      username={username}
+      repo={repo}
+      initialState={initialState?.diagram ? initialState : null}
+    />
+  );
 }

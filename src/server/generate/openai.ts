@@ -72,6 +72,7 @@ interface StreamCompletionParams {
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
   maxOutputTokens?: number;
+  signal?: AbortSignal;
 }
 
 interface StructuredCompletionParams<T> {
@@ -84,6 +85,7 @@ interface StructuredCompletionParams<T> {
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
   maxOutputTokens?: number;
+  signal?: AbortSignal;
 }
 
 interface StreamCompletionResult {
@@ -91,15 +93,35 @@ interface StreamCompletionResult {
   usagePromise: Promise<GenerationTokenUsage | null>;
 }
 
+function getResponseFailureMessage(response: {
+  error?: { message?: string | null } | null;
+  incomplete_details?: { reason?: string | null } | null;
+}): string {
+  if (response.error?.message) {
+    return response.error.message;
+  }
+
+  if (response.incomplete_details?.reason) {
+    return `OpenAI response incomplete: ${response.incomplete_details.reason}.`;
+  }
+
+  return "OpenAI response did not complete successfully.";
+}
+
 async function retrieveUsageFromResponseId(
   client: OpenAI,
   responseId: string | undefined,
+  signal?: AbortSignal,
 ): Promise<GenerationTokenUsage | null> {
   if (!responseId) {
     return null;
   }
 
-  const response = await client.responses.retrieve(responseId);
+  const response = await client.responses.retrieve(
+    responseId,
+    undefined,
+    signal ? { signal } : undefined,
+  );
   return normalizeGenerationUsage(response.usage);
 }
 
@@ -111,18 +133,22 @@ export async function streamCompletion({
   apiKey,
   reasoningEffort,
   maxOutputTokens,
+  signal,
 }: StreamCompletionParams): Promise<StreamCompletionResult> {
   const client = createClient(provider, resolveApiKey(provider, apiKey));
-  const stream = await client.responses.create({
-    model,
-    stream: true,
-    input: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-    ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
-  });
+  const stream = await client.responses.create(
+    {
+      model,
+      stream: true,
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+      ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
+    },
+    signal ? { signal } : undefined,
+  );
 
   let usageSettled = false;
   let resolveUsage!: (usage: GenerationTokenUsage | null) => void;
@@ -157,6 +183,14 @@ export async function streamCompletion({
           continue;
         }
 
+        if (event.type === "response.failed") {
+          throw new Error(getResponseFailureMessage(event.response));
+        }
+
+        if (event.type === "response.incomplete") {
+          throw new Error(getResponseFailureMessage(event.response));
+        }
+
         if (event.type === "error") {
           const message = event.message ?? "OpenAI stream failed.";
           throw new Error(message);
@@ -164,7 +198,7 @@ export async function streamCompletion({
       }
 
       if (!finalUsage) {
-        finalUsage = await retrieveUsageFromResponseId(client, responseId);
+        finalUsage = await retrieveUsageFromResponseId(client, responseId, signal);
       }
 
       usageSettled = true;
@@ -227,6 +261,7 @@ export async function generateStructuredOutput<T>({
   apiKey,
   reasoningEffort,
   maxOutputTokens,
+  signal,
 }: StructuredCompletionParams<T>): Promise<{
   output: T;
   rawText: string;
@@ -235,18 +270,21 @@ export async function generateStructuredOutput<T>({
   const client = createClient(provider, resolveApiKey(provider, apiKey));
 
   try {
-    const response = await client.responses.parse({
-      model,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      text: {
-        format: zodTextFormat(schema, schemaName),
+    const response = await client.responses.parse(
+      {
+        model,
+        input: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        text: {
+          format: zodTextFormat(schema, schemaName),
+        },
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+        ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
       },
-      ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-      ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
-    });
+      signal ? { signal } : undefined,
+    );
 
     if (!response.output_parsed) {
       throw new Error("Structured output parsing returned no parsed payload.");

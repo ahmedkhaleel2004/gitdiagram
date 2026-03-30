@@ -345,13 +345,6 @@ class _R2ArtifactStore:
             "lastSuccessfulAt": updated_at,
         }
         self.put_json_object(bucket, artifact_key, payload)
-        if visibility == "public":
-            self.upsert_browse_index_entry(
-                username=username,
-                repo=repo,
-                last_successful_at=updated_at,
-                stargazer_count=stargazer_count,
-            )
         return bucket, artifact_key, status_key
 
 
@@ -643,6 +636,23 @@ class DiagramStateRepository:
                 visibility=visibility,
                 github_pat=github_pat,
             )
+
+    def upsert_public_browse_index_entry(
+        self,
+        *,
+        username: str,
+        repo: str,
+        last_successful_at: str,
+        stargazer_count: int | None,
+    ) -> None:
+        if not self.artifact_storage_is_configured():
+            raise ValueError("Missing R2 configuration.")
+        self.artifact_store.upsert_browse_index_entry(
+            username=username,
+            repo=repo,
+            last_successful_at=last_successful_at,
+            stargazer_count=stargazer_count,
+        )
 
     def reserve_complimentary_quota(
         self,

@@ -22,9 +22,10 @@ async def _count_prompt_input_tokens(
     data: dict[str, str | None],
     api_key: str | None = None,
     reasoning_effort: str | None = None,
+    prefer_exact_input_token_count: bool = True,
 ) -> tuple[int, bool]:
     user_prompt = format_user_message(data)
-    if not supports_exact_input_token_count(provider):
+    if not prefer_exact_input_token_count or not supports_exact_input_token_count(provider):
         return openai_service.estimate_tokens(f"{system_prompt}\n{user_prompt}"), True
 
     try:
@@ -50,6 +51,7 @@ async def estimate_generation_cost(
     username: str,
     repo: str,
     api_key: str | None = None,
+    prefer_exact_input_token_count: bool = True,
 ) -> dict[str, object]:
     explanation_count, explanation_used_fallback = await _count_prompt_input_tokens(
         provider=provider,
@@ -61,6 +63,7 @@ async def estimate_generation_cost(
         },
         api_key=api_key,
         reasoning_effort="medium",
+        prefer_exact_input_token_count=prefer_exact_input_token_count,
     )
     graph_static_count, graph_used_fallback = await _count_prompt_input_tokens(
         provider=provider,
@@ -76,6 +79,7 @@ async def estimate_generation_cost(
         },
         api_key=api_key,
         reasoning_effort="low",
+        prefer_exact_input_token_count=prefer_exact_input_token_count,
     )
 
     note_parts = [

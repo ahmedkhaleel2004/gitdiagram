@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { after } from "next/server";
 
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
 import { diagramGraphSchema, MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
@@ -7,6 +8,7 @@ import { revalidateBrowseIndexCache } from "~/app/browse/data";
 import {
   persistTerminalSessionAudit,
   saveSuccessfulDiagramState,
+  updatePublicBrowseIndexForSuccessfulDiagram,
 } from "~/server/storage/diagram-state";
 import {
   buildComplimentaryReservationTokens,
@@ -63,6 +65,22 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function createAbortError() {
+  return new DOMException("Generation aborted.", "AbortError");
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
+}
+
+function throwIfAborted(signal: AbortSignal) {
+  if (signal.aborted) {
+    throw createAbortError();
+  }
+}
+
 export async function POST(request: Request) {
   let payload: unknown;
   try {
@@ -99,10 +117,27 @@ export async function POST(request: Request) {
   } = parsed.data;
 
   const encoder = new TextEncoder();
+  const generationAbortController = new AbortController();
+  const postResponseTasks: Array<() => Promise<void>> = [];
+
+  after(async () => {
+    for (const task of postResponseTasks) {
+      await task();
+    }
+  });
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let controllerClosed = false;
+      let wasCancelled = false;
+      const abortGeneration = () => {
+        wasCancelled = true;
+        if (!generationAbortController.signal.aborted) {
+          generationAbortController.abort();
+        }
+      };
+
+      request.signal.addEventListener("abort", abortGeneration, { once: true });
 
       const closeStream = () => {
         if (controllerClosed) {
@@ -113,7 +148,7 @@ export async function POST(request: Request) {
       };
 
       const send = (payload: Record<string, unknown>) => {
-        if (controllerClosed) {
+        if (controllerClosed || generationAbortController.signal.aborted) {
           return;
         }
         controller.enqueue(encoder.encode(sseMessage(payload)));
@@ -143,7 +178,13 @@ export async function POST(request: Request) {
         };
 
         try {
-          const githubData = await getGithubData(username, repo, githubPat);
+          throwIfAborted(generationAbortController.signal);
+          const githubData = await getGithubData(
+            username,
+            repo,
+            githubPat,
+            generationAbortController.signal,
+          );
           storageVisibility = githubData.isPrivate ? "private" : "public";
           const provider = getProvider();
           const providerLabel = getProviderLabel(provider);
@@ -156,6 +197,7 @@ export async function POST(request: Request) {
             username,
             repo,
             apiKey,
+            preferExactInputTokenCount: false,
           });
           const tokenCount = estimate.explanationInputTokens;
 
@@ -183,6 +225,7 @@ export async function POST(request: Request) {
             cost_summary: estimate.costSummary,
           });
 
+          throwIfAborted(generationAbortController.signal);
           if (shouldApplyComplimentaryGate({ provider, model, apiKey })) {
             if (!modelMatchesComplimentaryFamily(model)) {
               const error =
@@ -316,6 +359,7 @@ export async function POST(request: Request) {
             message: `Sending explanation request to ${model}...`,
           });
           await sleep(80);
+          throwIfAborted(generationAbortController.signal);
 
           audit = withTimelineEvent(audit, "explanation", "Analyzing repository structure...");
           send({
@@ -336,8 +380,10 @@ export async function POST(request: Request) {
             apiKey,
             reasoningEffort: "medium",
             maxOutputTokens: EXPLANATION_MAX_OUTPUT_TOKENS,
+            signal: generationAbortController.signal,
           });
           for await (const chunk of explanationStream.stream) {
+            throwIfAborted(generationAbortController.signal);
             explanationResponse += chunk;
             send({ status: "explanation_chunk", session_id: audit.sessionId, chunk });
           }
@@ -374,6 +420,7 @@ export async function POST(request: Request) {
           });
 
           for (let attempt = 1; attempt <= MAX_GRAPH_ATTEMPTS; attempt++) {
+            throwIfAborted(generationAbortController.signal);
             const status = attempt === 1 ? "graph" : "graph_retry";
             const message =
               attempt === 1
@@ -405,6 +452,7 @@ export async function POST(request: Request) {
               apiKey,
               reasoningEffort: "low",
               maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
+              signal: generationAbortController.signal,
             });
 
             if (usage) {
@@ -503,6 +551,7 @@ export async function POST(request: Request) {
             graph_attempts: audit.graphAttempts,
           });
 
+          throwIfAborted(generationAbortController.signal);
           const diagram = compileDiagramGraph({
             graph: validGraph,
             username,
@@ -519,6 +568,7 @@ export async function POST(request: Request) {
             diagram,
           });
 
+          throwIfAborted(generationAbortController.signal);
           const mermaidValidation = await validateMermaidSyntax(diagram);
           if (!mermaidValidation.valid) {
             const compilerError =
@@ -555,6 +605,7 @@ export async function POST(request: Request) {
                 note:
                   "Some stage usage was unavailable, so the final cost remains approximate.",
               };
+          throwIfAborted(generationAbortController.signal);
           audit = withFinalCost(audit, finalCost);
           audit = withSuccess(withTimelineEvent(audit, "complete", "Diagram generation complete."));
           await saveSuccessfulDiagramState({
@@ -569,8 +620,22 @@ export async function POST(request: Request) {
             audit,
             usedOwnKey: Boolean(apiKey),
           });
+
           if (storageVisibility === "public") {
-            revalidateBrowseIndexCache();
+            const lastSuccessfulAt = audit.updatedAt ?? new Date().toISOString();
+            postResponseTasks.push(async () => {
+              try {
+                await updatePublicBrowseIndexForSuccessfulDiagram({
+                  username,
+                  repo,
+                  lastSuccessfulAt,
+                  stargazerCount: githubData.stargazerCount,
+                });
+                revalidateBrowseIndexCache();
+              } catch (error) {
+                console.error("Failed to update browse index after completion:", error);
+              }
+            });
           }
 
           send({
@@ -585,6 +650,10 @@ export async function POST(request: Request) {
             generated_at: audit.updatedAt,
           });
         } catch (error) {
+          if (isAbortError(error)) {
+            wasCancelled = true;
+            return;
+          }
           hasCompleteMeasuredUsage = false;
           const message =
             error instanceof Error ? error.message : "Streaming generation failed.";
@@ -610,9 +679,11 @@ export async function POST(request: Request) {
           });
         } finally {
           if (quotaReservation) {
-            const actualCommittedTokens = hasCompleteMeasuredUsage
-              ? sumGenerationUsage(...actualUsages).totalTokens
-              : quotaReservation.reservedTokens;
+            const actualCommittedTokens = wasCancelled
+              ? 0
+              : hasCompleteMeasuredUsage
+                ? sumGenerationUsage(...actualUsages).totalTokens
+                : quotaReservation.reservedTokens;
 
             audit = {
               ...audit,
@@ -629,7 +700,9 @@ export async function POST(request: Request) {
                 reservation: quotaReservation,
                 committedTokens: actualCommittedTokens,
               });
-              await persistTerminalAudit();
+              if (!wasCancelled) {
+                await persistTerminalAudit();
+              }
             } catch {
               // Best effort quota finalization and audit persistence.
             }
@@ -639,6 +712,11 @@ export async function POST(request: Request) {
       };
 
       void run();
+    },
+    cancel() {
+      if (!generationAbortController.signal.aborted) {
+        generationAbortController.abort();
+      }
     },
   });
 

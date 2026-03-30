@@ -10,6 +10,7 @@ import { getStoredOpenAiKey } from "~/lib/openai-key";
 interface UseDiagramStreamOptions {
   username: string;
   repo: string;
+  initialState?: DiagramStreamState;
   onComplete: (result: {
     diagram: string;
     explanation: string;
@@ -23,10 +24,13 @@ interface UseDiagramStreamOptions {
 export function useDiagramStream({
   username,
   repo,
+  initialState,
   onComplete,
   onError,
 }: UseDiagramStreamOptions) {
-  const [state, setState] = useState<DiagramStreamState>({ status: "idle" });
+  const [state, setState] = useState<DiagramStreamState>(
+    initialState ?? { status: "idle" },
+  );
 
   const handleStreamMessage = useCallback(
     async (

@@ -20,6 +20,7 @@ interface CountPromptInputTokensParams {
   userPrompt: string;
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
+  preferExactInputTokenCount?: boolean;
 }
 
 interface CountPromptInputTokensResult {
@@ -44,8 +45,9 @@ async function countPromptInputTokens({
   userPrompt,
   apiKey,
   reasoningEffort,
+  preferExactInputTokenCount = true,
 }: CountPromptInputTokensParams): Promise<CountPromptInputTokensResult> {
-  if (!supportsExactInputTokenCount(provider)) {
+  if (!preferExactInputTokenCount || !supportsExactInputTokenCount(provider)) {
     return {
       inputTokens: estimateTokens(`${systemPrompt}\n${userPrompt}`),
       usedFallback: true,
@@ -82,6 +84,7 @@ export async function estimateGenerationCost(params: {
   username: string;
   repo: string;
   apiKey?: string;
+  preferExactInputTokenCount?: boolean;
 }): Promise<GenerationEstimateResult> {
   const explanationPrompt = toTaggedMessage({
     file_tree: params.fileTree,
@@ -104,6 +107,7 @@ export async function estimateGenerationCost(params: {
       userPrompt: explanationPrompt,
       apiKey: params.apiKey,
       reasoningEffort: "medium",
+      preferExactInputTokenCount: params.preferExactInputTokenCount,
     }),
     countPromptInputTokens({
       provider: params.provider,
@@ -112,6 +116,7 @@ export async function estimateGenerationCost(params: {
       userPrompt: graphPromptWithoutExplanation,
       apiKey: params.apiKey,
       reasoningEffort: "low",
+      preferExactInputTokenCount: params.preferExactInputTokenCount,
     }),
   ]);
 

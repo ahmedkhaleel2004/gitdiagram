@@ -66,10 +66,12 @@ async function fetchJson<T>(
   url: string,
   headers: HeadersInit,
   notFoundMessage: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch(url, {
     headers,
     cache: "no-store",
+    signal,
   });
 
   if (response.status === 404) {
@@ -89,6 +91,7 @@ async function getRepoMetadata(
   username: string,
   repo: string,
   headers: HeadersInit,
+  signal?: AbortSignal,
 ): Promise<{
   defaultBranch: string;
   isPrivate: boolean;
@@ -98,6 +101,7 @@ async function getRepoMetadata(
     `https://api.github.com/repos/${username}/${repo}`,
     headers,
     "Repository not found.",
+    signal,
   );
 
   return {
@@ -113,11 +117,13 @@ async function getFileTree(
   repo: string,
   branch: string,
   headers: HeadersInit,
+  signal?: AbortSignal,
 ): Promise<string> {
   const data = await fetchJson<GitHubTreeResponse>(
     `https://api.github.com/repos/${username}/${repo}/git/trees/${branch}?recursive=1`,
     headers,
     "Could not fetch repository file tree.",
+    signal,
   );
 
   const paths = (data.tree ?? [])
@@ -138,11 +144,13 @@ async function getReadme(
   username: string,
   repo: string,
   headers: HeadersInit,
+  signal?: AbortSignal,
 ): Promise<string> {
   const data = await fetchJson<GitHubReadmeResponse>(
     `https://api.github.com/repos/${username}/${repo}/readme`,
     headers,
     "No README found for the specified repository.",
+    signal,
   );
 
   if (!data.content) {
@@ -160,16 +168,18 @@ export async function getGithubData(
   username: string,
   repo: string,
   githubPat?: string,
+  signal?: AbortSignal,
 ): Promise<GithubData> {
   const headers = await getGitHubApiHeaders({ githubPat });
   const { defaultBranch, isPrivate, stargazerCount } = await getRepoMetadata(
     username,
     repo,
     headers,
+    signal,
   );
   const [fileTree, readme] = await Promise.all([
-    getFileTree(username, repo, defaultBranch, headers),
-    getReadme(username, repo, headers),
+    getFileTree(username, repo, defaultBranch, headers, signal),
+    getReadme(username, repo, headers, signal),
   ]);
 
   return {

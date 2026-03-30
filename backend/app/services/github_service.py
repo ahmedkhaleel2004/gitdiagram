@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import base64
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from dataclasses import dataclass
+from threading import Lock
 
 import jwt
 import requests
@@ -63,6 +65,10 @@ def _fetch_json(url: str, headers: dict[str, str], not_found_message: str) -> di
 
 
 class GitHubService:
+    _shared_installation_token: str | None = None
+    _shared_token_expires_at: datetime | None = None
+    _shared_token_lock = Lock()
+
     def __init__(self, pat: str | None = None):
         # Request-provided PAT (or env PAT) has top priority.
         self.github_token = (pat or os.getenv("GITHUB_PAT") or "").strip() or None
@@ -71,9 +77,6 @@ class GitHubService:
         self.client_id = (os.getenv("GITHUB_CLIENT_ID") or "").strip() or None
         self.private_key = (os.getenv("GITHUB_PRIVATE_KEY") or "").strip() or None
         self.installation_id = (os.getenv("GITHUB_INSTALLATION_ID") or "").strip() or None
-
-        self.access_token: str | None = None
-        self.token_expires_at: datetime | None = None
 
     def _normalize_private_key(self) -> str:
         if not self.private_key:
@@ -96,44 +99,50 @@ class GitHubService:
         return jwt.encode(payload, self._normalize_private_key(), algorithm="RS256")
 
     def _get_installation_token(self) -> str:
-        if self.access_token and self.token_expires_at and self.token_expires_at > datetime.now(UTC):
-            return self.access_token
+        cls = type(self)
+        with cls._shared_token_lock:
+            if (
+                cls._shared_installation_token
+                and cls._shared_token_expires_at
+                and cls._shared_token_expires_at > datetime.now(UTC) + timedelta(minutes=1)
+            ):
+                return cls._shared_installation_token
 
-        if not self.installation_id:
-            raise ValueError("Missing GITHUB_INSTALLATION_ID.")
+            if not self.installation_id:
+                raise ValueError("Missing GITHUB_INSTALLATION_ID.")
 
-        jwt_token = self._generate_jwt()
-        response = requests.post(
-            f"https://api.github.com/app/installations/{self.installation_id}/access_tokens",
-            headers={
-                "Authorization": f"Bearer {jwt_token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            timeout=30,
-        )
-        if not response.ok:
-            raise ValueError(
-                f"GitHub app token request failed ({response.status_code}): {response.text}"
+            jwt_token = self._generate_jwt()
+            response = requests.post(
+                f"https://api.github.com/app/installations/{self.installation_id}/access_tokens",
+                headers={
+                    "Authorization": f"Bearer {jwt_token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                timeout=30,
             )
+            if not response.ok:
+                raise ValueError(
+                    f"GitHub app token request failed ({response.status_code}): {response.text}"
+                )
 
-        payload = response.json()
-        token = payload.get("token")
-        if not isinstance(token, str) or not token:
-            raise ValueError("GitHub app token response missing token.")
+            payload = response.json()
+            token = payload.get("token")
+            if not isinstance(token, str) or not token:
+                raise ValueError("GitHub app token response missing token.")
 
-        expires_at_raw = payload.get("expires_at")
-        if isinstance(expires_at_raw, str):
-            try:
-                expires_at = datetime.fromisoformat(expires_at_raw.replace("Z", "+00:00"))
-            except ValueError:
+            expires_at_raw = payload.get("expires_at")
+            if isinstance(expires_at_raw, str):
+                try:
+                    expires_at = datetime.fromisoformat(expires_at_raw.replace("Z", "+00:00"))
+                except ValueError:
+                    expires_at = datetime.now(UTC) + timedelta(minutes=50)
+            else:
                 expires_at = datetime.now(UTC) + timedelta(minutes=50)
-        else:
-            expires_at = datetime.now(UTC) + timedelta(minutes=50)
 
-        self.access_token = token
-        self.token_expires_at = expires_at
-        return token
+            cls._shared_installation_token = token
+            cls._shared_token_expires_at = expires_at
+            return token
 
     def _get_headers(self) -> dict[str, str]:
         if self.github_token:
@@ -197,8 +206,13 @@ class GitHubService:
 
     def get_github_data(self, username: str, repo: str) -> GithubData:
         default_branch, is_private, stargazer_count = self.get_repo_metadata(username, repo)
-        file_tree = self.get_github_file_paths_as_list(username, repo, default_branch)
-        readme = self.get_github_readme(username, repo)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            file_tree_future = executor.submit(
+                self.get_github_file_paths_as_list, username, repo, default_branch
+            )
+            readme_future = executor.submit(self.get_github_readme, username, repo)
+            file_tree = file_tree_future.result()
+            readme = readme_future.result()
         return GithubData(
             default_branch=default_branch,
             file_tree=file_tree,

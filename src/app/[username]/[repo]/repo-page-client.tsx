@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { DiagramStateResponse } from "~/features/diagram/types";
 import MainCard from "~/components/main-card";
 import Loading from "~/components/loading";
 import MermaidChart from "~/components/mermaid-diagram";
@@ -13,9 +14,14 @@ import { useStarReminder } from "~/hooks/useStarReminder";
 type RepoPageClientProps = {
   username: string;
   repo: string;
+  initialState?: DiagramStateResponse | null;
 };
 
-export default function RepoPageClient({ username, repo }: RepoPageClientProps) {
+export default function RepoPageClient({
+  username,
+  repo,
+  initialState = null,
+}: RepoPageClientProps) {
   const [zoomingEnabled, setZoomingEnabled] = useState(false);
 
   useStarReminder();
@@ -37,7 +43,7 @@ export default function RepoPageClient({ username, repo }: RepoPageClientProps) 
     handleRegenerate,
     handleDiagramRenderError,
     state,
-  } = useDiagram(normalizedUsername, normalizedRepo);
+  } = useDiagram(normalizedUsername, normalizedRepo, initialState);
 
   const hasDiagram = Boolean(diagram);
   const hasError = Boolean(error || state.error);

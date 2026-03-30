@@ -4,15 +4,45 @@ import {
   getDiagramState,
   persistDiagramRenderError,
 } from "~/app/_actions/cache";
-import { type DiagramStreamState } from "~/features/diagram/types";
+import type {
+  DiagramStateResponse,
+  DiagramStreamState,
+} from "~/features/diagram/types";
 import { useDiagramStream } from "~/hooks/diagram/useDiagramStream";
 import { useDiagramExport } from "~/hooks/diagram/useDiagramExport";
 import { isExampleRepo } from "~/lib/exampleRepos";
 import { storeOpenAiKey } from "~/lib/openai-key";
 
-export function useDiagram(username: string, repo: string) {
-  const [loading, setLoading] = useState<boolean>(true);
-  const [lastGenerated, setLastGenerated] = useState<Date | undefined>();
+function toInitialStreamState(
+  stateRecord: DiagramStateResponse | null | undefined,
+): DiagramStreamState {
+  if (!stateRecord?.diagram) {
+    return { status: "idle" };
+  }
+
+  return {
+    status: "complete",
+    diagram: stateRecord.diagram,
+    explanation: stateRecord.explanation ?? undefined,
+    graph: stateRecord.graph ?? undefined,
+    latestSessionAudit: stateRecord.latestSessionAudit ?? undefined,
+    costSummary:
+      stateRecord.latestSessionAudit?.finalCost ??
+      stateRecord.latestSessionAudit?.estimatedCost,
+  };
+}
+
+export function useDiagram(
+  username: string,
+  repo: string,
+  initialState?: DiagramStateResponse | null,
+) {
+  const [loading, setLoading] = useState<boolean>(!Boolean(initialState?.diagram));
+  const [lastGenerated, setLastGenerated] = useState<Date | undefined>(
+    initialState?.lastSuccessfulAt
+      ? new Date(initialState.lastSuccessfulAt)
+      : undefined,
+  );
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
 
   const applyCompletedDiagram = useCallback(
@@ -53,6 +83,7 @@ export function useDiagram(username: string, repo: string) {
     repo,
     onComplete: onStreamComplete,
     onError: onStreamError,
+    initialState: toInitialStreamState(initialState),
   });
 
   const getDiagram = useCallback(async () => {
@@ -123,6 +154,7 @@ export function useDiagram(username: string, repo: string) {
         status: "error",
         error: "Something went wrong. Please try again later.",
       }));
+    } finally {
       setLoading(false);
     }
   }, [repo, runGeneration, setState, username]);
@@ -148,13 +180,17 @@ export function useDiagram(username: string, repo: string) {
         status: "error",
         error: "Something went wrong. Please try again later.",
       }));
+    } finally {
       setLoading(false);
     }
   }, [repo, runGeneration, setState, username]);
 
   useEffect(() => {
+    if (initialState?.diagram) {
+      return;
+    }
     void getDiagram();
-  }, [getDiagram]);
+  }, [getDiagram, initialState?.diagram]);
 
   const diagram = state.diagram ?? "";
   const error = state.error ?? "";
@@ -179,6 +215,7 @@ export function useDiagram(username: string, repo: string) {
         status: "error",
         error: "Failed to generate diagram with provided API key.",
       }));
+    } finally {
       setLoading(false);
     }
   };
