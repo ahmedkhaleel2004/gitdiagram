@@ -153,6 +153,14 @@ def _node_label(node: DiagramGraphNode) -> str:
     )
 
 
+def _mermaid_node_id(node_id: str) -> str:
+    return f"node_{node_id}"
+
+
+def _mermaid_group_id(group_id: str) -> str:
+    return f"group_{group_id}"
+
+
 def _detail_for_node(node: DiagramGraphNode) -> str | None:
     node_type = node.type.strip()
     if not node_type:
@@ -187,20 +195,23 @@ def _file_hint_for_node(node: DiagramGraphNode) -> str | None:
 def _render_node(node: DiagramGraphNode) -> str:
     label = _node_label(node)
     shape = node.shape or "box"
+    node_id = _mermaid_node_id(node.id)
     if shape == "database":
-        return f'{node.id}[("{label}")]'
+        return f'{node_id}[("{label}")]'
     if shape == "circle":
-        return f'{node.id}(("{label}"))'
+        return f'{node_id}(("{label}"))'
     if shape == "hexagon":
-        return f'{node.id}{{{{"{label}"}}}}'
-    return f'{node.id}["{label}"]'
+        return f'{node_id}{{{{"{label}"}}}}'
+    return f'{node_id}["{label}"]'
 
 
 def _render_edge(edge: DiagramGraphEdge) -> str:
     connector = "-.->" if edge.style == "dashed" else "-->"
+    from_id = _mermaid_node_id(edge.from_)
+    to_id = _mermaid_node_id(edge.to)
     if edge.label:
-        return f'{edge.from_} {connector}|"{_escape_mermaid_text(edge.label)}"| {edge.to}'
-    return f"{edge.from_} {connector} {edge.to}"
+        return f'{from_id} {connector}|"{_escape_mermaid_text(edge.label)}"| {to_id}'
+    return f"{from_id} {connector} {to_id}"
 
 
 def _tone_class(group_id: str | None, group_order: dict[str, int]) -> str:
@@ -233,7 +244,9 @@ def compile_diagram_graph(graph: DiagramGraph, username: str, repo: str, branch:
 
     for group in graph.groups:
         lines.append("")
-        lines.append(f'subgraph "{_escape_mermaid_text(group.label)}"')
+        lines.append(
+            f'subgraph {_mermaid_group_id(group.id)}["{_escape_mermaid_text(group.label)}"]'
+        )
         for node in [candidate for candidate in graph.nodes if candidate.groupId == group.id]:
             push_node(node, "  ")
             grouped_node_ids.add(node.id)
@@ -255,7 +268,7 @@ def compile_diagram_graph(graph: DiagramGraph, username: str, repo: str, branch:
         lines.append("")
         for node in nodes_with_paths:
             lines.append(
-                f'click {node.id} "{_build_github_url(node.path or "", username, repo, branch)}"'
+                f'click {_mermaid_node_id(node.id)} "{_build_github_url(node.path or "", username, repo, branch)}"'
             )
 
     lines.append("")
@@ -269,6 +282,6 @@ def compile_diagram_graph(graph: DiagramGraph, username: str, repo: str, branch:
 
     for class_name, node_ids in class_assignments.items():
         if node_ids:
-            lines.append(f'class {",".join(node_ids)} {class_name}')
+            lines.append(f'class {",".join(_mermaid_node_id(node_id) for node_id in node_ids)} {class_name}')
 
     return "\n".join(lines).strip()

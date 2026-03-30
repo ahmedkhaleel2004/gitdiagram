@@ -51,7 +51,7 @@ cd ..
 
 This creates `backend/.venv` and installs pinned Python dependencies from `backend/uv.lock`.
 
-The FastAPI backend also invokes `backend/scripts/validate_mermaid.mjs`, so the backend runtime depends on Bun being available in addition to Python.
+Mermaid validation uses the same Mermaid + DOMPurify bootstrap strategy across both generation backends. The `next` backend runs it in-process, and the FastAPI backend invokes `backend/scripts/validate_mermaid.mjs`, so the backend runtime depends on Bun being available in addition to Python.
 
 ## 5) Configure environment variables
 

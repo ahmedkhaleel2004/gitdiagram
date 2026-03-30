@@ -2,7 +2,7 @@
 
 This guide deploys the production FastAPI backend from this monorepo.
 
-The backend is intentionally mixed-runtime: FastAPI handles generation, and Mermaid syntax validation shells out to `backend/scripts/validate_mermaid.mjs`, so the deploy environment must support both Python and Bun.
+The backend is intentionally mixed-runtime: FastAPI handles generation, and Mermaid syntax validation shells out to `backend/scripts/validate_mermaid.mjs` (which wraps `backend/lib/mermaid-validator.ts`), so the deploy environment must support both Python and Bun.
 
 ## 1) Prerequisites
 

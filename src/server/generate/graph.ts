@@ -189,32 +189,43 @@ function labelForNode(node: DiagramGraphNode): string {
   return [primaryLabel, secondaryDetail, fileHint].filter(Boolean).join("<br/>");
 }
 
+function mermaidNodeId(nodeId: string): string {
+  return `node_${nodeId}`;
+}
+
+function mermaidGroupId(groupId: string): string {
+  return `group_${groupId}`;
+}
+
 function renderNode(node: DiagramGraphNode): string {
   const label = labelForNode(node);
   const shape = node.shape ?? "box";
+  const nodeId = mermaidNodeId(node.id);
 
   switch (shape) {
     case "database":
-      return `${node.id}[("${label}")]`;
+      return `${nodeId}[("${label}")]`;
     case "circle":
-      return `${node.id}(("${label}"))`;
+      return `${nodeId}(("${label}"))`;
     case "hexagon":
-      return `${node.id}{{"${label}"}}`;
+      return `${nodeId}{{"${label}"}}`;
     case "queue":
     case "document":
     case "box":
     default:
-      return `${node.id}["${label}"]`;
+      return `${nodeId}["${label}"]`;
   }
 }
 
 function renderEdge(edge: DiagramGraphEdge): string {
   const connector = edge.style === "dashed" ? "-.->" : "-->";
+  const from = mermaidNodeId(edge.from);
+  const to = mermaidNodeId(edge.to);
   if (!edge.label) {
-    return `${edge.from} ${connector} ${edge.to}`;
+    return `${from} ${connector} ${to}`;
   }
 
-  return `${edge.from} ${connector}|"${escapeMermaidText(edge.label)}"| ${edge.to}`;
+  return `${from} ${connector}|"${escapeMermaidText(edge.label)}"| ${to}`;
 }
 
 const toneClassNames = [
@@ -273,7 +284,9 @@ export function compileDiagramGraph(params: {
 
   for (const group of graph.groups) {
     lines.push("");
-    lines.push(`subgraph "${escapeMermaidText(group.label)}"`);
+    lines.push(
+      `subgraph ${mermaidGroupId(group.id)}["${escapeMermaidText(group.label)}"]`,
+    );
     for (const node of graph.nodes.filter((candidate) => candidate.groupId === group.id)) {
       pushNode(node, "  ");
       groupedNodeIds.add(node.id);
@@ -301,7 +314,7 @@ export function compileDiagramGraph(params: {
     lines.push("");
     for (const node of nodesWithPaths) {
       lines.push(
-        `click ${node.id} "${buildGitHubUrl(node.path!, username, repo, branch)}"`,
+        `click ${mermaidNodeId(node.id)} "${buildGitHubUrl(node.path!, username, repo, branch)}"`,
       );
     }
   }
@@ -317,7 +330,7 @@ export function compileDiagramGraph(params: {
 
   for (const [className, nodeIds] of classAssignments) {
     if (!nodeIds.length) continue;
-    lines.push(`class ${nodeIds.join(",")} ${className}`);
+    lines.push(`class ${nodeIds.map(mermaidNodeId).join(",")} ${className}`);
   }
 
   return lines.join("\n").trim();

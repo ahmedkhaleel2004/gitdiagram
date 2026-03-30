@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 
 import {
@@ -74,13 +75,59 @@ describe("compileDiagramGraph", () => {
     });
 
     expect(diagram).toContain("flowchart TD");
-    expect(diagram).toContain('subgraph "Runtime"');
-    expect(diagram).toContain('click api "https://github.com/acme/demo/blob/main/src/api.ts"');
-    expect(diagram).toContain('api -->|"dispatches"| worker');
-    expect(diagram).toContain('api[("API<br/>[api.ts]")]');
+    expect(diagram).toContain('subgraph group_runtime["Runtime"]');
+    expect(diagram).toContain('click node_api "https://github.com/acme/demo/blob/main/src/api.ts"');
+    expect(diagram).toContain('node_api -->|"dispatches"| node_worker');
+    expect(diagram).toContain('node_api[("API<br/>[api.ts]")]');
     expect(diagram).not.toContain("(service)");
-    expect(diagram).toContain('worker["Worker<br/>job runner"]');
+    expect(diagram).toContain('node_worker["Worker<br/>job runner"]');
     expect(diagram).toContain("classDef toneBlue");
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({ valid: true });
+  });
+
+  it("maps reserved graph ids to Mermaid-safe ids", async () => {
+    const diagram = compileDiagramGraph({
+      graph: {
+        groups: [{ id: "style", label: "Style", description: null }],
+        nodes: [
+          {
+            id: "class",
+            label: "Class",
+            type: "service",
+            description: null,
+            groupId: "style",
+            path: "src/class.ts",
+            shape: null,
+          },
+          {
+            id: "end",
+            label: "End",
+            type: "worker",
+            description: null,
+            groupId: null,
+            path: null,
+            shape: null,
+          },
+        ],
+        edges: [
+          {
+            from: "class",
+            to: "end",
+            label: null,
+            description: null,
+            style: null,
+          },
+        ],
+      },
+      username: "acme",
+      repo: "demo",
+      branch: "main",
+    });
+
+    expect(diagram).toContain('subgraph group_style["Style"]');
+    expect(diagram).toContain('node_class["Class<br/>[class.ts]"]');
+    expect(diagram).toContain('node_class --> node_end');
+    expect(diagram).toContain('click node_class "https://github.com/acme/demo/blob/main/src/class.ts"');
     await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({ valid: true });
   });
 });

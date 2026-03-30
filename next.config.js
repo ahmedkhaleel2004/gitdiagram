@@ -1,6 +1,7 @@
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: false,
+  transpilePackages: ["@aws-sdk/client-s3"],
   async rewrites() {
     return [
       {
