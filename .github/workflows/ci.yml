@@ -11,34 +11,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: 10.30.0
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache: "pnpm"
+          bun-version: 1.3.11
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun ci
       - name: Lint
-        run: pnpm lint
+        run: bun run lint
       - name: Typecheck
-        run: pnpm typecheck
+        run: bun run typecheck
       - name: Frontend tests
-        run: pnpm test
+        run: bun run test
       - name: Build
-        run: pnpm build
+        run: bun run build
 
   backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install backend JS dependencies
+        run: cd backend && bun ci
       - name: Install uv
         run: pip install uv==0.5.24
       - name: Sync backend dependencies

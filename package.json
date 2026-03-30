@@ -4,16 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "next build",
-    "check": "pnpm lint && tsc --noEmit",
-    "dev": "next dev --turbo",
+    "build": "bun --bun next build",
+    "check": "bun run lint && bun run typecheck",
+    "dev": "bun --bun next dev --turbo",
+    "install:backend": "cd backend && bun install --frozen-lockfile && uv sync --no-install-project",
     "dev:backend": "cd backend && ENVIRONMENT=development uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
-    "preview": "next build && next start",
-    "start": "next start",
+    "preview": "bun --bun next build && bun --bun next start",
+    "start": "bun --bun next start",
     "start:backend": "cd backend && ENVIRONMENT=production uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}",
-    "quota:today": "node scripts/complimentary-quota-today.mjs",
+    "quota:today": "bun scripts/complimentary-quota-today.mjs",
     "test": "vitest run",
     "test:backend": "cd backend && uv run pytest -q",
     "test:watch": "vitest",
@@ -74,8 +75,7 @@
     "initVersion": "7.38.1"
   },
   "engines": {
-    "node": ">=22 <24",
-    "pnpm": ">=9 <11"
+    "bun": ">=1.3.11 <2"
   },
-  "packageManager": "pnpm@10.30.0"
+  "packageManager": "bun@1.3.11"
 }

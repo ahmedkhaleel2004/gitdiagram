@@ -2,6 +2,10 @@
   "name": "gitdiagram-backend-mermaid-validator",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.3.11",
+  "engines": {
+    "bun": ">=1.3.11 <2"
+  },
   "dependencies": {
     "dompurify": "3.3.1",
     "jsdom": "28.1.0",

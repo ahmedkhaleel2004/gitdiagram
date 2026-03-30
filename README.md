@@ -66,7 +66,7 @@ When you submit a GitHub repo URL, GitDiagram asks the GitHub API for the repo's
 
 That graph is validated against the actual file tree, retried with feedback if it contains bad paths or invalid connections, then compiled into Mermaid and validated again before it is shown. Any node tied to a real path becomes clickable back to GitHub, and the final explanation, graph, diagram, and terminal generation state are stored in Cloudflare R2 and Upstash Redis so the app can reopen an existing result or show where a run failed.
 
-One implementation detail worth knowing: the FastAPI backend validates Mermaid by invoking a small Node script in [`backend/scripts/validate_mermaid.mjs`](/Users/ahmedkhaleel/repos/gitdiagram/backend/scripts/validate_mermaid.mjs), so the backend runtime is intentionally mixed Python + Node.
+One implementation detail worth knowing: the FastAPI backend validates Mermaid by invoking a small Bun script in [`backend/scripts/validate_mermaid.mjs`](/Users/ahmedkhaleel/repos/gitdiagram/backend/scripts/validate_mermaid.mjs), so the backend runtime is intentionally mixed Python + Bun.
 
 ## 🔒 How to diagram private repositories
 
@@ -83,13 +83,21 @@ git clone https://github.com/ahmedkhaleel2004/gitdiagram.git
 cd gitdiagram
 ```
 
-2. Install dependencies
+2. Install root dependencies
 
 ```bash
-pnpm i
+bun install
 ```
 
-3. Set up environment variables (create .env)
+3. Install backend FastAPI-side dependencies
+
+```bash
+bun run install:backend
+```
+
+This keeps the backend's Python environment managed by `uv` and installs the backend Mermaid validator's Bun dependencies from `backend/bun.lock`.
+
+4. Set up environment variables (create .env)
 
 ```bash
 cp .env.example .env
@@ -125,7 +133,7 @@ Storage notes:
 - short-lived failure summaries live in Upstash
 - there is no Postgres/Neon runtime path anymore
 
-4. Set up Cloudflare R2 and Upstash Redis
+5. Set up Cloudflare R2 and Upstash Redis
 
 Create:
 - two private R2 buckets, one for public artifacts and one for private artifacts
@@ -141,10 +149,10 @@ Then fill in these required env vars in `.env`:
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
 
-5. Run frontend
+6. Run frontend
 
 ```bash
-pnpm dev
+bun run dev
 ```
 
 You can now access the website at `localhost:3000`.
@@ -166,14 +174,14 @@ To use the FastAPI backend from the frontend, set:
 To use the built-in Next.js Route Handlers instead, set:
 - `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
-For a full machine setup guide (Node/Python/uv versions + verification), see `docs/dev-setup.md`.
+For a full machine setup guide (Bun/Python/uv versions + verification), see `docs/dev-setup.md`.
 
 Quick validation:
 
 ```bash
-pnpm check
-pnpm test
-pnpm build
+bun run check
+bun run test
+bun run build
 ```
 
 Railway backend docs: `docs/railway-backend.md`.

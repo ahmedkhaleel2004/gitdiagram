@@ -7,8 +7,7 @@ This project supports two explicit generation backends:
 ## 1) Install tool versions
 
 Recommended versions:
-- Node.js: `22.x` (see `.nvmrc`)
-- pnpm: `9.13.0`
+- Bun: `1.3.11`
 - Python: `3.12.x` (required for FastAPI backend work)
 - uv: `0.5.24+` (required for FastAPI backend work)
 - Docker: latest stable
@@ -16,25 +15,33 @@ Recommended versions:
 Install/check:
 
 ```bash
-node -v
-pnpm -v
+bun --version
 python3 --version
 uv --version
 docker --version
 ```
 
 Expected:
-- Node starts with `v22`
-- pnpm prints `9.13.0` (or compatible in the same series)
+- Bun prints `1.3.11` (or a compatible `1.3.x`)
 - Python starts with `3.12`
 
-## 2) Install frontend dependencies
+## 2) Install root JS dependencies
 
 ```bash
-pnpm install
+bun install
 ```
 
-## 3) Sync backend dependencies with uv
+## 3) Install backend JS dependencies
+
+```bash
+cd backend
+bun install --frozen-lockfile
+cd ..
+```
+
+This installs the FastAPI backend's Mermaid validator dependencies from `backend/bun.lock`.
+
+## 4) Sync backend Python dependencies with uv
 
 ```bash
 cd backend
@@ -44,9 +51,9 @@ cd ..
 
 This creates `backend/.venv` and installs pinned Python dependencies from `backend/uv.lock`.
 
-The FastAPI backend also invokes `backend/scripts/validate_mermaid.mjs`, so the backend runtime depends on Node being available in addition to Python.
+The FastAPI backend also invokes `backend/scripts/validate_mermaid.mjs`, so the backend runtime depends on Bun being available in addition to Python.
 
-## 4) Configure environment variables
+## 5) Configure environment variables
 
 ```bash
 cp .env.example .env
@@ -86,12 +93,12 @@ OPENROUTER_SITE_URL=http://localhost:3000
 OPENROUTER_APP_NAME=GitDiagram
 ```
 
-## 5) Start local services
+## 6) Start local services
 
 Simplest local mode:
 
 ```bash
-pnpm dev
+bun run dev
 ```
 
 with:
@@ -100,7 +107,7 @@ with:
 Production-parity mode:
 
 ```bash
-pnpm dev
+bun run dev
 ```
 
 Start FastAPI backend (recommended for production parity):
@@ -113,8 +120,10 @@ docker-compose logs -f api
 or
 
 ```bash
-pnpm dev:backend
+bun run dev:backend
 ```
+
+The checked-in `docker-compose.yml` preserves the container's `.venv` and `node_modules`, so the production-parity container does not depend on host-installed backend dependencies after `docker-compose up --build`.
 
 If the FastAPI backend is running locally at `http://localhost:8000`, set:
 - `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
@@ -123,14 +132,14 @@ If the FastAPI backend is running locally at `http://localhost:8000`, set:
 If you want to use the Next.js Route Handlers instead, set:
 - `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
-## 6) Verification commands
+## 7) Verification commands
 
 Run all baseline checks:
 
 ```bash
-pnpm check
-pnpm test
-pnpm build
+bun run check
+bun run test
+bun run build
 ```
 
 FastAPI backend checks:

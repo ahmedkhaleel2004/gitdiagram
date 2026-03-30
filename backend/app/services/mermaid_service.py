@@ -27,7 +27,7 @@ def normalize_parser_message(message: str | None) -> str:
 def validate_mermaid_syntax(diagram: str) -> MermaidValidationResult:
     try:
         proc = subprocess.run(
-            ["node", "scripts/validate_mermaid.mjs"],
+            ["bun", "scripts/validate_mermaid.mjs"],
             input=diagram,
             text=True,
             capture_output=True,

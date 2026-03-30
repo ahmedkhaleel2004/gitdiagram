@@ -1,14 +1,20 @@
 services:
   api:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - api-python-venv:/app/.venv
+      - api-node-modules:/app/node_modules
     env_file:
       - .env
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development} # Default to development if not set
     restart: unless-stopped
+
+volumes:
+  api-python-venv:
+  api-node-modules:
