@@ -114,7 +114,9 @@ describe("MermaidChart", () => {
   });
 
   it("shows custom controls when interactive mode is enabled", async () => {
-    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />);
+    const { container } = render(
+      <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("100%")).toBeInTheDocument();
@@ -126,6 +128,7 @@ describe("MermaidChart", () => {
     expect(screen.getByLabelText("Zoom in")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /fit/i })).toBeInTheDocument();
     expect(resizeObserverObserveMock).toHaveBeenCalled();
+    expect(container.querySelector(".select-none")).toBeInTheDocument();
   });
 
   it("pans the diagram after zooming in", async () => {

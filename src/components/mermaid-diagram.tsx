@@ -616,8 +616,13 @@ const MermaidChart = ({
           "relative h-full touch-none",
           (zoomingEnabled || fitToContainer) && "overflow-hidden",
           zoomingEnabled &&
-            "rounded-xl border border-black/12 bg-white/30 dark:border-white/12 dark:bg-white/[0.03]",
+            "rounded-xl border border-black/12 bg-white/30 select-none [&_*]:select-none dark:border-white/12 dark:bg-white/[0.03]",
         )}
+        onDragStart={(event) => {
+          if (zoomingEnabled) {
+            event.preventDefault();
+          }
+        }}
         onPointerCancel={() => {
           dragStateRef.current = null;
         }}
@@ -634,12 +639,14 @@ const MermaidChart = ({
             lastY: event.clientY,
             pointerId: event.pointerId,
           };
+          event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
           const dragState = dragStateRef.current;
           if (!dragState || dragState.pointerId !== event.pointerId) return;
 
+          event.preventDefault();
           panBy(event.clientX - dragState.lastX, event.clientY - dragState.lastY);
           dragStateRef.current = {
             ...dragState,
