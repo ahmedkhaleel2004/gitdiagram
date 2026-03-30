@@ -6,7 +6,7 @@
   "scripts": {
     "build": "bun --bun next build",
     "check": "bun run lint && bun run typecheck",
-    "dev": "bun --bun next dev --turbo",
+    "dev": "./scripts/dev-turbo.sh",
     "install:backend": "cd backend && bun install --frozen-lockfile && uv sync --no-install-project",
     "dev:backend": "cd backend && ENVIRONMENT=development uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",

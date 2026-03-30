@@ -52,14 +52,13 @@ export const metadata: Metadata = {
     description:
       "Turn any GitHub repository into an interactive diagram for visualization.",
     siteName: "GitDiagram",
-    images: [
-      {
-        url: "/og-image.png", // You'll need to create this image
-        width: 1200,
-        height: 630,
-        alt: "GitDiagram - Repository Visualization Tool",
-      },
-    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GitDiagram - Repository to Diagram in Seconds",
+    description:
+      "Turn any GitHub repository into an interactive diagram for visualization.",
+    creator: "@ahmedkhaleel2004",
   },
   robots: {
     index: true,
