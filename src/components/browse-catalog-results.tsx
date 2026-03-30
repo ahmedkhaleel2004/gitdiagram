@@ -4,8 +4,10 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import type { RefObject } from "react";
 
-import { getBrowsePageFromEntries } from "~/features/browse/catalog";
-import type { BrowseIndexEntry } from "~/features/browse/catalog";
+import type {
+  BrowseIndexEntry,
+  getBrowsePageFromEntries,
+} from "~/features/browse/catalog";
 import { BrowseDiagramPreview } from "~/components/browse-diagram-preview";
 import {
   formatGeneratedAt,

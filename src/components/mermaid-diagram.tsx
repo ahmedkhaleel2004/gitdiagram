@@ -46,6 +46,7 @@ const INTERACTIVE_FIT_PADDING = 24;
 const PREVIEW_FIT_PADDING = 16;
 
 let elkLayoutRegistered = false;
+type MermaidLayoutLoaders = Parameters<typeof mermaid.registerLayoutLoaders>[0];
 
 const MermaidChart = ({
   chart,
@@ -255,7 +256,7 @@ const MermaidChart = ({
     ensureDomNodesSerializeSafely();
 
     if (!elkLayoutRegistered) {
-      mermaid.registerLayoutLoaders(elkLayouts);
+      mermaid.registerLayoutLoaders(elkLayouts as MermaidLayoutLoaders);
       elkLayoutRegistered = true;
     }
 

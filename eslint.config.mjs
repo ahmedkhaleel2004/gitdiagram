@@ -1,6 +1,5 @@
 import nextCoreVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
-import tseslint from "@typescript-eslint/eslint-plugin";
 
 const config = [
   ...nextCoreVitals,
@@ -17,9 +16,6 @@ const config = [
   },
   {
     files: ["**/*.{ts,tsx}"],
-    plugins: {
-      "@typescript-eslint": tseslint,
-    },
     rules: {
       "@typescript-eslint/array-type": "off",
       "@typescript-eslint/consistent-type-definitions": "off",

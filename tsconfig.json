@@ -12,6 +12,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "checkJs": true,
+    "ignoreDeprecations": "6.0",
     /* Bundled projects */
     "lib": [
       "dom",
@@ -50,6 +51,7 @@
   ],
   "exclude": [
     "node_modules",
+    "backend/**/*",
     "backend/venv",
     "backend/.venv",
     "backend/__pycache__",
