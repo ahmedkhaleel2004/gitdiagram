@@ -813,16 +813,18 @@ export function BrowseCatalog({
                       key={`${item.username}/${item.repo}`}
                       className="block border-b border-black/15 align-middle last:border-b-0 lg:table-row dark:border-white/10"
                     >
-                      <td className="block px-4 pt-5 lg:table-cell lg:px-5 lg:py-4">
+                      <td
+                        className="block px-4 pt-5 lg:table-cell lg:px-5 lg:py-4"
+                        onMouseEnter={(event) =>
+                          handleRepoHoverStart(item, event)
+                        }
+                        onMouseMove={(event) => handleRepoHoverMove(item, event)}
+                        onMouseLeave={closeHoverPreview}
+                      >
                         <Link
                           href={diagramPath}
                           title={`${item.username}/${item.repo}`}
                           className="block text-[1.4rem] leading-[1.05] font-semibold tracking-tight break-all hover:underline lg:overflow-hidden lg:text-lg lg:leading-tight lg:break-normal lg:text-ellipsis lg:whitespace-nowrap"
-                          onMouseEnter={(event) =>
-                            handleRepoHoverStart(item, event)
-                          }
-                          onMouseMove={(event) => handleRepoHoverMove(item, event)}
-                          onMouseLeave={closeHoverPreview}
                         >
                           {item.username}/{item.repo}
                         </Link>

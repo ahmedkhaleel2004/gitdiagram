@@ -212,7 +212,7 @@ describe("BrowseCatalog", () => {
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
   });
 
-  it("opens a desktop hover preview for repo name hover and reuses cached data", async () => {
+  it("opens a desktop hover preview for repository cell hover and reuses cached data", async () => {
     vi.useFakeTimers();
     window.matchMedia = vi
       .fn()
@@ -240,19 +240,22 @@ describe("BrowseCatalog", () => {
     await Promise.resolve();
 
     const repoLink = screen.getByRole("link", { name: "vercel/next.js" });
+    const repoCell = repoLink.closest("td");
+
+    expect(repoCell).not.toBeNull();
 
     await act(async () => {
-      fireEvent.mouseEnter(repoLink, { clientX: 120, clientY: 140 });
+      fireEvent.mouseEnter(repoCell!, { clientX: 120, clientY: 140 });
       await vi.advanceTimersByTimeAsync(100);
     });
     await Promise.resolve();
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
 
-    fireEvent.mouseLeave(repoLink);
+    fireEvent.mouseLeave(repoCell!);
 
     await act(async () => {
-      fireEvent.mouseEnter(repoLink, { clientX: 160, clientY: 180 });
+      fireEvent.mouseEnter(repoCell!, { clientX: 160, clientY: 180 });
       await vi.advanceTimersByTimeAsync(100);
     });
     await Promise.resolve();
