@@ -4,7 +4,9 @@ import dynamic from "next/dynamic";
 
 import { Skeleton } from "~/components/ui/skeleton";
 
-const MermaidChart = dynamic(() => import("~/components/mermaid-diagram"), {
+const loadMermaidChart = () => import("~/components/mermaid-diagram");
+
+const MermaidChart = dynamic(loadMermaidChart, {
   ssr: false,
   loading: () => (
     <div className="flex h-[248px] items-center justify-center px-6 text-center text-xs font-semibold tracking-[0.18em] text-[hsl(var(--neo-soft-text))] uppercase dark:text-neutral-300">
@@ -12,6 +14,10 @@ const MermaidChart = dynamic(() => import("~/components/mermaid-diagram"), {
     </div>
   ),
 });
+
+export function preloadBrowseDiagramPreviewChart() {
+  void loadMermaidChart();
+}
 
 interface BrowseDiagramPreviewProps {
   chart: string | null;

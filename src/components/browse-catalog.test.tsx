@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +29,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("~/components/browse-diagram-preview", () => ({
+  preloadBrowseDiagramPreviewChart: vi.fn(),
   BrowseDiagramPreview: ({
     repoLabel,
   }: {
@@ -110,13 +112,14 @@ describe("BrowseCatalog", () => {
       target: { value: "acme" },
     });
 
-    expect(screen.getByRole("link", { name: "acme/demo" })).toHaveAttribute(
+    const acmeRow = screen.getByText("acme/demo").closest("tr");
+
+    expect(acmeRow).not.toBeNull();
+    expect(within(acmeRow!).getByRole("link", { name: "Open Diagram" })).toHaveAttribute(
       "href",
       "/acme/demo",
     );
-    expect(
-      screen.queryByRole("link", { name: "vercel/next.js" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("vercel/next.js")).not.toBeInTheDocument();
     expect(window.location.search).toBe("?q=acme");
   });
 
@@ -145,7 +148,10 @@ describe("BrowseCatalog", () => {
     expect(window.location.search).toBe(
       "?q=vercel&sort=stars_desc&minStars=100",
     );
-    expect(screen.getByRole("link", { name: "vercel/repo-1" })).toHaveAttribute(
+    const firstRow = screen.getByText("vercel/repo-1").closest("tr");
+
+    expect(firstRow).not.toBeNull();
+    expect(within(firstRow!).getByRole("link", { name: "Open Diagram" })).toHaveAttribute(
       "href",
       "/vercel/repo-1",
     );
@@ -239,8 +245,7 @@ describe("BrowseCatalog", () => {
     );
     await Promise.resolve();
 
-    const repoLink = screen.getByRole("link", { name: "vercel/next.js" });
-    const repoCell = repoLink.closest("td");
+    const repoCell = screen.getByText("vercel/next.js").closest("td");
 
     expect(repoCell).not.toBeNull();
 
@@ -261,5 +266,30 @@ describe("BrowseCatalog", () => {
     await Promise.resolve();
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the repository name as text and keeps diagram navigation on the action button", () => {
+    render(
+      <BrowseCatalog
+        entries={[
+          {
+            username: "vercel",
+            repo: "next.js",
+            lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+            stargazerCount: 130000,
+          },
+        ]}
+        initialQuery={{}}
+      />,
+    );
+
+    const repoRow = screen.getByText("vercel/next.js").closest("tr");
+
+    expect(screen.queryByRole("link", { name: "vercel/next.js" })).not.toBeInTheDocument();
+    expect(repoRow).not.toBeNull();
+    expect(within(repoRow!).getByRole("link", { name: "Open Diagram" })).toHaveAttribute(
+      "href",
+      "/vercel/next.js",
+    );
   });
 });

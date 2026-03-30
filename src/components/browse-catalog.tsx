@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import {
+  startTransition,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -21,7 +23,10 @@ import type {
   BrowseSort,
 } from "~/features/browse/catalog";
 import { preloadBrowseIndex } from "~/features/browse/index-client";
-import { BrowseDiagramPreview } from "~/components/browse-diagram-preview";
+import {
+  BrowseDiagramPreview,
+  preloadBrowseDiagramPreviewChart,
+} from "~/components/browse-diagram-preview";
 import { Skeleton } from "~/components/ui/skeleton";
 
 interface BrowseCatalogProps {
@@ -339,6 +344,11 @@ export function BrowseCatalog({
   const hoverIntentTimeoutRef = useRef<number | null>(null);
   const hoverRequestControllerRef = useRef<AbortController | null>(null);
   const activeHoverPreviewKeyRef = useRef<string | null>(null);
+  const hoverPreviewElementRef = useRef<HTMLDivElement | null>(null);
+  const hoverPreviewAnimationFrameRef = useRef<number | null>(null);
+  const hoverPreviewPositionRef = useRef<{ left: number; top: number } | null>(
+    null,
+  );
 
   const clearHoverIntentTimeout = useCallback(() => {
     if (hoverIntentTimeoutRef.current !== null) {
@@ -347,15 +357,35 @@ export function BrowseCatalog({
     }
   }, []);
 
+  const cancelHoverPreviewAnimationFrame = useCallback(() => {
+    if (hoverPreviewAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(hoverPreviewAnimationFrameRef.current);
+      hoverPreviewAnimationFrameRef.current = null;
+    }
+  }, []);
+
+  const applyHoverPreviewPosition = useCallback(
+    (position: { left: number; top: number }) => {
+      hoverPreviewPositionRef.current = position;
+      hoverPreviewElementRef.current?.style.setProperty(
+        "transform",
+        `translate3d(${position.left}px, ${position.top}px, 0)`,
+      );
+    },
+    [],
+  );
+
   const closeHoverPreview = useCallback(() => {
     clearHoverIntentTimeout();
+    cancelHoverPreviewAnimationFrame();
     hoverRequestControllerRef.current?.abort();
     hoverRequestControllerRef.current = null;
     activeHoverPreviewKeyRef.current = null;
+    hoverPreviewPositionRef.current = null;
     setHoverPreview(null);
     setHoverPreviewDiagram(null);
     setHoverPreviewStatus("idle");
-  }, [clearHoverIntentTimeout]);
+  }, [cancelHoverPreviewAnimationFrame, clearHoverIntentTimeout]);
 
   useEffect(() => {
     const urlState = parseBrowseQueryFromSearchParams(
@@ -497,6 +527,19 @@ export function BrowseCatalog({
     };
   }, [closeHoverPreview]);
 
+  useEffect(() => {
+    if (!hoverPreview) {
+      return;
+    }
+
+    applyHoverPreviewPosition(
+      hoverPreviewPositionRef.current ?? {
+        left: hoverPreview.left,
+        top: hoverPreview.top,
+      },
+    );
+  }, [applyHoverPreviewPosition, hoverPreview, hoverPreviewDiagram, hoverPreviewStatus]);
+
   const handleSearchChange = (value: string) => {
     setSearchInput(value);
     setPage(1);
@@ -564,8 +607,10 @@ export function BrowseCatalog({
     }) => {
       const cachedDiagram = diagramPreviewCache.get(key);
       if (cachedDiagram) {
-        setHoverPreviewDiagram(cachedDiagram);
-        setHoverPreviewStatus("ready");
+        startTransition(() => {
+          setHoverPreviewDiagram(cachedDiagram);
+          setHoverPreviewStatus("ready");
+        });
         return;
       }
 
@@ -599,8 +644,10 @@ export function BrowseCatalog({
           return;
         }
 
-        setHoverPreviewDiagram(diagram);
-        setHoverPreviewStatus("ready");
+        startTransition(() => {
+          setHoverPreviewDiagram(diagram);
+          setHoverPreviewStatus("ready");
+        });
       } catch (error) {
         if (
           error instanceof DOMException &&
@@ -631,17 +678,20 @@ export function BrowseCatalog({
         return;
       }
 
+      preloadBrowseDiagramPreviewChart();
       clearHoverIntentTimeout();
       const key = `${item.username}/${item.repo}`;
       hoverIntentTimeoutRef.current = window.setTimeout(() => {
         activeHoverPreviewKeyRef.current = key;
+        const initialPosition = getHoverPreviewPosition(
+          pointerPosition.clientX,
+          pointerPosition.clientY,
+        );
+        hoverPreviewPositionRef.current = initialPosition;
         setHoverPreview({
           key,
           repoLabel: key,
-          ...getHoverPreviewPosition(
-            pointerPosition.clientX,
-            pointerPosition.clientY,
-          ),
+          ...initialPosition,
         });
 
         const cachedDiagram = diagramPreviewCache.get(key);
@@ -674,19 +724,26 @@ export function BrowseCatalog({
         return;
       }
 
-      setHoverPreview((currentPreview) =>
-        currentPreview
-          ? {
-              ...currentPreview,
-              ...getHoverPreviewPosition(
-                pointerPosition.clientX,
-                pointerPosition.clientY,
-              ),
-            }
-          : currentPreview,
+      const nextPosition = getHoverPreviewPosition(
+        pointerPosition.clientX,
+        pointerPosition.clientY,
       );
+      hoverPreviewPositionRef.current = nextPosition;
+
+      if (hoverPreviewAnimationFrameRef.current !== null) {
+        return;
+      }
+
+      hoverPreviewAnimationFrameRef.current = window.requestAnimationFrame(() => {
+        hoverPreviewAnimationFrameRef.current = null;
+        if (!hoverPreviewPositionRef.current) {
+          return;
+        }
+
+        applyHoverPreviewPosition(hoverPreviewPositionRef.current);
+      });
     },
-    [desktopHoverEnabled],
+    [applyHoverPreviewPosition, desktopHoverEnabled],
   );
 
   const result = entries
@@ -814,25 +871,26 @@ export function BrowseCatalog({
                       className="block border-b border-black/15 align-middle last:border-b-0 lg:table-row dark:border-white/10"
                     >
                       <td
-                        className="block px-4 pt-5 lg:table-cell lg:px-5 lg:py-4"
+                        className="block p-0 lg:table-cell"
                         onMouseEnter={(event) =>
                           handleRepoHoverStart(item, event)
                         }
                         onMouseMove={(event) => handleRepoHoverMove(item, event)}
                         onMouseLeave={closeHoverPreview}
                       >
-                        <Link
-                          href={diagramPath}
+                        <div
                           title={`${item.username}/${item.repo}`}
-                          className="block text-[1.4rem] leading-[1.05] font-semibold tracking-tight break-all hover:underline lg:overflow-hidden lg:text-lg lg:leading-tight lg:break-normal lg:text-ellipsis lg:whitespace-nowrap"
+                          className="flex h-full w-full flex-col px-4 pt-5 pb-5 lg:px-5 lg:py-4"
                         >
-                          {item.username}/{item.repo}
-                        </Link>
-                        <p className="mt-3 lg:hidden">
-                          <span className="inline-flex items-center rounded-full border-[2px] border-black bg-black/5 px-3 py-1 text-sm font-semibold dark:border-[#1a0d30] dark:bg-white/5">
-                            {formatStarSummary(item.stargazerCount)}
+                          <span className="block text-[1.4rem] leading-[1.05] font-semibold tracking-tight break-all lg:overflow-hidden lg:text-lg lg:leading-tight lg:break-normal lg:text-ellipsis lg:whitespace-nowrap">
+                            {item.username}/{item.repo}
                           </span>
-                        </p>
+                          <span className="mt-3 block lg:hidden">
+                            <span className="inline-flex items-center rounded-full border-[2px] border-black bg-black/5 px-3 py-1 text-sm font-semibold dark:border-[#1a0d30] dark:bg-white/5">
+                              {formatStarSummary(item.stargazerCount)}
+                            </span>
+                          </span>
+                        </div>
                       </td>
                       <td className="hidden px-5 py-4 text-sm font-semibold whitespace-nowrap lg:table-cell">
                         {formatStarCount(item.stargazerCount)}
@@ -902,24 +960,32 @@ export function BrowseCatalog({
         </>
       )}
 
-      {desktopHoverEnabled && hoverPreview ? (
-        <div
-          className="pointer-events-none fixed z-40 hidden lg:block"
-          style={{
-            left: `${hoverPreview.left}px`,
-            top: `${hoverPreview.top}px`,
-            width: `${HOVER_PREVIEW_WIDTH_PX}px`,
-          }}
-        >
-          <BrowseDiagramPreview
-            chart={hoverPreviewDiagram}
-            repoLabel={hoverPreview.repoLabel}
-            status={
-              hoverPreviewStatus === "idle" ? "loading" : hoverPreviewStatus
-            }
-          />
-        </div>
-      ) : null}
+      {desktopHoverEnabled &&
+      hoverPreview &&
+      typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={hoverPreviewElementRef}
+              className="pointer-events-none fixed z-40 hidden lg:block"
+              style={{
+                left: 0,
+                top: 0,
+                transform: `translate3d(${hoverPreview.left}px, ${hoverPreview.top}px, 0)`,
+                willChange: "transform",
+                width: `${HOVER_PREVIEW_WIDTH_PX}px`,
+              }}
+            >
+              <BrowseDiagramPreview
+                chart={hoverPreviewDiagram}
+                repoLabel={hoverPreview.repoLabel}
+                status={
+                  hoverPreviewStatus === "idle" ? "loading" : hoverPreviewStatus
+                }
+              />
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
