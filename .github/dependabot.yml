@@ -1,14 +1,74 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
+  - package-ecosystem: "bun"
+    directories:
+      - "/"
+      - "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Toronto"
+    cooldown:
+      default-days: 3
+    groups:
+      javascript-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+        group-by: "dependency-name"
+    labels:
+      - "dependencies"
+      - "javascript"
+
+  - package-ecosystem: "uv"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:15"
+      timezone: "America/Toronto"
+    cooldown:
+      default-days: 3
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    labels:
+      - "dependencies"
+      - "python"
+
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    allow:
-      - dependency-name: "posthog-js"
-      - dependency-name: "@posthog/*"
+      day: "monday"
+      time: "09:30"
+      timezone: "America/Toronto"
+    cooldown:
+      default-days: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:45"
+      timezone: "America/Toronto"
     cooldown:
       default-days: 3
     labels:
       - "dependencies"
-      - "posthog"
+      - "docker"
