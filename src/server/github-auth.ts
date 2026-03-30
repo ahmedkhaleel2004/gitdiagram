@@ -147,11 +147,15 @@ export function getGitHubAuthSources(): GitHubAuthSource[] {
   return sources;
 }
 
-export async function getGitHubApiHeaders(options?: { githubPat?: string }) {
+export async function getGitHubApiHeaders(options?: {
+  githubPat?: string;
+  allowGitHubAppAuth?: boolean;
+}) {
   const githubPat = options?.githubPat?.trim();
+  const allowGitHubAppAuth = options?.allowGitHubAppAuth ?? true;
   const token =
     githubPat ||
-    (hasGitHubAppAuth()
+    (allowGitHubAppAuth && hasGitHubAppAuth()
       ? await getGitHubAppInstallationToken()
       : readGitHubPatPool()[0] ?? null);
 

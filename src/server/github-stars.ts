@@ -14,7 +14,7 @@ export async function getStarCount() {
   try {
     const response = await fetch(GITHUB_REPO_URL, {
       cache: "force-cache",
-      headers: await getGitHubApiHeaders(),
+      headers: await getGitHubApiHeaders({ allowGitHubAppAuth: false }),
       next: {
         revalidate: STAR_COUNT_REVALIDATE_SECONDS,
       },
