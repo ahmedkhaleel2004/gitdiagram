@@ -27,6 +27,13 @@ export function supportsExactInputTokenCount(provider: AIProvider): boolean {
   return provider === "openai";
 }
 
+export function shouldUseExactInputTokenCount(params: {
+  provider: AIProvider;
+  apiKey?: string;
+}): boolean {
+  return supportsExactInputTokenCount(params.provider) && Boolean(params.apiKey?.trim());
+}
+
 export function getModel(provider = getProvider()): string {
   if (provider === "openrouter") {
     return readEnvValue("OPENROUTER_MODEL") ?? DEFAULT_OPENROUTER_MODEL;

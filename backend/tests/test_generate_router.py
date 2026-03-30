@@ -41,19 +41,10 @@ def test_generate_cost_success(monkeypatch):
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
     monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
 
-    async def fake_count_input_tokens(
-        *,
-        provider,
-        model,
-        system_prompt,
-        data,
-        api_key=None,
-        reasoning_effort=None,
-    ):
-        assert provider == "openai"
-        return 100
+    async def unexpected_count_input_tokens(**kwargs):
+        raise AssertionError("default-key cost estimates should use the conservative local fallback")
 
-    monkeypatch.setattr(generate.openai_service, "count_input_tokens", fake_count_input_tokens)
+    monkeypatch.setattr(generate.openai_service, "count_input_tokens", unexpected_count_input_tokens)
 
     response = client.post("/generate/cost", json={"username": "acme", "repo": "demo"})
 
@@ -64,6 +55,63 @@ def test_generate_cost_success(monkeypatch):
     assert data["pricing_model"] == "gpt-5.4-mini"
     assert data["cost_summary"]["kind"] == "estimate"
     assert data["cost"] == data["cost_summary"]["display"]
+
+
+def test_generate_cost_uses_exact_count_when_user_api_key_is_provided(monkeypatch):
+    monkeypatch.setattr(
+        generate,
+        "_get_github_data",
+        lambda username, repo, github_pat=None: SimpleNamespace(
+            default_branch="main",
+            file_tree="src/main.py",
+            readme="# readme",
+        ),
+    )
+    monkeypatch.setattr(generate, "get_provider", lambda: "openai")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+
+    async def fake_count_input_tokens(
+        *,
+        provider,
+        model,
+        system_prompt,
+        data,
+        api_key=None,
+        reasoning_effort=None,
+    ):
+        assert provider == "openai"
+        assert api_key == "sk-user"
+        return 100
+
+    monkeypatch.setattr(generate.openai_service, "count_input_tokens", fake_count_input_tokens)
+
+    response = client.post(
+        "/generate/cost",
+        json={"username": "acme", "repo": "demo", "api_key": "sk-user"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["pricing_model"] == "gpt-5.4-mini"
+
+
+def test_generate_cost_blocks_provider_mismatch_when_complimentary_gate_is_enabled(monkeypatch):
+    monkeypatch.setattr(generate, "get_provider", lambda: "openrouter")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "openai/gpt-5.4")
+    monkeypatch.setattr(generate, "is_complimentary_gate_enabled", lambda: True)
+    monkeypatch.setattr(
+        generate,
+        "_get_github_data",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("github data should not be fetched")),
+    )
+
+    response = client.post("/generate/cost", json={"username": "acme", "repo": "demo"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is False
+    assert data["error_code"] == "COMPLIMENTARY_GATE_PROVIDER_MISMATCH"
 
 
 def test_generate_stream_retries_invalid_graph_once(monkeypatch):
@@ -95,7 +143,7 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
             "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
             "pricing_model": "gpt-5.4-mini",
             "estimated_input_tokens": 1000,
-            "estimated_output_tokens": 10_000,
+            "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 1000,
             "graph_static_input_tokens": 200,
         }
@@ -222,7 +270,7 @@ def test_generate_stream_blocks_when_daily_free_quota_is_exhausted(monkeypatch):
             "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
             "pricing_model": "gpt-5.4-mini",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 10_000,
+            "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
         }
@@ -274,7 +322,7 @@ def test_generate_stream_bypasses_quota_gate_for_user_api_keys(monkeypatch):
             "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
             "pricing_model": "gpt-5.4-mini",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 10_000,
+            "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
         }
@@ -369,7 +417,7 @@ def test_generate_stream_completes_without_storage_when_quota_gate_disabled(monk
             "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
             "pricing_model": "gpt-5.4-mini",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 10_000,
+            "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
         }
@@ -447,7 +495,7 @@ def test_generate_stream_errors_when_quota_gate_enabled_without_upstash(monkeypa
             "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
             "pricing_model": "gpt-5.4-mini",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 10_000,
+            "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
         }
@@ -495,7 +543,7 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
             "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
             "pricing_model": "gpt-5.4-mini",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 10_000,
+            "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
         }
@@ -570,7 +618,7 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
                 quota_bucket="openai:gpt-5.4-mini:complimentary",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
-                reserved_tokens=50_700,
+                reserved_tokens=82_700,
             ),
             "2026-03-29T00:00:00+00:00",
         ),
@@ -596,7 +644,7 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
     assert finalized["committed_tokens"] == 345
 
 
-def test_generate_stream_finalizes_with_reserved_tokens_after_failure(monkeypatch):
+def test_generate_stream_finalizes_with_measured_usage_after_failure(monkeypatch):
     monkeypatch.setattr(
         generate,
         "_get_github_data",
@@ -622,7 +670,7 @@ def test_generate_stream_finalizes_with_reserved_tokens_after_failure(monkeypatc
             "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
             "pricing_model": "gpt-5.4-mini",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 10_000,
+            "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
         }
@@ -654,7 +702,7 @@ def test_generate_stream_finalizes_with_reserved_tokens_after_failure(monkeypatc
                 quota_bucket="openai:gpt-5.4-mini:complimentary",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
-                reserved_tokens=50_700,
+                reserved_tokens=82_700,
             ),
             "2026-03-29T00:00:00+00:00",
         ),
@@ -673,7 +721,80 @@ def test_generate_stream_finalizes_with_reserved_tokens_after_failure(monkeypatc
     payloads = parse_sse_payloads(response.text)
     assert payloads[-1]["status"] == "error"
     assert payloads[-1]["error_code"] == "STREAM_FAILED"
-    assert finalized["committed_tokens"] == 50_700
+    assert finalized["committed_tokens"] == 30_300
+
+
+def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reservation(monkeypatch):
+    monkeypatch.setattr(
+        generate,
+        "_get_github_data",
+        lambda username, repo, github_pat=None: SimpleNamespace(
+            default_branch="main",
+            file_tree="src/main.py",
+            readme="# readme",
+        ),
+    )
+    monkeypatch.setattr(generate, "get_provider", lambda: "openai")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: True)
+    monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
+    monkeypatch.setattr(
+        generate.diagram_state_repository,
+        "persist_terminal_session_audit",
+        lambda **kwargs: None,
+    )
+
+    async def fake_estimate_generation_cost(**kwargs):
+        return {
+            "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
+            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
+            "pricing_model": "gpt-5.4-mini",
+            "estimated_input_tokens": 100,
+            "estimated_output_tokens": 18_000,
+            "explanation_input_tokens": 100,
+            "graph_static_input_tokens": 200,
+        }
+
+    async def fake_stream_completion(**kwargs):
+        raise RuntimeError(
+            "Error code: 429 - {'error': {'message': 'You exceeded your current quota, "
+            "please check your plan and billing details.', 'type': 'insufficient_quota'}}"
+        )
+
+    finalized = {}
+
+    monkeypatch.setattr(generate, "estimate_generation_cost", fake_estimate_generation_cost)
+    monkeypatch.setattr(generate, "should_apply_complimentary_gate", lambda **kwargs: True)
+    monkeypatch.setattr(generate, "model_matches_complimentary_family", lambda model: True)
+    monkeypatch.setattr(
+        generate,
+        "reserve_complimentary_quota",
+        lambda **kwargs: (
+            True,
+            ComplimentaryQuotaReservation(
+                quota_bucket="openai:gpt-5.4-mini:complimentary",
+                quota_date_utc="2026-03-28",
+                quota_reset_at="2026-03-29T00:00:00+00:00",
+                reserved_tokens=82_700,
+            ),
+            "2026-03-29T00:00:00+00:00",
+        ),
+    )
+    monkeypatch.setattr(
+        generate,
+        "finalize_complimentary_quota",
+        lambda **kwargs: finalized.update(kwargs),
+    )
+    monkeypatch.setattr(generate.openai_service, "stream_completion", fake_stream_completion)
+
+    response = client.post("/generate/stream", json={"username": "acme", "repo": "demo"})
+
+    assert response.status_code == 200
+    payloads = parse_sse_payloads(response.text)
+    assert payloads[-1]["status"] == "error"
+    assert payloads[-1]["error_code"] == "DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED"
+    assert "default OpenAI key is temporarily unavailable" in payloads[-1]["error"]
+    assert finalized["committed_tokens"] == 12_100
 
 
 def test_modify_route_removed():

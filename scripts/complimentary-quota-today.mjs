@@ -1,4 +1,9 @@
 import { config } from "dotenv";
+import {
+  getComplimentaryDailyLimitTokens,
+  getComplimentaryModelFamily,
+} from "../src/server/generate/complimentary-gate";
+import { buildQuotaKey } from "../src/server/storage/quota-store";
 
 config({ path: ".env" });
 
@@ -37,24 +42,14 @@ async function fetchUpstashResult(body) {
   return payload.result;
 }
 
-function quotaKey(quotaDateUtc, quotaBucket) {
-  const pricingModel = quotaBucket.split(":")[1] ?? quotaBucket;
-  return `quota:v1:${quotaDateUtc}:${pricingModel}`;
-}
-
-const tokenLimit = Number.parseInt(
-  readEnv("OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS") || "10000000",
-  10,
-);
-const modelFamily =
-  readEnv("OPENAI_COMPLIMENTARY_MODEL_FAMILY")?.toLowerCase() ||
-  "gpt-5.4-mini";
+const tokenLimit = getComplimentaryDailyLimitTokens();
+const modelFamily = getComplimentaryModelFamily();
 const quotaDateUtc = new Date().toISOString().slice(0, 10);
 const quotaBucket = `openai:${modelFamily}:complimentary`;
 
 const result = await fetchUpstashResult([
   "HMGET",
-  quotaKey(quotaDateUtc, quotaBucket),
+  buildQuotaKey(quotaDateUtc, quotaBucket),
   "used_tokens",
   "reserved_tokens",
 ]);

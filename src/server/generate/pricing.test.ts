@@ -65,8 +65,8 @@ describe("createEstimateCostSummary", () => {
 
     expect(result.kind).toBe("estimate");
     expect(result.approximate).toBe(true);
-    expect(result.usage.inputTokens).toBe(4300);
-    expect(result.usage.outputTokens).toBe(10000);
+    expect(result.usage.inputTokens).toBe(12300);
+    expect(result.usage.outputTokens).toBe(18000);
     expect(result.note).toContain("configured output caps");
   });
 });

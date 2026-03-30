@@ -86,7 +86,7 @@ async def estimate_generation_cost(
         "Estimate assumes one graph-planning attempt and the configured output caps."
     ]
     if explanation_used_fallback or graph_used_fallback:
-        note_parts.append("Some input tokens were approximated with the char/4 fallback.")
+        note_parts.append("Some input tokens were approximated with a conservative local fallback.")
 
     cost_summary = create_estimate_cost_summary(
         model=model,

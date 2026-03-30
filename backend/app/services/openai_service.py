@@ -45,8 +45,8 @@ class OpenAIService:
 
     @staticmethod
     def estimate_tokens(text: str) -> int:
-        # Matches the lightweight token estimate used by the Next.js backend.
-        return math.ceil(len(text) / 4)
+        # Conservative local estimate used when we deliberately avoid billable count calls.
+        return 0 if len(text) == 0 else math.ceil(len(text) / 3) + 32
 
     @staticmethod
     def _build_input(system_prompt: str, user_prompt: str) -> list[dict]:
@@ -56,10 +56,34 @@ class OpenAIService:
         ]
 
     @staticmethod
+    def _get_response_failure_message(response: object | None) -> str:
+        error = getattr(response, "error", None)
+        message = getattr(error, "message", None)
+        if isinstance(message, str) and message.strip():
+            return message
+
+        incomplete_details = getattr(response, "incomplete_details", None)
+        reason = getattr(incomplete_details, "reason", None)
+        if isinstance(reason, str) and reason.strip():
+            return f"OpenAI response incomplete: {reason}."
+
+        return "OpenAI response did not complete successfully."
+
+    @staticmethod
+    def _is_recoverable_max_output_incomplete(
+        response: object | None,
+        *,
+        has_visible_output: bool,
+    ) -> bool:
+        incomplete_details = getattr(response, "incomplete_details", None)
+        reason = getattr(incomplete_details, "reason", None)
+        return has_visible_output and reason == "max_output_tokens"
+
+    @staticmethod
     def _create_client(provider: AIProvider, api_key: str) -> AsyncOpenAI:
         client_kwargs: dict = {
             "api_key": api_key,
-            "max_retries": 2,
+            "max_retries": 0,
             "timeout": 600,
         }
         if provider == "openrouter":
@@ -107,6 +131,7 @@ class OpenAIService:
         async def text_stream() -> AsyncGenerator[str, None]:
             response_id: str | None = None
             final_usage: GenerationTokenUsage | None = None
+            has_visible_output = False
             try:
                 async for event in stream:
                     response = getattr(event, "response", None)
@@ -117,6 +142,7 @@ class OpenAIService:
                     if event.type == "response.output_text.delta":
                         delta = getattr(event, "delta", None)
                         if isinstance(delta, str) and delta:
+                            has_visible_output = True
                             yield delta
                         continue
 
@@ -126,13 +152,36 @@ class OpenAIService:
                         )
                         continue
 
+                    if event.type == "response.failed":
+                        raise ValueError(self._get_response_failure_message(response))
+
+                    if event.type == "response.incomplete":
+                        if self._is_recoverable_max_output_incomplete(
+                            response,
+                            has_visible_output=has_visible_output,
+                        ):
+                            final_usage = (
+                                normalize_generation_usage(
+                                    getattr(response, "usage", None)
+                                )
+                                or final_usage
+                            )
+                            continue
+
+                        raise ValueError(self._get_response_failure_message(response))
+
                     if event.type == "error":
                         message = getattr(event, "message", None) or "OpenAI stream failed."
                         raise ValueError(str(message))
 
                 if final_usage is None and response_id:
-                    response = await client.responses.retrieve(response_id)
-                    final_usage = normalize_generation_usage(getattr(response, "usage", None))
+                    try:
+                        response = await client.responses.retrieve(response_id)
+                        final_usage = normalize_generation_usage(
+                            getattr(response, "usage", None)
+                        )
+                    except Exception:
+                        final_usage = None
 
                 if not usage_future.done():
                     usage_future.set_result(final_usage)

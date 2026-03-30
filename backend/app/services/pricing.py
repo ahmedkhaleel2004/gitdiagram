@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 DEFAULT_PRICING_MODEL = "gpt-5.4-mini"
-EXPLANATION_MAX_OUTPUT_TOKENS = 4000
+EXPLANATION_MAX_OUTPUT_TOKENS = 12000
 GRAPH_MAX_OUTPUT_TOKENS = 6000
 
 

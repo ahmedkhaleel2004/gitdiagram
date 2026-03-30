@@ -41,10 +41,14 @@ function createClient(provider: AIProvider, apiKey: string): OpenAI {
       apiKey,
       baseURL: "https://openrouter.ai/api/v1",
       defaultHeaders: getOpenRouterHeaders(),
+      maxRetries: 0,
     });
   }
 
-  return new OpenAI({ apiKey });
+  return new OpenAI({
+    apiKey,
+    maxRetries: 0,
+  });
 }
 
 function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
@@ -60,8 +64,8 @@ function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
 }
 
 export function estimateTokens(text: string): number {
-  // Rough heuristic used for fast gating/cost estimates in serverless.
-  return Math.ceil(text.length / 4);
+  // Conservative local estimate used when we deliberately avoid billable count calls.
+  return text.length === 0 ? 0 : Math.ceil(text.length / 3) + 32;
 }
 
 interface StreamCompletionParams {
@@ -106,6 +110,18 @@ function getResponseFailureMessage(response: {
   }
 
   return "OpenAI response did not complete successfully.";
+}
+
+function isRecoverableMaxOutputIncomplete(params: {
+  response: {
+    incomplete_details?: { reason?: string | null } | null;
+  };
+  hasVisibleOutput: boolean;
+}): boolean {
+  return (
+    params.hasVisibleOutput &&
+    params.response.incomplete_details?.reason === "max_output_tokens"
+  );
 }
 
 async function retrieveUsageFromResponseId(
@@ -163,6 +179,7 @@ export async function streamCompletion({
   async function* outputStream(): AsyncGenerator<string, void, void> {
     let responseId: string | undefined;
     let finalUsage: GenerationTokenUsage | null = null;
+    let hasVisibleOutput = false;
 
     try {
       for await (const event of stream) {
@@ -173,6 +190,7 @@ export async function streamCompletion({
 
         if (event.type === "response.output_text.delta") {
           if (event.delta) {
+            hasVisibleOutput = true;
             yield event.delta;
           }
           continue;
@@ -188,6 +206,17 @@ export async function streamCompletion({
         }
 
         if (event.type === "response.incomplete") {
+          if (
+            isRecoverableMaxOutputIncomplete({
+              response: event.response,
+              hasVisibleOutput,
+            })
+          ) {
+            finalUsage =
+              normalizeGenerationUsage(event.response.usage) ?? finalUsage;
+            continue;
+          }
+
           throw new Error(getResponseFailureMessage(event.response));
         }
 
@@ -198,7 +227,11 @@ export async function streamCompletion({
       }
 
       if (!finalUsage) {
-        finalUsage = await retrieveUsageFromResponseId(client, responseId, signal);
+        try {
+          finalUsage = await retrieveUsageFromResponseId(client, responseId, signal);
+        } catch {
+          finalUsage = null;
+        }
       }
 
       usageSettled = true;

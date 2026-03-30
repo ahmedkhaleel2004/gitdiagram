@@ -12,14 +12,21 @@ import {
 } from "~/server/storage/diagram-state";
 import {
   buildComplimentaryReservationTokens,
+  estimateConservativeCommittedTokens,
   finalizeComplimentaryQuota,
   getComplimentaryDenialMessage,
+  getComplimentaryModelMismatchMessage,
+  getComplimentaryProviderMismatchMessage,
+  isComplimentaryGateEnabled,
   modelMatchesComplimentaryFamily,
   reserveComplimentaryQuota,
   shouldApplyComplimentaryGate,
   type ComplimentaryQuotaReservation,
 } from "~/server/generate/complimentary-gate";
-import { estimateGenerationCost } from "~/server/generate/cost-estimate";
+import {
+  estimateGenerationCost,
+  type GenerationEstimateResult,
+} from "~/server/generate/cost-estimate";
 import { extractTaggedSection, toTaggedMessage } from "~/server/generate/format";
 import { getGithubData } from "~/server/generate/github";
 import {
@@ -32,6 +39,7 @@ import {
   getModel,
   getProvider,
   getProviderLabel,
+  shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
 import { generateStructuredOutput, streamCompletion } from "~/server/generate/openai";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
@@ -61,6 +69,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR =
+  "GitDiagram's default OpenAI key is temporarily unavailable because its upstream API quota is exhausted. I'm a solo student engineer running this free and open source, so please try again later or use your own OpenAI API key.";
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -79,6 +90,41 @@ function throwIfAborted(signal: AbortSignal) {
   if (signal.aborted) {
     throw createAbortError();
   }
+}
+
+function isOpenAiQuotaExhaustedError(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    normalized.includes("insufficient_quota") ||
+    (normalized.includes("exceeded your current quota") &&
+      normalized.includes("billing"))
+  );
+}
+
+function normalizeGenerationError(params: {
+  provider: string;
+  apiKey?: string;
+  message: string;
+}): { message: string; errorCode: string } {
+  if (
+    params.provider === "openai" &&
+    !params.apiKey &&
+    isOpenAiQuotaExhaustedError(params.message)
+  ) {
+    return {
+      message: DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR,
+      errorCode: "DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED",
+    };
+  }
+
+  return {
+    message: params.message,
+    errorCode: "STREAM_FAILED",
+  };
 }
 
 export async function POST(request: Request) {
@@ -160,6 +206,7 @@ export async function POST(request: Request) {
           provider: "unknown",
           model: "unknown",
         });
+        let estimate: GenerationEstimateResult | null = null;
         let quotaReservation: ComplimentaryQuotaReservation | null = null;
         const actualUsages: GenerationTokenUsage[] = [];
         let hasCompleteMeasuredUsage = true;
@@ -179,6 +226,70 @@ export async function POST(request: Request) {
 
         try {
           throwIfAborted(generationAbortController.signal);
+          const provider = getProvider();
+          const providerLabel = getProviderLabel(provider);
+          const model = getModel(provider);
+
+          if (isComplimentaryGateEnabled() && !apiKey) {
+            if (provider !== "openai") {
+              const error = getComplimentaryProviderMismatchMessage();
+              audit = withFailure(
+                {
+                  ...audit,
+                  provider,
+                  model,
+                  quotaStatus: "denied",
+                },
+                {
+                  failureStage: "started",
+                  validationError: error,
+                },
+              );
+              await persistTerminalAudit();
+              send({
+                status: "error",
+                session_id: audit.sessionId,
+                error,
+                error_code: "COMPLIMENTARY_GATE_PROVIDER_MISMATCH",
+                failure_stage: "started",
+                validation_error: error,
+                cost_summary: audit.finalCost ?? audit.estimatedCost,
+                latest_session_audit: audit,
+              });
+              closeStream();
+              return;
+            }
+
+            if (!modelMatchesComplimentaryFamily(model)) {
+              const error = getComplimentaryModelMismatchMessage();
+              audit = withFailure(
+                {
+                  ...audit,
+                  provider,
+                  model,
+                  quotaStatus: "denied",
+                },
+                {
+                  failureStage: "started",
+                  validationError: error,
+                },
+              );
+              await persistTerminalAudit();
+              send({
+                status: "error",
+                session_id: audit.sessionId,
+                error,
+                error_code: "COMPLIMENTARY_GATE_MODEL_MISMATCH",
+                failure_stage: "started",
+                validation_error: error,
+                cost_summary: audit.finalCost ?? audit.estimatedCost,
+                latest_session_audit: audit,
+              });
+              closeStream();
+              return;
+            }
+          }
+
           const githubData = await getGithubData(
             username,
             repo,
@@ -186,10 +297,7 @@ export async function POST(request: Request) {
             generationAbortController.signal,
           );
           storageVisibility = githubData.isPrivate ? "private" : "public";
-          const provider = getProvider();
-          const providerLabel = getProviderLabel(provider);
-          const model = getModel(provider);
-          const estimate = await estimateGenerationCost({
+          estimate = await estimateGenerationCost({
             provider,
             model,
             fileTree: githubData.fileTree,
@@ -197,7 +305,10 @@ export async function POST(request: Request) {
             username,
             repo,
             apiKey,
-            preferExactInputTokenCount: false,
+            preferExactInputTokenCount: shouldUseExactInputTokenCount({
+              provider,
+              apiKey,
+            }),
           });
           const tokenCount = estimate.explanationInputTokens;
 
@@ -228,8 +339,7 @@ export async function POST(request: Request) {
           throwIfAborted(generationAbortController.signal);
           if (shouldApplyComplimentaryGate({ provider, model, apiKey })) {
             if (!modelMatchesComplimentaryFamily(model)) {
-              const error =
-                "GitDiagram's complimentary usage gate only supports the gpt-5.4-mini model family for the default server key.";
+              const error = getComplimentaryModelMismatchMessage();
               audit = withFailure(
                 {
                   ...audit,
@@ -387,7 +497,12 @@ export async function POST(request: Request) {
             explanationResponse += chunk;
             send({ status: "explanation_chunk", session_id: audit.sessionId, chunk });
           }
-          const explanationUsage = await explanationStream.usagePromise;
+          let explanationUsage: GenerationTokenUsage | null = null;
+          try {
+            explanationUsage = await explanationStream.usagePromise;
+          } catch {
+            hasCompleteMeasuredUsage = false;
+          }
           if (explanationUsage) {
             actualUsages.push(explanationUsage);
             audit = withStageUsage(audit, {
@@ -406,6 +521,9 @@ export async function POST(request: Request) {
           }
 
           const explanation = extractTaggedSection(explanationResponse, "explanation");
+          if (!explanation.trim()) {
+            throw new Error("OpenAI explanation generation returned no usable output.");
+          }
           audit = withExplanation(audit, explanation);
 
           const fileTreeLookup = buildFileTreeLookup(githubData.fileTree);
@@ -655,8 +773,13 @@ export async function POST(request: Request) {
             return;
           }
           hasCompleteMeasuredUsage = false;
-          const message =
+          const rawMessage =
             error instanceof Error ? error.message : "Streaming generation failed.";
+          const { message, errorCode } = normalizeGenerationError({
+            provider: audit.provider,
+            apiKey,
+            message: rawMessage,
+          });
           const failedAudit = withFailure(audit, {
             failureStage: audit.stage || "started",
             validationError: message,
@@ -671,7 +794,7 @@ export async function POST(request: Request) {
             status: "error",
             session_id: failedAudit.sessionId,
             error: message,
-            error_code: "STREAM_FAILED",
+            error_code: errorCode,
             failure_stage: failedAudit.failureStage,
             validation_error: failedAudit.validationError,
             cost_summary: failedAudit.finalCost ?? failedAudit.estimatedCost,
@@ -679,11 +802,21 @@ export async function POST(request: Request) {
           });
         } finally {
           if (quotaReservation) {
-            const actualCommittedTokens = wasCancelled
-              ? 0
-              : hasCompleteMeasuredUsage
-                ? sumGenerationUsage(...actualUsages).totalTokens
-                : quotaReservation.reservedTokens;
+            const measuredCommittedTokens = sumGenerationUsage(
+              ...actualUsages,
+            ).totalTokens;
+            const actualCommittedTokens =
+              wasCancelled || !hasCompleteMeasuredUsage
+                ? estimateConservativeCommittedTokens({
+                    stage: audit.stage,
+                    reservationTokens: quotaReservation.reservedTokens,
+                    estimate: {
+                      explanationInputTokens: estimate?.explanationInputTokens ?? 0,
+                      graphStaticInputTokens: estimate?.graphStaticInputTokens ?? 0,
+                    },
+                    measuredTokens: measuredCommittedTokens,
+                  })
+                : measuredCommittedTokens;
 
             audit = {
               ...audit,

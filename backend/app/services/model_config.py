@@ -30,6 +30,13 @@ def supports_exact_input_token_count(provider: AIProvider) -> bool:
     return provider == "openai"
 
 
+def should_use_exact_input_token_count(
+    provider: AIProvider,
+    api_key: str | None,
+) -> bool:
+    return supports_exact_input_token_count(provider) and bool((api_key or "").strip())
+
+
 def get_model(provider: AIProvider | None = None) -> str:
     resolved_provider = provider or get_provider()
     if resolved_provider == "openrouter":

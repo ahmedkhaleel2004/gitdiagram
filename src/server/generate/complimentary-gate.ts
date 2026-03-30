@@ -15,6 +15,10 @@ const DEFAULT_MODEL_FAMILY = "gpt-5.4-mini";
 const RETRY_INPUT_BUFFER_TOKENS = 2_000;
 const DEFAULT_DENIAL_MESSAGE =
   "GitDiagram's free daily OpenAI capacity is used up for now. I'm a solo student engineer running this free and open source, so please try again after 00:00 UTC or use your own OpenAI API key.";
+const DEFAULT_PROVIDER_MISMATCH_MESSAGE =
+  "GitDiagram's complimentary-only mode requires AI_PROVIDER=openai on the default server key. I'm a solo student engineer running this free and open source, so please either switch the server back to OpenAI mini or use your own API key.";
+const DEFAULT_MODEL_MISMATCH_MESSAGE =
+  "GitDiagram's complimentary-only mode requires the gpt-5.4-mini model family on the default server key. I'm a solo student engineer running this free and open source, so please switch the server back to OpenAI mini or use your own API key.";
 
 export interface ComplimentaryQuotaReservation {
   quotaBucket: string;
@@ -24,6 +28,11 @@ export interface ComplimentaryQuotaReservation {
 }
 
 export interface ComplimentaryReservationEstimate {
+  explanationInputTokens: number;
+  graphStaticInputTokens: number;
+}
+
+export interface ConservativeQuotaCommitEstimate {
   explanationInputTokens: number;
   graphStaticInputTokens: number;
 }
@@ -59,9 +68,8 @@ export function getComplimentaryDailyLimitTokens(): number {
 }
 
 export function getComplimentaryModelFamily(): string {
-  return readEnvString(
-    "OPENAI_COMPLIMENTARY_MODEL_FAMILY",
-    DEFAULT_MODEL_FAMILY,
+  return resolvePricingModel(
+    readEnvString("OPENAI_COMPLIMENTARY_MODEL_FAMILY", DEFAULT_MODEL_FAMILY),
   );
 }
 
@@ -132,6 +140,49 @@ export function buildComplimentaryReservationTokens(
 
 export function getComplimentaryDenialMessage(): string {
   return DEFAULT_DENIAL_MESSAGE;
+}
+
+export function getComplimentaryProviderMismatchMessage(): string {
+  return DEFAULT_PROVIDER_MISMATCH_MESSAGE;
+}
+
+export function getComplimentaryModelMismatchMessage(): string {
+  return DEFAULT_MODEL_MISMATCH_MESSAGE;
+}
+
+export function estimateConservativeCommittedTokens(params: {
+  stage?: string;
+  reservationTokens: number;
+  estimate: ConservativeQuotaCommitEstimate;
+  measuredTokens: number;
+}): number {
+  const explanationStageTokens =
+    params.estimate.explanationInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS;
+  const firstGraphAttemptTokens =
+    explanationStageTokens +
+    params.estimate.graphStaticInputTokens +
+    EXPLANATION_MAX_OUTPUT_TOKENS +
+    GRAPH_MAX_OUTPUT_TOKENS;
+
+  const stage = params.stage ?? "started";
+
+  if (stage === "started") {
+    return params.measuredTokens;
+  }
+
+  if (
+    stage === "explanation_sent" ||
+    stage === "explanation" ||
+    stage === "explanation_chunk"
+  ) {
+    return Math.max(params.measuredTokens, explanationStageTokens);
+  }
+
+  if (stage === "graph_sent" || stage === "graph") {
+    return Math.max(params.measuredTokens, firstGraphAttemptTokens);
+  }
+
+  return Math.max(params.measuredTokens, params.reservationTokens);
 }
 
 export async function reserveComplimentaryQuota(params: {

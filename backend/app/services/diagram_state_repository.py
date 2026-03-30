@@ -10,6 +10,7 @@ from urllib.parse import quote
 import boto3
 import requests
 from botocore.exceptions import ClientError
+from app.services.pricing import resolve_pricing_model
 
 ArtifactVisibility = Literal["public", "private"]
 
@@ -458,7 +459,8 @@ class _QuotaStore:
         return self.redis.is_configured()
 
     def _quota_key(self, quota_date_utc: str, quota_bucket: str) -> str:
-        pricing_model = quota_bucket.split(":")[1] if ":" in quota_bucket else quota_bucket
+        raw_pricing_model = quota_bucket.split(":")[1] if ":" in quota_bucket else quota_bucket
+        pricing_model = resolve_pricing_model(raw_pricing_model)
         return f"quota:v1:{quota_date_utc}:{pricing_model}"
 
     def reserve(

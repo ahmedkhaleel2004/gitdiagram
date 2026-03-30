@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
 
 import { estimateGenerationCost } from "~/server/generate/cost-estimate";
+import {
+  getComplimentaryModelMismatchMessage,
+  getComplimentaryProviderMismatchMessage,
+  isComplimentaryGateEnabled,
+  modelMatchesComplimentaryFamily,
+} from "~/server/generate/complimentary-gate";
 import { getGithubData } from "~/server/generate/github";
-import { getModel, getProvider } from "~/server/generate/model-config";
+import {
+  getModel,
+  getProvider,
+  shouldUseExactInputTokenCount,
+} from "~/server/generate/model-config";
 import { generateRequestSchema } from "~/server/generate/types";
 
 export const runtime = "nodejs";
@@ -26,9 +36,28 @@ export async function POST(request: Request) {
       api_key: apiKey,
       github_pat: githubPat,
     } = parsed.data;
-    const githubData = await getGithubData(username, repo, githubPat);
     const provider = getProvider();
     const model = getModel(provider);
+
+    if (isComplimentaryGateEnabled() && !apiKey) {
+      if (provider !== "openai") {
+        return NextResponse.json({
+          ok: false,
+          error: getComplimentaryProviderMismatchMessage(),
+          error_code: "COMPLIMENTARY_GATE_PROVIDER_MISMATCH",
+        });
+      }
+
+      if (!modelMatchesComplimentaryFamily(model)) {
+        return NextResponse.json({
+          ok: false,
+          error: getComplimentaryModelMismatchMessage(),
+          error_code: "COMPLIMENTARY_GATE_MODEL_MISMATCH",
+        });
+      }
+    }
+
+    const githubData = await getGithubData(username, repo, githubPat);
     const estimate = await estimateGenerationCost({
       provider,
       model,
@@ -37,6 +66,10 @@ export async function POST(request: Request) {
       username,
       repo,
       apiKey,
+      preferExactInputTokenCount: shouldUseExactInputTokenCount({
+        provider,
+        apiKey,
+      }),
     });
 
     return NextResponse.json({

@@ -20,7 +20,7 @@ interface RawResponseUsage {
   };
 }
 
-export const EXPLANATION_MAX_OUTPUT_TOKENS = 4000;
+export const EXPLANATION_MAX_OUTPUT_TOKENS = 12000;
 export const GRAPH_MAX_OUTPUT_TOKENS = 6000;
 
 const DEFAULT_PRICING_MODEL = "gpt-5.4-mini";

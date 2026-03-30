@@ -1,4 +1,5 @@
 import { upstashEval } from "~/server/storage/upstash";
+import { resolvePricingModel } from "~/server/generate/pricing";
 
 const QUOTA_TTL_SECONDS = 3 * 24 * 60 * 60;
 
@@ -43,8 +44,9 @@ redis.call("EXPIRE", key, ttl)
 return {next_used_tokens, next_reserved_tokens}
 `;
 
-function quotaKey(quotaDateUtc: string, quotaBucket: string): string {
-  const pricingModel = quotaBucket.split(":")[1] ?? quotaBucket;
+export function buildQuotaKey(quotaDateUtc: string, quotaBucket: string): string {
+  const rawPricingModel = quotaBucket.split(":")[1] ?? quotaBucket;
+  const pricingModel = resolvePricingModel(rawPricingModel);
   return `quota:v1:${quotaDateUtc}:${pricingModel}`;
 }
 
@@ -61,7 +63,7 @@ export async function reserveQuotaInUpstash(params: {
 }): Promise<{ admitted: boolean; usage: DailyQuotaUsage }> {
   const result = await upstashEval<[number, number, number]>({
     script: RESERVE_SCRIPT,
-    keys: [quotaKey(params.quotaDateUtc, params.quotaBucket)],
+    keys: [buildQuotaKey(params.quotaDateUtc, params.quotaBucket)],
     args: [params.tokenLimit, params.reservationTokens, QUOTA_TTL_SECONDS],
   });
 
@@ -82,7 +84,7 @@ export async function finalizeQuotaInUpstash(params: {
 }): Promise<DailyQuotaUsage> {
   const result = await upstashEval<[number, number]>({
     script: FINALIZE_SCRIPT,
-    keys: [quotaKey(params.quotaDateUtc, params.quotaBucket)],
+    keys: [buildQuotaKey(params.quotaDateUtc, params.quotaBucket)],
     args: [
       params.reservationTokens,
       params.committedTokens,

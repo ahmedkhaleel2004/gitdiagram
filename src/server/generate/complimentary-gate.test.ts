@@ -15,6 +15,7 @@ vi.mock("~/server/storage/quota-store", () => ({
 
 import {
   buildComplimentaryReservationTokens,
+  estimateConservativeCommittedTokens,
   finalizeComplimentaryQuota,
   modelMatchesComplimentaryFamily,
   reserveComplimentaryQuota,
@@ -60,13 +61,45 @@ describe("complimentary gate", () => {
     expect(modelMatchesComplimentaryFamily("gpt-5.4")).toBe(false);
   });
 
+  it("normalizes the configured complimentary family before matching", () => {
+    process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.4-mini-2026-03-17";
+
+    expect(modelMatchesComplimentaryFamily("gpt-5.4-mini")).toBe(true);
+  });
+
   it("builds a conservative whole-run token reservation", () => {
     expect(
       buildComplimentaryReservationTokens({
         explanationInputTokens: 100,
         graphStaticInputTokens: 200,
       }),
-    ).toBe(50_700);
+    ).toBe(82_700);
+  });
+
+  it("estimates conservative committed tokens by failure stage", () => {
+    expect(
+      estimateConservativeCommittedTokens({
+        stage: "explanation",
+        reservationTokens: 82_700,
+        estimate: {
+          explanationInputTokens: 100,
+          graphStaticInputTokens: 200,
+        },
+        measuredTokens: 0,
+      }),
+    ).toBe(12_100);
+
+    expect(
+      estimateConservativeCommittedTokens({
+        stage: "graph",
+        reservationTokens: 82_700,
+        estimate: {
+          explanationInputTokens: 100,
+          graphStaticInputTokens: 200,
+        },
+        measuredTokens: 150,
+      }),
+    ).toBe(30_300);
   });
 
   it("returns a denial payload with the next UTC reset time", async () => {
@@ -77,7 +110,7 @@ describe("complimentary gate", () => {
 
     const result = await reserveComplimentaryQuota({
       model: "gpt-5.4-mini",
-      reservationTokens: 50_700,
+      reservationTokens: 82_700,
       now: new Date("2026-03-28T12:34:56.000Z"),
     });
 
@@ -90,7 +123,7 @@ describe("complimentary gate", () => {
     expect(reserveQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai:gpt-5.4-mini:complimentary",
-      reservationTokens: 50_700,
+      reservationTokens: 82_700,
       tokenLimit: 10_000_000,
     });
   });
@@ -106,7 +139,7 @@ describe("complimentary gate", () => {
         quotaBucket: "openai:gpt-5.4-mini:complimentary",
         quotaDateUtc: "2026-03-28",
         quotaResetAt: "2026-03-29T00:00:00.000Z",
-        reservedTokens: 50_700,
+        reservedTokens: 82_700,
       },
       committedTokens: 345,
     });
@@ -114,7 +147,7 @@ describe("complimentary gate", () => {
     expect(finalizeQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai:gpt-5.4-mini:complimentary",
-      reservationTokens: 50_700,
+      reservationTokens: 82_700,
       committedTokens: 345,
     });
   });

@@ -11,6 +11,8 @@ Requirements:
 - Be concrete and repo-specific.
 - Identify the main subsystems, data flows, and important boundaries.
 - Mention relevant technologies, runtimes, tooling, infrastructure, or external services only when they materially affect the architecture.
+- Keep the explanation concise and high-signal. Prefer 8-16 short sections or paragraphs over a long essay.
+- Avoid repeating the same subsystem in multiple ways.
 - Avoid Mermaid syntax, JSON, pseudo-code, or implementation instructions.
 - Do not assume the project is a web app. It could be any repo type.
 

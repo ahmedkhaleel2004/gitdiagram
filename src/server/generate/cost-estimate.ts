@@ -124,7 +124,7 @@ export async function estimateGenerationCost(params: {
     "Estimate assumes one graph-planning attempt and the configured output caps.",
   ];
   if (explanationCount.usedFallback || graphStaticCount.usedFallback) {
-    noteParts.push("Some input tokens were approximated with the char/4 fallback.");
+    noteParts.push("Some input tokens were approximated with a conservative local fallback.");
   }
 
   const costSummary = createEstimateCostSummary({

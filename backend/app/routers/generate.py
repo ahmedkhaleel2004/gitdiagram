@@ -15,8 +15,12 @@ from app.core.observability import Timer, log_event
 from app.prompts import SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT
 from app.services.complimentary_gate import (
     build_complimentary_reservation_tokens,
+    estimate_conservative_committed_tokens,
     finalize_complimentary_quota,
     get_complimentary_denial_message,
+    get_complimentary_model_mismatch_message,
+    get_complimentary_provider_mismatch_message,
+    is_complimentary_gate_enabled,
     model_matches_complimentary_family,
     reserve_complimentary_quota,
     should_apply_complimentary_gate,
@@ -37,6 +41,7 @@ from app.services.model_config import (
     get_model,
     get_provider,
     get_provider_label,
+    should_use_exact_input_token_count,
 )
 from app.services.openai_service import OpenAIService
 from app.services.pricing import (
@@ -61,6 +66,13 @@ class GenerateRequest(BaseModel):
 
 class _ClientDisconnectedError(Exception):
     pass
+
+
+DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR = (
+    "GitDiagram's default OpenAI key is temporarily unavailable because its "
+    "upstream API quota is exhausted. I'm a solo student engineer running this "
+    "free and open source, so please try again later or use your own OpenAI API key."
+)
 
 
 def _sse_message(payload: dict[str, Any]) -> str:
@@ -104,6 +116,35 @@ def _extract_tagged_section(text: str, tag: str) -> str:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _is_openai_quota_exhausted_error(message: str) -> bool:
+    normalized = message.strip().lower()
+    if not normalized:
+        return False
+
+    return "insufficient_quota" in normalized or (
+        "exceeded your current quota" in normalized and "billing" in normalized
+    )
+
+
+def _normalize_generation_error(
+    *,
+    provider: str,
+    api_key: str | None,
+    message: str,
+) -> tuple[str, str]:
+    if (
+        provider == "openai"
+        and not api_key
+        and _is_openai_quota_exhausted_error(message)
+    ):
+        return (
+            DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR,
+            "DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED",
+        )
+
+    return message, "STREAM_FAILED"
 
 
 def _create_session_audit(*, session_id: str, provider: str, model: str) -> dict[str, Any]:
@@ -179,14 +220,31 @@ async def get_generation_cost(request: Request):
         if not parsed:
             return JSONResponse({"ok": False, "error": error, "error_code": "VALIDATION_ERROR"})
 
+        provider = get_provider()
+        model = get_model(provider)
+        if is_complimentary_gate_enabled() and not parsed.api_key:
+            if provider != "openai":
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "error": get_complimentary_provider_mismatch_message(),
+                        "error_code": "COMPLIMENTARY_GATE_PROVIDER_MISMATCH",
+                    }
+                )
+            if not model_matches_complimentary_family(model):
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "error": get_complimentary_model_mismatch_message(),
+                        "error_code": "COMPLIMENTARY_GATE_MODEL_MISMATCH",
+                    }
+                )
         github_data = await asyncio.to_thread(
             _get_github_data,
             parsed.username,
             parsed.repo,
             parsed.github_pat,
         )
-        provider = get_provider()
-        model = get_model(provider)
         estimate = await estimate_generation_cost(
             provider=provider,
             model=model,
@@ -195,6 +253,10 @@ async def get_generation_cost(request: Request):
             username=parsed.username,
             repo=parsed.repo,
             api_key=parsed.api_key,
+            prefer_exact_input_token_count=should_use_exact_input_token_count(
+                provider,
+                parsed.api_key,
+            ),
         )
         pricing = estimate["pricing"]
 
@@ -344,6 +406,57 @@ async def generate_stream(request: Request):
 
         try:
             await _ensure_client_connected(request)
+            if is_complimentary_gate_enabled() and not parsed.api_key:
+                if provider != "openai":
+                    error_message = get_complimentary_provider_mismatch_message()
+                    audit = _set_failure(
+                        {
+                            **audit,
+                            "quotaStatus": "denied",
+                        },
+                        failure_stage="started",
+                        validation_error=error_message,
+                    )
+                    await persist_terminal_audit()
+                    yield send(
+                        {
+                            "status": "error",
+                            "session_id": audit["sessionId"],
+                            "error": error_message,
+                            "error_code": "COMPLIMENTARY_GATE_PROVIDER_MISMATCH",
+                            "validation_error": error_message,
+                            "failure_stage": "started",
+                            "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
+                            "latest_session_audit": audit,
+                        }
+                    )
+                    return
+
+                if not model_matches_complimentary_family(model):
+                    error_message = get_complimentary_model_mismatch_message()
+                    audit = _set_failure(
+                        {
+                            **audit,
+                            "quotaStatus": "denied",
+                        },
+                        failure_stage="started",
+                        validation_error=error_message,
+                    )
+                    await persist_terminal_audit()
+                    yield send(
+                        {
+                            "status": "error",
+                            "session_id": audit["sessionId"],
+                            "error": error_message,
+                            "error_code": "COMPLIMENTARY_GATE_MODEL_MISMATCH",
+                            "validation_error": error_message,
+                            "failure_stage": "started",
+                            "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
+                            "latest_session_audit": audit,
+                        }
+                    )
+                    return
+
             github_data = await asyncio.to_thread(
                 _get_github_data,
                 parsed.username,
@@ -360,7 +473,10 @@ async def generate_stream(request: Request):
                 username=parsed.username,
                 repo=parsed.repo,
                 api_key=parsed.api_key,
-                prefer_exact_input_token_count=False,
+                prefer_exact_input_token_count=should_use_exact_input_token_count(
+                    provider,
+                    parsed.api_key,
+                ),
             )
             token_count = estimate["explanation_input_tokens"]
 
@@ -408,34 +524,6 @@ async def generate_stream(request: Request):
                             "session_id": audit["sessionId"],
                             "error": error_message,
                             "error_code": "COMPLIMENTARY_GATE_STORAGE_UNAVAILABLE",
-                            "validation_error": error_message,
-                            "failure_stage": "started",
-                            "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
-                            "latest_session_audit": audit,
-                        }
-                    )
-                    return
-
-                if not model_matches_complimentary_family(model):
-                    error_message = (
-                        "GitDiagram's complimentary usage gate only supports the "
-                        "gpt-5.4-mini model family for the default server key."
-                    )
-                    audit = _set_failure(
-                        {
-                            **audit,
-                            "quotaStatus": "denied",
-                        },
-                        failure_stage="started",
-                        validation_error=error_message,
-                    )
-                    await persist_terminal_audit()
-                    yield send(
-                        {
-                            "status": "error",
-                            "session_id": audit["sessionId"],
-                            "error": error_message,
-                            "error_code": "COMPLIMENTARY_GATE_MODEL_MISMATCH",
                             "validation_error": error_message,
                             "failure_stage": "started",
                             "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
@@ -557,7 +645,11 @@ async def generate_stream(request: Request):
                 await _ensure_client_connected(request)
                 explanation_response += chunk
                 yield send({"status": "explanation_chunk", "session_id": audit["sessionId"], "chunk": chunk})
-            explanation_usage = await explanation_usage_future
+            explanation_usage = None
+            try:
+                explanation_usage = await explanation_usage_future
+            except Exception:
+                has_complete_measured_usage = False
             if explanation_usage is not None:
                 actual_usages.append(explanation_usage)
                 audit = _append_stage_usage(
@@ -578,6 +670,8 @@ async def generate_stream(request: Request):
                 has_complete_measured_usage = False
 
             explanation = _extract_tagged_section(explanation_response, "explanation")
+            if not explanation.strip():
+                raise ValueError("OpenAI explanation generation returned no usable output.")
             audit["explanation"] = explanation
             audit["updatedAt"] = _now_iso()
 
@@ -802,7 +896,11 @@ async def generate_stream(request: Request):
             was_cancelled = True
         except Exception as exc:
             has_complete_measured_usage = False
-            error_message = str(exc)
+            error_message, error_code = _normalize_generation_error(
+                provider=provider,
+                api_key=parsed.api_key,
+                message=str(exc),
+            )
             audit = _set_failure(audit, failure_stage=audit.get("stage", "started"), validation_error=error_message)
             try:
                 await persist_terminal_audit()
@@ -813,7 +911,7 @@ async def generate_stream(request: Request):
                     "status": "error",
                     "session_id": audit["sessionId"],
                     "error": error_message,
-                    "error_code": "STREAM_FAILED",
+                    "error_code": error_code,
                     "validation_error": error_message,
                     "failure_stage": audit.get("failureStage"),
                     "cost_summary": audit.get("finalCost") or audit.get("estimatedCost"),
@@ -829,12 +927,17 @@ async def generate_stream(request: Request):
                 model=model,
             )
             if quota_reservation is not None:
+                measured_committed_tokens = sum_generation_usage(*actual_usages).total_tokens
                 actual_committed_tokens = (
-                    0
-                    if was_cancelled
-                    else sum_generation_usage(*actual_usages).total_tokens
-                    if has_complete_measured_usage
-                    else quota_reservation.reserved_tokens
+                    estimate_conservative_committed_tokens(
+                        stage=audit.get("stage"),
+                        reservation_tokens=quota_reservation.reserved_tokens,
+                        explanation_input_tokens=estimate["explanation_input_tokens"],
+                        graph_static_input_tokens=estimate["graph_static_input_tokens"],
+                        measured_tokens=measured_committed_tokens,
+                    )
+                    if (was_cancelled or not has_complete_measured_usage)
+                    else measured_committed_tokens
                 )
                 audit = {
                     **audit,

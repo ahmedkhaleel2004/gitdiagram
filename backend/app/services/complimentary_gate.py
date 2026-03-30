@@ -21,6 +21,16 @@ DEFAULT_DENIAL_MESSAGE = (
     "I'm a solo student engineer running this free and open source, "
     "so please try again after 00:00 UTC or use your own OpenAI API key."
 )
+DEFAULT_PROVIDER_MISMATCH_MESSAGE = (
+    "GitDiagram's complimentary-only mode requires AI_PROVIDER=openai on the "
+    "default server key. I'm a solo student engineer running this free and open "
+    "source, so please either switch the server back to OpenAI mini or use your own API key."
+)
+DEFAULT_MODEL_MISMATCH_MESSAGE = (
+    "GitDiagram's complimentary-only mode requires the gpt-5.4-mini model family "
+    "on the default server key. I'm a solo student engineer running this free and open "
+    "source, so please switch the server back to OpenAI mini or use your own API key."
+)
 @dataclass(frozen=True)
 class ComplimentaryQuotaReservation:
     quota_bucket: str
@@ -69,7 +79,9 @@ def should_apply_complimentary_gate(
 
 
 def get_complimentary_model_family() -> str:
-    return _read_str("OPENAI_COMPLIMENTARY_MODEL_FAMILY", DEFAULT_MODEL_FAMILY)
+    return resolve_pricing_model(
+        _read_str("OPENAI_COMPLIMENTARY_MODEL_FAMILY", DEFAULT_MODEL_FAMILY)
+    )
 
 
 def model_matches_complimentary_family(model: str) -> bool:
@@ -129,6 +141,43 @@ def build_complimentary_reservation_tokens(
 
 def get_complimentary_denial_message() -> str:
     return DEFAULT_DENIAL_MESSAGE
+
+
+def get_complimentary_provider_mismatch_message() -> str:
+    return DEFAULT_PROVIDER_MISMATCH_MESSAGE
+
+
+def get_complimentary_model_mismatch_message() -> str:
+    return DEFAULT_MODEL_MISMATCH_MESSAGE
+
+
+def estimate_conservative_committed_tokens(
+    *,
+    stage: str | None,
+    reservation_tokens: int,
+    explanation_input_tokens: int,
+    graph_static_input_tokens: int,
+    measured_tokens: int,
+) -> int:
+    explanation_stage_tokens = explanation_input_tokens + EXPLANATION_MAX_OUTPUT_TOKENS
+    first_graph_attempt_tokens = (
+        explanation_stage_tokens
+        + graph_static_input_tokens
+        + EXPLANATION_MAX_OUTPUT_TOKENS
+        + GRAPH_MAX_OUTPUT_TOKENS
+    )
+    current_stage = stage or "started"
+
+    if current_stage == "started":
+        return measured_tokens
+
+    if current_stage in {"explanation_sent", "explanation", "explanation_chunk"}:
+        return max(measured_tokens, explanation_stage_tokens)
+
+    if current_stage in {"graph_sent", "graph"}:
+        return max(measured_tokens, first_graph_attempt_tokens)
+
+    return max(measured_tokens, reservation_tokens)
 
 
 def reserve_complimentary_quota(
