@@ -420,7 +420,7 @@ const MermaidChart = ({
       scaleFactor: number,
     ) => {
       const containerElement = containerRef.current;
-      if (!(containerElement instanceof HTMLDivElement)) return;
+      if (!(containerElement instanceof HTMLDivElement)) return null;
 
       const bounds = containerElement.getBoundingClientRect();
       const localStartX = startClientX - bounds.left;
@@ -445,13 +445,15 @@ const MermaidChart = ({
         nextY: localY - contentY * nextScale,
       });
 
-      userInteractedRef.current = true;
-      setViewState({
+      const nextView = {
         ...baseView,
         scale: nextScale,
         x: clamped.x,
         y: clamped.y,
-      });
+      };
+      userInteractedRef.current = true;
+      setViewState(nextView);
+      return nextView;
     },
     [],
   );
@@ -743,20 +745,21 @@ const MermaidChart = ({
             x: event.clientX,
             y: event.clientY,
           });
+          event.currentTarget.setPointerCapture(event.pointerId);
 
           if (activePointersRef.current.size >= 2 && viewState) {
             const pointerPair = getTrackedPointerPair(activePointersRef.current);
             if (!pointerPair) return;
             const [firstPointer, secondPointer] = pointerPair;
+            const midpoint = getPointerMidpoint(firstPointer, secondPointer);
             pinchStateRef.current = {
               startDistance: getDistanceBetweenPointers(firstPointer, secondPointer),
               startView: viewState,
-              startX: getPointerMidpoint(firstPointer, secondPointer).x,
-              startY: getPointerMidpoint(firstPointer, secondPointer).y,
+              startX: midpoint.x,
+              startY: midpoint.y,
             };
             dragStateRef.current = null;
             event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
             return;
           }
 
@@ -785,7 +788,7 @@ const MermaidChart = ({
 
             if (distance > 0 && pinchStateRef.current.startDistance > 0) {
               event.preventDefault();
-              pinchTo(
+              const nextView = pinchTo(
                 pinchStateRef.current.startView,
                 pinchStateRef.current.startX,
                 pinchStateRef.current.startY,
@@ -793,6 +796,14 @@ const MermaidChart = ({
                 midpoint.y,
                 getPinchScaleFactor(pinchStateRef.current.startDistance, distance),
               );
+              if (nextView) {
+                pinchStateRef.current = {
+                  startDistance: distance,
+                  startView: nextView,
+                  startX: midpoint.x,
+                  startY: midpoint.y,
+                };
+              }
             }
             return;
           }
@@ -820,12 +831,6 @@ const MermaidChart = ({
 
           if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
             event.currentTarget.releasePointerCapture(event.pointerId);
-          }
-        }}
-        onPointerLeave={(event) => {
-          activePointersRef.current.delete(event.pointerId);
-          if (activePointersRef.current.size < 2) {
-            pinchStateRef.current = null;
           }
         }}
       >

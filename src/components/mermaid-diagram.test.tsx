@@ -151,8 +151,13 @@ describe("MermaidChart", () => {
 
     const mermaid = container.querySelector(".mermaid");
     expect(mermaid).toBeInstanceOf(HTMLDivElement);
+    const zoomInButton = screen.getByLabelText("Zoom in");
 
-    fireEvent.click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(zoomInButton).toBeEnabled();
+    });
+
+    fireEvent.click(zoomInButton);
 
     await waitFor(() => {
       expect(screen.getByText("118%")).toBeInTheDocument();
@@ -249,8 +254,13 @@ describe("MermaidChart", () => {
     await waitFor(() => {
       expect(screen.getByText("100%")).toBeInTheDocument();
     });
+    const zoomInButton = screen.getByLabelText("Zoom in");
 
-    fireEvent.click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(zoomInButton).toBeEnabled();
+    });
+
+    fireEvent.click(zoomInButton);
 
     await waitFor(() => {
       expect(screen.getByText("118%")).toBeInTheDocument();
@@ -266,13 +276,25 @@ describe("MermaidChart", () => {
       expect(screen.getByText("100%")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText("Zoom in"));
+    const zoomInButton = screen.getByLabelText("Zoom in");
+
+    await waitFor(() => {
+      expect(zoomInButton).toBeEnabled();
+    });
+
+    fireEvent.click(zoomInButton);
 
     await waitFor(() => {
       expect(screen.getByText("118%")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /fit/i }));
+    const fitButton = screen.getByRole("button", { name: /fit/i });
+
+    await waitFor(() => {
+      expect(fitButton).toBeEnabled();
+    });
+
+    fireEvent.click(fitButton);
 
     await waitFor(() => {
       expect(screen.getByText("100%")).toBeInTheDocument();
