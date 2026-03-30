@@ -26,6 +26,18 @@ type ViewState = {
   y: number;
 };
 
+type PointerCoordinates = {
+  x: number;
+  y: number;
+};
+
+type PinchState = {
+  startDistance: number;
+  startView: ViewState;
+  startX: number;
+  startY: number;
+};
+
 const INTERACTIVE_FIT_PADDING = 24;
 const PREVIEW_FIT_PADDING = 16;
 const DEFAULT_DIAGRAM_VIEWPORT_HEIGHT_RATIO = 0.92;
@@ -137,6 +149,29 @@ function getSvgDimensions(svgElement: SVGSVGElement) {
   };
 }
 
+function getDistanceBetweenPointers(
+  firstPointer: PointerCoordinates,
+  secondPointer: PointerCoordinates,
+) {
+  return Math.hypot(secondPointer.x - firstPointer.x, secondPointer.y - firstPointer.y);
+}
+
+function getPointerMidpoint(
+  firstPointer: PointerCoordinates,
+  secondPointer: PointerCoordinates,
+) {
+  return {
+    x: (firstPointer.x + secondPointer.x) / 2,
+    y: (firstPointer.y + secondPointer.y) / 2,
+  };
+}
+
+function getTrackedPointerPair(pointers: Map<number, PointerCoordinates>) {
+  const [firstPointer, secondPointer] = Array.from(pointers.values());
+  if (!firstPointer || !secondPointer) return null;
+  return [firstPointer, secondPointer] as const;
+}
+
 export function normalizeWheelDelta(
   event: Pick<WheelEvent, "deltaMode" | "deltaY">,
 ) {
@@ -160,6 +195,14 @@ export function getWheelZoomScaleFactor(
       : MOUSE_WHEEL_ZOOM_SPEED;
 
   return Math.exp(-normalizeWheelDelta(event) * zoomSpeed);
+}
+
+export function getPinchScaleFactor(
+  startDistance: number,
+  currentDistance: number,
+) {
+  if (startDistance <= 0 || currentDistance <= 0) return 1;
+  return currentDistance / startDistance;
 }
 
 export function isLikelyTrackpadGesture(
@@ -237,11 +280,13 @@ const MermaidChart = ({
 }: MermaidChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const interactionLayerRef = useRef<HTMLDivElement>(null);
+  const activePointersRef = useRef<Map<number, PointerCoordinates>>(new Map());
   const dragStateRef = useRef<{
     lastX: number;
     lastY: number;
     pointerId: number;
   } | null>(null);
+  const pinchStateRef = useRef<PinchState | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const userInteractedRef = useRef(false);
   const reportedRenderErrorRef = useRef<string | null>(null);
@@ -365,6 +410,52 @@ const MermaidChart = ({
     [viewState],
   );
 
+  const pinchTo = useCallback(
+    (
+      baseView: ViewState,
+      startClientX: number,
+      startClientY: number,
+      clientX: number,
+      clientY: number,
+      scaleFactor: number,
+    ) => {
+      const containerElement = containerRef.current;
+      if (!(containerElement instanceof HTMLDivElement)) return;
+
+      const bounds = containerElement.getBoundingClientRect();
+      const localStartX = startClientX - bounds.left;
+      const localStartY = startClientY - bounds.top;
+      const localX = clientX - bounds.left;
+      const localY = clientY - bounds.top;
+      const minScale = baseView.fitScale * 0.6;
+      const maxScale = baseView.fitScale * 12;
+      const nextScale = Math.min(
+        maxScale,
+        Math.max(minScale, baseView.scale * scaleFactor),
+      );
+      const contentX = (localStartX - baseView.x) / baseView.scale;
+      const contentY = (localStartY - baseView.y) / baseView.scale;
+      const clamped = clampViewState({
+        containerHeight: bounds.height,
+        containerWidth: bounds.width,
+        contentHeight: baseView.height,
+        contentWidth: baseView.width,
+        nextScale,
+        nextX: localX - contentX * nextScale,
+        nextY: localY - contentY * nextScale,
+      });
+
+      userInteractedRef.current = true;
+      setViewState({
+        ...baseView,
+        scale: nextScale,
+        x: clamped.x,
+        y: clamped.y,
+      });
+    },
+    [],
+  );
+
   const stepZoom = useCallback(
     (scaleFactor: number) => {
       const containerElement = containerRef.current;
@@ -447,6 +538,8 @@ const MermaidChart = ({
       setRenderMessage(null);
       setIsPanZoomReady(false);
       setViewState(null);
+      activePointersRef.current.clear();
+      pinchStateRef.current = null;
       userInteractedRef.current = false;
       dragStateRef.current = null;
       resizeObserverRef.current?.disconnect();
@@ -624,15 +717,48 @@ const MermaidChart = ({
           }
         }}
         onPointerCancel={() => {
+          activePointersRef.current.clear();
           dragStateRef.current = null;
+          pinchStateRef.current = null;
         }}
         onPointerDown={(event) => {
-          if (!zoomingEnabled || !isPanZoomReady || event.button !== 0) return;
+          const isTouchPointer = event.pointerType === "touch";
+          if (
+            !zoomingEnabled ||
+            !isPanZoomReady ||
+            (!isTouchPointer && event.button !== 0)
+          ) {
+            return;
+          }
           if (!(event.target instanceof Element)) return;
 
           const isInsideDiagram = Boolean(event.target.closest(".mermaid svg"));
           const isClickableNode = Boolean(event.target.closest(".clickable"));
-          if (!isInsideDiagram || isClickableNode) return;
+          const isToolbarControl = Boolean(event.target.closest("button"));
+          if ((!isTouchPointer && !isInsideDiagram) || isClickableNode || isToolbarControl) {
+            return;
+          }
+
+          activePointersRef.current.set(event.pointerId, {
+            x: event.clientX,
+            y: event.clientY,
+          });
+
+          if (activePointersRef.current.size >= 2 && viewState) {
+            const pointerPair = getTrackedPointerPair(activePointersRef.current);
+            if (!pointerPair) return;
+            const [firstPointer, secondPointer] = pointerPair;
+            pinchStateRef.current = {
+              startDistance: getDistanceBetweenPointers(firstPointer, secondPointer),
+              startView: viewState,
+              startX: getPointerMidpoint(firstPointer, secondPointer).x,
+              startY: getPointerMidpoint(firstPointer, secondPointer).y,
+            };
+            dragStateRef.current = null;
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            return;
+          }
 
           dragStateRef.current = {
             lastX: event.clientX,
@@ -643,6 +769,34 @@ const MermaidChart = ({
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
+          if (activePointersRef.current.has(event.pointerId)) {
+            activePointersRef.current.set(event.pointerId, {
+              x: event.clientX,
+              y: event.clientY,
+            });
+          }
+
+          if (pinchStateRef.current && activePointersRef.current.size >= 2) {
+            const pointerPair = getTrackedPointerPair(activePointersRef.current);
+            if (!pointerPair) return;
+            const [firstPointer, secondPointer] = pointerPair;
+            const midpoint = getPointerMidpoint(firstPointer, secondPointer);
+            const distance = getDistanceBetweenPointers(firstPointer, secondPointer);
+
+            if (distance > 0 && pinchStateRef.current.startDistance > 0) {
+              event.preventDefault();
+              pinchTo(
+                pinchStateRef.current.startView,
+                pinchStateRef.current.startX,
+                pinchStateRef.current.startY,
+                midpoint.x,
+                midpoint.y,
+                getPinchScaleFactor(pinchStateRef.current.startDistance, distance),
+              );
+            }
+            return;
+          }
+
           const dragState = dragStateRef.current;
           if (!dragState || dragState.pointerId !== event.pointerId) return;
 
@@ -655,9 +809,24 @@ const MermaidChart = ({
           };
         }}
         onPointerUp={(event) => {
-          if (dragStateRef.current?.pointerId !== event.pointerId) return;
-          dragStateRef.current = null;
-          event.currentTarget.releasePointerCapture(event.pointerId);
+          activePointersRef.current.delete(event.pointerId);
+          if (activePointersRef.current.size < 2) {
+            pinchStateRef.current = null;
+          }
+
+          if (dragStateRef.current?.pointerId === event.pointerId) {
+            dragStateRef.current = null;
+          }
+
+          if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+        onPointerLeave={(event) => {
+          activePointersRef.current.delete(event.pointerId);
+          if (activePointersRef.current.size < 2) {
+            pinchStateRef.current = null;
+          }
         }}
       >
         {zoomingEnabled && (

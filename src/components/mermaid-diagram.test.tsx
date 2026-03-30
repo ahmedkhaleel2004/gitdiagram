@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import MermaidChart, {
   getDefaultDiagramScale,
+  getPinchScaleFactor,
   getWheelZoomScaleFactor,
   isLikelyTrackpadGesture,
   normalizeWheelDelta,
@@ -56,6 +57,14 @@ describe("MermaidChart", () => {
         };
       },
     });
+
+    if (!HTMLElement.prototype.setPointerCapture) {
+      HTMLElement.prototype.setPointerCapture = vi.fn();
+    }
+
+    if (!HTMLElement.prototype.releasePointerCapture) {
+      HTMLElement.prototype.releasePointerCapture = vi.fn();
+    }
   });
 
   beforeEach(() => {
@@ -161,6 +170,12 @@ describe("MermaidChart", () => {
     await waitFor(() => {
       expect((mermaid as HTMLDivElement).style.transform).not.toBe(initialTransform);
     });
+  });
+
+  it("uses distance ratio for two-finger pinch zoom", () => {
+    expect(getPinchScaleFactor(200, 300)).toBe(1.5);
+    expect(getPinchScaleFactor(200, 100)).toBe(0.5);
+    expect(getPinchScaleFactor(0, 100)).toBe(1);
   });
 
   it("treats desktop wheel input as zoom and small pixel deltas as trackpad pan", () => {
