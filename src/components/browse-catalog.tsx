@@ -47,11 +47,19 @@ const browseSkeletonRows = Array.from({ length: 6 }, (_, index) => index);
 const BROWSE_SESSION_STORAGE_KEY = "gitdiagram:browse-query";
 
 function formatStarCount(stargazerCount: number | null) {
-  return stargazerCount === null ? "—" : starCountFormatter.format(stargazerCount);
+  return stargazerCount === null
+    ? "—"
+    : starCountFormatter.format(stargazerCount);
 }
 
 function formatGeneratedAt(value: string) {
   return generatedAtFormatter.format(new Date(value));
+}
+
+function formatStarSummary(stargazerCount: number | null) {
+  return stargazerCount === null
+    ? "No star data"
+    : `${formatStarCount(stargazerCount)} stars`;
 }
 
 function syncBrowseUrl(
@@ -88,7 +96,9 @@ function persistBrowseState(state: {
 
 function readPersistedBrowseState() {
   try {
-    const storedState = window.sessionStorage.getItem(BROWSE_SESSION_STORAGE_KEY);
+    const storedState = window.sessionStorage.getItem(
+      BROWSE_SESSION_STORAGE_KEY,
+    );
     if (!storedState) {
       return null;
     }
@@ -116,9 +126,9 @@ function BrowseCatalogControls(props: {
   sort: BrowseSort;
 }) {
   return (
-    <div className="neo-panel rounded-lg grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_220px_180px] md:gap-5 md:p-6">
+    <div className="neo-panel grid gap-4 rounded-lg p-5 md:grid-cols-[minmax(0,1fr)_220px_180px] md:gap-5 md:p-6">
       <label className="flex flex-col gap-5">
-        <span className="text-sm font-semibold uppercase tracking-[0.16em] text-black dark:text-[hsl(var(--foreground))]">
+        <span className="text-sm font-semibold tracking-[0.16em] text-black uppercase dark:text-[hsl(var(--foreground))]">
           Search Repositories
         </span>
         <input
@@ -126,18 +136,20 @@ function BrowseCatalogControls(props: {
           value={props.searchInput}
           onChange={(event) => props.onSearchChange(event.target.value)}
           placeholder="owner/repo"
-          className="neo-input w-full rounded-md bg-[hsl(var(--background))] px-4 py-3 text-base placeholder:text-gray-700 dark:placeholder:text-[hsl(var(--foreground))] focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+          className="neo-input w-full rounded-md bg-[hsl(var(--background))] px-4 py-3 text-base placeholder:text-gray-700 focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none dark:placeholder:text-[hsl(var(--foreground))]"
         />
       </label>
 
       <label className="flex flex-col gap-5">
-        <span className="text-sm font-semibold uppercase tracking-[0.16em] text-black dark:text-[hsl(var(--foreground))]">
+        <span className="text-sm font-semibold tracking-[0.16em] text-black uppercase dark:text-[hsl(var(--foreground))]">
           Sort
         </span>
         <select
           value={props.sort}
-          onChange={(event) => props.onSortChange(event.target.value as BrowseSort)}
-          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+          onChange={(event) =>
+            props.onSortChange(event.target.value as BrowseSort)
+          }
+          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none"
         >
           {sortOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -148,7 +160,7 @@ function BrowseCatalogControls(props: {
       </label>
 
       <label className="flex flex-col gap-5">
-        <span className="text-sm font-semibold uppercase tracking-[0.16em] text-black dark:text-[hsl(var(--foreground))]">
+        <span className="text-sm font-semibold tracking-[0.16em] text-black uppercase dark:text-[hsl(var(--foreground))]">
           Minimum Stars
         </span>
         <select
@@ -156,7 +168,7 @@ function BrowseCatalogControls(props: {
           onChange={(event) =>
             props.onMinStarsChange(Number.parseInt(event.target.value, 10))
           }
-          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none"
         >
           {minStarOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -186,62 +198,70 @@ function BrowseCatalogLoadingState(props: {
       </div>
 
       <div className="neo-panel overflow-hidden rounded-lg">
-        <div>
-          <table className="min-w-full table-fixed border-collapse">
-            <colgroup>
-              <col />
-              <col className="w-[110px] sm:w-[130px]" />
-              <col className="w-[170px] sm:w-[210px] lg:w-[240px]" />
-              <col className="w-[190px] sm:w-[220px] lg:w-[270px]" />
-            </colgroup>
-            <thead>
-              <tr className="border-b-[3px] border-black bg-[hsl(var(--neo-panel-muted))] text-left text-sm uppercase tracking-[0.16em] dark:border-[#0d0a19] dark:bg-[hsl(var(--neo-panel-muted))]">
-                <th className="px-5 py-4 font-semibold">Repository</th>
-                <th className="px-5 py-4 font-semibold">Stars</th>
-                <th className="px-5 py-4 font-semibold">Last Generated</th>
-                <th className="px-5 py-4 font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {browseSkeletonRows.map((row) => (
-                <tr
-                  key={row}
-                  className="border-b border-black/15 last:border-b-0 dark:border-white/10"
-                >
-                  <td className="px-5 py-5">
-                    <Skeleton className="h-10 w-full max-w-[32rem]" />
-                  </td>
-                  <td className="px-5 py-5">
-                    <Skeleton className="h-8 w-24" />
-                  </td>
-                  <td className="px-5 py-5">
-                    <Skeleton className="h-8 w-48" />
-                  </td>
-                  <td className="px-5 py-5">
-                    <div className="flex gap-3 whitespace-nowrap">
-                      <Skeleton className="h-11 w-40" />
-                      <Skeleton className="h-11 w-28" />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="border-b-[3px] border-black bg-[hsl(var(--neo-panel-muted))] px-4 py-3 text-left text-xs font-semibold tracking-[0.18em] uppercase lg:hidden dark:border-[#0d0a19] dark:bg-[hsl(var(--neo-panel-muted))]">
+          Repository Results
         </div>
+        <table className="w-full border-collapse lg:table-fixed">
+          <colgroup className="hidden lg:table-column-group">
+            <col />
+            <col className="w-[110px] xl:w-[130px]" />
+            <col className="w-[210px] xl:w-[240px]" />
+            <col className="w-[244px] xl:w-[292px]" />
+          </colgroup>
+          <thead className="hidden lg:table-header-group">
+            <tr className="border-b-[3px] border-black bg-[hsl(var(--neo-panel-muted))] text-left text-sm tracking-[0.16em] uppercase dark:border-[#0d0a19] dark:bg-[hsl(var(--neo-panel-muted))]">
+              <th className="px-5 py-4 font-semibold">Repository</th>
+              <th className="px-5 py-4 font-semibold">Stars</th>
+              <th className="px-5 py-4 font-semibold">Last Generated</th>
+              <th className="px-5 py-4 font-semibold lg:pr-6 xl:pr-7">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="block lg:table-row-group">
+            {browseSkeletonRows.map((row) => (
+              <tr
+                key={row}
+                className="block border-b border-black/15 last:border-b-0 lg:table-row dark:border-white/10"
+              >
+                <td className="block px-4 pt-5 lg:table-cell lg:px-5 lg:py-5">
+                  <Skeleton className="h-10 w-full max-w-[32rem]" />
+                  <Skeleton className="mt-3 h-7 w-28 lg:hidden" />
+                </td>
+                <td className="hidden px-5 py-5 lg:table-cell">
+                  <Skeleton className="h-8 w-24" />
+                </td>
+                <td className="block px-4 pt-4 lg:table-cell lg:px-5 lg:py-5">
+                  <Skeleton className="h-4 w-28 lg:hidden" />
+                  <Skeleton className="mt-2 h-8 w-48" />
+                </td>
+                <td className="block px-4 py-4 lg:table-cell lg:px-5 lg:py-5">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:flex xl:gap-3 xl:whitespace-nowrap">
+                    <Skeleton className="h-12 w-full lg:h-11 xl:w-40" />
+                    <Skeleton className="h-12 w-full lg:h-11 xl:w-28" />
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Skeleton className="h-8 w-28" />
-          <div className="flex gap-3">
-            <Skeleton className="h-11 w-24 rounded-md" />
-            <Skeleton className="h-11 w-24 rounded-md" />
-          </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Skeleton className="h-8 w-28" />
+        <div className="flex gap-3">
+          <Skeleton className="h-11 w-24 rounded-md" />
+          <Skeleton className="h-11 w-24 rounded-md" />
         </div>
+      </div>
     </div>
   );
 }
 
-export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseCatalogProps) {
+export function BrowseCatalog({
+  entries: initialEntries,
+  initialQuery,
+}: BrowseCatalogProps) {
   const normalizedInitialQuery = normalizeBrowseQuery(initialQuery);
   const [entries, setEntries] = useState<BrowseIndexEntry[] | null>(
     initialEntries ?? null,
@@ -317,7 +337,9 @@ export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseC
         }
 
         setLoadError(
-          error instanceof Error ? error.message : "Failed to load browse index.",
+          error instanceof Error
+            ? error.message
+            : "Failed to load browse index.",
         );
         setIsLoaded(true);
       });
@@ -412,7 +434,7 @@ export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseC
   if (loadError) {
     return (
       <div className="neo-panel p-8">
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/70 dark:text-[hsl(var(--foreground))]">
+        <p className="text-sm font-semibold tracking-[0.2em] text-black/70 uppercase dark:text-[hsl(var(--foreground))]">
           Browse
         </p>
         <h2 className="mt-3 text-3xl font-bold">Browse index unavailable</h2>
@@ -426,7 +448,7 @@ export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseC
   if (isLoaded && entries === null) {
     return (
       <div className="neo-panel p-8">
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/70 dark:text-[hsl(var(--foreground))]">
+        <p className="text-sm font-semibold tracking-[0.2em] text-black/70 uppercase dark:text-[hsl(var(--foreground))]">
           Browse
         </p>
         <h2 className="mt-3 text-3xl font-bold">Browse index unavailable</h2>
@@ -470,10 +492,12 @@ export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseC
 
       {result.total === 0 ? (
         <div className="neo-panel p-10 text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/70 dark:text-[hsl(var(--foreground))]">
+          <p className="text-sm font-semibold tracking-[0.2em] text-black/70 uppercase dark:text-[hsl(var(--foreground))]">
             Browse
           </p>
-          <h2 className="mt-3 text-3xl font-bold">No diagrams match these filters</h2>
+          <h2 className="mt-3 text-3xl font-bold">
+            No diagrams match these filters
+          </h2>
           <p className="mt-4 text-base text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
             Try a broader search or lower the minimum star filter.
           </p>
@@ -481,86 +505,99 @@ export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseC
       ) : (
         <>
           <div className="flex items-center justify-between">
-            <p className="text-sm text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-              Showing {showingStart}-{showingEnd} of {starCountFormatter.format(result.total)} public diagrams
+            <p className="text-base text-[hsl(var(--neo-soft-text))] lg:text-sm dark:text-neutral-300">
+              Showing {showingStart}-{showingEnd} of{" "}
+              {starCountFormatter.format(result.total)} public diagrams
             </p>
           </div>
 
           <div className="neo-panel overflow-hidden rounded-lg">
-            <div>
-              <table className="w-full table-fixed border-collapse">
-                <thead>
-                  <tr className="border-b-[3px] border-black bg-[hsl(var(--neo-panel-muted))] text-left text-sm uppercase tracking-[0.16em] dark:border-[#0d0a19] dark:bg-[hsl(var(--neo-panel-muted))]">
-                    <th className="px-5 py-4 font-semibold">Repository</th>
-                    <th className="hidden px-5 py-4 font-semibold lg:table-cell lg:w-[104px]">
-                      Stars
-                    </th>
-                    <th className="w-[148px] px-5 py-4 font-semibold sm:w-[180px] lg:w-[188px] xl:w-[220px]">
-                      Last Generated
-                    </th>
-                    <th className="w-[144px] px-5 py-4 font-semibold sm:w-[168px] lg:w-[252px] xl:w-[264px]">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.items.map((item) => {
-                    const diagramPath = `/${encodeURIComponent(item.username)}/${encodeURIComponent(item.repo)}`;
-                    const githubPath = `https://github.com/${item.username}/${item.repo}`;
+            <div className="border-b-[3px] border-black bg-[hsl(var(--neo-panel-muted))] px-4 py-3 text-left text-xs font-semibold tracking-[0.18em] uppercase lg:hidden dark:border-[#0d0a19] dark:bg-[hsl(var(--neo-panel-muted))]">
+              Repository Results
+            </div>
+            <table className="w-full border-collapse lg:table-fixed">
+              <colgroup className="hidden lg:table-column-group">
+                <col />
+                <col className="w-[104px]" />
+                <col className="w-[188px] xl:w-[220px]" />
+                <col className="w-[280px] xl:w-[304px]" />
+              </colgroup>
+              <thead className="hidden lg:table-header-group">
+                <tr className="border-b-[3px] border-black bg-[hsl(var(--neo-panel-muted))] text-left text-sm tracking-[0.16em] uppercase dark:border-[#0d0a19] dark:bg-[hsl(var(--neo-panel-muted))]">
+                  <th className="px-5 py-4 font-semibold">Repository</th>
+                  <th className="hidden px-5 py-4 font-semibold lg:table-cell lg:w-[104px]">
+                    Stars
+                  </th>
+                  <th className="w-[188px] px-5 py-4 font-semibold lg:w-[188px] xl:w-[220px]">
+                    Last Generated
+                  </th>
+                  <th className="w-[280px] px-5 py-4 font-semibold lg:pr-6 xl:w-[304px] xl:pr-7">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="block lg:table-row-group">
+                {result.items.map((item) => {
+                  const diagramPath = `/${encodeURIComponent(item.username)}/${encodeURIComponent(item.repo)}`;
+                  const githubPath = `https://github.com/${item.username}/${item.repo}`;
 
-                    return (
-                      <tr
-                        key={`${item.username}/${item.repo}`}
-                        className="border-b border-black/15 align-middle last:border-b-0 dark:border-white/10"
-                      >
-                        <td className="px-5 py-4">
+                  return (
+                    <tr
+                      key={`${item.username}/${item.repo}`}
+                      className="block border-b border-black/15 align-middle last:border-b-0 lg:table-row dark:border-white/10"
+                    >
+                      <td className="block px-4 pt-5 lg:table-cell lg:px-5 lg:py-4">
+                        <Link
+                          href={diagramPath}
+                          title={`${item.username}/${item.repo}`}
+                          className="block text-[1.4rem] leading-[1.05] font-semibold tracking-tight break-all hover:underline lg:overflow-hidden lg:text-lg lg:leading-tight lg:break-normal lg:text-ellipsis lg:whitespace-nowrap"
+                        >
+                          {item.username}/{item.repo}
+                        </Link>
+                        <p className="mt-3 lg:hidden">
+                          <span className="inline-flex items-center rounded-full border-[2px] border-black bg-black/5 px-3 py-1 text-sm font-semibold dark:border-[#1a0d30] dark:bg-white/5">
+                            {formatStarSummary(item.stargazerCount)}
+                          </span>
+                        </p>
+                      </td>
+                      <td className="hidden px-5 py-4 text-sm font-semibold whitespace-nowrap lg:table-cell">
+                        {formatStarCount(item.stargazerCount)}
+                      </td>
+                      <td className="block px-4 pt-4 text-[hsl(var(--neo-soft-text))] lg:table-cell lg:px-5 lg:py-4 lg:text-sm dark:text-neutral-300">
+                        <span className="block text-[11px] font-semibold tracking-[0.18em] text-[hsl(var(--neo-soft-text))] uppercase lg:hidden dark:text-neutral-400">
+                          Last Generated
+                        </span>
+                        <time dateTime={item.lastSuccessfulAt}>
+                          <span className="mt-2 block text-base leading-snug font-medium text-[hsl(var(--foreground))] lg:mt-0 lg:text-sm lg:font-normal lg:whitespace-nowrap lg:text-[hsl(var(--neo-soft-text))] dark:text-[hsl(var(--foreground))] lg:dark:text-neutral-300">
+                            {formatGeneratedAt(item.lastSuccessfulAt)}
+                          </span>
+                        </time>
+                      </td>
+                      <td className="block px-4 py-4 lg:table-cell lg:px-5 lg:py-4 lg:pr-6 xl:px-6 xl:pr-7">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-center xl:flex xl:gap-3 xl:whitespace-nowrap">
                           <Link
                             href={diagramPath}
-                            title={`${item.username}/${item.repo}`}
-                            className="block overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold leading-tight tracking-tight hover:underline"
+                            className="neo-button inline-flex min-h-[52px] w-full items-center justify-center rounded-md px-4 py-3 text-base font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[148px] xl:px-4"
                           >
-                            {item.username}/{item.repo}
+                            Open Diagram
                           </Link>
-                          <p className="mt-2 text-sm font-semibold text-[hsl(var(--neo-soft-text))] dark:text-neutral-300 lg:hidden">
-                            {formatStarCount(item.stargazerCount)} stars
-                          </p>
-                        </td>
-                        <td className="hidden px-5 py-4 text-sm font-semibold whitespace-nowrap lg:table-cell">
-                          {formatStarCount(item.stargazerCount)}
-                        </td>
-                        <td className="px-5 py-4 text-sm text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-                          <time dateTime={item.lastSuccessfulAt}>
-                            <span className="block whitespace-nowrap">
-                              {formatGeneratedAt(item.lastSuccessfulAt)}
-                            </span>
-                          </time>
-                        </td>
-                        <td className="px-4 py-4 xl:px-5">
-                          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3 lg:whitespace-nowrap">
-                            <Link
-                              href={diagramPath}
-                              className="neo-button inline-flex w-full items-center justify-center whitespace-nowrap rounded-md px-3 py-2 text-sm font-semibold lg:min-w-[112px] lg:w-auto lg:px-3 xl:min-w-[148px] xl:px-4"
-                            >
-                              Open Diagram
-                            </Link>
-                            <Link
-                              href={githubPath}
-                              className="browse-muted-button inline-flex w-full items-center justify-center whitespace-nowrap rounded-md px-3 py-2 text-sm font-semibold lg:min-w-[78px] lg:w-auto lg:px-3 xl:min-w-[104px] xl:px-4"
-                            >
-                              GitHub
-                            </Link>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          <Link
+                            href={githubPath}
+                            className="browse-muted-button inline-flex min-h-[52px] w-full items-center justify-center rounded-md px-4 py-3 text-base font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[104px] xl:px-4"
+                          >
+                            GitHub
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
+            <p className="text-base text-[hsl(var(--neo-soft-text))] lg:text-sm dark:text-neutral-300">
               Page {result.page} of {result.totalPages}
             </p>
             <div className="flex gap-3">
@@ -568,7 +605,7 @@ export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseC
                 type="button"
                 onClick={() => handlePageChange(result.page - 1)}
                 disabled={!hasPreviousPage}
-                className={`browse-muted-button inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold ${
+                className={`browse-muted-button inline-flex items-center rounded-md px-5 py-3 text-base font-semibold lg:px-4 lg:py-2 lg:text-sm ${
                   hasPreviousPage ? "" : "cursor-not-allowed opacity-50"
                 }`}
               >
@@ -578,10 +615,10 @@ export function BrowseCatalog({ entries: initialEntries, initialQuery }: BrowseC
                 type="button"
                 onClick={() => handlePageChange(result.page + 1)}
                 disabled={!hasNextPage}
-                className={`inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold ${
+                className={`inline-flex items-center rounded-md px-5 py-3 text-base font-semibold lg:px-4 lg:py-2 lg:text-sm ${
                   hasNextPage
                     ? "neo-button"
-                    : "cursor-not-allowed border-[3px] border-black bg-[hsl(var(--neo-button))] px-4 py-2 opacity-50 dark:border-[#1a0d30]"
+                    : "cursor-not-allowed border-[3px] border-black bg-[hsl(var(--neo-button))] opacity-50 dark:border-[#1a0d30]"
                 }`}
               >
                 Next

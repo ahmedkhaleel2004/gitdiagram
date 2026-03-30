@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu, X } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 
 import { storeOpenAiKey } from "~/lib/openai-key";
@@ -27,9 +28,12 @@ function formatStarCount(count: number) {
 
 export function HeaderClient({ starCount }: HeaderClientProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isPrivateReposDialogOpen, setIsPrivateReposDialogOpen] =
     useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const isBrowsePage = pathname === "/browse";
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -56,7 +60,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
     <header className="border-b-[3px] border-black dark:border-black">
       <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-8">
         <Link href="/" className="flex items-center">
-          <span className="text-lg font-semibold sm:text-xl">
+          <span className="text-base font-semibold sm:text-xl">
             <span className="text-black transition-colors duration-200 hover:text-gray-600 dark:text-white dark:hover:text-[hsl(var(--neo-button-hover))]">
               Git
             </span>
@@ -65,7 +69,31 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
             </span>
           </span>
         </Link>
-        <nav className="flex items-center gap-3 sm:gap-6">
+        <div className="flex items-center gap-2 sm:hidden">
+          {!isBrowsePage ? (
+            <Link
+              href="/browse"
+              className="browse-muted-button inline-flex min-h-[42px] items-center rounded-md px-3 py-2 text-sm font-semibold"
+            >
+              Browse
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen((currentValue) => !currentValue)}
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="mobile-site-menu"
+            className="browse-muted-button inline-flex min-h-[42px] items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold"
+          >
+            {isMobileMenuOpen ? (
+              <X className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Menu className="h-4 w-4" aria-hidden="true" />
+            )}
+            Menu
+          </button>
+        </div>
+        <nav className="hidden items-center gap-6 sm:flex">
           <Link
             href="/browse"
             className="text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
@@ -95,7 +123,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
           <ThemeToggle />
           <Link
             href="https://github.com/ahmedkhaleel2004/gitdiagram"
-            className="flex items-center gap-1 text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))] sm:gap-2"
+            className="flex items-center gap-1 text-sm font-medium text-black transition-transform hover:translate-y-[-2px] hover:text-purple-600 sm:gap-2 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
           >
             <FaGithub className="h-5 w-5" />
             <span className="hidden sm:inline">GitHub</span>
@@ -109,6 +137,74 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
             </span>
           ) : null}
         </nav>
+
+        {isMobileMenuOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Close mobile menu"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="fixed inset-0 z-40 bg-black/30 sm:hidden"
+            />
+            <div className="pointer-events-none fixed inset-x-4 top-[4.5rem] z-50 sm:hidden">
+              <div
+                id="mobile-site-menu"
+                className="neo-panel pointer-events-auto ml-auto w-full max-w-[18rem] rounded-lg p-3"
+              >
+                <nav className="flex flex-col gap-2">
+                  {!isBrowsePage ? (
+                    <Link
+                      href="/browse"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="browse-muted-button inline-flex min-h-[48px] items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
+                    >
+                      Browse
+                    </Link>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsApiKeyDialogOpen(true);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="browse-muted-button inline-flex min-h-[48px] items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
+                  >
+                    API Key
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPrivateReposDialogOpen(true);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="browse-muted-button inline-flex min-h-[48px] items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
+                  >
+                    Private Repos
+                  </button>
+                  <ThemeToggle
+                    onToggle={() => setIsMobileMenuOpen(false)}
+                    className="browse-muted-button inline-flex min-h-[48px] items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
+                  />
+                  <Link
+                    href="https://github.com/ahmedkhaleel2004/gitdiagram"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="browse-muted-button inline-flex min-h-[48px] items-center justify-between gap-3 rounded-md px-4 py-3 text-sm font-semibold"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FaGithub className="h-5 w-5" />
+                      GitHub Repo
+                    </span>
+                    {starCount !== null ? (
+                      <span className="text-xs tracking-[0.12em] text-[hsl(var(--neo-soft-text))] uppercase dark:text-neutral-300">
+                        {formatStarCount(starCount)}
+                      </span>
+                    ) : null}
+                  </Link>
+                </nav>
+              </div>
+            </div>
+          </>
+        ) : null}
 
         <PrivateReposDialog
           isOpen={isPrivateReposDialogOpen}
