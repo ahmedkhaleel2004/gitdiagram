@@ -28,6 +28,15 @@ type ViewState = {
 
 const INTERACTIVE_FIT_PADDING = 24;
 const PREVIEW_FIT_PADDING = 16;
+const DEFAULT_DIAGRAM_VIEWPORT_HEIGHT_RATIO = 0.92;
+const DEFAULT_DIAGRAM_MIN_HEIGHT = 560;
+const DEFAULT_DIAGRAM_MAX_HEIGHT = 1280;
+const TALL_DIAGRAM_THRESHOLD = 1.8;
+const TALL_DIAGRAM_MAX_ASPECT_RATIO = 6;
+const TALL_DIAGRAM_WIDE_TARGET = 540;
+const TALL_DIAGRAM_NARROW_TARGET = 360;
+const MOUSE_WHEEL_ZOOM_SPEED = 0.0015;
+const TRACKPAD_PINCH_ZOOM_SPEED = 0.01;
 
 let elkLayoutRegistered = false;
 let domToJsonPatched = false;
@@ -142,6 +151,17 @@ export function normalizeWheelDelta(
   return event.deltaY;
 }
 
+export function getWheelZoomScaleFactor(
+  event: Pick<WheelEvent, "ctrlKey" | "metaKey" | "deltaMode" | "deltaY">,
+) {
+  const zoomSpeed =
+    event.ctrlKey || event.metaKey
+      ? TRACKPAD_PINCH_ZOOM_SPEED
+      : MOUSE_WHEEL_ZOOM_SPEED;
+
+  return Math.exp(-normalizeWheelDelta(event) * zoomSpeed);
+}
+
 export function isLikelyTrackpadGesture(
   event: Pick<WheelEvent, "ctrlKey" | "metaKey" | "deltaMode" | "deltaX" | "deltaY">,
 ) {
@@ -151,6 +171,59 @@ export function isLikelyTrackpadGesture(
   const absX = Math.abs(event.deltaX);
   const absY = Math.abs(event.deltaY);
   return absX > 0 || absY < 40;
+}
+
+export function getDefaultDiagramScale({
+  containerWidth,
+  contentHeight,
+  contentWidth,
+  viewportHeight,
+}: {
+  containerWidth: number;
+  contentHeight: number;
+  contentWidth: number;
+  viewportHeight: number;
+}) {
+  if (contentWidth <= 0 || contentHeight <= 0 || containerWidth <= 0) {
+    return 1;
+  }
+
+  const readableHeight = Math.max(
+    DEFAULT_DIAGRAM_MIN_HEIGHT,
+    Math.min(
+      DEFAULT_DIAGRAM_MAX_HEIGHT,
+      viewportHeight * DEFAULT_DIAGRAM_VIEWPORT_HEIGHT_RATIO,
+    ),
+  );
+
+  const scale = Math.min(
+    containerWidth / contentWidth,
+    readableHeight / contentHeight,
+  );
+
+  if (!Number.isFinite(scale) || scale <= 0) {
+    return 1;
+  }
+
+  const aspectRatio = contentHeight / contentWidth;
+  if (aspectRatio <= TALL_DIAGRAM_THRESHOLD) {
+    return scale;
+  }
+
+  const tallnessProgress = Math.min(
+    1,
+    Math.max(
+      0,
+      (aspectRatio - TALL_DIAGRAM_THRESHOLD) /
+        (TALL_DIAGRAM_MAX_ASPECT_RATIO - TALL_DIAGRAM_THRESHOLD),
+    ),
+  );
+  const targetRenderedWidth =
+    TALL_DIAGRAM_WIDE_TARGET +
+    (TALL_DIAGRAM_NARROW_TARGET - TALL_DIAGRAM_WIDE_TARGET) * tallnessProgress;
+  const readableWidthScale = Math.min(containerWidth, targetRenderedWidth) / contentWidth;
+
+  return Math.min(containerWidth / contentWidth, Math.max(scale, readableWidthScale));
 }
 
 const MermaidChart = ({
@@ -208,6 +281,24 @@ const MermaidChart = ({
       y: insetY + (availableHeight - height * scale) / 2,
     });
   }, [fitPadding]);
+
+  const scaleDiagramForReading = useCallback(() => {
+    const containerElement = containerRef.current;
+    const svgElement = containerElement?.querySelector(".mermaid svg");
+    if (!(containerElement instanceof HTMLDivElement)) return;
+    if (!(svgElement instanceof SVGSVGElement)) return;
+
+    const { height, width } = getSvgDimensions(svgElement);
+    const scale = getDefaultDiagramScale({
+      containerWidth: containerElement.getBoundingClientRect().width,
+      contentHeight: height,
+      contentWidth: width,
+      viewportHeight: window.innerHeight,
+    });
+
+    svgElement.style.width = `${width * scale}px`;
+    svgElement.style.height = `${height * scale}px`;
+  }, []);
 
   const zoomAroundPoint = useCallback(
     (scaleFactor: number, clientX: number, clientY: number) => {
@@ -368,15 +459,29 @@ const MermaidChart = ({
         svgElement.style.maxWidth = "none";
 
         if (!zoomingEnabled) {
+          const { height, width } = getSvgDimensions(svgElement);
+          svgElement.style.width = `${width}px`;
+          svgElement.style.height = `${height}px`;
+
           if (fitToContainer) {
-            const { height, width } = getSvgDimensions(svgElement);
-            svgElement.style.width = `${width}px`;
-            svgElement.style.height = `${height}px`;
             fitDiagram();
           } else {
-            svgElement.style.width = "100%";
-            svgElement.style.height = "auto";
+            scaleDiagramForReading();
           }
+
+          if (typeof ResizeObserver !== "undefined" && containerRef.current) {
+            resizeObserverRef.current = new ResizeObserver(() => {
+              if (fitToContainer) {
+                fitDiagram();
+                return;
+              }
+
+              scaleDiagramForReading();
+            });
+
+            resizeObserverRef.current.observe(containerRef.current);
+          }
+
           setIsPanZoomReady(true);
           return;
         }
@@ -446,6 +551,7 @@ const MermaidChart = ({
     chart,
     fitToContainer,
     fitDiagram,
+    scaleDiagramForReading,
     zoomingEnabled,
     isDark,
     onRenderError,
@@ -465,7 +571,7 @@ const MermaidChart = ({
 
       if (!isLikelyTrackpadGesture(event)) {
         zoomAroundPoint(
-          Math.exp(-normalizeWheelDelta(event) * 0.0015),
+          getWheelZoomScaleFactor(event),
           event.clientX,
           event.clientY,
         );

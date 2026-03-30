@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MermaidChart, {
+  getDefaultDiagramScale,
+  getWheelZoomScaleFactor,
   isLikelyTrackpadGesture,
   normalizeWheelDelta,
 } from "~/components/mermaid-diagram";
@@ -111,7 +113,7 @@ describe("MermaidChart", () => {
     });
   });
 
-  it("shows custom controls and touchpad guidance when interactive mode is enabled", async () => {
+  it("shows custom controls when interactive mode is enabled", async () => {
     render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />);
 
     await waitFor(() => {
@@ -185,6 +187,42 @@ describe("MermaidChart", () => {
         deltaY: -3,
       }),
     ).toBe(-48);
+
+    expect(
+      getWheelZoomScaleFactor({
+        ctrlKey: true,
+        deltaMode: 0,
+        deltaY: -8,
+        metaKey: false,
+      }),
+    ).toBeGreaterThan(
+      getWheelZoomScaleFactor({
+        ctrlKey: false,
+        deltaMode: 0,
+        deltaY: -8,
+        metaKey: false,
+      }),
+    );
+  });
+
+  it("keeps tall default diagrams readable instead of shrinking them to viewport height", () => {
+    expect(
+      getDefaultDiagramScale({
+        containerWidth: 1000,
+        contentHeight: 1600,
+        contentWidth: 320,
+        viewportHeight: 800,
+      }),
+    ).toBeCloseTo(1.26);
+
+    expect(
+      getDefaultDiagramScale({
+        containerWidth: 1000,
+        contentHeight: 400,
+        contentWidth: 1600,
+        viewportHeight: 800,
+      }),
+    ).toBeCloseTo(0.625);
   });
 
   it("zooms the diagram with the toolbar controls", async () => {
