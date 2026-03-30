@@ -4,8 +4,33 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
 import elkLayouts from "@mermaid-js/layout-elk";
 import { useTheme } from "next-themes";
-import { Minus, Plus, ScanSearch } from "lucide-react";
+
+import { MermaidDiagramToolbar } from "~/components/mermaid-diagram-toolbar";
+import {
+  clampViewState,
+  createHiddenRenderTarget,
+  ensureDomNodesSerializeSafely,
+  getDefaultDiagramScale,
+  getDistanceBetweenPointers,
+  getPinchScaleFactor,
+  getPointerMidpoint,
+  getSvgDimensions,
+  getTrackedPointerPair,
+  getWheelZoomScaleFactor,
+  isLikelyTrackpadGesture,
+  type PinchState,
+  type PointerCoordinates,
+  type ViewState,
+} from "~/components/mermaid-diagram-helpers";
 import { cn } from "~/lib/utils";
+
+export {
+  getDefaultDiagramScale,
+  getPinchScaleFactor,
+  getWheelZoomScaleFactor,
+  isLikelyTrackpadGesture,
+  normalizeWheelDelta,
+} from "~/components/mermaid-diagram-helpers";
 
 interface MermaidChartProps {
   chart: string;
@@ -17,257 +42,10 @@ interface MermaidChartProps {
   fitToContainer?: boolean;
 }
 
-type ViewState = {
-  fitScale: number;
-  height: number;
-  scale: number;
-  width: number;
-  x: number;
-  y: number;
-};
-
-type PointerCoordinates = {
-  x: number;
-  y: number;
-};
-
-type PinchState = {
-  startDistance: number;
-  startView: ViewState;
-  startX: number;
-  startY: number;
-};
-
 const INTERACTIVE_FIT_PADDING = 24;
 const PREVIEW_FIT_PADDING = 16;
-const DEFAULT_DIAGRAM_VIEWPORT_HEIGHT_RATIO = 0.92;
-const DEFAULT_DIAGRAM_MIN_HEIGHT = 560;
-const DEFAULT_DIAGRAM_MAX_HEIGHT = 1280;
-const TALL_DIAGRAM_THRESHOLD = 1.8;
-const TALL_DIAGRAM_MAX_ASPECT_RATIO = 6;
-const TALL_DIAGRAM_WIDE_TARGET = 540;
-const TALL_DIAGRAM_NARROW_TARGET = 360;
-const MOUSE_WHEEL_ZOOM_SPEED = 0.0015;
-const TRACKPAD_PINCH_ZOOM_SPEED = 0.01;
 
 let elkLayoutRegistered = false;
-let domToJsonPatched = false;
-
-function ensureDomNodesSerializeSafely() {
-  if (domToJsonPatched || typeof window === "undefined") return;
-
-  const elementProto = window.Element?.prototype;
-  if (!elementProto || "toJSON" in elementProto) {
-    domToJsonPatched = true;
-    return;
-  }
-
-  Object.defineProperty(elementProto, "toJSON", {
-    configurable: true,
-    value: function toJSON(this: Element) {
-      return {
-        tagName: this.tagName,
-        id: this.id || undefined,
-        className:
-          typeof this.className === "string" ? this.className : undefined,
-      };
-    },
-  });
-
-  domToJsonPatched = true;
-}
-
-function createHiddenRenderTarget(width: number) {
-  const renderTarget = document.createElement("div");
-  renderTarget.setAttribute("aria-hidden", "true");
-  renderTarget.style.position = "absolute";
-  renderTarget.style.visibility = "hidden";
-  renderTarget.style.pointerEvents = "none";
-  renderTarget.style.overflow = "hidden";
-  renderTarget.style.left = "0";
-  renderTarget.style.top = "0";
-  renderTarget.style.zIndex = "-1";
-  renderTarget.style.width = `${Math.max(width, 1)}px`;
-  document.body.append(renderTarget);
-  return renderTarget;
-}
-
-function clampViewState({
-  nextScale,
-  nextX,
-  nextY,
-  containerHeight,
-  containerWidth,
-  contentHeight,
-  contentWidth,
-}: {
-  containerHeight: number;
-  containerWidth: number;
-  contentHeight: number;
-  contentWidth: number;
-  nextScale: number;
-  nextX: number;
-  nextY: number;
-}) {
-  const scaledWidth = contentWidth * nextScale;
-  const scaledHeight = contentHeight * nextScale;
-  const horizontalGutter = Math.max(32, Math.min(160, containerWidth * 0.12));
-  const verticalGutter = Math.max(32, Math.min(160, containerHeight * 0.12));
-
-  const x =
-    scaledWidth <= containerWidth
-      ? (containerWidth - scaledWidth) / 2
-      : Math.max(
-          containerWidth - scaledWidth - horizontalGutter,
-          Math.min(horizontalGutter, nextX),
-        );
-
-  const y =
-    scaledHeight <= containerHeight
-      ? (containerHeight - scaledHeight) / 2
-      : Math.max(
-          containerHeight - scaledHeight - verticalGutter,
-          Math.min(verticalGutter, nextY),
-        );
-
-  return { x, y };
-}
-
-function getSvgDimensions(svgElement: SVGSVGElement) {
-  const viewBox = svgElement.viewBox.baseVal;
-  if (viewBox && viewBox.width > 0 && viewBox.height > 0) {
-    return {
-      height: viewBox.height,
-      width: viewBox.width,
-    };
-  }
-
-  const bbox = svgElement.getBBox();
-  return {
-    height: Math.max(bbox.height, 1),
-    width: Math.max(bbox.width, 1),
-  };
-}
-
-function getDistanceBetweenPointers(
-  firstPointer: PointerCoordinates,
-  secondPointer: PointerCoordinates,
-) {
-  return Math.hypot(secondPointer.x - firstPointer.x, secondPointer.y - firstPointer.y);
-}
-
-function getPointerMidpoint(
-  firstPointer: PointerCoordinates,
-  secondPointer: PointerCoordinates,
-) {
-  return {
-    x: (firstPointer.x + secondPointer.x) / 2,
-    y: (firstPointer.y + secondPointer.y) / 2,
-  };
-}
-
-function getTrackedPointerPair(pointers: Map<number, PointerCoordinates>) {
-  const [firstPointer, secondPointer] = Array.from(pointers.values());
-  if (!firstPointer || !secondPointer) return null;
-  return [firstPointer, secondPointer] as const;
-}
-
-export function normalizeWheelDelta(
-  event: Pick<WheelEvent, "deltaMode" | "deltaY">,
-) {
-  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
-    return event.deltaY * 16;
-  }
-
-  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-    return event.deltaY * 120;
-  }
-
-  return event.deltaY;
-}
-
-export function getWheelZoomScaleFactor(
-  event: Pick<WheelEvent, "ctrlKey" | "metaKey" | "deltaMode" | "deltaY">,
-) {
-  const zoomSpeed =
-    event.ctrlKey || event.metaKey
-      ? TRACKPAD_PINCH_ZOOM_SPEED
-      : MOUSE_WHEEL_ZOOM_SPEED;
-
-  return Math.exp(-normalizeWheelDelta(event) * zoomSpeed);
-}
-
-export function getPinchScaleFactor(
-  startDistance: number,
-  currentDistance: number,
-) {
-  if (startDistance <= 0 || currentDistance <= 0) return 1;
-  return currentDistance / startDistance;
-}
-
-export function isLikelyTrackpadGesture(
-  event: Pick<WheelEvent, "ctrlKey" | "metaKey" | "deltaMode" | "deltaX" | "deltaY">,
-) {
-  if (event.ctrlKey || event.metaKey) return false;
-  if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) return false;
-
-  const absX = Math.abs(event.deltaX);
-  const absY = Math.abs(event.deltaY);
-  return absX > 0 || absY < 40;
-}
-
-export function getDefaultDiagramScale({
-  containerWidth,
-  contentHeight,
-  contentWidth,
-  viewportHeight,
-}: {
-  containerWidth: number;
-  contentHeight: number;
-  contentWidth: number;
-  viewportHeight: number;
-}) {
-  if (contentWidth <= 0 || contentHeight <= 0 || containerWidth <= 0) {
-    return 1;
-  }
-
-  const readableHeight = Math.max(
-    DEFAULT_DIAGRAM_MIN_HEIGHT,
-    Math.min(
-      DEFAULT_DIAGRAM_MAX_HEIGHT,
-      viewportHeight * DEFAULT_DIAGRAM_VIEWPORT_HEIGHT_RATIO,
-    ),
-  );
-
-  const scale = Math.min(
-    containerWidth / contentWidth,
-    readableHeight / contentHeight,
-  );
-
-  if (!Number.isFinite(scale) || scale <= 0) {
-    return 1;
-  }
-
-  const aspectRatio = contentHeight / contentWidth;
-  if (aspectRatio <= TALL_DIAGRAM_THRESHOLD) {
-    return scale;
-  }
-
-  const tallnessProgress = Math.min(
-    1,
-    Math.max(
-      0,
-      (aspectRatio - TALL_DIAGRAM_THRESHOLD) /
-        (TALL_DIAGRAM_MAX_ASPECT_RATIO - TALL_DIAGRAM_THRESHOLD),
-    ),
-  );
-  const targetRenderedWidth =
-    TALL_DIAGRAM_WIDE_TARGET +
-    (TALL_DIAGRAM_NARROW_TARGET - TALL_DIAGRAM_WIDE_TARGET) * tallnessProgress;
-  const readableWidthScale = Math.min(containerWidth, targetRenderedWidth) / contentWidth;
-
-  return Math.min(containerWidth / contentWidth, Math.max(scale, readableWidthScale));
-}
 
 const MermaidChart = ({
   chart,
@@ -525,7 +303,7 @@ const MermaidChart = ({
           filter: brightness(0.85);
         }
       `,
-      };
+    };
 
     const initializeMermaid = () => {
       mermaid.initialize({
@@ -623,7 +401,9 @@ const MermaidChart = ({
       } catch (error) {
         console.error("Mermaid render failed:", error);
         const message =
-          error instanceof Error ? error.message : "Unknown Mermaid render error.";
+          error instanceof Error
+            ? error.message
+            : "Unknown Mermaid render error.";
         setRenderMessage(`Mermaid render failed: ${message}`);
         const reportKey = `${chart}::${message}`;
         if (reportedRenderErrorRef.current !== reportKey) {
@@ -696,7 +476,7 @@ const MermaidChart = ({
       role={zoomingEnabled ? "region" : undefined}
       className={cn(
         "w-full p-4",
-        zoomingEnabled && "h-[70vh] min-h-[22rem] max-h-[52rem]",
+        zoomingEnabled && "h-[70vh] max-h-[52rem] min-h-[22rem]",
         containerClassName,
       )}
     >
@@ -711,7 +491,7 @@ const MermaidChart = ({
           "relative h-full touch-none",
           (zoomingEnabled || fitToContainer) && "overflow-hidden",
           zoomingEnabled &&
-            "rounded-xl border border-black/12 bg-white/30 select-none [&_*]:select-none dark:border-white/12 dark:bg-white/[0.03]",
+            "rounded-xl border border-black/12 bg-white/30 select-none dark:border-white/12 dark:bg-white/[0.03] [&_*]:select-none",
         )}
         onDragStart={(event) => {
           if (zoomingEnabled) {
@@ -737,7 +517,11 @@ const MermaidChart = ({
           const isInsideDiagram = Boolean(event.target.closest(".mermaid svg"));
           const isClickableNode = Boolean(event.target.closest(".clickable"));
           const isToolbarControl = Boolean(event.target.closest("button"));
-          if ((!isTouchPointer && !isInsideDiagram) || isClickableNode || isToolbarControl) {
+          if (
+            (!isTouchPointer && !isInsideDiagram) ||
+            isClickableNode ||
+            isToolbarControl
+          ) {
             return;
           }
 
@@ -748,12 +532,17 @@ const MermaidChart = ({
           event.currentTarget.setPointerCapture(event.pointerId);
 
           if (activePointersRef.current.size >= 2 && viewState) {
-            const pointerPair = getTrackedPointerPair(activePointersRef.current);
+            const pointerPair = getTrackedPointerPair(
+              activePointersRef.current,
+            );
             if (!pointerPair) return;
             const [firstPointer, secondPointer] = pointerPair;
             const midpoint = getPointerMidpoint(firstPointer, secondPointer);
             pinchStateRef.current = {
-              startDistance: getDistanceBetweenPointers(firstPointer, secondPointer),
+              startDistance: getDistanceBetweenPointers(
+                firstPointer,
+                secondPointer,
+              ),
               startView: viewState,
               startX: midpoint.x,
               startY: midpoint.y,
@@ -780,11 +569,16 @@ const MermaidChart = ({
           }
 
           if (pinchStateRef.current && activePointersRef.current.size >= 2) {
-            const pointerPair = getTrackedPointerPair(activePointersRef.current);
+            const pointerPair = getTrackedPointerPair(
+              activePointersRef.current,
+            );
             if (!pointerPair) return;
             const [firstPointer, secondPointer] = pointerPair;
             const midpoint = getPointerMidpoint(firstPointer, secondPointer);
-            const distance = getDistanceBetweenPointers(firstPointer, secondPointer);
+            const distance = getDistanceBetweenPointers(
+              firstPointer,
+              secondPointer,
+            );
 
             if (distance > 0 && pinchStateRef.current.startDistance > 0) {
               event.preventDefault();
@@ -794,7 +588,10 @@ const MermaidChart = ({
                 pinchStateRef.current.startY,
                 midpoint.x,
                 midpoint.y,
-                getPinchScaleFactor(pinchStateRef.current.startDistance, distance),
+                getPinchScaleFactor(
+                  pinchStateRef.current.startDistance,
+                  distance,
+                ),
               );
               if (nextView) {
                 pinchStateRef.current = {
@@ -812,7 +609,10 @@ const MermaidChart = ({
           if (!dragState || dragState.pointerId !== event.pointerId) return;
 
           event.preventDefault();
-          panBy(event.clientX - dragState.lastX, event.clientY - dragState.lastY);
+          panBy(
+            event.clientX - dragState.lastX,
+            event.clientY - dragState.lastY,
+          );
           dragStateRef.current = {
             ...dragState,
             lastX: event.clientX,
@@ -835,42 +635,13 @@ const MermaidChart = ({
         }}
       >
         {zoomingEnabled && (
-          <>
-            <div className="pointer-events-none absolute top-3 right-3 z-10 flex items-center gap-2">
-              <div className="pointer-events-auto flex items-center overflow-hidden rounded-full border border-black/10 bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.14)] ring-1 ring-white/70 backdrop-blur-md dark:border-white/10 dark:bg-[#101722]/78 dark:ring-white/10 dark:shadow-[0_12px_32px_rgba(0,0,0,0.32)]">
-                <button
-                  type="button"
-                  aria-label="Zoom out"
-                  disabled={!isPanZoomReady}
-                  className="flex h-10 w-10 items-center justify-center text-black transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-100 dark:hover:bg-white/5"
-                  onClick={() => stepZoom(0.85)}
-                >
-                  <Minus size={18} />
-                </button>
-                <div className="min-w-16 border-x border-black/10 px-3 text-center text-[11px] font-semibold tracking-[0.16em] text-black/80 uppercase dark:border-white/10 dark:text-neutral-100/80">
-                  {formattedZoom}
-                </div>
-                <button
-                  type="button"
-                  aria-label="Zoom in"
-                  disabled={!isPanZoomReady}
-                  className="flex h-10 w-10 items-center justify-center text-black transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-100 dark:hover:bg-white/5"
-                  onClick={() => stepZoom(1.18)}
-                >
-                  <Plus size={18} />
-                </button>
-              </div>
-              <button
-                type="button"
-                disabled={!isPanZoomReady}
-                className="pointer-events-auto inline-flex h-10 items-center gap-2 rounded-full border border-black/10 bg-white/80 px-3 text-[11px] font-semibold tracking-[0.16em] text-black/80 uppercase shadow-[0_10px_30px_rgba(15,23,42,0.14)] ring-1 ring-white/70 backdrop-blur-md transition-colors hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-[#101722]/78 dark:text-neutral-100/80 dark:ring-white/10 dark:shadow-[0_12px_32px_rgba(0,0,0,0.32)] dark:hover:bg-[#18202c]/92"
-                onClick={fitDiagram}
-              >
-                <ScanSearch size={16} />
-                Fit
-              </button>
-            </div>
-          </>
+          <MermaidDiagramToolbar
+            formattedZoom={formattedZoom}
+            isPanZoomReady={isPanZoomReady}
+            onFit={fitDiagram}
+            onZoomIn={() => stepZoom(1.18)}
+            onZoomOut={() => stepZoom(0.85)}
+          />
         )}
         <div
           key={`${chart}-${zoomingEnabled}-${resolvedTheme ?? "light"}`}
@@ -886,7 +657,7 @@ const MermaidChart = ({
               : undefined
           }
           className={cn(
-            "mermaid text-foreground [&_svg]:block [&_svg]:mx-auto [&_svg]:max-w-full [&_svg]:overflow-visible",
+            "mermaid text-foreground [&_svg]:mx-auto [&_svg]:block [&_svg]:max-w-full [&_svg]:overflow-visible",
             zoomingEnabled &&
               "cursor-grab active:cursor-grabbing [&_svg]:h-auto [&_svg]:w-auto",
             !zoomingEnabled && "[&_svg]:h-auto",
