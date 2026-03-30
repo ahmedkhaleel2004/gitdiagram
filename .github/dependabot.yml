@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      - dependency-name: "posthog-js"
+      - dependency-name: "@posthog/*"
+    cooldown:
+      default-days: 3
+    labels:
+      - "dependencies"
+      - "posthog"
