@@ -46,6 +46,21 @@ function ensureDomNodesSerializeSafely() {
   domToJsonPatched = true;
 }
 
+function createHiddenRenderTarget(width: number) {
+  const renderTarget = document.createElement("div");
+  renderTarget.setAttribute("aria-hidden", "true");
+  renderTarget.style.position = "absolute";
+  renderTarget.style.visibility = "hidden";
+  renderTarget.style.pointerEvents = "none";
+  renderTarget.style.overflow = "hidden";
+  renderTarget.style.left = "0";
+  renderTarget.style.top = "0";
+  renderTarget.style.zIndex = "-1";
+  renderTarget.style.width = `${Math.max(width, 1)}px`;
+  document.body.append(renderTarget);
+  return renderTarget;
+}
+
 const MermaidChart = ({
   chart,
   zoomingEnabled = true,
@@ -155,15 +170,22 @@ const MermaidChart = ({
 
       initializeMermaid();
       mermaidElement.removeAttribute("data-processed");
-      mermaidElement.textContent = "";
+      const renderTarget = createHiddenRenderTarget(
+        Math.round(
+          mermaidElement.getBoundingClientRect().width ||
+            containerRef.current?.getBoundingClientRect().width ||
+            window.innerWidth,
+        ),
+      );
 
       try {
         const renderId = `gitdiagram-${Math.random().toString(36).slice(2)}`;
         const { svg, bindFunctions } = await mermaid.render(
           renderId,
           chart,
-          mermaidElement,
+          renderTarget,
         );
+        mermaidElement.textContent = "";
         mermaidElement.innerHTML = svg;
         bindFunctions?.(mermaidElement);
         await applyPanZoom();
@@ -178,6 +200,8 @@ const MermaidChart = ({
           reportedRenderErrorRef.current = reportKey;
           onRenderError?.(message);
         }
+      } finally {
+        renderTarget.remove();
       }
     };
 
@@ -206,14 +230,13 @@ const MermaidChart = ({
       <div
         key={`${chart}-${zoomingEnabled}-${resolvedTheme ?? "light"}`}
         className={cn(
-          "mermaid h-full text-foreground",
+          "mermaid h-full text-foreground [&_svg]:block [&_svg]:mx-auto [&_svg]:max-w-full [&_svg]:overflow-visible",
           zoomingEnabled &&
-            "rounded-lg border-2 border-black bg-white dark:border-[#3b4656] dark:bg-[#1f2631]",
+            "rounded-lg border-2 border-black bg-white [&_svg]:h-full [&_svg]:w-full dark:border-[#3b4656] dark:bg-[#1f2631]",
+          !zoomingEnabled && "[&_svg]:h-auto",
           diagramClassName,
         )}
-      >
-        {chart}
-      </div>
+      />
     </div>
   );
 };

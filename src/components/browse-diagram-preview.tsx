@@ -19,6 +19,8 @@ interface BrowseDiagramPreviewProps {
   status: "loading" | "ready" | "error";
 }
 
+const PREVIEW_BODY_CLASS = "h-[248px]";
+
 export function BrowseDiagramPreview({
   chart,
   repoLabel,
@@ -38,12 +40,14 @@ export function BrowseDiagramPreview({
       </div>
 
       {status === "loading" ? (
-        <div className="space-y-3 p-4">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-[220px] w-full" />
+        <div className={`flex flex-col gap-3 p-4 ${PREVIEW_BODY_CLASS}`}>
+          <Skeleton className="h-4 w-24 shrink-0" />
+          <Skeleton className="w-full flex-1" />
         </div>
       ) : status === "error" || !chart ? (
-        <div className="flex h-[248px] items-center justify-center px-6 text-center text-sm text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
+        <div
+          className={`flex items-center justify-center px-6 text-center text-sm text-[hsl(var(--neo-soft-text))] dark:text-neutral-300 ${PREVIEW_BODY_CLASS}`}
+        >
           Preview unavailable.
         </div>
       ) : (
@@ -51,7 +55,7 @@ export function BrowseDiagramPreview({
           chart={chart}
           zoomingEnabled={false}
           backgroundColor="transparent"
-          containerClassName="h-[248px] overflow-hidden p-0"
+          containerClassName={`${PREVIEW_BODY_CLASS} overflow-hidden p-0`}
           diagramClassName="overflow-hidden bg-[hsl(var(--neo-panel))] px-2 py-3 dark:bg-[hsl(var(--neo-panel-muted))] [&_svg]:h-full [&_svg]:w-full"
         />
       )}
