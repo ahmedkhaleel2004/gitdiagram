@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Keep PostHog npm packages current, but wait a few days before merging new releases.",
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["posthog-js", "@posthog/**"],
+      "minimumReleaseAge": "3 days",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Require a manual check before major PostHog upgrades.",
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["posthog-js", "@posthog/**"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}
