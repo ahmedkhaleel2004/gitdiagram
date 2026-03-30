@@ -268,6 +268,44 @@ describe("BrowseCatalog", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("uses preloaded default preview diagrams without fetching on hover", async () => {
+    vi.useFakeTimers();
+    window.matchMedia = vi
+      .fn()
+      .mockImplementation(() => createMatchMediaResult(true));
+    fetchSpy = vi.spyOn(global, "fetch");
+
+    render(
+      <BrowseCatalog
+        entries={[
+          {
+            username: "vercel",
+            repo: "next.js",
+            lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+            stargazerCount: 130000,
+          },
+        ]}
+        initialPreviewDiagrams={{
+          "vercel/next.js": "flowchart TD\nA-->B",
+        }}
+        initialQuery={{}}
+      />,
+    );
+    await Promise.resolve();
+
+    const repoCell = screen.getByText("vercel/next.js").closest("td");
+
+    expect(repoCell).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.mouseEnter(repoCell!, { clientX: 120, clientY: 140 });
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    await Promise.resolve();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("renders the repository name as text and keeps diagram navigation on the action button", () => {
     render(
       <BrowseCatalog

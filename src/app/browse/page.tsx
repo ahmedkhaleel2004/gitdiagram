@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
+
+import {
+  getCachedDefaultBrowsePreviewDiagrams,
+} from "~/app/browse/data";
 import { BrowseCatalog } from "~/components/browse-catalog";
+import { normalizeBrowseQuery } from "~/features/browse/catalog";
 
 type BrowsePageProps = {
   searchParams: Promise<{
@@ -22,6 +27,21 @@ function getSingleValue(value: string | string[] | undefined) {
 
 export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const resolvedSearchParams = await searchParams;
+  const initialQuery = {
+    q: getSingleValue(resolvedSearchParams.q),
+    sort: getSingleValue(resolvedSearchParams.sort),
+    minStars: getSingleValue(resolvedSearchParams.minStars),
+    page: getSingleValue(resolvedSearchParams.page),
+  };
+  const normalizedInitialQuery = normalizeBrowseQuery(initialQuery);
+  const shouldPreloadDefaultPreviews =
+    normalizedInitialQuery.q === "" &&
+    normalizedInitialQuery.sort === "recent_desc" &&
+    normalizedInitialQuery.minStars === 0 &&
+    normalizedInitialQuery.page === 1;
+  const initialPreviewDiagrams = shouldPreloadDefaultPreviews
+    ? await getCachedDefaultBrowsePreviewDiagrams()
+    : undefined;
 
   return (
     <main className="px-4 py-8 sm:px-8 sm:py-10">
@@ -38,12 +58,8 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
         </section>
 
         <BrowseCatalog
-          initialQuery={{
-            q: getSingleValue(resolvedSearchParams.q),
-            sort: getSingleValue(resolvedSearchParams.sort),
-            minStars: getSingleValue(resolvedSearchParams.minStars),
-            page: getSingleValue(resolvedSearchParams.page),
-          }}
+          initialPreviewDiagrams={initialPreviewDiagrams}
+          initialQuery={initialQuery}
         />
       </div>
     </main>

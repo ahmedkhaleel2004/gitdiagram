@@ -31,6 +31,7 @@ import { Skeleton } from "~/components/ui/skeleton";
 
 interface BrowseCatalogProps {
   entries?: BrowseIndexEntry[];
+  initialPreviewDiagrams?: Record<string, string>;
   initialQuery: BrowseQuery;
 }
 
@@ -319,6 +320,7 @@ function BrowseCatalogLoadingState(props: {
 
 export function BrowseCatalog({
   entries: initialEntries,
+  initialPreviewDiagrams,
   initialQuery,
 }: BrowseCatalogProps) {
   const normalizedInitialQuery = normalizeBrowseQuery(initialQuery);
@@ -426,6 +428,16 @@ export function BrowseCatalog({
   }, [minStars, page, searchInput, sort]);
 
   useEffect(() => {
+    if (!initialPreviewDiagrams) {
+      return;
+    }
+
+    for (const [key, diagram] of Object.entries(initialPreviewDiagrams)) {
+      diagramPreviewCache.set(key, diagram);
+    }
+  }, [initialPreviewDiagrams]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return;
     }
@@ -445,11 +457,14 @@ export function BrowseCatalog({
 
   useEffect(() => {
     if (desktopHoverEnabled) {
+      if (initialPreviewDiagrams && Object.keys(initialPreviewDiagrams).length > 0) {
+        preloadBrowseDiagramPreviewChart();
+      }
       return;
     }
 
     closeHoverPreview();
-  }, [closeHoverPreview, desktopHoverEnabled]);
+  }, [closeHoverPreview, desktopHoverEnabled, initialPreviewDiagrams]);
 
   useEffect(() => {
     if (initialEntries) {
