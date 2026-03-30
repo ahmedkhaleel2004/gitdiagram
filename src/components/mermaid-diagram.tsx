@@ -14,6 +14,7 @@ interface MermaidChartProps {
   containerClassName?: string;
   diagramClassName?: string;
   backgroundColor?: string;
+  fitToContainer?: boolean;
 }
 
 type ViewState = {
@@ -24,6 +25,9 @@ type ViewState = {
   x: number;
   y: number;
 };
+
+const INTERACTIVE_FIT_PADDING = 24;
+const PREVIEW_FIT_PADDING = 16;
 
 let elkLayoutRegistered = false;
 let domToJsonPatched = false;
@@ -124,6 +128,31 @@ function getSvgDimensions(svgElement: SVGSVGElement) {
   };
 }
 
+export function normalizeWheelDelta(
+  event: Pick<WheelEvent, "deltaMode" | "deltaY">,
+) {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+    return event.deltaY * 16;
+  }
+
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+    return event.deltaY * 120;
+  }
+
+  return event.deltaY;
+}
+
+export function isLikelyTrackpadGesture(
+  event: Pick<WheelEvent, "ctrlKey" | "metaKey" | "deltaMode" | "deltaX" | "deltaY">,
+) {
+  if (event.ctrlKey || event.metaKey) return false;
+  if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) return false;
+
+  const absX = Math.abs(event.deltaX);
+  const absY = Math.abs(event.deltaY);
+  return absX > 0 || absY < 40;
+}
+
 const MermaidChart = ({
   chart,
   zoomingEnabled = true,
@@ -131,6 +160,7 @@ const MermaidChart = ({
   containerClassName,
   diagramClassName,
   backgroundColor,
+  fitToContainer = false,
 }: MermaidChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const interactionLayerRef = useRef<HTMLDivElement>(null);
@@ -147,6 +177,11 @@ const MermaidChart = ({
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
+  const fitPadding = zoomingEnabled
+    ? INTERACTIVE_FIT_PADDING
+    : fitToContainer
+      ? PREVIEW_FIT_PADDING
+      : 0;
 
   const fitDiagram = useCallback(() => {
     const containerElement = containerRef.current;
@@ -156,7 +191,11 @@ const MermaidChart = ({
 
     const bounds = containerElement.getBoundingClientRect();
     const { height, width } = getSvgDimensions(svgElement);
-    const fitScale = Math.min(bounds.width / width, bounds.height / height);
+    const insetX = Math.min(fitPadding, Math.max((bounds.width - 1) / 2, 0));
+    const insetY = Math.min(fitPadding, Math.max((bounds.height - 1) / 2, 0));
+    const availableWidth = Math.max(bounds.width - insetX * 2, 1);
+    const availableHeight = Math.max(bounds.height - insetY * 2, 1);
+    const fitScale = Math.min(availableWidth / width, availableHeight / height);
     const scale = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
 
     userInteractedRef.current = false;
@@ -165,10 +204,10 @@ const MermaidChart = ({
       height,
       scale,
       width,
-      x: (bounds.width - width * scale) / 2,
-      y: (bounds.height - height * scale) / 2,
+      x: insetX + (availableWidth - width * scale) / 2,
+      y: insetY + (availableHeight - height * scale) / 2,
     });
-  }, []);
+  }, [fitPadding]);
 
   const zoomAroundPoint = useCallback(
     (scaleFactor: number, clientX: number, clientY: number) => {
@@ -329,8 +368,15 @@ const MermaidChart = ({
         svgElement.style.maxWidth = "none";
 
         if (!zoomingEnabled) {
-          svgElement.style.width = "100%";
-          svgElement.style.height = "auto";
+          if (fitToContainer) {
+            const { height, width } = getSvgDimensions(svgElement);
+            svgElement.style.width = `${width}px`;
+            svgElement.style.height = `${height}px`;
+            fitDiagram();
+          } else {
+            svgElement.style.width = "100%";
+            svgElement.style.height = "auto";
+          }
           setIsPanZoomReady(true);
           return;
         }
@@ -398,6 +444,7 @@ const MermaidChart = ({
   }, [
     backgroundColor,
     chart,
+    fitToContainer,
     fitDiagram,
     zoomingEnabled,
     isDark,
@@ -416,8 +463,12 @@ const MermaidChart = ({
 
       event.preventDefault();
 
-      if (event.ctrlKey || event.metaKey) {
-        zoomAroundPoint(Math.exp(-event.deltaY * 0.01), event.clientX, event.clientY);
+      if (!isLikelyTrackpadGesture(event)) {
+        zoomAroundPoint(
+          Math.exp(-normalizeWheelDelta(event) * 0.0015),
+          event.clientX,
+          event.clientY,
+        );
         return;
       }
 
@@ -443,7 +494,7 @@ const MermaidChart = ({
       aria-label={zoomingEnabled ? "Interactive diagram viewer" : undefined}
       role={zoomingEnabled ? "region" : undefined}
       className={cn(
-        "mx-auto w-full max-w-5xl p-4",
+        "w-full p-4",
         zoomingEnabled && "h-[70vh] min-h-[22rem] max-h-[52rem]",
         containerClassName,
       )}
@@ -457,7 +508,7 @@ const MermaidChart = ({
         ref={interactionLayerRef}
         className={cn(
           "relative h-full touch-none",
-          zoomingEnabled && "overflow-hidden",
+          (zoomingEnabled || fitToContainer) && "overflow-hidden",
           zoomingEnabled &&
             "rounded-xl border border-black/12 bg-white/30 dark:border-white/12 dark:bg-white/[0.03]",
         )}
@@ -537,7 +588,7 @@ const MermaidChart = ({
         <div
           key={`${chart}-${zoomingEnabled}-${resolvedTheme ?? "light"}`}
           style={
-            zoomingEnabled && viewState
+            viewState && (zoomingEnabled || fitToContainer)
               ? {
                   left: 0,
                   position: "absolute",

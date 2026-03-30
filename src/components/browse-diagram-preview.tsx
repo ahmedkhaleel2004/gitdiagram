@@ -60,9 +60,10 @@ export function BrowseDiagramPreview({
         <MermaidChart
           chart={chart}
           zoomingEnabled={false}
+          fitToContainer
           backgroundColor="transparent"
           containerClassName={`${PREVIEW_BODY_CLASS} overflow-hidden p-0`}
-          diagramClassName="overflow-hidden bg-[hsl(var(--neo-panel))] px-2 py-3 dark:bg-[hsl(var(--neo-panel-muted))] [&_svg]:h-full [&_svg]:w-full"
+          diagramClassName="overflow-hidden px-2 py-3 [&_svg]:h-full [&_svg]:w-full"
         />
       )}
     </div>

@@ -1,7 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import MermaidChart from "~/components/mermaid-diagram";
+import MermaidChart, {
+  isLikelyTrackpadGesture,
+  normalizeWheelDelta,
+} from "~/components/mermaid-diagram";
 
 const { renderMock, resizeObserverObserveMock } = vi.hoisted(() => ({
   renderMock: vi.fn().mockResolvedValue({
@@ -65,6 +68,26 @@ describe("MermaidChart", () => {
 
     expect(container.querySelector(".mermaid")).toBeInTheDocument();
     expect(screen.queryByText(/Mermaid render failed:/)).not.toBeInTheDocument();
+  });
+
+  it("can fit non-zoom diagrams into a fixed preview container", async () => {
+    const { container } = render(
+      <MermaidChart
+        chart="flowchart TD\nA-->B"
+        zoomingEnabled={false}
+        fitToContainer
+        containerClassName="h-[248px] overflow-hidden p-0"
+      />,
+    );
+
+    await waitFor(() => {
+      const mermaid = container.querySelector(".mermaid");
+      expect(mermaid).toBeInstanceOf(HTMLDivElement);
+      expect((mermaid as HTMLDivElement).style.transform).toContain("scale(");
+      expect((mermaid as HTMLDivElement).style.transform).not.toContain(
+        "translate3d(0px, 0px, 0)",
+      );
+    });
   });
 
   it("renders into a hidden staging element before updating the visible container", async () => {
@@ -135,6 +158,35 @@ describe("MermaidChart", () => {
     });
   });
 
+  it("treats desktop wheel input as zoom and small pixel deltas as trackpad pan", () => {
+    expect(
+      isLikelyTrackpadGesture({
+        ctrlKey: false,
+        deltaMode: 1,
+        deltaX: 0,
+        deltaY: -3,
+        metaKey: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      isLikelyTrackpadGesture({
+        ctrlKey: false,
+        deltaMode: 0,
+        deltaX: 4,
+        deltaY: 18,
+        metaKey: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      normalizeWheelDelta({
+        deltaMode: 1,
+        deltaY: -3,
+      }),
+    ).toBe(-48);
+  });
+
   it("zooms the diagram with the toolbar controls", async () => {
     render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />);
 
@@ -150,7 +202,9 @@ describe("MermaidChart", () => {
   });
 
   it("resets back to fit when the fit button is pressed", async () => {
-    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />);
+    const { container } = render(
+      <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("100%")).toBeInTheDocument();
@@ -167,5 +221,11 @@ describe("MermaidChart", () => {
     await waitFor(() => {
       expect(screen.getByText("100%")).toBeInTheDocument();
     });
+
+    const mermaid = container.querySelector(".mermaid");
+    expect(mermaid).toBeInstanceOf(HTMLDivElement);
+    expect((mermaid as HTMLDivElement).style.transform).not.toContain(
+      "translate3d(0px, 0px, 0)",
+    );
   });
 });
