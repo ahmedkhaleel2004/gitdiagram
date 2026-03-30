@@ -81,6 +81,17 @@ describe("MermaidChart", () => {
     expect(screen.queryByText(/Mermaid render failed:/)).not.toBeInTheDocument();
   });
 
+  it("keeps vertical touch scrolling enabled in read-only mode", () => {
+    const { container } = render(
+      <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />,
+    );
+
+    const interactionLayer = container.querySelector(".touch-pan-y");
+
+    expect(interactionLayer).toBeInTheDocument();
+    expect(container.querySelector(".touch-none")).not.toBeInTheDocument();
+  });
+
   it("can fit non-zoom diagrams into a fixed preview container", async () => {
     const { container } = render(
       <MermaidChart
@@ -138,6 +149,7 @@ describe("MermaidChart", () => {
     expect(screen.getByRole("button", { name: /fit/i })).toBeInTheDocument();
     expect(resizeObserverObserveMock).toHaveBeenCalled();
     expect(container.querySelector(".select-none")).toBeInTheDocument();
+    expect(container.querySelector(".touch-none")).toBeInTheDocument();
   });
 
   it("pans the diagram after zooming in", async () => {
