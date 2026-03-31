@@ -660,6 +660,7 @@ const MermaidChart = ({
           }
           className={cn(
             "mermaid text-foreground [&_svg]:mx-auto [&_svg]:block [&_svg]:max-w-full [&_svg]:overflow-visible",
+            !isPanZoomReady && "invisible",
             zoomingEnabled &&
               "cursor-grab active:cursor-grabbing [&_svg]:h-auto [&_svg]:w-auto",
             !zoomingEnabled && "[&_svg]:h-auto",

@@ -51,7 +51,7 @@ export const HOVER_PREVIEW_MEDIA_QUERY =
 export const HOVER_PREVIEW_WIDTH_PX = 360;
 export const HOVER_PREVIEW_HEIGHT_PX = 336;
 export const HOVER_PREVIEW_CURSOR_OFFSET_PX = 18;
-export const HOVER_PREVIEW_OPEN_DELAY_MS = 90;
+export const HOVER_PREVIEW_OPEN_DELAY_MS = 0;
 
 export const diagramPreviewCache = new Map<string, string>();
 

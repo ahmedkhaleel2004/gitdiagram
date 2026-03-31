@@ -112,6 +112,25 @@ describe("MermaidChart", () => {
     });
   });
 
+  it("keeps preview diagrams hidden until the initial fit has been applied", async () => {
+    const { container } = render(
+      <MermaidChart
+        chart="flowchart TD\nA-->B"
+        zoomingEnabled={false}
+        fitToContainer
+        containerClassName="h-[248px] overflow-hidden p-0"
+      />,
+    );
+
+    const mermaid = container.querySelector(".mermaid");
+    expect(mermaid).toBeInstanceOf(HTMLDivElement);
+    expect(mermaid).toHaveClass("invisible");
+
+    await waitFor(() => {
+      expect(mermaid).not.toHaveClass("invisible");
+    });
+  });
+
   it("renders into a hidden staging element before updating the visible container", async () => {
     const { container } = render(
       <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />,
