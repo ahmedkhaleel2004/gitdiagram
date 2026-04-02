@@ -61,7 +61,7 @@ export default function MainCard({
 
     const parsed = parseGitHubRepoUrl(repoUrl);
     if (!parsed) {
-      setError("Please enter a valid GitHub repository URL");
+      setError("Please enter a valid GitHub repository URL or owner/repo");
       return;
     }
 
@@ -85,7 +85,7 @@ export default function MainCard({
       <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <Input
-            placeholder="https://github.com/username/repo"
+            placeholder="GitHub repository URL or username/repo"
             className="neo-input flex-1 rounded-md px-3 py-4 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}

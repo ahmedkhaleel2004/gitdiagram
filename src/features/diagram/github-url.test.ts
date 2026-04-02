@@ -10,6 +10,20 @@ describe("parseGitHubRepoUrl", () => {
     });
   });
 
+  it("parses owner/repo shorthand", () => {
+    expect(parseGitHubRepoUrl("facebook/react")).toEqual({
+      username: "facebook",
+      repo: "react",
+    });
+  });
+
+  it("trims shorthand input before parsing", () => {
+    expect(parseGitHubRepoUrl("  vercel/next.js  ")).toEqual({
+      username: "vercel",
+      repo: "next.js",
+    });
+  });
+
   it("returns null for invalid urls", () => {
     expect(parseGitHubRepoUrl("https://gitlab.com/vercel/next.js")).toBeNull();
     expect(parseGitHubRepoUrl("not-a-url")).toBeNull();
