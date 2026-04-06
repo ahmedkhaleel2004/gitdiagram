@@ -5,12 +5,12 @@ description = "FastAPI backend for GitDiagram"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "api-analytics==1.2.7",
-  "boto3==1.42.78",
-  "fastapi==0.135.2",
+  "boto3==1.42.82",
+  "fastapi==0.135.3",
   "openai==2.30.0",
   "pyjwt[crypto]==2.12.1",
   "python-dotenv==1.2.2",
-  "requests==2.33.0",
+  "requests==2.33.1",
   "uvicorn[standard]==0.42.0",
 ]
 
