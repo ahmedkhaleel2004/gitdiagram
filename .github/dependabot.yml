@@ -1,74 +1,42 @@
 version: 2
-updates:
-  - package-ecosystem: "bun"
-    directories:
-      - "/"
-      - "/backend"
+
+multi-ecosystem-groups:
+  all-dependencies:
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
       timezone: "America/Toronto"
-    cooldown:
-      default-days: 3
-    groups:
-      javascript-dependencies:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-        group-by: "dependency-name"
     labels:
       - "dependencies"
-      - "javascript"
+
+updates:
+  - package-ecosystem: "bun"
+    directory: "/"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
+
+  - package-ecosystem: "bun"
+    directory: "/backend"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
 
   - package-ecosystem: "uv"
     directory: "/backend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:15"
-      timezone: "America/Toronto"
-    cooldown:
-      default-days: 3
-    groups:
-      python-dependencies:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-    labels:
-      - "dependencies"
-      - "python"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
 
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:30"
-      timezone: "America/Toronto"
-    cooldown:
-      default-days: 3
-    groups:
-      github-actions:
-        patterns:
-          - "*"
-    labels:
-      - "dependencies"
-      - "github-actions"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
 
   - package-ecosystem: "docker"
     directory: "/backend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:45"
-      timezone: "America/Toronto"
-    cooldown:
-      default-days: 3
-    labels:
-      - "dependencies"
-      - "docker"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
