@@ -1,5 +1,5 @@
 FROM oven/bun:1.3.11 AS bun-runtime
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 ENV ENVIRONMENT=production
@@ -8,7 +8,7 @@ ENV PORT=8000
 COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
 
 # Install uv inside the image
-COPY --from=ghcr.io/astral-sh/uv:0.5.24 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.2 /uv /uvx /bin/
 
 # Copy dependency manifests first for better layer caching
 COPY pyproject.toml uv.lock ./
