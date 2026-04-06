@@ -16,6 +16,8 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
+    cooldown:
+      default-days: 3
     ignore:
       - dependency-name: "eslint"
         update-types:
@@ -26,21 +28,31 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
+    cooldown:
+      default-days: 3
 
   - package-ecosystem: "uv"
     directory: "/backend"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
+    cooldown:
+      default-days: 3
+    allow:
+      - dependency-type: "all"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
+    cooldown:
+      default-days: 3
 
   - package-ecosystem: "docker"
     directory: "/backend"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
+    cooldown:
+      default-days: 3
