@@ -9,6 +9,6 @@
   "dependencies": {
     "dompurify": "3.3.3",
     "linkedom": "0.18.12",
-    "mermaid": "11.13.0"
+    "mermaid": "11.14.0"
   }
 }
