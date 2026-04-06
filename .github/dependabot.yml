@@ -44,5 +44,3 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    ignore:
-      - dependency-name: "python"

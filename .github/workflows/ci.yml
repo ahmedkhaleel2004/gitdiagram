@@ -37,11 +37,11 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - name: Install backend JS dependencies
         run: cd backend && bun ci
       - name: Install uv
-        run: pip install uv==0.5.24
+        run: pip install uv==0.11.2
       - name: Sync backend dependencies
         run: cd backend && uv sync --frozen --no-install-project
       - name: Import sanity
