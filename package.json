@@ -32,7 +32,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.3.3",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.0",
     "geist": "^1.7.0",
     "jsdom": "29.0.1",
     "linkedom": "^0.18.12",
