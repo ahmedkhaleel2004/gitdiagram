@@ -13,85 +13,36 @@ multi-ecosystem-groups:
 updates:
   - package-ecosystem: "bun"
     directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/Toronto"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    groups:
-      major-updates:
-        patterns:
-          - "*"
+    ignore:
+      - dependency-name: "eslint"
         update-types:
-          - "major"
+          - "version-update:semver-major"
 
   - package-ecosystem: "bun"
     directory: "/backend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/Toronto"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    groups:
-      major-updates:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
 
   - package-ecosystem: "uv"
     directory: "/backend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/Toronto"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    groups:
-      major-updates:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
 
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/Toronto"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    groups:
-      major-updates:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
 
   - package-ecosystem: "docker"
     directory: "/backend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/Toronto"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    groups:
-      major-updates:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+    ignore:
+      - dependency-name: "python"
