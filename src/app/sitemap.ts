@@ -2,8 +2,6 @@ import type { MetadataRoute } from "next";
 import { getCachedBrowseIndex } from "~/app/browse/data";
 import { SITE_URL } from "~/lib/site";
 
-export const revalidate = 60 * 5;
-
 function toValidDate(value: string): Date | null {
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? new Date(timestamp) : null;
