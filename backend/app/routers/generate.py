@@ -14,15 +14,14 @@ from pydantic import BaseModel, Field, ValidationError
 from app.core.observability import Timer, log_event
 from app.prompts import SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT
 from app.services.complimentary_gate import (
-    build_complimentary_reservation_tokens,
-    estimate_conservative_committed_tokens,
+    admit_complimentary_quota,
+    build_complimentary_admission_tokens,
     finalize_complimentary_quota,
     get_complimentary_denial_message,
     get_complimentary_model_mismatch_message,
     get_complimentary_provider_mismatch_message,
     is_complimentary_gate_enabled,
     model_matches_complimentary_family,
-    reserve_complimentary_quota,
     should_apply_complimentary_gate,
 )
 from app.services.cost_estimator import estimate_generation_cost
@@ -532,15 +531,15 @@ async def generate_stream(request: Request):
                     )
                     return
 
-                reservation_tokens = build_complimentary_reservation_tokens(
+                requested_tokens = build_complimentary_admission_tokens(
                     explanation_input_tokens=estimate["explanation_input_tokens"],
                     graph_static_input_tokens=estimate["graph_static_input_tokens"],
                 )
                 admitted, quota_reservation, quota_reset_at = await asyncio.to_thread(
-                    reserve_complimentary_quota,
+                    admit_complimentary_quota,
                     repository=diagram_state_repository,
                     model=model,
-                    reservation_tokens=reservation_tokens,
+                    requested_tokens=requested_tokens,
                 )
                 if not admitted or quota_reservation is None:
                     error_message = get_complimentary_denial_message()
@@ -574,7 +573,6 @@ async def generate_stream(request: Request):
                     "quotaStatus": "admitted",
                     "quotaBucket": quota_reservation.quota_bucket,
                     "quotaDateUtc": quota_reservation.quota_date_utc,
-                    "reservedTokens": quota_reservation.reserved_tokens,
                     "quotaResetAt": quota_reservation.quota_reset_at,
                 }
 
@@ -928,23 +926,12 @@ async def generate_stream(request: Request):
             )
             if quota_reservation is not None:
                 measured_committed_tokens = sum_generation_usage(*actual_usages).total_tokens
-                actual_committed_tokens = (
-                    estimate_conservative_committed_tokens(
-                        stage=audit.get("stage"),
-                        reservation_tokens=quota_reservation.reserved_tokens,
-                        explanation_input_tokens=estimate["explanation_input_tokens"],
-                        graph_static_input_tokens=estimate["graph_static_input_tokens"],
-                        measured_tokens=measured_committed_tokens,
-                    )
-                    if (was_cancelled or not has_complete_measured_usage)
-                    else measured_committed_tokens
-                )
+                actual_committed_tokens = measured_committed_tokens
                 audit = {
                     **audit,
                     "quotaStatus": "finalized",
                     "quotaBucket": quota_reservation.quota_bucket,
                     "quotaDateUtc": quota_reservation.quota_date_utc,
-                    "reservedTokens": quota_reservation.reserved_tokens,
                     "actualCommittedTokens": actual_committed_tokens,
                     "quotaResetAt": quota_reservation.quota_reset_at,
                 }

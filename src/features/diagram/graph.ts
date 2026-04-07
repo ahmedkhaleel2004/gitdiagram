@@ -99,7 +99,6 @@ export interface GenerationSessionAudit {
   quotaStatus?: "admitted" | "denied" | "finalized";
   quotaBucket?: string;
   quotaDateUtc?: string;
-  reservedTokens?: number;
   actualCommittedTokens?: number;
   quotaResetAt?: string;
   estimatedCost?: GenerationCostSummary;

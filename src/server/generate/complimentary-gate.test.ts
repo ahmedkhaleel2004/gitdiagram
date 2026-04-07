@@ -1,24 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const {
-  reserveQuotaInUpstash,
-  finalizeQuotaInUpstash,
-} = vi.hoisted(() => ({
-  reserveQuotaInUpstash: vi.fn(),
-  finalizeQuotaInUpstash: vi.fn(),
-}));
+const checkQuotaInUpstash = vi.fn();
+const commitQuotaUsageInUpstash = vi.fn();
 
 vi.mock("~/server/storage/quota-store", () => ({
-  reserveQuotaInUpstash,
-  finalizeQuotaInUpstash,
+  checkQuotaInUpstash,
+  commitQuotaUsageInUpstash,
 }));
 
 import {
-  buildComplimentaryReservationTokens,
-  estimateConservativeCommittedTokens,
+  admitComplimentaryQuota,
+  buildComplimentaryAdmissionTokens,
   finalizeComplimentaryQuota,
   modelMatchesComplimentaryFamily,
-  reserveComplimentaryQuota,
   shouldApplyComplimentaryGate,
 } from "~/server/generate/complimentary-gate";
 
@@ -67,50 +61,24 @@ describe("complimentary gate", () => {
     expect(modelMatchesComplimentaryFamily("gpt-5.4-mini")).toBe(true);
   });
 
-  it("builds a conservative whole-run token reservation", () => {
+  it("builds a conservative whole-run admission estimate", () => {
     expect(
-      buildComplimentaryReservationTokens({
+      buildComplimentaryAdmissionTokens({
         explanationInputTokens: 100,
         graphStaticInputTokens: 200,
       }),
     ).toBe(82_700);
   });
 
-  it("estimates conservative committed tokens by failure stage", () => {
-    expect(
-      estimateConservativeCommittedTokens({
-        stage: "explanation",
-        reservationTokens: 82_700,
-        estimate: {
-          explanationInputTokens: 100,
-          graphStaticInputTokens: 200,
-        },
-        measuredTokens: 0,
-      }),
-    ).toBe(12_100);
-
-    expect(
-      estimateConservativeCommittedTokens({
-        stage: "graph",
-        reservationTokens: 82_700,
-        estimate: {
-          explanationInputTokens: 100,
-          graphStaticInputTokens: 200,
-        },
-        measuredTokens: 150,
-      }),
-    ).toBe(30_300);
-  });
-
   it("returns a denial payload with the next UTC reset time", async () => {
-    reserveQuotaInUpstash.mockResolvedValue({
+    checkQuotaInUpstash.mockResolvedValue({
       admitted: false,
-      usage: { usedTokens: 9_000_000, reservedTokens: 1_000_000 },
+      usage: { usedTokens: 9_000_000 },
     });
 
-    const result = await reserveComplimentaryQuota({
+    const result = await admitComplimentaryQuota({
       model: "gpt-5.4-mini",
-      reservationTokens: 82_700,
+      requestedTokens: 82_700,
       now: new Date("2026-03-28T12:34:56.000Z"),
     });
 
@@ -120,18 +88,17 @@ describe("complimentary gate", () => {
         "GitDiagram's free daily OpenAI capacity is used up for now. I'm a solo student engineer running this free and open source, so please try again after 00:00 UTC or use your own OpenAI API key.",
       quotaResetAt: "2026-03-29T00:00:00.000Z",
     });
-    expect(reserveQuotaInUpstash).toHaveBeenCalledWith({
+    expect(checkQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai:gpt-5.4-mini:complimentary",
-      reservationTokens: 82_700,
+      requestedTokens: 82_700,
       tokenLimit: 10_000_000,
     });
   });
 
-  it("finalizes a reservation against Upstash", async () => {
-    finalizeQuotaInUpstash.mockResolvedValue({
+  it("finalizes exact committed usage against Upstash", async () => {
+    commitQuotaUsageInUpstash.mockResolvedValue({
       usedTokens: 345,
-      reservedTokens: 0,
     });
 
     await finalizeComplimentaryQuota({
@@ -139,39 +106,36 @@ describe("complimentary gate", () => {
         quotaBucket: "openai:gpt-5.4-mini:complimentary",
         quotaDateUtc: "2026-03-28",
         quotaResetAt: "2026-03-29T00:00:00.000Z",
-        reservedTokens: 82_700,
       },
       committedTokens: 345,
     });
 
-    expect(finalizeQuotaInUpstash).toHaveBeenCalledWith({
+    expect(commitQuotaUsageInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai:gpt-5.4-mini:complimentary",
-      reservationTokens: 82_700,
       committedTokens: 345,
     });
   });
 
   it("routes quota operations through Upstash", async () => {
-    reserveQuotaInUpstash.mockResolvedValue({
+    checkQuotaInUpstash.mockResolvedValue({
       admitted: true,
-      usage: { usedTokens: 1_000, reservedTokens: 2_000 },
+      usage: { usedTokens: 1_000 },
     });
-    finalizeQuotaInUpstash.mockResolvedValue({
+    commitQuotaUsageInUpstash.mockResolvedValue({
       usedTokens: 1_345,
-      reservedTokens: 1_655,
     });
 
-    const reservation = await reserveComplimentaryQuota({
+    const reservation = await admitComplimentaryQuota({
       model: "gpt-5.4-mini",
-      reservationTokens: 1_000,
+      requestedTokens: 1_000,
       now: new Date("2026-03-28T12:34:56.000Z"),
     });
 
-    expect(reserveQuotaInUpstash).toHaveBeenCalledWith({
+    expect(checkQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai:gpt-5.4-mini:complimentary",
-      reservationTokens: 1_000,
+      requestedTokens: 1_000,
       tokenLimit: 10_000_000,
     });
     expect(reservation.admitted).toBe(true);
@@ -185,10 +149,9 @@ describe("complimentary gate", () => {
       committedTokens: 345,
     });
 
-    expect(finalizeQuotaInUpstash).toHaveBeenCalledWith({
+    expect(commitQuotaUsageInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai:gpt-5.4-mini:complimentary",
-      reservationTokens: 1_000,
       committedTokens: 345,
     });
   });

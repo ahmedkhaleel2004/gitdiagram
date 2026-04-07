@@ -24,7 +24,6 @@ export function toStoredSessionSummary(
     quotaStatus: audit.quotaStatus,
     quotaBucket: audit.quotaBucket,
     quotaDateUtc: audit.quotaDateUtc,
-    reservedTokens: audit.reservedTokens,
     actualCommittedTokens: audit.actualCommittedTokens,
     quotaResetAt: audit.quotaResetAt,
     estimatedCost: audit.estimatedCost,

@@ -1,7 +1,7 @@
 import { MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
 import {
-  finalizeQuotaInUpstash,
-  reserveQuotaInUpstash,
+  checkQuotaInUpstash,
+  commitQuotaUsageInUpstash,
 } from "~/server/storage/quota-store";
 import type { AIProvider } from "~/server/generate/model-config";
 import {
@@ -24,15 +24,9 @@ export interface ComplimentaryQuotaReservation {
   quotaBucket: string;
   quotaDateUtc: string;
   quotaResetAt: string;
-  reservedTokens: number;
 }
 
-export interface ComplimentaryReservationEstimate {
-  explanationInputTokens: number;
-  graphStaticInputTokens: number;
-}
-
-export interface ConservativeQuotaCommitEstimate {
+export interface ComplimentaryAdmissionEstimate {
   explanationInputTokens: number;
   graphStaticInputTokens: number;
 }
@@ -115,8 +109,8 @@ export function getComplimentaryQuotaBucket(model: string): string {
   return `openai:${resolvePricingModel(model)}:complimentary`;
 }
 
-export function buildComplimentaryReservationTokens(
-  estimate: ComplimentaryReservationEstimate,
+export function buildComplimentaryAdmissionTokens(
+  estimate: ComplimentaryAdmissionEstimate,
 ): number {
   const explanationStageTokens =
     estimate.explanationInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS;
@@ -149,45 +143,9 @@ export function getComplimentaryProviderMismatchMessage(): string {
 export function getComplimentaryModelMismatchMessage(): string {
   return DEFAULT_MODEL_MISMATCH_MESSAGE;
 }
-
-export function estimateConservativeCommittedTokens(params: {
-  stage?: string;
-  reservationTokens: number;
-  estimate: ConservativeQuotaCommitEstimate;
-  measuredTokens: number;
-}): number {
-  const explanationStageTokens =
-    params.estimate.explanationInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS;
-  const firstGraphAttemptTokens =
-    explanationStageTokens +
-    params.estimate.graphStaticInputTokens +
-    EXPLANATION_MAX_OUTPUT_TOKENS +
-    GRAPH_MAX_OUTPUT_TOKENS;
-
-  const stage = params.stage ?? "started";
-
-  if (stage === "started") {
-    return params.measuredTokens;
-  }
-
-  if (
-    stage === "explanation_sent" ||
-    stage === "explanation" ||
-    stage === "explanation_chunk"
-  ) {
-    return Math.max(params.measuredTokens, explanationStageTokens);
-  }
-
-  if (stage === "graph_sent" || stage === "graph") {
-    return Math.max(params.measuredTokens, firstGraphAttemptTokens);
-  }
-
-  return Math.max(params.measuredTokens, params.reservationTokens);
-}
-
-export async function reserveComplimentaryQuota(params: {
+export async function admitComplimentaryQuota(params: {
   model: string;
-  reservationTokens: number;
+  requestedTokens: number;
   now?: Date;
 }): Promise<
   | { admitted: true; reservation: ComplimentaryQuotaReservation }
@@ -197,11 +155,11 @@ export async function reserveComplimentaryQuota(params: {
   const quotaDateUtc = getComplimentaryQuotaDateUtc(now);
   const quotaResetAt = getComplimentaryQuotaResetAt(now);
   const quotaBucket = getComplimentaryQuotaBucket(params.model);
-  const result = await reserveQuotaInUpstash({
+  const result = await checkQuotaInUpstash({
     quotaDateUtc,
     quotaBucket,
     tokenLimit: getComplimentaryDailyLimitTokens(),
-    reservationTokens: params.reservationTokens,
+    requestedTokens: params.requestedTokens,
   });
 
   if (!result.admitted) {
@@ -218,7 +176,6 @@ export async function reserveComplimentaryQuota(params: {
       quotaBucket,
       quotaDateUtc,
       quotaResetAt,
-      reservedTokens: params.reservationTokens,
     },
   };
 }
@@ -227,10 +184,9 @@ export async function finalizeComplimentaryQuota(params: {
   reservation: ComplimentaryQuotaReservation;
   committedTokens: number;
 }): Promise<void> {
-  await finalizeQuotaInUpstash({
+  await commitQuotaUsageInUpstash({
     quotaDateUtc: params.reservation.quotaDateUtc,
     quotaBucket: params.reservation.quotaBucket,
-    reservationTokens: params.reservation.reservedTokens,
     committedTokens: params.committedTokens,
   });
 }

@@ -280,7 +280,7 @@ def test_generate_stream_blocks_when_daily_free_quota_is_exhausted(monkeypatch):
     monkeypatch.setattr(generate, "model_matches_complimentary_family", lambda model: True)
     monkeypatch.setattr(
         generate,
-        "reserve_complimentary_quota",
+        "admit_complimentary_quota",
         lambda **kwargs: (False, None, "2026-03-29T00:00:00+00:00"),
     )
 
@@ -366,7 +366,7 @@ def test_generate_stream_bypasses_quota_gate_for_user_api_keys(monkeypatch):
     )
     monkeypatch.setattr(
         generate,
-        "reserve_complimentary_quota",
+        "admit_complimentary_quota",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("quota gate should be bypassed")),
     )
     monkeypatch.setattr(generate.openai_service, "stream_completion", fake_stream_completion)
@@ -485,7 +485,7 @@ def test_generate_stream_errors_when_quota_gate_enabled_without_upstash(monkeypa
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: False)
     monkeypatch.setattr(
         generate,
-        "reserve_complimentary_quota",
+        "admit_complimentary_quota",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("quota reservation should not run")),
     )
 
@@ -611,14 +611,13 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
     monkeypatch.setattr(generate, "model_matches_complimentary_family", lambda model: True)
     monkeypatch.setattr(
         generate,
-        "reserve_complimentary_quota",
+        "admit_complimentary_quota",
         lambda **kwargs: (
             True,
             ComplimentaryQuotaReservation(
                 quota_bucket="openai:gpt-5.4-mini:complimentary",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
-                reserved_tokens=82_700,
             ),
             "2026-03-29T00:00:00+00:00",
         ),
@@ -695,14 +694,13 @@ def test_generate_stream_finalizes_with_measured_usage_after_failure(monkeypatch
     monkeypatch.setattr(generate, "model_matches_complimentary_family", lambda model: True)
     monkeypatch.setattr(
         generate,
-        "reserve_complimentary_quota",
+        "admit_complimentary_quota",
         lambda **kwargs: (
             True,
             ComplimentaryQuotaReservation(
                 quota_bucket="openai:gpt-5.4-mini:complimentary",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
-                reserved_tokens=82_700,
             ),
             "2026-03-29T00:00:00+00:00",
         ),
@@ -721,7 +719,7 @@ def test_generate_stream_finalizes_with_measured_usage_after_failure(monkeypatch
     payloads = parse_sse_payloads(response.text)
     assert payloads[-1]["status"] == "error"
     assert payloads[-1]["error_code"] == "STREAM_FAILED"
-    assert finalized["committed_tokens"] == 30_300
+    assert finalized["committed_tokens"] == 150
 
 
 def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reservation(monkeypatch):
@@ -768,14 +766,13 @@ def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reser
     monkeypatch.setattr(generate, "model_matches_complimentary_family", lambda model: True)
     monkeypatch.setattr(
         generate,
-        "reserve_complimentary_quota",
+        "admit_complimentary_quota",
         lambda **kwargs: (
             True,
             ComplimentaryQuotaReservation(
                 quota_bucket="openai:gpt-5.4-mini:complimentary",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
-                reserved_tokens=82_700,
             ),
             "2026-03-29T00:00:00+00:00",
         ),
@@ -794,4 +791,4 @@ def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reser
     assert payloads[-1]["status"] == "error"
     assert payloads[-1]["error_code"] == "DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED"
     assert "default OpenAI key is temporarily unavailable" in payloads[-1]["error"]
-    assert finalized["committed_tokens"] == 12_100
+    assert finalized["committed_tokens"] == 0

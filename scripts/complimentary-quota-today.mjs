@@ -51,17 +51,14 @@ const result = await fetchUpstashResult([
   "HMGET",
   buildQuotaKey(quotaDateUtc, quotaBucket),
   "used_tokens",
-  "reserved_tokens",
 ]);
 
 const usedTokens = Number.parseInt(result?.[0] ?? "0", 10) || 0;
-const reservedTokens = Number.parseInt(result?.[1] ?? "0", 10) || 0;
-const remainingTokens = Math.max(tokenLimit - usedTokens - reservedTokens, 0);
+const remainingTokens = Math.max(tokenLimit - usedTokens, 0);
 
 console.log("Backend:         upstash");
 console.log(`UTC date:        ${quotaDateUtc}`);
 console.log(`Bucket:          ${quotaBucket}`);
 console.log(`Daily limit:     ${tokenLimit.toLocaleString()}`);
-console.log(`Used:            ${usedTokens.toLocaleString()}`);
-console.log(`Reserved:        ${reservedTokens.toLocaleString()}`);
-console.log(`Remaining:       ${remainingTokens.toLocaleString()}`);
+console.log(`Used exact:      ${usedTokens.toLocaleString()}`);
+console.log(`Remaining exact: ${remainingTokens.toLocaleString()}`);

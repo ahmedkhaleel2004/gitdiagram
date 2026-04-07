@@ -18,45 +18,33 @@ STATUS_TTL_SECONDS = 3 * 24 * 60 * 60
 QUOTA_TTL_SECONDS = 3 * 24 * 60 * 60
 PUBLIC_BROWSE_INDEX_KEY = "public/v1/_meta/browse-index.json"
 
-RESERVE_QUOTA_SCRIPT = """
+CHECK_QUOTA_SCRIPT = """
 local key = KEYS[1]
 local token_limit = tonumber(ARGV[1])
-local reservation_tokens = tonumber(ARGV[2])
-local ttl = tonumber(ARGV[3])
+local requested_tokens = tonumber(ARGV[2])
 
 local used_tokens = tonumber(redis.call("HGET", key, "used_tokens") or "0")
-local reserved_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
 
-if used_tokens + reserved_tokens + reservation_tokens > token_limit then
-  return {0, used_tokens, reserved_tokens}
+if used_tokens + requested_tokens > token_limit then
+  return {0, used_tokens}
 end
 
-local next_reserved_tokens = reserved_tokens + reservation_tokens
-redis.call("HSET", key, "used_tokens", used_tokens, "reserved_tokens", next_reserved_tokens)
-redis.call("EXPIRE", key, ttl)
-
-return {1, used_tokens, next_reserved_tokens}
+return {1, used_tokens}
 """
 
 FINALIZE_QUOTA_SCRIPT = """
 local key = KEYS[1]
-local reservation_tokens = tonumber(ARGV[1])
-local committed_tokens = tonumber(ARGV[2])
-local ttl = tonumber(ARGV[3])
+local committed_tokens = tonumber(ARGV[1])
+local ttl = tonumber(ARGV[2])
 
 local used_tokens = tonumber(redis.call("HGET", key, "used_tokens") or "0")
-local reserved_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
-
-local next_reserved_tokens = reserved_tokens - reservation_tokens
-if next_reserved_tokens < 0 then
-  next_reserved_tokens = 0
-end
 
 local next_used_tokens = used_tokens + math.max(committed_tokens, 0)
-redis.call("HSET", key, "used_tokens", next_used_tokens, "reserved_tokens", next_reserved_tokens)
+redis.call("HSET", key, "used_tokens", next_used_tokens)
+redis.call("HDEL", key, "reserved_tokens")
 redis.call("EXPIRE", key, ttl)
 
-return {next_used_tokens, next_reserved_tokens}
+return next_used_tokens
 """
 
 
@@ -469,29 +457,28 @@ class _QuotaStore:
         quota_date_utc: str,
         quota_bucket: str,
         token_limit: int,
-        reservation_tokens: int,
-    ) -> tuple[bool, int, int]:
+        requested_tokens: int,
+    ) -> tuple[bool, int]:
         result = self.redis.eval(
-            script=RESERVE_QUOTA_SCRIPT,
+            script=CHECK_QUOTA_SCRIPT,
             keys=[self._quota_key(quota_date_utc, quota_bucket)],
-            args=[token_limit, reservation_tokens, QUOTA_TTL_SECONDS],
+            args=[token_limit, requested_tokens],
         )
-        return bool(result[0] == 1), int(result[1] or 0), int(result[2] or 0)
+        return bool(result[0] == 1), int(result[1] or 0)
 
     def finalize(
         self,
         *,
         quota_date_utc: str,
         quota_bucket: str,
-        reservation_tokens: int,
         committed_tokens: int,
-    ) -> tuple[int, int]:
+    ) -> int:
         result = self.redis.eval(
             script=FINALIZE_QUOTA_SCRIPT,
             keys=[self._quota_key(quota_date_utc, quota_bucket)],
-            args=[reservation_tokens, committed_tokens, QUOTA_TTL_SECONDS],
+            args=[committed_tokens, QUOTA_TTL_SECONDS],
         )
-        return int(result[0] or 0), int(result[1] or 0)
+        return int(result or 0)
 
 
 class DiagramStateRepository:
@@ -525,7 +512,6 @@ class DiagramStateRepository:
             "quotaStatus": audit.get("quotaStatus"),
             "quotaBucket": audit.get("quotaBucket"),
             "quotaDateUtc": audit.get("quotaDateUtc"),
-            "reservedTokens": audit.get("reservedTokens"),
             "actualCommittedTokens": audit.get("actualCommittedTokens"),
             "quotaResetAt": audit.get("quotaResetAt"),
             "estimatedCost": audit.get("estimatedCost"),
@@ -662,13 +648,13 @@ class DiagramStateRepository:
         quota_date_utc: str,
         quota_bucket: str,
         token_limit: int,
-        reservation_tokens: int,
-    ) -> tuple[bool, int, int]:
+        requested_tokens: int,
+    ) -> tuple[bool, int]:
         return self.quota_store.reserve(
             quota_date_utc=quota_date_utc,
             quota_bucket=quota_bucket,
             token_limit=token_limit,
-            reservation_tokens=reservation_tokens,
+            requested_tokens=requested_tokens,
         )
 
     def finalize_complimentary_quota(
@@ -676,12 +662,10 @@ class DiagramStateRepository:
         *,
         quota_date_utc: str,
         quota_bucket: str,
-        reservation_tokens: int,
         committed_tokens: int,
-    ) -> tuple[int, int]:
+    ) -> int:
         return self.quota_store.finalize(
             quota_date_utc=quota_date_utc,
             quota_bucket=quota_bucket,
-            reservation_tokens=reservation_tokens,
             committed_tokens=committed_tokens,
         )

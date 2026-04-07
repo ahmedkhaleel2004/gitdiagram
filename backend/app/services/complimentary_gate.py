@@ -36,7 +36,6 @@ class ComplimentaryQuotaReservation:
     quota_bucket: str
     quota_date_utc: str
     quota_reset_at: str
-    reserved_tokens: int
 
 
 def _read_flag(name: str) -> bool:
@@ -114,7 +113,7 @@ def get_complimentary_quota_bucket(model: str) -> str:
     return f"openai:{resolve_pricing_model(model)}:complimentary"
 
 
-def build_complimentary_reservation_tokens(
+def build_complimentary_admission_tokens(
     *,
     explanation_input_tokens: int,
     graph_static_input_tokens: int,
@@ -151,51 +150,22 @@ def get_complimentary_model_mismatch_message() -> str:
     return DEFAULT_MODEL_MISMATCH_MESSAGE
 
 
-def estimate_conservative_committed_tokens(
-    *,
-    stage: str | None,
-    reservation_tokens: int,
-    explanation_input_tokens: int,
-    graph_static_input_tokens: int,
-    measured_tokens: int,
-) -> int:
-    explanation_stage_tokens = explanation_input_tokens + EXPLANATION_MAX_OUTPUT_TOKENS
-    first_graph_attempt_tokens = (
-        explanation_stage_tokens
-        + graph_static_input_tokens
-        + EXPLANATION_MAX_OUTPUT_TOKENS
-        + GRAPH_MAX_OUTPUT_TOKENS
-    )
-    current_stage = stage or "started"
-
-    if current_stage == "started":
-        return measured_tokens
-
-    if current_stage in {"explanation_sent", "explanation", "explanation_chunk"}:
-        return max(measured_tokens, explanation_stage_tokens)
-
-    if current_stage in {"graph_sent", "graph"}:
-        return max(measured_tokens, first_graph_attempt_tokens)
-
-    return max(measured_tokens, reservation_tokens)
-
-
-def reserve_complimentary_quota(
+def admit_complimentary_quota(
     *,
     repository: DiagramStateRepository,
     model: str,
-    reservation_tokens: int,
+    requested_tokens: int,
     now: datetime | None = None,
 ) -> tuple[bool, ComplimentaryQuotaReservation | None, str]:
     current = now or datetime.now(timezone.utc)
     quota_date_utc = get_complimentary_quota_date_utc(current)
     quota_reset_at = get_complimentary_quota_reset_at(current)
     quota_bucket = get_complimentary_quota_bucket(model)
-    admitted, _used_tokens, _reserved_tokens = repository.reserve_complimentary_quota(
+    admitted, _used_tokens = repository.reserve_complimentary_quota(
         quota_date_utc=quota_date_utc,
         quota_bucket=quota_bucket,
         token_limit=get_complimentary_daily_limit_tokens(),
-        reservation_tokens=reservation_tokens,
+        requested_tokens=requested_tokens,
     )
     if not admitted:
         return False, None, quota_reset_at
@@ -206,7 +176,6 @@ def reserve_complimentary_quota(
             quota_bucket=quota_bucket,
             quota_date_utc=quota_date_utc,
             quota_reset_at=quota_reset_at,
-            reserved_tokens=reservation_tokens,
         ),
         quota_reset_at,
     )
@@ -221,6 +190,5 @@ def finalize_complimentary_quota(
     repository.finalize_complimentary_quota(
         quota_date_utc=reservation.quota_date_utc,
         quota_bucket=reservation.quota_bucket,
-        reservation_tokens=reservation.reserved_tokens,
         committed_tokens=committed_tokens,
     )

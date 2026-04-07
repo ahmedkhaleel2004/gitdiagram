@@ -11,15 +11,14 @@ import {
   updatePublicBrowseIndexForSuccessfulDiagram,
 } from "~/server/storage/diagram-state";
 import {
-  buildComplimentaryReservationTokens,
-  estimateConservativeCommittedTokens,
+  admitComplimentaryQuota,
+  buildComplimentaryAdmissionTokens,
   finalizeComplimentaryQuota,
   getComplimentaryDenialMessage,
   getComplimentaryModelMismatchMessage,
   getComplimentaryProviderMismatchMessage,
   isComplimentaryGateEnabled,
   modelMatchesComplimentaryFamily,
-  reserveComplimentaryQuota,
   shouldApplyComplimentaryGate,
   type ComplimentaryQuotaReservation,
 } from "~/server/generate/complimentary-gate";
@@ -365,13 +364,13 @@ export async function POST(request: Request) {
               return;
             }
 
-            const reservationTokens = buildComplimentaryReservationTokens({
+            const requestedTokens = buildComplimentaryAdmissionTokens({
               explanationInputTokens: estimate.explanationInputTokens,
               graphStaticInputTokens: estimate.graphStaticInputTokens,
             });
-            const reservation = await reserveComplimentaryQuota({
+            const reservation = await admitComplimentaryQuota({
               model,
-              reservationTokens,
+              requestedTokens,
             });
 
             if (!reservation.admitted) {
@@ -409,7 +408,6 @@ export async function POST(request: Request) {
               quotaStatus: "admitted",
               quotaBucket: quotaReservation.quotaBucket,
               quotaDateUtc: quotaReservation.quotaDateUtc,
-              reservedTokens: quotaReservation.reservedTokens,
               quotaResetAt: quotaReservation.quotaResetAt,
             };
           }
@@ -805,25 +803,13 @@ export async function POST(request: Request) {
             const measuredCommittedTokens = sumGenerationUsage(
               ...actualUsages,
             ).totalTokens;
-            const actualCommittedTokens =
-              wasCancelled || !hasCompleteMeasuredUsage
-                ? estimateConservativeCommittedTokens({
-                    stage: audit.stage,
-                    reservationTokens: quotaReservation.reservedTokens,
-                    estimate: {
-                      explanationInputTokens: estimate?.explanationInputTokens ?? 0,
-                      graphStaticInputTokens: estimate?.graphStaticInputTokens ?? 0,
-                    },
-                    measuredTokens: measuredCommittedTokens,
-                  })
-                : measuredCommittedTokens;
+            const actualCommittedTokens = measuredCommittedTokens;
 
             audit = {
               ...audit,
               quotaStatus: "finalized",
               quotaBucket: quotaReservation.quotaBucket,
               quotaDateUtc: quotaReservation.quotaDateUtc,
-              reservedTokens: quotaReservation.reservedTokens,
               actualCommittedTokens,
               quotaResetAt: quotaReservation.quotaResetAt,
             };
