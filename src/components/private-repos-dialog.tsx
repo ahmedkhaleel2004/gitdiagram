@@ -1,6 +1,12 @@
 "use client";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { useState, useEffect } from "react";
@@ -44,6 +50,10 @@ export function PrivateReposDialog({
           <DialogTitle className="text-xl font-bold text-black dark:text-neutral-100">
             Enter GitHub Personal Access Token
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Provide a GitHub personal access token to enable private repository
+            diagrams in this browser.
+          </DialogDescription>
         </DialogHeader>
         <form
           onSubmit={handleSubmit}

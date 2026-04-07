@@ -9,7 +9,13 @@ import {
 } from "~/lib/openai-key";
 
 import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { Input } from "./ui/input";
 
 interface ApiKeyDialogProps {
@@ -46,6 +52,10 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
           <DialogTitle className="text-xl font-bold text-black dark:text-neutral-100">
             Enter API Key
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Provide an OpenAI API key to use for diagram generation in this
+            browser.
+          </DialogDescription>
         </DialogHeader>
         <form
           onSubmit={handleSubmit}

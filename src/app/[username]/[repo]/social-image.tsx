@@ -1,20 +1,11 @@
-import {
-  createRepoSocialImage,
-  socialImageContentType,
-  socialImageSize,
-} from "~/server/og/cards";
+import { createRepoSocialImage } from "~/server/og/cards";
 import { getRepoSocialMetadata } from "~/server/og/repo-metadata";
 
 type RepoImageProps = {
   params: Promise<{ username: string; repo: string }>;
 };
 
-export const runtime = "nodejs";
-export const alt = "GitDiagram repository preview";
-export const size = socialImageSize;
-export const contentType = socialImageContentType;
-
-export default async function Image({ params }: RepoImageProps) {
+export async function renderRepoSocialImage({ params }: RepoImageProps) {
   const { username, repo } = await params;
   const metadata = await getRepoSocialMetadata(username, repo);
 
