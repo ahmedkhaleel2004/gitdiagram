@@ -6,6 +6,9 @@ export const metadata: Metadata = {
   title: "GitDiagram - Visualize Any GitHub Repository",
   description:
     "Turn any GitHub repository into an interactive architecture diagram for quick codebase understanding.",
+  alternates: {
+    canonical: "/",
+  },
 };
 
 export default function HomePage() {

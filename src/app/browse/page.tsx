@@ -19,6 +19,9 @@ export const metadata: Metadata = {
   title: "Browse Diagrams | GitDiagram",
   description:
     "Browse all public repositories with stored diagrams, sorted by recency or stars.",
+  alternates: {
+    canonical: "/browse",
+  },
 };
 
 function getSingleValue(value: string | string[] | undefined) {

@@ -6,12 +6,13 @@ import { Header } from "~/components/header";
 import { Footer } from "~/components/footer";
 import { CSPostHogProvider } from "./providers";
 import { Toaster } from "~/components/ui/sonner";
+import { SITE_URL } from "~/lib/site";
 
 export const metadata: Metadata = {
   title: "GitDiagram",
   description:
     "Turn any GitHub repository into an interactive diagram for visualization in seconds.",
-  metadataBase: new URL("https://gitdiagram.com"),
+  metadataBase: new URL(SITE_URL),
   keywords: [
     "github",
     "git diagram",
@@ -66,6 +67,8 @@ export const metadata: Metadata = {
     googleBot: {
       index: true,
       follow: true,
+      "max-image-preview": "large",
+      "max-video-preview": -1,
       "max-snippet": -1,
     },
   },
