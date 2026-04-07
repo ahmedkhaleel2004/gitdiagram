@@ -795,8 +795,3 @@ def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reser
     assert payloads[-1]["error_code"] == "DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED"
     assert "default OpenAI key is temporarily unavailable" in payloads[-1]["error"]
     assert finalized["committed_tokens"] == 12_100
-
-
-def test_modify_route_removed():
-    response = client.post("/modify", json={})
-    assert response.status_code == 404

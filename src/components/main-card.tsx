@@ -187,7 +187,6 @@ export default function MainCard({
                       lastGenerated={lastGenerated}
                       actualCost={actualCost}
                       onExportImage={onExportImage!}
-                      isOpen={true}
                     />
                   )}
                 </div>

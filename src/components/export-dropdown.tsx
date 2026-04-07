@@ -7,7 +7,6 @@ interface ExportDropdownProps {
   lastGenerated?: Date;
   actualCost?: string;
   onExportImage: () => void;
-  isOpen: boolean;
 }
 
 export function ExportDropdown({

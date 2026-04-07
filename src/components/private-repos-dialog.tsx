@@ -67,9 +67,9 @@ export function PrivateReposDialog({
             </summary>
             <div className="animate-accordion-down mt-2 space-y-2 overflow-hidden pl-2">
               <p>
-                Take note that the diagram data will be stored in my database
-                (not that I would use it for anything anyways). You can also
-                self-host this app by following the instructions in the{" "}
+                Successful private-repository diagrams are stored in the
+                configured private artifact bucket for this deployment. You can
+                also self-host this app by following the instructions in the{" "}
                 <Link
                   href="https://github.com/ahmedkhaleel2004/gitdiagram"
                   className="neo-link"

@@ -9,11 +9,6 @@
 # testing
 /coverage
 
-# database
-/prisma/db.sqlite
-/prisma/db.sqlite-journal
-db.sqlite
-
 # next.js
 /.next/
 /out/

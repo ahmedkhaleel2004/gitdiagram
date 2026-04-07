@@ -8,8 +8,8 @@ This project supports two explicit generation backends:
 
 Recommended versions:
 - Bun: `1.3.11`
-- Python: `3.12.x` (required for FastAPI backend work)
-- uv: `0.5.24+` (required for FastAPI backend work)
+- Python: `3.14.x` (required for FastAPI backend work)
+- uv: `0.11.2` (required for FastAPI backend work)
 - Docker: latest stable
 
 Install/check:
@@ -23,7 +23,7 @@ docker --version
 
 Expected:
 - Bun prints `1.3.11` (or a compatible `1.3.x`)
-- Python starts with `3.12`
+- Python starts with `3.14`
 
 ## 2) Install root JS dependencies
 

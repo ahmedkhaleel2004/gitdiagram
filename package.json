@@ -32,9 +32,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.3.3",
-    "dotenv": "^17.4.1",
     "geist": "^1.7.0",
-    "jsdom": "29.0.1",
     "linkedom": "^0.18.12",
     "lucide-react": "^1.7.0",
     "mermaid": "^11.14.0",
@@ -47,7 +45,6 @@
     "react-icons": "^5.6.0",
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
-    "svg-pan-zoom": "^3.6.2",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^4.3.6"
@@ -61,19 +58,16 @@
     "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
+    "dotenv": "^17.4.1",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.2",
+    "jsdom": "29.0.1",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
-    "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4.2.2",
-    "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vitest": "4.1.2"
-  },
-  "ct3aMetadata": {
-    "initVersion": "7.38.1"
   },
   "engines": {
     "bun": ">=1.3.11 <2"

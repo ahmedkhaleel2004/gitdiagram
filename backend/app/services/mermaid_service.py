@@ -66,18 +66,3 @@ def validate_mermaid_syntax(diagram: str) -> MermaidValidationResult:
         token=payload.get("token"),
         expected=payload.get("expected"),
     )
-
-
-def format_validation_feedback(result: MermaidValidationResult) -> str:
-    if result.valid:
-        return "No syntax errors found."
-
-    details = [f"message: {result.message or 'unknown parse error'}"]
-    if isinstance(result.line, int):
-        details.append(f"line: {result.line}")
-    if result.token:
-        details.append(f"token: {result.token}")
-    if result.expected:
-        details.append(f"expected: {', '.join(result.expected)}")
-
-    return "\n".join(details)

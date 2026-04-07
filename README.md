@@ -15,7 +15,6 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 - 🎨 **Interactivity**: Click on components to navigate directly to source files and relevant directories
 - ⚡ **Fast Generation**: Powered by GPT-5-family models, with OpenAI for user-supplied browser keys and optional OpenRouter for self-hosted deployments
 - 🖼️ **Export Options**: Copy Mermaid code or download the generated diagram as PNG
-- 🌐 **API Access**: Public API available for integration (WIP)
 
 ## ⚙️ Tech Stack
 
@@ -76,6 +75,8 @@ You can also self-host this app locally (backend separated as well!) with the st
 
 ## 🛠️ Self-hosting / Local Development
 
+For exact tool versions, machine setup, and verification, see `docs/dev-setup.md`.
+
 1. Clone the repository
 
 ```bash
@@ -105,51 +106,9 @@ cp .env.example .env
 
 Then edit the `.env` file with your backend AI credentials and optional GitHub personal access token.
 
-Example local OpenRouter setup:
+Use `.env.example` as the canonical list of required and optional variables.
 
-```bash
-AI_PROVIDER=openrouter
-OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=openai/gpt-5.4
-OPENROUTER_SITE_URL=http://localhost:3000
-OPENROUTER_APP_NAME=GitDiagram
-```
-
-Example OpenAI setup:
-
-```bash
-AI_PROVIDER=openai
-OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5.4-mini
-OPENAI_COMPLIMENTARY_GATE_ENABLED=false
-OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS=10000000
-OPENAI_COMPLIMENTARY_MODEL_FAMILY=gpt-5.4-mini
-```
-
-If you want GitDiagram to use only the complimentary OpenAI daily mini quota on the default server key, set `OPENAI_COMPLIMENTARY_GATE_ENABLED=true`. When enabled, the backend stops default-key generations before a request would exceed the configured daily limit, while user-supplied API keys still bypass the gate.
-
-Storage notes:
-- successful diagrams live in R2 as JSON artifacts
-- short-lived failure summaries live in Upstash
-- there is no Postgres/Neon runtime path anymore
-
-5. Set up Cloudflare R2 and Upstash Redis
-
-Create:
-- two private R2 buckets, one for public artifacts and one for private artifacts
-- one Upstash Redis database
-
-Then fill in these required env vars in `.env`:
-- `R2_ACCOUNT_ID`
-- `R2_ACCESS_KEY_ID`
-- `R2_SECRET_ACCESS_KEY`
-- `R2_PUBLIC_BUCKET`
-- `R2_PRIVATE_BUCKET`
-- `CACHE_KEY_SECRET`
-- `UPSTASH_REDIS_REST_URL`
-- `UPSTASH_REDIS_REST_TOKEN`
-
-6. Run frontend
+5. Run the frontend
 
 ```bash
 bun run dev
@@ -174,8 +133,6 @@ To use the FastAPI backend from the frontend, set:
 To use the built-in Next.js Route Handlers instead, set:
 - `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
-For a full machine setup guide (Bun/Python/uv versions + verification), see `docs/dev-setup.md`.
-
 Quick validation:
 
 ```bash
@@ -193,8 +150,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Acknowledgements
 
 Shoutout to [Romain Courtois](https://github.com/cyclotruc)'s [Gitingest](https://gitingest.com/) for inspiration and styling
-
-## 🤔 Future Steps
-
-- Implement font-awesome icons in diagram
-- Implement an embedded feature like star-history.com but for diagrams. The diagram could also be updated progressively as commits are made.
