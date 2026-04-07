@@ -1,7 +1,12 @@
 import type { MetadataRoute } from "next";
+import { getCachedBrowseIndex } from "~/app/browse/data";
 import { SITE_URL } from "~/lib/site";
+import { getSitemapCount, getSitemapUrls } from "~/lib/sitemaps";
 
-export default function robots(): MetadataRoute.Robots {
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const browseEntries = await getCachedBrowseIndex().catch(() => null);
+  const sitemapCount = getSitemapCount(browseEntries?.length ?? 0);
+
   return {
     rules: [
       {
@@ -10,6 +15,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/api/"],
       },
     ],
-    sitemap: `${SITE_URL}/sitemap.xml`,
+    sitemap: getSitemapUrls(SITE_URL, sitemapCount),
   };
 }
