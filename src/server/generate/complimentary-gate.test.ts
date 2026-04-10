@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const checkQuotaInUpstash = vi.fn();
-const commitQuotaUsageInUpstash = vi.fn();
+const { checkQuotaInUpstash, commitQuotaUsageInUpstash } = vi.hoisted(() => ({
+  checkQuotaInUpstash: vi.fn(),
+  commitQuotaUsageInUpstash: vi.fn(),
+}));
 
 vi.mock("~/server/storage/quota-store", () => ({
   checkQuotaInUpstash,
