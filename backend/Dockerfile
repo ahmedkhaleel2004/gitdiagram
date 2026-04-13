@@ -7,8 +7,8 @@ ENV PORT=8000
 
 COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
 
-# Install uv inside the image
-COPY --from=ghcr.io/astral-sh/uv:0.11.2 /uv /uvx /bin/
+# Install pinned uv from PyPI to avoid depending on GHCR availability during deploys.
+RUN pip install --no-cache-dir uv==0.11.2
 
 # Copy dependency manifests first for better layer caching
 COPY pyproject.toml uv.lock ./
