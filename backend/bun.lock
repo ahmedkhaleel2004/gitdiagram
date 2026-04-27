@@ -5,7 +5,7 @@
     "": {
       "name": "gitdiagram-backend-mermaid-validator",
       "dependencies": {
-        "dompurify": "3.4.0",
+        "dompurify": "3.4.1",
         "linkedom": "0.18.12",
         "mermaid": "11.14.0",
       },
