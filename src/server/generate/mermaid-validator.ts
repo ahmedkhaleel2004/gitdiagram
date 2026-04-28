@@ -1,6 +1,5 @@
-import DOMPurify from "dompurify";
 import { parseHTML } from "linkedom";
-import mermaid from "mermaid";
+import type mermaid from "mermaid";
 
 function normalizeParserMessage(message?: string): string {
   if (!message) {
@@ -25,32 +24,46 @@ export interface MermaidValidationResult {
   expected?: string[];
 }
 
+const flowchartClickDirectivePattern =
+  /^\s*click\s+[\w-]+\s+(?:(?:href\s+)?"[^"\n]*"|(?:call\s+)?[A-Za-z_$][\w$]*(?:\(\))?)(?:\s+"[^"\n]*")?(?:\s+_(?:blank|self|parent|top))?\s*$/;
+
 let initialized = false;
 let domPurifyPatched = false;
+let mermaidRuntime: typeof mermaid | null = null;
 
-function ensureDomPurifyPatched() {
+async function ensureDomPurifyPatched() {
   if (domPurifyPatched) {
     return;
   }
 
   const { window } = parseHTML("<!doctype html><html><body></body></html>");
+  const serverGlobal = globalThis as typeof globalThis & {
+    document?: unknown;
+    window?: unknown;
+  };
+  serverGlobal.window ??= window;
+  serverGlobal.document ??= window.document;
+
+  const DOMPurify = (await import("dompurify")).default;
   const purify = DOMPurify(window);
   Object.assign(DOMPurify, purify);
   domPurifyPatched = true;
 }
 
 async function ensureMermaidInitialized() {
-  ensureDomPurifyPatched();
+  await ensureDomPurifyPatched();
+
+  mermaidRuntime ??= (await import("mermaid")).default;
 
   if (!initialized) {
-    mermaid.initialize({
+    mermaidRuntime.initialize({
       startOnLoad: false,
       securityLevel: "loose",
     });
     initialized = true;
   }
 
-  return mermaid;
+  return mermaidRuntime;
 }
 
 function normalizeError(error: unknown): MermaidValidationResult {
@@ -72,12 +85,48 @@ function normalizeError(error: unknown): MermaidValidationResult {
   };
 }
 
+function buildServerParseDiagram(diagram: string): {
+  diagram: string;
+  issue?: MermaidValidationResult;
+} {
+  const lines = diagram.split("\n");
+  const normalizedLines: string[] = [];
+
+  for (const [index, line] of lines.entries()) {
+    if (!line.trimStart().startsWith("click ")) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    if (!flowchartClickDirectivePattern.test(line)) {
+      return {
+        diagram,
+        issue: {
+          valid: false,
+          message: "Mermaid click directive syntax is invalid.",
+          line: index + 1,
+          token: "click",
+        },
+      };
+    }
+
+    normalizedLines.push("%% click directive omitted for server-side syntax validation %%");
+  }
+
+  return { diagram: normalizedLines.join("\n") };
+}
+
 export async function validateMermaidSyntax(
   diagram: string,
 ): Promise<MermaidValidationResult> {
+  const serverParseDiagram = buildServerParseDiagram(diagram);
+  if (serverParseDiagram.issue) {
+    return serverParseDiagram.issue;
+  }
+
   try {
     const runtime = await ensureMermaidInitialized();
-    await runtime.parse(diagram);
+    await runtime.parse(serverParseDiagram.diagram);
     return { valid: true };
   } catch (error) {
     return normalizeError(error);

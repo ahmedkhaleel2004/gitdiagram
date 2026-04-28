@@ -14,4 +14,13 @@ describe("validateMermaidSyntax", () => {
     expect(result.valid).toBe(false);
     expect(result.message).toBeTruthy();
   });
+
+  it("rejects malformed click directives", async () => {
+    const result = await validateMermaidSyntax("flowchart TD\nA-->B\nclick A");
+    expect(result).toMatchObject({
+      valid: false,
+      line: 3,
+      token: "click",
+    });
+  });
 });
