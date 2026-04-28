@@ -39,6 +39,9 @@ next-env.d.ts
 # idea files
 .idea
 
+# Claude Code worktrees
+.claude/
+
 __pycache__/
 venv
 backend/.venv
