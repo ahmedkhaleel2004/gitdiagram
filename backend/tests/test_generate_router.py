@@ -387,6 +387,47 @@ def test_generate_stream_bypasses_quota_gate_for_user_api_keys(monkeypatch):
     assert payloads[-1]["status"] == "complete"
 
 
+def test_generate_stream_requires_user_key_above_free_input_limit(monkeypatch):
+    monkeypatch.setattr(
+        generate,
+        "_get_github_data",
+        lambda username, repo, github_pat=None: SimpleNamespace(
+            default_branch="main",
+            file_tree="src/main.py",
+            readme="# readme",
+        ),
+    )
+    monkeypatch.setattr(generate, "get_provider", lambda: "openai")
+    monkeypatch.setattr(generate, "get_provider_label", lambda provider: "OpenAI")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "should_apply_complimentary_gate", lambda **kwargs: False)
+
+    async def fake_estimate_generation_cost(**kwargs):
+        return {
+            "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
+            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
+            "pricing_model": "gpt-5.4-mini",
+            "estimated_input_tokens": 100_001,
+            "estimated_output_tokens": 18_000,
+            "explanation_input_tokens": 100_001,
+            "graph_static_input_tokens": 200,
+        }
+
+    async def unexpected_stream_completion(**kwargs):
+        raise AssertionError("generation should stop before model calls")
+
+    monkeypatch.setattr(generate, "estimate_generation_cost", fake_estimate_generation_cost)
+    monkeypatch.setattr(generate.openai_service, "stream_completion", unexpected_stream_completion)
+
+    response = client.post("/generate/stream", json={"username": "acme", "repo": "demo"})
+
+    assert response.status_code == 200
+    payloads = parse_sse_payloads(response.text)
+    assert payloads[-1]["status"] == "error"
+    assert payloads[-1]["error_code"] == "API_KEY_REQUIRED"
+    assert "100,000" in payloads[-1]["error"]
+
+
 def test_generate_stream_completes_without_storage_when_quota_gate_disabled(monkeypatch):
     monkeypatch.setattr(
         generate,

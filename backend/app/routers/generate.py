@@ -72,6 +72,8 @@ DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR = (
     "upstream API quota is exhausted. I'm a solo student engineer running this "
     "free and open source, so please try again later or use your own OpenAI API key."
 )
+FREE_GENERATION_INPUT_TOKEN_LIMIT = 100_000
+HARD_GENERATION_INPUT_TOKEN_LIMIT = 195_000
 
 
 def _sse_message(payload: dict[str, Any]) -> str:
@@ -576,9 +578,14 @@ async def generate_stream(request: Request):
                     "quotaResetAt": quota_reservation.quota_reset_at,
                 }
 
-            if token_count > 50000 and token_count < 195000 and not parsed.api_key:
+            if (
+                token_count > FREE_GENERATION_INPUT_TOKEN_LIMIT
+                and token_count < HARD_GENERATION_INPUT_TOKEN_LIMIT
+                and not parsed.api_key
+            ):
                 error_message = (
-                    "File tree and README combined exceeds token limit (50,000). "
+                    "File tree and README combined exceeds token limit "
+                    f"({FREE_GENERATION_INPUT_TOKEN_LIMIT:,}). "
                     f"This repository is too large for free generation. Provide your own {provider_label} API key to continue."
                 )
                 audit = _set_failure(audit, failure_stage="started", validation_error=error_message)
@@ -597,7 +604,7 @@ async def generate_stream(request: Request):
                 )
                 return
 
-            if token_count > 195000:
+            if token_count > HARD_GENERATION_INPUT_TOKEN_LIMIT:
                 error_message = "Repository is too large (>195k tokens) for analysis. Try a smaller repo."
                 audit = _set_failure(audit, failure_stage="started", validation_error=error_message)
                 await persist_terminal_audit()

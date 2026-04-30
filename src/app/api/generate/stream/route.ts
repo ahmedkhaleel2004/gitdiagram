@@ -70,6 +70,8 @@ export const maxDuration = 300;
 
 const DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR =
   "GitDiagram's default OpenAI key is temporarily unavailable because its upstream API quota is exhausted. I'm a solo student engineer running this free and open source, so please try again later or use your own OpenAI API key.";
+const FREE_GENERATION_INPUT_TOKEN_LIMIT = 100_000;
+const HARD_GENERATION_INPUT_TOKEN_LIMIT = 195_000;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -412,9 +414,13 @@ export async function POST(request: Request) {
             };
           }
 
-          if (tokenCount > 50000 && tokenCount < 195000 && !apiKey) {
+          if (
+            tokenCount > FREE_GENERATION_INPUT_TOKEN_LIMIT &&
+            tokenCount < HARD_GENERATION_INPUT_TOKEN_LIMIT &&
+            !apiKey
+          ) {
             const error =
-              `File tree and README combined exceeds token limit (50,000). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`;
+              `File tree and README combined exceeds token limit (${FREE_GENERATION_INPUT_TOKEN_LIMIT.toLocaleString("en-US")}). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`;
             audit = withFailure(audit, {
               failureStage: "started",
               validationError: error,
@@ -434,7 +440,7 @@ export async function POST(request: Request) {
             return;
           }
 
-          if (tokenCount > 195000) {
+          if (tokenCount > HARD_GENERATION_INPUT_TOKEN_LIMIT) {
             const error =
               "Repository is too large (>195k tokens) for analysis. Try a smaller repo.";
             audit = withFailure(audit, {
