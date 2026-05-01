@@ -43,6 +43,17 @@ export function PrivateReposDialog({
     setPat("");
   };
 
+  const isValidGitHubPAT = (token: string) => {
+    if (!token) return false;
+    const trimmed = token.trim();
+    const isClassic =
+      trimmed.startsWith("ghp_") && trimmed.length === 44;
+    const isFineGrained =
+      trimmed.startsWith("github_pat_") && trimmed.length >= 80;
+    const hasNoSpaces = !/\s/.test(trimmed);
+    return hasNoSpaces && (isClassic || isFineGrained);
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="neo-panel p-6 sm:max-w-md">
@@ -116,7 +127,7 @@ export function PrivateReposDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={!pat.startsWith("ghp_")}
+                disabled={!isValidGitHubPAT(pat)}
                 className="neo-button px-4 py-2 disabled:opacity-50"
               >
                 Save Token
