@@ -30,6 +30,7 @@ type StreamCompletePayload = {
 };
 
 type StreamOptions = {
+  initialState?: DiagramStreamState;
   onComplete: (result: StreamCompletePayload) => Promise<void>;
   onError: (message: string) => void;
 };
@@ -43,9 +44,11 @@ vi.mock("~/app/_actions/cache", () => ({
 
 vi.mock("~/hooks/diagram/useDiagramStream", () => ({
   useDiagramStream: (options: StreamOptions) => {
-    const [state, setState] = React.useState<DiagramStreamState>({
-      status: "idle",
-    });
+    const [state, setState] = React.useState<DiagramStreamState>(
+      options.initialState ?? {
+        status: "idle",
+      },
+    );
     const trackedSetState = React.useCallback(
       (
         next:
@@ -60,7 +63,14 @@ vi.mock("~/hooks/diagram/useDiagramStream", () => ({
       [setState],
     );
     streamOptions = {
-      onError: options.onError,
+      onError: (message: string) => {
+        trackedSetState({
+          status: "error",
+          error: message,
+          errorCode: "API_KEY_REQUIRED",
+        });
+        options.onError(message);
+      },
       onComplete: async (result: StreamCompletePayload) => {
         trackedSetState({
           status: "complete",
@@ -145,6 +155,65 @@ describe("useDiagram", () => {
 
     expect(getDiagramState).toHaveBeenCalledTimes(1);
     expect(result.current.diagram).toContain("flowchart TD");
+  });
+
+  it("renders an old diagram without surfacing a latest failed audit on refresh", async () => {
+    const { result } = renderHook(() =>
+      useDiagram("acme", "demo", {
+        diagram: "flowchart TD\nA-->B",
+        explanation: "old diagram",
+        graph: null,
+        lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+        latestSessionAudit: {
+          sessionId: "failed-session",
+          status: "failed",
+          stage: "started",
+          provider: "openai",
+          model: "gpt-5.4-mini",
+          stageUsages: [],
+          graph: null,
+          graphAttempts: [],
+          timeline: [],
+          createdAt: "2026-04-30T12:00:00.000Z",
+          updatedAt: "2026-04-30T12:00:00.000Z",
+          failureStage: "started",
+          validationError:
+            "File tree and README combined exceeds token limit (50,000).",
+        },
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(runGeneration).not.toHaveBeenCalled();
+    expect(result.current.diagram).toContain("flowchart TD");
+    expect(result.current.error).toBe("");
+  });
+
+  it("shows an over-limit error from the current regenerate attempt", async () => {
+    runGeneration.mockImplementationOnce(async () => {
+      streamOptions?.onError(
+        "File tree and README combined exceeds token limit (100,000). This repository is too large for free generation. Provide your own OpenAI API key to continue.",
+      );
+    });
+
+    const { result } = renderHook(() =>
+      useDiagram("acme", "demo", {
+        diagram: "flowchart TD\nA-->B",
+        explanation: "old diagram",
+        graph: null,
+        latestSessionAudit: null,
+        lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await result.current.handleRegenerate();
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toContain("100,000");
+    expect(result.current.error).toContain("API key");
   });
 
   it("records browser render failures without re-entering LLM repair", async () => {
