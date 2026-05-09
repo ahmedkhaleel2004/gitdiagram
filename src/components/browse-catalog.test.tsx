@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import React from "react";
@@ -181,7 +182,9 @@ describe("BrowseCatalog", () => {
         name: "Open Diagram",
       }),
     ).toHaveAttribute("href", "/acme/demo");
-    expect(screen.queryByText("vercel/next.js")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("vercel/next.js")).not.toBeInTheDocument();
+    });
     expect(window.location.search).toBe("?q=acme");
   });
 
