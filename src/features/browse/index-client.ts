@@ -1,13 +1,34 @@
 "use client";
 
-import type { BrowseIndexEntry } from "./catalog";
+import {
+  buildBrowseSearchParams,
+  normalizeBrowseQuery,
+  type BrowsePageResult,
+  type BrowseQuery,
+} from "./catalog";
 
-let browseIndexEntries: BrowseIndexEntry[] | null = null;
-let browseIndexPromise: Promise<BrowseIndexEntry[] | null> | null = null;
+const browsePageCache = new Map<string, BrowsePageResult | null>();
+const browsePagePromises = new Map<string, Promise<BrowsePageResult | null>>();
 
-async function fetchBrowseIndex(): Promise<BrowseIndexEntry[] | null> {
-  const response = await fetch("/api/browse-index", {
+function getBrowsePageUrl(query: BrowseQuery) {
+  const normalizedQuery = normalizeBrowseQuery(query);
+  const params = buildBrowseSearchParams({
+    q: normalizedQuery.q,
+    sort: normalizedQuery.sort,
+    minStars: normalizedQuery.minStars,
+    page: normalizedQuery.page,
+  });
+  const queryString = params.toString();
+  return queryString ? `/api/browse-index?${queryString}` : "/api/browse-index";
+}
+
+async function fetchBrowsePage(
+  query: BrowseQuery,
+  signal?: AbortSignal,
+): Promise<BrowsePageResult | null> {
+  const response = await fetch(getBrowsePageUrl(query), {
     credentials: "same-origin",
+    signal,
   });
 
   if (response.status === 404) {
@@ -18,24 +39,42 @@ async function fetchBrowseIndex(): Promise<BrowseIndexEntry[] | null> {
     throw new Error(`Failed to load browse index (${response.status}).`);
   }
 
-  return (await response.json()) as BrowseIndexEntry[];
+  return (await response.json()) as BrowsePageResult;
 }
 
-export async function preloadBrowseIndex(): Promise<BrowseIndexEntry[] | null> {
-  if (browseIndexEntries) {
-    return browseIndexEntries;
+export async function loadBrowsePage(
+  query: BrowseQuery,
+  signal?: AbortSignal,
+): Promise<BrowsePageResult | null> {
+  const url = getBrowsePageUrl(query);
+  const cachedPage = browsePageCache.get(url);
+  if (cachedPage !== undefined) {
+    return cachedPage;
   }
 
-  if (!browseIndexPromise) {
-    browseIndexPromise = fetchBrowseIndex()
-      .then((entries) => {
-        browseIndexEntries = entries;
-        return entries;
-      })
-      .finally(() => {
-        browseIndexPromise = null;
-      });
+  if (!signal && browsePagePromises.has(url)) {
+    return browsePagePromises.get(url)!;
   }
 
-  return browseIndexPromise;
+  const promise = fetchBrowsePage(query, signal)
+    .then((result) => {
+      browsePageCache.set(url, result);
+      return result;
+    })
+    .finally(() => {
+      if (!signal) {
+        browsePagePromises.delete(url);
+      }
+    });
+
+  if (!signal) {
+    browsePagePromises.set(url, promise);
+  }
+
+  return promise;
+}
+
+export function clearBrowsePageCacheForTest() {
+  browsePageCache.clear();
+  browsePagePromises.clear();
 }

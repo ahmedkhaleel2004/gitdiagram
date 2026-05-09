@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 
 import { storeOpenAiKey } from "~/lib/openai-key";
-import { preloadBrowseIndex } from "~/features/browse/index-client";
 
 import { ApiKeyDialog } from "./api-key-dialog";
 import { PrivateReposDialog } from "./private-repos-dialog";
@@ -27,7 +26,6 @@ function formatStarCount(count: number) {
 }
 
 export function HeaderClient({ starCount }: HeaderClientProps) {
-  const router = useRouter();
   const pathname = usePathname();
   const [isPrivateReposDialogOpen, setIsPrivateReposDialogOpen] =
     useState(false);
@@ -36,17 +34,6 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
   const githubRepoUrl = "https://github.com/ahmedkhaleel2004/gitdiagram";
   const isBrowsePage = pathname === "/browse";
   const showMobileGithubButton = pathname === "/" || isBrowsePage;
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      router.prefetch("/browse");
-      void preloadBrowseIndex();
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [router]);
 
   const handlePrivateReposSubmit = (pat: string) => {
     localStorage.setItem("github_pat", pat);

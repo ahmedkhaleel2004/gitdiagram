@@ -28,6 +28,68 @@ def test_healthz_ok():
     assert response.json() == {"ok": True, "status": "ok"}
 
 
+def test_cors_preflight_sets_long_max_age():
+    response = client.options(
+        "/generate/stream",
+        headers={
+            "Origin": "https://gitdiagram.com",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-max-age"] == "86400"
+
+
+def test_public_browse_index_updater_batches_pending_updates():
+    calls = []
+
+    class Repository:
+        def upsert_public_browse_index_entries(self, *, entries):
+            calls.append(entries)
+
+    updater = generate.PublicBrowseIndexUpdater(Repository(), debounce_seconds=0)
+
+    async def run_updates():
+        await updater.enqueue(
+            generate.PublicBrowseIndexUpdate(
+                username="Acme",
+                repo="Demo",
+                last_successful_at="2026-03-28T12:00:00.000Z",
+                stargazer_count=42,
+            )
+        )
+        await updater.enqueue(
+            generate.PublicBrowseIndexUpdate(
+                username="Vercel",
+                repo="Next.js",
+                last_successful_at="2026-03-29T12:00:00.000Z",
+                stargazer_count=130000,
+            )
+        )
+        assert updater._task is not None
+        await updater._task
+
+    asyncio.run(run_updates())
+
+    assert calls == [
+        [
+            {
+                "username": "Acme",
+                "repo": "Demo",
+                "lastSuccessfulAt": "2026-03-28T12:00:00.000Z",
+                "stargazerCount": 42,
+            },
+            {
+                "username": "Vercel",
+                "repo": "Next.js",
+                "lastSuccessfulAt": "2026-03-29T12:00:00.000Z",
+                "stargazerCount": 130000,
+            },
+        ]
+    ]
+
+
 def test_generate_cost_success(monkeypatch):
     monkeypatch.setattr(
         generate,

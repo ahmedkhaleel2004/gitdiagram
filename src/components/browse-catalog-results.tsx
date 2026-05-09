@@ -5,8 +5,8 @@ import { createPortal } from "react-dom";
 import type { RefObject } from "react";
 
 import type {
+  BrowsePageResult,
   BrowseIndexEntry,
-  getBrowsePageFromEntries,
 } from "~/features/browse/catalog";
 import { BrowseDiagramPreview } from "~/components/browse-diagram-preview";
 import {
@@ -17,10 +17,6 @@ import {
   type HoverPreviewState,
   type HoverPreviewStatus,
 } from "~/components/browse-catalog-shared";
-
-type BrowsePageResult = NonNullable<
-  ReturnType<typeof getBrowsePageFromEntries>
->;
 
 interface BrowseCatalogResultsProps {
   closeHoverPreview: () => void;

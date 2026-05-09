@@ -28,6 +28,7 @@ railway link --service gitdiagram-api
 ## 3) Set backend environment variables
 
 Required:
+
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
@@ -40,16 +41,18 @@ Required:
 - `OPENAI_API_KEY` or `OPENROUTER_API_KEY`
 
 Recommended:
+
 - `OPENAI_MODEL=gpt-5.4-mini` when `AI_PROVIDER=openai`
 - `OPENAI_COMPLIMENTARY_GATE_ENABLED=true` if you want Railway to stop default-key requests at the daily complimentary mini-token limit
 - `OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS=10000000` when the complimentary gate is enabled
 - `OPENAI_COMPLIMENTARY_MODEL_FAMILY=gpt-5.4-mini` when the complimentary gate is enabled
 - `OPENROUTER_MODEL=openai/gpt-5.4` when `AI_PROVIDER=openrouter`
 - `ENVIRONMENT=production`
-- `WEB_CONCURRENCY=2`
+- `WEB_CONCURRENCY=1`
 - `CORS_ORIGINS=https://gitdiagram.com,https://www.gitdiagram.com,https://<your-vercel-domain>`
 
 Optional:
+
 - `OPENROUTER_SITE_URL`
 - `OPENROUTER_APP_NAME`
 - `GITHUB_PAT` (higher GitHub API rate limits for repository fetches)
@@ -61,23 +64,24 @@ Optional:
 Set variables via CLI:
 
 ```bash
-railway variables --service gitdiagram-api --set "R2_ACCOUNT_ID=..."
-railway variables --service gitdiagram-api --set "R2_ACCESS_KEY_ID=..."
-railway variables --service gitdiagram-api --set "R2_SECRET_ACCESS_KEY=..."
-railway variables --service gitdiagram-api --set "R2_PUBLIC_BUCKET=..."
-railway variables --service gitdiagram-api --set "R2_PRIVATE_BUCKET=..."
-railway variables --service gitdiagram-api --set "CACHE_KEY_SECRET=..."
-railway variables --service gitdiagram-api --set "UPSTASH_REDIS_REST_URL=..."
-railway variables --service gitdiagram-api --set "UPSTASH_REDIS_REST_TOKEN=..."
-railway variables --service gitdiagram-api --set "AI_PROVIDER=openai"
-railway variables --service gitdiagram-api --set "OPENAI_API_KEY=..."
-railway variables --service gitdiagram-api --set "OPENAI_MODEL=gpt-5.4-mini"
-railway variables --service gitdiagram-api --set "ENVIRONMENT=production"
-railway variables --service gitdiagram-api --set "WEB_CONCURRENCY=2"
-railway variables --service gitdiagram-api --set "CORS_ORIGINS=https://gitdiagram.com,https://www.gitdiagram.com,https://<your-vercel-domain>"
+railway variable set R2_ACCOUNT_ID=... --service gitdiagram-api
+railway variable set R2_ACCESS_KEY_ID=... --service gitdiagram-api
+railway variable set R2_SECRET_ACCESS_KEY=... --service gitdiagram-api
+railway variable set R2_PUBLIC_BUCKET=... --service gitdiagram-api
+railway variable set R2_PRIVATE_BUCKET=... --service gitdiagram-api
+railway variable set CACHE_KEY_SECRET=... --service gitdiagram-api
+railway variable set UPSTASH_REDIS_REST_URL=... --service gitdiagram-api
+railway variable set UPSTASH_REDIS_REST_TOKEN=... --service gitdiagram-api
+railway variable set AI_PROVIDER=openai --service gitdiagram-api
+railway variable set OPENAI_API_KEY=... --service gitdiagram-api
+railway variable set OPENAI_MODEL=gpt-5.4-mini --service gitdiagram-api
+railway variable set ENVIRONMENT=production --service gitdiagram-api
+railway variable set WEB_CONCURRENCY=1 --service gitdiagram-api
+railway variable set CORS_ORIGINS=https://gitdiagram.com,https://www.gitdiagram.com,https://<your-vercel-domain> --service gitdiagram-api
 ```
 
 Important:
+
 - Set the R2 and Upstash credentials on the Railway backend service itself. Vercel environment variables are not shared with Railway.
 - If `OPENAI_COMPLIMENTARY_GATE_ENABLED=true`, the backend must have the Upstash Redis REST credentials because complimentary quota reservations are stored there.
 

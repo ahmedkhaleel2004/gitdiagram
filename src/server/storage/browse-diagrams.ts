@@ -17,12 +17,7 @@ import type {
 const PUBLIC_BROWSE_INDEX_KEY = "public/v1/_meta/browse-index.json";
 
 export { BROWSE_PAGE_SIZE, BROWSE_SORTS, MIN_STAR_FILTER_VALUES };
-export type {
-  BrowseIndexEntry,
-  BrowsePageResult,
-  BrowseQuery,
-  BrowseSort,
-};
+export type { BrowseIndexEntry, BrowsePageResult, BrowseQuery, BrowseSort };
 
 interface BrowseIndexPayload {
   version: 1;
@@ -142,7 +137,8 @@ export async function upsertBrowseIndexEntry(
   entry: BrowseIndexEntry,
 ): Promise<BrowseIndexEntry[]> {
   const existingEntries = (await readStoredBrowseIndex()) ?? [];
-  return writeBrowseIndex([...existingEntries, entry]);
+  existingEntries.push(entry);
+  return writeBrowseIndex(existingEntries);
 }
 
 export async function getBrowsePage(

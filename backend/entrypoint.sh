@@ -5,7 +5,7 @@ set -euo pipefail
 ENVIRONMENT="${ENVIRONMENT:-production}"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
-WEB_CONCURRENCY="${WEB_CONCURRENCY:-2}"
+WEB_CONCURRENCY="${WEB_CONCURRENCY:-1}"
 
 echo "Current ENVIRONMENT: ${ENVIRONMENT}"
 echo "Binding to ${HOST}:${PORT}"

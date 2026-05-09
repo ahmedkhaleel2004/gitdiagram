@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import base64
 import os
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from dataclasses import dataclass
 from threading import Lock
 
 import jwt
 import requests
+
+REPOSITORY_TOO_LARGE_ERROR = "Repository is too large (>195k tokens) for analysis. Try a smaller repo."
+MAX_INCLUDED_FILE_TREE_CHARACTERS = 780_000
+MAX_README_BYTES = 750_000
 
 EXCLUDED_PATTERNS = [
     "node_modules/",
@@ -178,6 +181,9 @@ class GitHubService:
             self._get_headers(),
             "Could not fetch repository file tree.",
         )
+        if data.get("truncated") is True:
+            raise ValueError(REPOSITORY_TOO_LARGE_ERROR)
+
         paths = [
             item.get("path")
             for item in (data.get("tree") or [])
@@ -187,7 +193,11 @@ class GitHubService:
             raise ValueError(
                 "Could not fetch repository file tree. Repository might be empty or inaccessible."
             )
-        return "\n".join(paths)
+        file_tree = "\n".join(paths)
+        if len(file_tree) > MAX_INCLUDED_FILE_TREE_CHARACTERS:
+            raise ValueError(REPOSITORY_TOO_LARGE_ERROR)
+
+        return file_tree
 
     def get_github_readme(self, username: str, repo: str) -> str:
         data = _fetch_json(
@@ -195,24 +205,31 @@ class GitHubService:
             self._get_headers(),
             "No README found for the specified repository.",
         )
+        size = data.get("size")
+        if isinstance(size, int) and size > MAX_README_BYTES:
+            raise ValueError(REPOSITORY_TOO_LARGE_ERROR)
+
         content = data.get("content")
         if not isinstance(content, str) or not content:
             raise ValueError("No README found for the specified repository.")
+        if len(content) > MAX_README_BYTES * 2:
+            raise ValueError(REPOSITORY_TOO_LARGE_ERROR)
 
         encoding = data.get("encoding")
         if encoding == "base64":
-            return base64.b64decode(content).decode("utf-8")
-        return content
+            readme = base64.b64decode(content).decode("utf-8")
+        else:
+            readme = content
+
+        if len(readme.encode("utf-8")) > MAX_README_BYTES:
+            raise ValueError(REPOSITORY_TOO_LARGE_ERROR)
+
+        return readme
 
     def get_github_data(self, username: str, repo: str) -> GithubData:
         default_branch, is_private, stargazer_count = self.get_repo_metadata(username, repo)
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            file_tree_future = executor.submit(
-                self.get_github_file_paths_as_list, username, repo, default_branch
-            )
-            readme_future = executor.submit(self.get_github_readme, username, repo)
-            file_tree = file_tree_future.result()
-            readme = readme_future.result()
+        file_tree = self.get_github_file_paths_as_list(username, repo, default_branch)
+        readme = self.get_github_readme(username, repo)
         return GithubData(
             default_branch=default_branch,
             file_tree=file_tree,

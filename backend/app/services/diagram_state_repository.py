@@ -241,6 +241,21 @@ class _R2ArtifactStore:
         last_successful_at: str,
         stargazer_count: int | None,
     ) -> None:
+        self.upsert_browse_index_entries(
+            [
+                {
+                    "username": username,
+                    "repo": repo,
+                    "lastSuccessfulAt": last_successful_at,
+                    "stargazerCount": stargazer_count,
+                }
+            ]
+        )
+
+    def upsert_browse_index_entries(
+        self,
+        entries: list[dict[str, Any]],
+    ) -> None:
         if not self.locator.public_bucket:
             raise ValueError("Missing R2_PUBLIC_BUCKET.")
 
@@ -252,16 +267,17 @@ class _R2ArtifactStore:
         if not isinstance(existing_entries, list):
             existing_entries = []
 
-        updated_entries = self._normalize_browse_index_entries(
-            [
-                *existing_entries,
-                {
-                    "username": username,
-                    "repo": repo,
-                    "lastSuccessfulAt": last_successful_at,
-                    "stargazerCount": stargazer_count,
-                },
-            ]
+        for entry in entries:
+            existing_entries.append(entry)
+
+        updated_entries = self._normalize_browse_index_entries(existing_entries)
+        updated_at = max(
+            (
+                str(entry.get("lastSuccessfulAt") or "")
+                for entry in entries
+                if isinstance(entry, dict)
+            ),
+            default="",
         )
 
         self.put_json_object(
@@ -269,7 +285,7 @@ class _R2ArtifactStore:
             PUBLIC_BROWSE_INDEX_KEY,
             {
                 "version": 1,
-                "updatedAt": last_successful_at,
+                "updatedAt": updated_at,
                 "entries": updated_entries,
             },
         )
@@ -641,6 +657,15 @@ class DiagramStateRepository:
             last_successful_at=last_successful_at,
             stargazer_count=stargazer_count,
         )
+
+    def upsert_public_browse_index_entries(
+        self,
+        *,
+        entries: list[dict[str, Any]],
+    ) -> None:
+        if not self.artifact_storage_is_configured():
+            raise ValueError("Missing R2 configuration.")
+        self.artifact_store.upsert_browse_index_entries(entries)
 
     def reserve_complimentary_quota(
         self,

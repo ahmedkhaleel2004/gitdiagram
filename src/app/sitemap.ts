@@ -47,8 +47,7 @@ export default async function sitemap(props: {
   const id = Number.parseInt(await props.id, 10);
   const sitemapId = Number.isFinite(id) && id >= 0 ? id : 0;
   const browseEntries = await getCachedBrowseIndex().catch(() => null);
-  const latestBrowseUpdate =
-    getLatestBrowseUpdate(browseEntries);
+  const latestBrowseUpdate = getLatestBrowseUpdate(browseEntries);
 
   const repoOffset = Math.max(0, sitemapId * SITEMAP_PAGE_SIZE - 2);
   const repoLimit = sitemapId === 0 ? SITEMAP_PAGE_SIZE - 2 : SITEMAP_PAGE_SIZE;
@@ -56,8 +55,8 @@ export default async function sitemap(props: {
     browseEntries?.slice(repoOffset, repoOffset + repoLimit).map((entry) => ({
       url: `${SITE_URL}/${entry.username}/${entry.repo}`,
       lastModified: toValidDate(entry.lastSuccessfulAt) ?? latestBrowseUpdate,
-      changeFrequency: "weekly" as const,
-      priority: 0.7,
+      changeFrequency: "monthly" as const,
+      priority: 0.5,
     })) ?? [];
 
   return sitemapId === 0

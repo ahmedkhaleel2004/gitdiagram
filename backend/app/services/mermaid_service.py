@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 from dataclasses import dataclass
+
+MERMAID_VALIDATION_TIMEOUT_SECONDS = 15
+_MERMAID_VALIDATION_SEMAPHORE = threading.BoundedSemaphore(value=1)
 
 
 @dataclass(frozen=True)
@@ -26,12 +30,21 @@ def normalize_parser_message(message: str | None) -> str:
 
 def validate_mermaid_syntax(diagram: str) -> MermaidValidationResult:
     try:
-        proc = subprocess.run(
-            ["bun", "scripts/validate_mermaid.mjs"],
-            input=diagram,
-            text=True,
-            capture_output=True,
-            check=False,
+        with _MERMAID_VALIDATION_SEMAPHORE:
+            proc = subprocess.run(
+                ["bun", "scripts/validate_mermaid.mjs"],
+                input=diagram,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=MERMAID_VALIDATION_TIMEOUT_SECONDS,
+            )
+    except subprocess.TimeoutExpired:
+        return MermaidValidationResult(
+            valid=False,
+            message=normalize_parser_message(
+                f"Mermaid validation timed out after {MERMAID_VALIDATION_TIMEOUT_SECONDS} seconds.",
+            ),
         )
     except Exception as exc:
         return MermaidValidationResult(

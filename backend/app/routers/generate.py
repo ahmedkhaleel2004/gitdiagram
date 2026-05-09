@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -54,6 +55,7 @@ router = APIRouter(prefix="/generate", tags=["AI"])
 
 openai_service = OpenAIService()
 diagram_state_repository = DiagramStateRepository()
+BROWSE_INDEX_UPDATE_DEBOUNCE_SECONDS = 30
 
 
 class GenerateRequest(BaseModel):
@@ -65,6 +67,74 @@ class GenerateRequest(BaseModel):
 
 class _ClientDisconnectedError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class PublicBrowseIndexUpdate:
+    username: str
+    repo: str
+    last_successful_at: str
+    stargazer_count: int | None
+
+    def to_storage_entry(self) -> dict[str, Any]:
+        return {
+            "username": self.username,
+            "repo": self.repo,
+            "lastSuccessfulAt": self.last_successful_at,
+            "stargazerCount": self.stargazer_count,
+        }
+
+
+class PublicBrowseIndexUpdater:
+    def __init__(
+        self,
+        repository: DiagramStateRepository,
+        *,
+        debounce_seconds: float = BROWSE_INDEX_UPDATE_DEBOUNCE_SECONDS,
+    ) -> None:
+        self._repository = repository
+        self._debounce_seconds = debounce_seconds
+        self._pending: dict[str, PublicBrowseIndexUpdate] = {}
+        self._lock = asyncio.Lock()
+        self._task: asyncio.Task[None] | None = None
+
+    async def enqueue(self, update: PublicBrowseIndexUpdate) -> None:
+        repo_key = f"{update.username.strip().lower()}/{update.repo.strip().lower()}"
+        async with self._lock:
+            self._pending[repo_key] = update
+            if self._task is None or self._task.done():
+                self._task = asyncio.create_task(self._flush_loop())
+
+    async def _take_pending(self) -> list[PublicBrowseIndexUpdate]:
+        async with self._lock:
+            updates = list(self._pending.values())
+            self._pending.clear()
+            return updates
+
+    async def _flush_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self._debounce_seconds)
+            updates = await self._take_pending()
+            if updates:
+                try:
+                    await asyncio.to_thread(
+                        self._repository.upsert_public_browse_index_entries,
+                        entries=[update.to_storage_entry() for update in updates],
+                    )
+                except Exception as exc:
+                    log_event(
+                        "generate.persistence.browse_index_failed",
+                        update_count=len(updates),
+                        error=str(exc),
+                    )
+
+            async with self._lock:
+                if not self._pending:
+                    self._task = None
+                    return
+
+
+public_browse_index_updater = PublicBrowseIndexUpdater(diagram_state_repository)
 
 
 DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR = (
@@ -135,6 +205,9 @@ def _normalize_generation_error(
     api_key: str | None,
     message: str,
 ) -> tuple[str, str]:
+    if "Repository is too large" in message:
+        return message, "TOKEN_LIMIT_EXCEEDED"
+
     if (
         provider == "openai"
         and not api_key
@@ -383,22 +456,14 @@ async def generate_stream(request: Request):
             stargazer_count: int | None,
         ) -> None:
             async def _run() -> None:
-                try:
-                    await asyncio.to_thread(
-                        diagram_state_repository.upsert_public_browse_index_entry,
+                await public_browse_index_updater.enqueue(
+                    PublicBrowseIndexUpdate(
                         username=username,
                         repo=repo,
                         last_successful_at=last_successful_at,
                         stargazer_count=stargazer_count,
                     )
-                except Exception as exc:
-                    log_event(
-                        "generate.persistence.browse_index_failed",
-                        username=username,
-                        repo=repo,
-                        session_id=audit["sessionId"],
-                        error=str(exc),
-                    )
+                )
 
             asyncio.create_task(_run())
 
@@ -464,6 +529,7 @@ async def generate_stream(request: Request):
                 parsed.repo,
                 parsed.github_pat,
             )
+            await _ensure_client_connected(request)
             storage_visibility = "private" if getattr(github_data, "is_private", False) else "public"
             provider_label = get_provider_label(provider)
             estimate = await estimate_generation_cost(
@@ -622,6 +688,7 @@ async def generate_stream(request: Request):
                 )
                 return
 
+            await _ensure_client_connected(request)
             audit = _timeline(audit, "explanation_sent", f"Sending explanation request to {model}...")
             yield send(
                 {
@@ -680,6 +747,7 @@ async def generate_stream(request: Request):
             audit["explanation"] = explanation
             audit["updatedAt"] = _now_iso()
 
+            await _ensure_client_connected(request)
             file_tree_lookup = build_file_tree_lookup(github_data.file_tree)
             valid_graph: DiagramGraph | None = None
             validation_feedback: str | None = None
@@ -828,6 +896,7 @@ async def generate_stream(request: Request):
             audit["compiledDiagram"] = diagram
             audit["updatedAt"] = _now_iso()
 
+            await _ensure_client_connected(request)
             validation_result = await asyncio.to_thread(validate_mermaid_syntax, diagram)
             if not validation_result.valid:
                 compiler_error = validation_result.message or "Compiled Mermaid failed validation."
@@ -867,7 +936,6 @@ async def generate_stream(request: Request):
             )
             audit = _set_final_cost(audit, final_cost)
             audit = _set_success(_timeline(audit, "complete", "Diagram generation complete."))
-            await _ensure_client_connected(request)
             await persist_successful_state(
                 explanation=explanation,
                 graph=valid_graph.model_dump(by_alias=True),

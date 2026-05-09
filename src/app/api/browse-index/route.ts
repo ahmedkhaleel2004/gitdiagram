@@ -1,9 +1,15 @@
-import { getCachedBrowseIndex } from "~/app/browse/data";
+import { getCachedBrowsePage } from "~/app/browse/data";
 
-export async function GET() {
-  const entries = await getCachedBrowseIndex();
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const result = await getCachedBrowsePage({
+    q: searchParams.get("q"),
+    sort: searchParams.get("sort"),
+    minStars: searchParams.get("minStars"),
+    page: searchParams.get("page"),
+  });
 
-  if (!entries) {
+  if (!result) {
     return Response.json(
       { error: "Browse index unavailable." },
       {
@@ -15,9 +21,12 @@ export async function GET() {
     );
   }
 
-  return Response.json(entries, {
+  return Response.json(result, {
     headers: {
-      "Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
+      "Cache-Control": "public, max-age=60",
+      "CDN-Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
+      "Vercel-CDN-Cache-Control":
+        "public, max-age=300, stale-while-revalidate=86400",
     },
   });
 }

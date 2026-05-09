@@ -1,10 +1,8 @@
 import { revalidateTag, unstable_cache } from "next/cache";
 
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
-import {
-  getBrowsePageFromEntries,
-  toRepoKey,
-} from "~/features/browse/catalog";
+import { getBrowsePageFromEntries, toRepoKey } from "~/features/browse/catalog";
+import type { BrowsePageResult, BrowseQuery } from "~/features/browse/catalog";
 import { getPublicDiagramPreview } from "~/server/storage/artifact-store";
 import { readBrowseIndex } from "~/server/storage/browse-diagrams";
 
@@ -12,12 +10,10 @@ const BROWSE_CACHE_REVALIDATE_SECONDS = 5 * 60;
 const BROWSE_INDEX_CACHE_TAG = "browse-index";
 const DEFAULT_BROWSE_PREVIEWS_CACHE_TAG = "browse-default-previews";
 
-let cachedBrowseIndex:
-  | {
-      entries: BrowseIndexEntry[] | null;
-      expiresAt: number;
-    }
-  | null = null;
+let cachedBrowseIndex: {
+  entries: BrowseIndexEntry[] | null;
+  expiresAt: number;
+} | null = null;
 let inFlightBrowseIndexRead: Promise<BrowseIndexEntry[] | null> | null = null;
 
 const getDefaultBrowsePreviewDiagramsFromCache = unstable_cache(
@@ -40,7 +36,9 @@ const getDefaultBrowsePreviewDiagramsFromCache = unstable_cache(
     );
 
     return Object.fromEntries(
-      previews.filter((preview): preview is [string, string] => preview !== null),
+      previews.filter(
+        (preview): preview is [string, string] => preview !== null,
+      ),
     );
   },
   [DEFAULT_BROWSE_PREVIEWS_CACHE_TAG],
@@ -50,7 +48,9 @@ const getDefaultBrowsePreviewDiagramsFromCache = unstable_cache(
   },
 );
 
-export async function getCachedBrowseIndex(): Promise<BrowseIndexEntry[] | null> {
+export async function getCachedBrowseIndex(): Promise<
+  BrowseIndexEntry[] | null
+> {
   const now = Date.now();
 
   if (cachedBrowseIndex && cachedBrowseIndex.expiresAt > now) {
@@ -74,6 +74,13 @@ export async function getCachedBrowseIndex(): Promise<BrowseIndexEntry[] | null>
     });
 
   return inFlightBrowseIndexRead;
+}
+
+export async function getCachedBrowsePage(
+  query: BrowseQuery,
+): Promise<BrowsePageResult | null> {
+  const entries = await getCachedBrowseIndex();
+  return entries ? getBrowsePageFromEntries(entries, query) : null;
 }
 
 export async function getCachedDefaultBrowsePreviewDiagrams(): Promise<

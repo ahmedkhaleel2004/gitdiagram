@@ -1,19 +1,6 @@
 import type { Metadata } from "next";
 
-import {
-  getCachedDefaultBrowsePreviewDiagrams,
-} from "~/app/browse/data";
 import { BrowseCatalog } from "~/components/browse-catalog";
-import { normalizeBrowseQuery } from "~/features/browse/catalog";
-
-type BrowsePageProps = {
-  searchParams: Promise<{
-    q?: string | string[];
-    sort?: string | string[];
-    minStars?: string | string[];
-    page?: string | string[];
-  }>;
-};
 
 export const metadata: Metadata = {
   title: "Browse Diagrams | GitDiagram",
@@ -24,28 +11,9 @@ export const metadata: Metadata = {
   },
 };
 
-function getSingleValue(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
+export const dynamic = "force-static";
 
-export default async function BrowsePage({ searchParams }: BrowsePageProps) {
-  const resolvedSearchParams = await searchParams;
-  const initialQuery = {
-    q: getSingleValue(resolvedSearchParams.q),
-    sort: getSingleValue(resolvedSearchParams.sort),
-    minStars: getSingleValue(resolvedSearchParams.minStars),
-    page: getSingleValue(resolvedSearchParams.page),
-  };
-  const normalizedInitialQuery = normalizeBrowseQuery(initialQuery);
-  const shouldPreloadDefaultPreviews =
-    normalizedInitialQuery.q === "" &&
-    normalizedInitialQuery.sort === "recent_desc" &&
-    normalizedInitialQuery.minStars === 0 &&
-    normalizedInitialQuery.page === 1;
-  const initialPreviewDiagrams = shouldPreloadDefaultPreviews
-    ? await getCachedDefaultBrowsePreviewDiagrams()
-    : undefined;
-
+export default function BrowsePage() {
   return (
     <main className="px-4 py-8 sm:px-8 sm:py-10">
       <div className="mx-auto max-w-6xl">
@@ -59,10 +27,7 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
           </p>
         </section>
 
-        <BrowseCatalog
-          initialPreviewDiagrams={initialPreviewDiagrams}
-          initialQuery={initialQuery}
-        />
+        <BrowseCatalog initialQuery={{}} />
       </div>
     </main>
   );
