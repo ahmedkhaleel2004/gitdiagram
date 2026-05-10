@@ -29,6 +29,8 @@ interface BrowseCatalogProps {
   initialQuery: BrowseQuery;
 }
 
+const SLOW_RESULTS_INDICATOR_DELAY_MS = 5000;
+
 export function BrowseCatalog({
   initialResult,
   initialPreviewDiagrams,
@@ -41,6 +43,8 @@ export function BrowseCatalog({
   const [isQueryReady, setIsQueryReady] = useState(Boolean(initialResult));
   const [isLoaded, setIsLoaded] = useState(Boolean(initialResult));
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showSlowResultsIndicator, setShowSlowResultsIndicator] =
+    useState(false);
   const [searchInput, setSearchInput] = useState(normalizedInitialQuery.q);
   const [sort, setSort] = useState<BrowseSort>(normalizedInitialQuery.sort);
   const [minStars, setMinStars] = useState(normalizedInitialQuery.minStars);
@@ -119,6 +123,13 @@ export function BrowseCatalog({
 
     setIsLoaded(false);
     setLoadError(null);
+    setShowSlowResultsIndicator(false);
+
+    const slowIndicatorTimeoutId = window.setTimeout(() => {
+      if (activeRequestId.current === requestId) {
+        setShowSlowResultsIndicator(true);
+      }
+    }, SLOW_RESULTS_INDICATOR_DELAY_MS);
 
     loadBrowsePage(query, abortController.signal)
       .then((loadedResult) => {
@@ -126,8 +137,10 @@ export function BrowseCatalog({
           return;
         }
 
+        window.clearTimeout(slowIndicatorTimeoutId);
         setResult(loadedResult);
         setIsLoaded(true);
+        setShowSlowResultsIndicator(false);
       })
       .catch((error: unknown) => {
         if (
@@ -137,15 +150,18 @@ export function BrowseCatalog({
           return;
         }
 
+        window.clearTimeout(slowIndicatorTimeoutId);
         setLoadError(
           error instanceof Error
             ? error.message
             : "Failed to load browse index.",
         );
         setIsLoaded(true);
+        setShowSlowResultsIndicator(false);
       });
 
     return () => {
+      window.clearTimeout(slowIndicatorTimeoutId);
       abortController.abort();
     };
   }, [deferredQuery, isQueryReady, minStars, page, sort]);
@@ -276,7 +292,7 @@ export function BrowseCatalog({
         sort={sort}
       />
 
-      {!isLoaded ? (
+      {showSlowResultsIndicator && !isLoaded ? (
         <p className="text-sm text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
           Updating results...
         </p>

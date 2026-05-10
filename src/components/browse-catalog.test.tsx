@@ -85,7 +85,9 @@ describe("BrowseCatalog", () => {
     }) as unknown as MediaQueryList;
 
   function mockFetch(
-    resolveBrowseResult: (url: URL) => BrowsePageResult | null,
+    resolveBrowseResult: (
+      url: URL,
+    ) => BrowsePageResult | null | Promise<BrowsePageResult | null>,
   ) {
     fetchSpy = vi.spyOn(global, "fetch").mockImplementation((input) => {
       const rawUrl =
@@ -106,13 +108,29 @@ describe("BrowseCatalog", () => {
         );
       }
 
-      const result = resolveBrowseResult(url);
-      return Promise.resolve(
-        new Response(result ? JSON.stringify(result) : "", {
-          status: result ? 200 : 404,
-          headers: { "Content-Type": "application/json" },
-        }),
+      return Promise.resolve(resolveBrowseResult(url)).then(
+        (result) =>
+          new Response(result ? JSON.stringify(result) : "", {
+            status: result ? 200 : 404,
+            headers: { "Content-Type": "application/json" },
+          }),
       );
+    });
+  }
+
+  function createDeferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((promiseResolve) => {
+      resolve = promiseResolve;
+    });
+
+    return { promise, resolve };
+  }
+
+  async function flushPromises() {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
     });
   }
 
@@ -135,6 +153,85 @@ describe("BrowseCatalog", () => {
     getEntriesByTypeSpy = vi
       .spyOn(window.performance, "getEntriesByType")
       .mockReturnValue([]);
+  });
+
+  it("does not show the updating indicator for fast search results", async () => {
+    const acmeEntry = createEntry("demo", {
+      username: "acme",
+      stargazerCount: 20,
+    });
+    const allEntries = [createEntry("next.js"), acmeEntry];
+    mockFetch((url) => {
+      const q = url.searchParams.get("q") ?? "";
+      const items = q === "acme" ? [acmeEntry] : allEntries;
+      return createBrowseResult(items, { q });
+    });
+
+    render(<BrowseCatalog initialQuery={{}} />);
+
+    expect(await screen.findByText("vercel/next.js")).toBeInTheDocument();
+
+    vi.useFakeTimers();
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "acme" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4999);
+    });
+    await flushPromises();
+
+    expect(screen.queryByText("Updating results...")).not.toBeInTheDocument();
+    expect(screen.getByText("acme/demo")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(screen.queryByText("Updating results...")).not.toBeInTheDocument();
+  });
+
+  it("shows the updating indicator only after search results stay pending for five seconds", async () => {
+    const slowResult = createDeferred<BrowsePageResult | null>();
+
+    mockFetch((url) => {
+      const q = url.searchParams.get("q") ?? "";
+
+      if (q === "slow") {
+        return slowResult.promise;
+      }
+
+      return createBrowseResult([createEntry("next.js")], { q });
+    });
+
+    render(<BrowseCatalog initialQuery={{}} />);
+
+    expect(await screen.findByText("vercel/next.js")).toBeInTheDocument();
+
+    vi.useFakeTimers();
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "slow" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4999);
+    });
+
+    expect(screen.queryByText("Updating results...")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(screen.getByText("Updating results...")).toBeInTheDocument();
+
+    slowResult.resolve(
+      createBrowseResult([createEntry("slow-repo")], { q: "slow" }),
+    );
+    await flushPromises();
+
+    expect(screen.getByText("vercel/slow-repo")).toBeInTheDocument();
+    expect(screen.queryByText("Updating results...")).not.toBeInTheDocument();
   });
 
   it("renders an empty state when no browse results match", async () => {
