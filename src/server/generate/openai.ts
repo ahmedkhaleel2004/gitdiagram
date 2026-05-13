@@ -168,11 +168,9 @@ export async function streamCompletion({
 
   let usageSettled = false;
   let resolveUsage!: (usage: GenerationTokenUsage | null) => void;
-  let rejectUsage!: (error: unknown) => void;
   const usagePromise = new Promise<GenerationTokenUsage | null>(
-    (resolve, reject) => {
+    (resolve) => {
       resolveUsage = resolve;
-      rejectUsage = reject;
     },
   );
 
@@ -238,7 +236,7 @@ export async function streamCompletion({
       resolveUsage(finalUsage);
     } catch (error) {
       usageSettled = true;
-      rejectUsage(error);
+      resolveUsage(null);
       throw error;
     } finally {
       if (!usageSettled) {

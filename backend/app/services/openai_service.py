@@ -187,7 +187,7 @@ class OpenAIService:
                     usage_future.set_result(final_usage)
             except Exception as exc:
                 if not usage_future.done():
-                    usage_future.set_exception(exc)
+                    usage_future.set_result(None)
                 raise
             finally:
                 if not usage_future.done():

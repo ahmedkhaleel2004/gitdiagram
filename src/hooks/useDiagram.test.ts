@@ -190,6 +190,34 @@ describe("useDiagram", () => {
     expect(result.current.error).toBe("");
   });
 
+  it("syncs a cached initial diagram with the latest stored artifact", async () => {
+    getDiagramState.mockResolvedValueOnce({
+      diagram: "flowchart TD\nA-->C",
+      explanation: "new diagram",
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+    });
+
+    const { result } = renderHook(() =>
+      useDiagram("acme", "demo", {
+        diagram: "flowchart TD\nA-->B",
+        explanation: "old diagram",
+        graph: null,
+        latestSessionAudit: null,
+        lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.diagram).toContain("A-->C"));
+
+    expect(getDiagramState).toHaveBeenCalledWith("acme", "demo", undefined);
+    expect(runGeneration).not.toHaveBeenCalled();
+    expect(result.current.lastGenerated?.toISOString()).toBe(
+      "2026-03-29T12:00:00.000Z",
+    );
+  });
+
   it("shows an over-limit error from the current regenerate attempt", async () => {
     runGeneration.mockImplementationOnce(async () => {
       streamOptions?.onError(

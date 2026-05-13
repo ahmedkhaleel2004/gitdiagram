@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import { getStoredDiagramState } from "~/server/storage/artifact-store";
+import { getPublicDiagramStateCacheTag } from "~/server/storage/repo-page-cache";
 import RepoPageClient from "./repo-page-client";
 
 type RepoPageProps = {
@@ -15,17 +16,22 @@ export function generateStaticParams() {
   return [];
 }
 
-const getCachedPublicDiagramState = unstable_cache(
-  async (username: string, repo: string) =>
-    getStoredDiagramState({
-      username,
-      repo,
-    }),
-  ["public-diagram-state"],
-  {
-    revalidate,
-  },
-);
+async function getCachedPublicDiagramState(username: string, repo: string) {
+  const getCachedState = unstable_cache(
+    async () =>
+      getStoredDiagramState({
+        username,
+        repo,
+      }),
+    ["public-diagram-state", username.toLowerCase(), repo.toLowerCase()],
+    {
+      revalidate,
+      tags: [getPublicDiagramStateCacheTag(username, repo)],
+    },
+  );
+
+  return getCachedState();
+}
 
 export async function generateMetadata({
   params,

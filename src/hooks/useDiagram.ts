@@ -32,6 +32,16 @@ function toInitialStreamState(
   };
 }
 
+function getFailureMessage(
+  audit: DiagramStateResponse["latestSessionAudit"],
+): string | undefined {
+  if (audit?.status !== "failed") {
+    return undefined;
+  }
+
+  return audit.renderError ?? audit.compilerError ?? audit.validationError;
+}
+
 export function useDiagram(
   username: string,
   repo: string,
@@ -86,78 +96,120 @@ export function useDiagram(
     initialState: toInitialStreamState(initialState),
   });
 
-  const getDiagram = useCallback(async () => {
-    setLoading(true);
-    setState((prev) => ({
-      ...prev,
-      error: undefined,
-    }));
-
-    try {
-      const githubPat = localStorage.getItem("github_pat");
-      const stateRecord = await getDiagramState(
-        username,
-        repo,
-        githubPat ?? undefined,
-      );
+  const applyStoredState = useCallback(
+    (stateRecord: DiagramStateResponse) => {
+      const storedDiagram = stateRecord.diagram;
+      const latestAudit = stateRecord.latestSessionAudit;
+      const failureMessage = getFailureMessage(latestAudit);
+      const shouldExposeFailure = !storedDiagram && Boolean(failureMessage);
 
       if (stateRecord.lastSuccessfulAt) {
         setLastGenerated(new Date(stateRecord.lastSuccessfulAt));
       }
-      if (stateRecord.latestSessionAudit) {
-        const latestAudit = stateRecord.latestSessionAudit;
-        setState((prev) => ({
-          ...prev,
-          status:
-            stateRecord.diagram
-              ? "complete"
-              : latestAudit.status === "failed"
-                ? "error"
-                : prev.status,
-          diagram: stateRecord.diagram ?? prev.diagram,
-          explanation: stateRecord.explanation ?? prev.explanation,
-          latestSessionAudit: latestAudit,
-          costSummary:
-            latestAudit.finalCost ?? latestAudit.estimatedCost ?? prev.costSummary,
-          graph: latestAudit.graph ?? prev.graph,
-          graphAttempts: latestAudit.graphAttempts ?? prev.graphAttempts,
-          failureStage: latestAudit.failureStage ?? prev.failureStage,
-          validationError: latestAudit.validationError ?? prev.validationError,
-          error:
-            latestAudit.status === "failed"
-              ? latestAudit.renderError ??
-                latestAudit.compilerError ??
-                latestAudit.validationError
-              : prev.error,
-        }));
-      } else {
-        const storedDiagram = stateRecord.diagram;
-        if (storedDiagram) {
-          setState((prev) => ({
-            ...prev,
-            status: "complete",
-            diagram: storedDiagram,
-            explanation: stateRecord.explanation ?? prev.explanation,
-            graph: stateRecord.graph ?? prev.graph,
-          }));
-        }
+
+      if (!storedDiagram && !latestAudit) {
+        return false;
       }
 
-      if (stateRecord.diagram) {
-        setLoading(false);
-        return;
-      }
-      await runGeneration(githubPat ?? undefined);
-    } catch {
       setState((prev) => ({
         ...prev,
-        status: "error",
-        error: "Something went wrong. Please try again later.",
+        status: storedDiagram
+          ? "complete"
+          : shouldExposeFailure
+            ? "error"
+            : prev.status,
+        diagram: storedDiagram ?? prev.diagram,
+        explanation: stateRecord.explanation ?? prev.explanation,
+        latestSessionAudit: latestAudit ?? prev.latestSessionAudit,
+        costSummary:
+          latestAudit?.finalCost ?? latestAudit?.estimatedCost ?? prev.costSummary,
+        graph: stateRecord.graph ?? latestAudit?.graph ?? prev.graph,
+        graphAttempts: latestAudit?.graphAttempts ?? prev.graphAttempts,
+        failureStage: shouldExposeFailure
+          ? latestAudit?.failureStage
+          : prev.failureStage,
+        validationError: shouldExposeFailure
+          ? latestAudit?.validationError
+          : prev.validationError,
+        error: shouldExposeFailure
+          ? failureMessage
+          : storedDiagram
+            ? undefined
+            : prev.error,
       }));
-    } finally {
-      setLoading(false);
-    }
-  }, [repo, runGeneration, setState, username]);
+
+      return Boolean(storedDiagram);
+    },
+    [setState],
+  );
+
+  const syncDiagramState = useCallback(
+    async ({
+      generateIfMissing,
+      showLoading,
+      clearError,
+    }: {
+      generateIfMissing: boolean;
+      showLoading: boolean;
+      clearError: boolean;
+    }) => {
+      if (showLoading) {
+        setLoading(true);
+      }
+
+      if (clearError) {
+        setState((prev) => ({
+          ...prev,
+          error: undefined,
+        }));
+      }
+
+      try {
+        const githubPat = localStorage.getItem("github_pat");
+        const stateRecord = await getDiagramState(
+          username,
+          repo,
+          githubPat ?? undefined,
+        );
+        const hasStoredDiagram = applyStoredState(stateRecord);
+
+        if (hasStoredDiagram || !generateIfMissing) {
+          return;
+        }
+
+        await runGeneration(githubPat ?? undefined);
+      } catch {
+        if (generateIfMissing) {
+          setState((prev) => ({
+            ...prev,
+            status: "error",
+            error: "Something went wrong. Please try again later.",
+          }));
+        }
+      } finally {
+        if (showLoading) {
+          setLoading(false);
+        }
+      }
+    },
+    [applyStoredState, repo, runGeneration, setState, username],
+  );
+
+  const getDiagram = useCallback(async () => {
+    await syncDiagramState({
+      generateIfMissing: true,
+      showLoading: true,
+      clearError: true,
+    });
+  }, [syncDiagramState]);
+
+  const refreshStoredDiagram = useCallback(async () => {
+    await syncDiagramState({
+      generateIfMissing: false,
+      showLoading: false,
+      clearError: false,
+    });
+  }, [syncDiagramState]);
 
   const handleRegenerate = useCallback(async () => {
     if (isExampleRepo(username, repo)) {
@@ -187,10 +239,11 @@ export function useDiagram(
 
   useEffect(() => {
     if (initialState?.diagram) {
+      void refreshStoredDiagram();
       return;
     }
     void getDiagram();
-  }, [getDiagram, initialState?.diagram]);
+  }, [getDiagram, initialState?.diagram, refreshStoredDiagram]);
 
   const diagram = state.diagram ?? "";
   const error = state.error ?? "";

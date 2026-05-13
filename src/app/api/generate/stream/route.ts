@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { after } from "next/server";
 
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
@@ -43,6 +44,10 @@ import {
 import { generateStructuredOutput, streamCompletion } from "~/server/generate/openai";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
 import { SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT } from "~/server/generate/prompts";
+import {
+  getPublicDiagramStateCacheTag,
+  getRepoPagePath,
+} from "~/server/storage/repo-page-cache";
 import {
   createGenerationSessionAudit,
   withCompiledDiagram,
@@ -747,6 +752,8 @@ export async function POST(request: Request) {
             const lastSuccessfulAt = audit.updatedAt ?? new Date().toISOString();
             postResponseTasks.push(async () => {
               try {
+                revalidatePath(getRepoPagePath(username, repo));
+                revalidateTag(getPublicDiagramStateCacheTag(username, repo), "max");
                 await updatePublicBrowseIndexForSuccessfulDiagram({
                   username,
                   repo,

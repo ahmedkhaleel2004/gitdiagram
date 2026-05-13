@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import time
 
 
 logger = logging.getLogger("gitdiagram.api")
 if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        stream=sys.stdout,
+    )
 
 
 def log_event(event: str, **fields):
