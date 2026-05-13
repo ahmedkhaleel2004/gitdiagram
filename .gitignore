@@ -33,6 +33,9 @@ next-env.d.ts
 # vercel
 .vercel
 
+# cloudflare wrangler local state
+.wrangler/
+
 # typescript
 *.tsbuildinfo
 

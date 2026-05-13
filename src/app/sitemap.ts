@@ -31,6 +31,12 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
       changeFrequency: "daily",
       priority: 0.8,
     },
+    {
+      url: `${SITE_URL}/sponsor`,
+      lastModified: new Date("2026-05-13"),
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
   ];
 }
 
@@ -49,8 +55,13 @@ export default async function sitemap(props: {
   const browseEntries = await getCachedBrowseIndex().catch(() => null);
   const latestBrowseUpdate = getLatestBrowseUpdate(browseEntries);
 
-  const repoOffset = Math.max(0, sitemapId * SITEMAP_PAGE_SIZE - 2);
-  const repoLimit = sitemapId === 0 ? SITEMAP_PAGE_SIZE - 2 : SITEMAP_PAGE_SIZE;
+  const staticRouteCount = getStaticRoutes(latestBrowseUpdate).length;
+  const repoOffset = Math.max(
+    0,
+    sitemapId * SITEMAP_PAGE_SIZE - staticRouteCount,
+  );
+  const repoLimit =
+    sitemapId === 0 ? SITEMAP_PAGE_SIZE - staticRouteCount : SITEMAP_PAGE_SIZE;
   const repoRoutes =
     browseEntries?.slice(repoOffset, repoOffset + repoLimit).map((entry) => ({
       url: `${SITE_URL}/${entry.username}/${entry.repo}`,
