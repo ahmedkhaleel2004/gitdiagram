@@ -82,11 +82,11 @@ export default function MainCard({
 
   return (
     <Card className="neo-panel relative w-full max-w-3xl !bg-[hsl(var(--neo-panel))] p-4 sm:p-8">
-      <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <Input
-            placeholder="GitHub repository URL or username/repo"
-            className="neo-input flex-1 rounded-md px-3 py-4 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
+            placeholder="owner/repo or GitHub URL"
+            className="neo-input min-w-0 flex-1 rounded-md px-3 py-4 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
             required
@@ -197,8 +197,8 @@ export default function MainCard({
 
         {/* Example Repositories */}
         {isHome && (
-          <div className="space-y-2">
-            <div className="text-sm text-gray-700 dark:text-neutral-300 sm:text-base">
+          <div className="space-y-3">
+            <div className="text-sm font-medium text-gray-700 sm:text-base dark:text-neutral-300">
               Try these example repositories:
             </div>
             <div className="flex flex-wrap gap-2">
@@ -206,7 +206,7 @@ export default function MainCard({
                 <Button
                   key={name}
                   variant="outline"
-                  className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19] sm:text-base"
+                  className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]"
                   onClick={(e) => handleExampleClick(path, e)}
                 >
                   {name}
