@@ -68,7 +68,6 @@ export default function Loading({
   const [graphPlanningSeconds, setGraphPlanningSeconds] = useState(0);
   const [animatedDots, setAnimatedDots] = useState(".");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -95,18 +94,6 @@ export default function Loading({
   }, [status]);
 
   useEffect(() => {
-    const scrollContainer = scrollRef.current;
-    if (!scrollContainer) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight;
-      bottomRef.current?.scrollIntoView({ block: "end" });
-    });
-  }, [status, message, explanation, graph, graphAttempts, validationError, diagram]);
-
-  useEffect(() => {
     if (!isGraphPlanningStatus(status) || graph) {
       setGraphPlanningSeconds(0);
       return;
@@ -119,6 +106,25 @@ export default function Loading({
 
     return () => clearInterval(interval);
   }, [graph, status]);
+
+  useEffect(() => {
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    });
+  }, [
+    status,
+    message,
+    explanation,
+    graph,
+    graphAttempts,
+    validationError,
+    diagram,
+  ]);
 
   const latestRawGraphAttempt = graphAttempts?.at(-1)?.rawOutput;
   const graphAttemptNumber = Math.min((graphAttempts?.length ?? 0) + 1, 3);
@@ -137,6 +143,7 @@ export default function Loading({
       <div
         ref={scrollRef}
         className="max-h-[560px] overflow-y-auto rounded-xl border-2 border-purple-200 bg-purple-50/30 backdrop-blur-sm dark:border-[#2d1d4e] dark:bg-[linear-gradient(160deg,#1a1228,#150f22)]"
+        data-testid="generation-stream"
       >
         <div className="sticky top-0 z-20 border-b border-purple-100 bg-purple-100/95 px-6 py-3 backdrop-blur-sm dark:border-[#2d1d4e] dark:bg-[#1e1832]/95">
           <div className="flex items-center justify-between gap-4">
@@ -162,7 +169,9 @@ export default function Loading({
                 <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
                   Explanation
                 </p>
-                <p className="mt-2 whitespace-pre-wrap leading-relaxed">{explanation}</p>
+                <p className="mt-2 leading-relaxed whitespace-pre-wrap">
+                  {explanation}
+                </p>
               </div>
             )}
             {showGraphPlanningCard ? (
@@ -170,14 +179,14 @@ export default function Loading({
                 <div className="flex items-center justify-between gap-4">
                   <p className="font-medium">Planning graph JSON...</p>
                   {showGraphAttemptBadge ? (
-                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-purple-700 dark:text-[hsl(var(--neo-link-hover))]">
+                    <span className="text-xs font-medium tracking-[0.18em] text-purple-700 uppercase dark:text-[hsl(var(--neo-link-hover))]">
                       Attempt {graphAttemptNumber}/3
                     </span>
                   ) : null}
                 </div>
                 <p className="mt-2 leading-relaxed text-purple-900 dark:text-[hsl(var(--foreground))]">
-                  The explanation is done. The model is now building the structured graph that
-                  gets compiled into Mermaid.
+                  The explanation is done. The model is now building the
+                  structured graph that gets compiled into Mermaid.
                 </p>
                 <div className="mt-3 flex items-center gap-3 text-xs font-medium text-purple-700 dark:text-[hsl(var(--neo-link-hover))]">
                   <span className="inline-flex gap-1">
@@ -188,7 +197,7 @@ export default function Loading({
                   <span>{graphPlanningSeconds}s in this step</span>
                 </div>
                 <pre className="mt-4 overflow-x-auto rounded-md bg-purple-50/90 p-3 text-xs leading-relaxed text-purple-950 dark:bg-[#181126] dark:text-[hsl(var(--foreground))]">
-{`{
+                  {`{
   "groups": [...],
   "nodes": [...],
   "edges": [...]
@@ -201,7 +210,7 @@ export default function Loading({
                 <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
                   Graph JSON
                 </p>
-                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                <pre className="mt-2 overflow-x-auto leading-relaxed whitespace-pre-wrap">
                   {JSON.stringify(graph, null, 2)}
                 </pre>
               </div>
@@ -211,7 +220,7 @@ export default function Loading({
                 <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
                   Graph attempts
                 </p>
-                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                <pre className="mt-2 overflow-x-auto leading-relaxed whitespace-pre-wrap">
                   {JSON.stringify(graphAttempts, null, 2)}
                 </pre>
               </div>
@@ -221,7 +230,7 @@ export default function Loading({
                 <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
                   Latest graph raw output
                 </p>
-                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                <pre className="mt-2 overflow-x-auto leading-relaxed whitespace-pre-wrap">
                   {latestRawGraphAttempt}
                 </pre>
               </div>
@@ -229,7 +238,7 @@ export default function Loading({
             {validationError && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
                 <p className="font-medium">Validation feedback</p>
-                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                <pre className="mt-2 overflow-x-auto leading-relaxed whitespace-pre-wrap">
                   {validationError}
                 </pre>
               </div>
@@ -239,12 +248,11 @@ export default function Loading({
                 <p className="font-medium text-purple-500 dark:text-[hsl(var(--neo-link-hover))]">
                   Compiled Mermaid
                 </p>
-                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                <pre className="mt-2 overflow-x-auto leading-relaxed whitespace-pre-wrap">
                   {diagram}
                 </pre>
               </div>
             )}
-            <div ref={bottomRef} />
           </div>
         </div>
       </div>

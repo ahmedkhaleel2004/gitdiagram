@@ -207,6 +207,7 @@ export default function MainCard({
                 {Object.entries(exampleRepos).map(([name, path]) => (
                   <Button
                     key={name}
+                    type="button"
                     variant="outline"
                     className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]"
                     onClick={(e) => handleExampleClick(path, e)}

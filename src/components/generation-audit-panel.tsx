@@ -15,6 +15,8 @@ export function GenerationAuditPanel({
   if (!audit && !error) {
     return null;
   }
+  const diagnosticMessage =
+    audit?.validationError ?? audit?.compilerError ?? audit?.renderError;
 
   const renderCostSummary = (
     label: string,
@@ -27,10 +29,8 @@ export function GenerationAuditPanel({
     return (
       <div className="mt-3 rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
         <p className="font-medium">{label}</p>
-        <p className="mt-1">
-          {costSummary.display}
-        </p>
-        <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs">
+        <p className="mt-1">{costSummary.display}</p>
+        <pre className="mt-2 overflow-x-auto text-xs whitespace-pre-wrap">
           {JSON.stringify(costSummary, null, 2)}
         </pre>
       </div>
@@ -46,13 +46,13 @@ export function GenerationAuditPanel({
       </p>
       {error && <p className="mt-2 text-red-700 dark:text-red-300">{error}</p>}
       {audit?.failureStage && (
-        <p className="mt-2 text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+        <p className="mt-2 text-xs tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
           Failure stage: {audit.failureStage}
         </p>
       )}
-      {audit?.validationError && (
-        <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-md bg-neutral-100 p-3 text-xs dark:bg-neutral-900">
-          {audit.validationError}
+      {diagnosticMessage && (
+        <pre className="mt-3 overflow-x-auto rounded-md bg-neutral-100 p-3 text-xs whitespace-pre-wrap dark:bg-neutral-900">
+          {diagnosticMessage}
         </pre>
       )}
       {renderCostSummary("Estimated cost", audit?.estimatedCost)}
@@ -60,7 +60,7 @@ export function GenerationAuditPanel({
       {audit?.stageUsages?.length ? (
         <div className="mt-4 rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
           <p className="font-medium">Stage usage</p>
-          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs">
+          <pre className="mt-2 overflow-x-auto text-xs whitespace-pre-wrap">
             {JSON.stringify(audit.stageUsages, null, 2)}
           </pre>
         </div>
@@ -68,7 +68,7 @@ export function GenerationAuditPanel({
       {audit?.graphAttempts?.length ? (
         <div className="mt-4 rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
           <p className="font-medium">Graph attempts</p>
-          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs">
+          <pre className="mt-2 overflow-x-auto text-xs whitespace-pre-wrap">
             {JSON.stringify(audit.graphAttempts, null, 2)}
           </pre>
         </div>
@@ -76,7 +76,7 @@ export function GenerationAuditPanel({
       {audit?.graph ? (
         <div className="mt-4 rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
           <p className="font-medium">Graph JSON</p>
-          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs">
+          <pre className="mt-2 overflow-x-auto text-xs whitespace-pre-wrap">
             {JSON.stringify(audit.graph, null, 2)}
           </pre>
         </div>
@@ -84,7 +84,7 @@ export function GenerationAuditPanel({
       {audit?.compiledDiagram ? (
         <div className="mt-4 rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
           <p className="font-medium">Compiled Mermaid</p>
-          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs">
+          <pre className="mt-2 overflow-x-auto text-xs whitespace-pre-wrap">
             {audit.compiledDiagram}
           </pre>
         </div>

@@ -26,7 +26,25 @@ describe("MainCard", () => {
 
     expect(push).toHaveBeenCalledWith("/facebook/react");
     expect(
-      screen.queryByText("Please enter a valid GitHub repository URL or owner/repo"),
+      screen.queryByText(
+        "Please enter a valid GitHub repository URL or owner/repo",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets example repositories navigate without submitting the required input", () => {
+    render(<MainCard />);
+
+    const exampleButton = screen.getByRole("button", { name: "FastAPI" });
+    expect(exampleButton).toHaveAttribute("type", "button");
+
+    fireEvent.click(exampleButton);
+
+    expect(push).toHaveBeenCalledWith("/fastapi/fastapi");
+    expect(
+      screen.queryByText(
+        "Please enter a valid GitHub repository URL or owner/repo",
+      ),
     ).not.toBeInTheDocument();
   });
 });
