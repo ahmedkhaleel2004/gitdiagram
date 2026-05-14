@@ -3,12 +3,12 @@ import Link from "next/link";
 import {
   ArrowUpRight,
   CheckCircle2,
-  Mail,
   ShieldCheck,
   Sparkles,
   Target,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
+import { SponsorEmailActions } from "./sponsor-email-actions";
 
 export const metadata: Metadata = {
   title: "Sponsor GitDiagram",
@@ -101,8 +101,8 @@ const includedItems = [
   "UTM click reporting — no third-party ad scripts",
 ];
 
-const SPONSOR_EMAIL =
-  "mailto:ahmedkhaleel2004@gmail.com?subject=GitDiagram%20sponsor%20slot";
+const SPONSOR_EMAIL_ADDRESS = "ahmedkhaleel2004@gmail.com";
+const SPONSOR_EMAIL = `mailto:${SPONSOR_EMAIL_ADDRESS}?subject=GitDiagram%20sponsor%20slot`;
 
 export default function SponsorPage() {
   return (
@@ -128,17 +128,14 @@ export default function SponsorPage() {
               they are already thinking about code structure, tooling, and
               technical decisions.
             </p>
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <Link
-                href={SPONSOR_EMAIL}
-                className="neo-button inline-flex min-h-[48px] items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold"
-              >
-                <Mail className="h-4 w-4" aria-hidden="true" />
-                Sponsor GitDiagram
-              </Link>
+            <div className="mt-7 flex flex-col gap-3">
+              <SponsorEmailActions
+                email={SPONSOR_EMAIL_ADDRESS}
+                mailto={SPONSOR_EMAIL}
+              />
               <Link
                 href="https://github.com/ahmedkhaleel2004/gitdiagram"
-                className="browse-muted-button inline-flex min-h-[48px] items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold"
+                className="browse-muted-button inline-flex min-h-[48px] w-fit items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold"
               >
                 <FaGithub className="h-4 w-4" aria-hidden="true" />
                 View the project
@@ -300,14 +297,11 @@ export default function SponsorPage() {
               placement, and a monthly report with UTM clicks and surface
               screenshots.
             </p>
-            <Link
-              href={SPONSOR_EMAIL}
-              className="neo-button mt-6 inline-flex min-h-[48px] items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-black"
-            >
-              <Mail className="h-4 w-4" aria-hidden="true" />
-              Email Ahmed
-              <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
+            <SponsorEmailActions
+              email={SPONSOR_EMAIL_ADDRESS}
+              mailto={SPONSOR_EMAIL}
+              className="mt-6"
+            />
           </div>
         </section>
       </div>
