@@ -1,12 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  ArrowUpRight,
-  CheckCircle2,
-  ShieldCheck,
-  Sparkles,
-  Target,
-} from "lucide-react";
+import { ArrowUpRight, ShieldCheck, Sparkles } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import { SponsorEmailActions } from "./sponsor-email-actions";
 
@@ -95,12 +89,6 @@ const sponsorFits = [
   "Cloud hosting, databases, CI, and developer infrastructure",
 ];
 
-const includedItems = [
-  "One exclusive devtool sponsor per category",
-  "Native placements across high-intent surfaces",
-  "UTM click reporting — no third-party ad scripts",
-];
-
 const SPONSOR_EMAIL_ADDRESS = "ahmedkhaleel2004@gmail.com";
 const SPONSOR_EMAIL = `mailto:${SPONSOR_EMAIL_ADDRESS}?subject=GitDiagram%20sponsor%20slot`;
 
@@ -109,77 +97,39 @@ export default function SponsorPage() {
     <main className="flex-grow px-5 py-10 sm:px-8 lg:py-14">
       <div className="mx-auto max-w-5xl">
         {/* HERO */}
-        <section className="grid gap-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(20rem,22rem)] lg:items-center">
-          <div className="min-w-0">
-            <span className="inline-flex items-center gap-2 border-[3px] border-black bg-[hsl(var(--neo-button))] px-3 py-1 text-xs font-black tracking-[0.14em] text-black uppercase shadow-[3px_3px_0_0_#000]">
-              <Target className="h-3.5 w-3.5" aria-hidden="true" />
-              Sponsor GitDiagram
+        <section>
+          <h1 className="max-w-4xl text-4xl leading-[1.04] font-black tracking-tight text-black sm:text-5xl lg:text-[4.25rem] dark:text-neutral-50">
+            Reach developers while they{" "}
+            <span className="text-purple-700 dark:text-[hsl(var(--neo-link))]">
+              inspect real GitHub codebases
             </span>
-            <h1 className="mt-6 max-w-3xl text-4xl leading-[1.04] font-black tracking-tight text-black sm:text-5xl lg:text-[3.75rem] dark:text-neutral-50">
-              Reach developers while they{" "}
-              <span className="text-purple-700 dark:text-[hsl(var(--neo-link))]">
-                inspect real GitHub codebases
-              </span>
-              .
-            </h1>
-            <p className="mt-5 max-w-2xl text-lg leading-7 text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-              GitDiagram is an open-source tool developers use to turn
-              repositories into architecture diagrams. Sponsor the moment when
-              they are already thinking about code structure, tooling, and
-              technical decisions.
-            </p>
-            <div className="mt-7 flex flex-col gap-3">
-              <SponsorEmailActions
-                email={SPONSOR_EMAIL_ADDRESS}
-                mailto={SPONSOR_EMAIL}
-              />
-              <Link
-                href="https://github.com/ahmedkhaleel2004/gitdiagram"
-                className="browse-muted-button inline-flex min-h-[48px] w-fit items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold"
-              >
-                <FaGithub className="h-4 w-4" aria-hidden="true" />
-                View the project
-                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-            </div>
-          </div>
+            .
+          </h1>
+          <p className="mt-5 max-w-3xl text-lg leading-7 text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
+            GitDiagram is an open-source tool developers use to turn
+            repositories into architecture diagrams. Sponsor the moment when
+            they are already thinking about code structure, tooling, and
+            technical decisions.
+          </p>
 
-          {/* Price card */}
-          <aside className="neo-panel relative rounded-lg p-6">
-            <Sparkles
-              className="pointer-events-none absolute -top-5 -right-5 hidden h-14 w-14 -rotate-12 fill-sky-400 text-black lg:block dark:fill-[hsl(var(--neo-button))] dark:text-[hsl(var(--background))]"
-              strokeWidth={0.6}
-              aria-hidden="true"
+          <div className="mt-7 flex flex-wrap gap-3">
+            <SponsorEmailActions
+              email={SPONSOR_EMAIL_ADDRESS}
+              mailto={SPONSOR_EMAIL}
             />
-            <p className="text-xs font-black tracking-[0.14em] text-[hsl(var(--neo-soft-text))] uppercase dark:text-neutral-300">
-              Founding sponsor slot
-            </p>
-            <div className="mt-3 flex items-baseline gap-2">
-              <p className="text-5xl leading-none font-black text-black dark:text-neutral-50">
-                $1,000
-              </p>
-              <p className="text-sm font-bold text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-                / month
-              </p>
-            </div>
-            <p className="mt-3 inline-flex items-center rounded-md border-[2px] border-black bg-[hsl(var(--neo-button))] px-2 py-1 text-xs font-black tracking-wide text-black">
-              $2,500 for a 3-month founding package
-            </p>
-            <div className="mt-6 space-y-3 border-t-[3px] border-black pt-5">
-              {includedItems.map((item) => (
-                <p
-                  key={item}
-                  className="flex gap-3 text-sm leading-6 font-semibold text-black dark:text-neutral-100"
-                >
-                  <CheckCircle2
-                    className="mt-0.5 h-5 w-5 shrink-0 text-purple-700 dark:text-[hsl(var(--neo-link))]"
-                    aria-hidden="true"
-                  />
-                  {item}
-                </p>
-              ))}
-            </div>
-          </aside>
+            <Link
+              href="https://github.com/ahmedkhaleel2004/gitdiagram"
+              className="browse-muted-button inline-flex min-h-[48px] w-fit items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold"
+            >
+              <FaGithub className="h-4 w-4" aria-hidden="true" />
+              View the project
+              <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
+          <p className="mt-5 max-w-3xl text-sm leading-6 font-bold text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
+            The founding sponsor slot is open. Includes category exclusivity,
+            native placements, and a monthly UTM/screenshot report.
+          </p>
         </section>
 
         {/* AUDIENCE */}
@@ -280,9 +230,9 @@ export default function SponsorPage() {
 
         {/* FINAL CTA */}
         <section className="mt-16 lg:mt-20">
-          <div className="neo-panel relative overflow-hidden rounded-lg p-8 sm:p-10">
+          <div className="neo-panel relative rounded-lg p-8 sm:p-10">
             <Sparkles
-              className="pointer-events-none absolute -top-4 -right-4 h-20 w-20 rotate-12 fill-sky-400 text-black dark:fill-[hsl(var(--neo-button))] dark:text-[hsl(var(--background))]"
+              className="pointer-events-none absolute -top-6 -right-3 h-20 w-20 rotate-12 fill-sky-400 text-black sm:-right-5 dark:fill-[hsl(var(--neo-button))] dark:text-[hsl(var(--background))]"
               strokeWidth={0.6}
               aria-hidden="true"
             />
