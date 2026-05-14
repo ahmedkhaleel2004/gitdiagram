@@ -12,6 +12,7 @@ import { ExportDropdown } from "./export-dropdown";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
+import { SponsorSlot } from "~/components/sponsor-slot";
 
 interface MainCardProps {
   isHome?: boolean;
@@ -197,22 +198,25 @@ export default function MainCard({
 
         {/* Example Repositories */}
         {isHome && (
-          <div className="space-y-3">
-            <div className="text-sm font-medium text-gray-700 sm:text-base dark:text-neutral-300">
-              Try these example repositories:
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="text-sm font-medium text-gray-700 sm:text-base dark:text-neutral-300">
+                Try these example repositories:
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(exampleRepos).map(([name, path]) => (
+                  <Button
+                    key={name}
+                    variant="outline"
+                    className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]"
+                    onClick={(e) => handleExampleClick(path, e)}
+                  >
+                    {name}
+                  </Button>
+                ))}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(exampleRepos).map(([name, path]) => (
-                <Button
-                  key={name}
-                  variant="outline"
-                  className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]"
-                  onClick={(e) => handleExampleClick(path, e)}
-                >
-                  {name}
-                </Button>
-              ))}
-            </div>
+            <SponsorSlot surface="home" />
           </div>
         )}
       </form>

@@ -36,6 +36,7 @@ interface MermaidChartProps {
   chart: string;
   zoomingEnabled?: boolean;
   onRenderError?: (message: string) => void;
+  onRenderComplete?: () => void;
   containerClassName?: string;
   diagramClassName?: string;
   backgroundColor?: string;
@@ -52,6 +53,7 @@ const MermaidChart = ({
   chart,
   zoomingEnabled = true,
   onRenderError,
+  onRenderComplete,
   containerClassName,
   diagramClassName,
   backgroundColor,
@@ -398,6 +400,7 @@ const MermaidChart = ({
         mermaidElement.innerHTML = svg;
         bindFunctions?.(mermaidElement);
         applyInteractiveView();
+        onRenderComplete?.();
         return;
       } catch (error) {
         console.error("Mermaid render failed:", error);
@@ -431,6 +434,7 @@ const MermaidChart = ({
     zoomingEnabled,
     isDark,
     onRenderError,
+    onRenderComplete,
   ]);
 
   useEffect(() => {

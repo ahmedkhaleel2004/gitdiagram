@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import MainCard from "~/components/main-card";
 import Loading from "~/components/loading";
@@ -10,6 +10,7 @@ import { useDiagram } from "~/hooks/useDiagram";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
 import { ApiKeyButton } from "~/components/api-key-button";
 import { useStarReminder } from "~/hooks/useStarReminder";
+import { SponsorSlot } from "~/components/sponsor-slot";
 
 type RepoPageClientProps = {
   username: string;
@@ -23,6 +24,7 @@ export default function RepoPageClient({
   initialState = null,
 }: RepoPageClientProps) {
   const [zoomingEnabled, setZoomingEnabled] = useState(false);
+  const [diagramRendered, setDiagramRendered] = useState(false);
 
   useStarReminder();
 
@@ -47,6 +49,14 @@ export default function RepoPageClient({
 
   const hasDiagram = Boolean(diagram);
   const hasError = Boolean(error || state.error);
+
+  const handleDiagramRenderComplete = useCallback(() => {
+    setDiagramRendered(true);
+  }, []);
+
+  useEffect(() => {
+    setDiagramRendered(false);
+  }, [diagram, zoomingEnabled]);
 
   return (
     <div className="flex flex-col items-center p-4">
@@ -85,13 +95,22 @@ export default function RepoPageClient({
         ) : (
           <div className="flex w-full flex-col items-center gap-8">
             {hasDiagram && (
-              <div className="flex w-full justify-center px-4">
-                <MermaidChart
-                  chart={diagram}
-                  zoomingEnabled={zoomingEnabled}
-                  onRenderError={handleDiagramRenderError}
-                />
-              </div>
+              <>
+                <div className="flex w-full justify-center px-4">
+                  <MermaidChart
+                    chart={diagram}
+                    zoomingEnabled={zoomingEnabled}
+                    onRenderError={handleDiagramRenderError}
+                    onRenderComplete={handleDiagramRenderComplete}
+                  />
+                </div>
+                {diagramRendered && (
+                  <SponsorSlot
+                    surface="diagram"
+                    className="mx-4 mb-8 max-w-5xl sm:mb-12"
+                  />
+                )}
+              </>
             )}
             {hasError && (
               <div className="w-full max-w-5xl text-center">

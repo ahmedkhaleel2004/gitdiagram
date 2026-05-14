@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import type { RefObject } from "react";
+import { Fragment, type RefObject } from "react";
 
 import type {
   BrowsePageResult,
@@ -17,6 +17,7 @@ import {
   type HoverPreviewState,
   type HoverPreviewStatus,
 } from "~/components/browse-catalog-shared";
+import { SponsorCatalogRow } from "~/components/sponsor-slot";
 
 interface BrowseCatalogResultsProps {
   closeHoverPreview: () => void;
@@ -92,65 +93,67 @@ export function BrowseCatalogResults({
             </tr>
           </thead>
           <tbody className="block lg:table-row-group">
-            {result.items.map((item) => {
+            {result.items.map((item, index) => {
               const diagramPath = `/${encodeURIComponent(item.username)}/${encodeURIComponent(item.repo)}`;
               const githubPath = `https://github.com/${item.username}/${item.repo}`;
 
               return (
-                <tr
-                  key={`${item.username}/${item.repo}`}
-                  className="block border-b border-black/15 align-middle last:border-b-0 lg:table-row dark:border-white/10"
-                >
-                  <td
-                    className="block p-0 lg:table-cell"
-                    onMouseEnter={(event) => handleRepoHoverStart(item, event)}
-                    onMouseMove={(event) => handleRepoHoverMove(item, event)}
-                    onMouseLeave={closeHoverPreview}
-                  >
-                    <div
-                      title={`${item.username}/${item.repo}`}
-                      className="flex h-full w-full flex-col px-4 pt-5 pb-5 lg:px-5 lg:py-4"
+                <Fragment key={`${item.username}/${item.repo}`}>
+                  {index === 1 && <SponsorCatalogRow />}
+                  <tr className="block border-b border-black/15 align-middle last:border-b-0 lg:table-row dark:border-white/10">
+                    <td
+                      className="block p-0 lg:table-cell"
+                      onMouseEnter={(event) =>
+                        handleRepoHoverStart(item, event)
+                      }
+                      onMouseMove={(event) => handleRepoHoverMove(item, event)}
+                      onMouseLeave={closeHoverPreview}
                     >
-                      <span className="block text-[1.4rem] leading-[1.05] font-semibold tracking-tight break-all lg:overflow-hidden lg:text-lg lg:leading-tight lg:break-normal lg:text-ellipsis lg:whitespace-nowrap">
-                        {item.username}/{item.repo}
-                      </span>
-                      <span className="mt-3 block lg:hidden">
-                        <span className="inline-flex items-center rounded-full border-[2px] border-black bg-black/5 px-3 py-1 text-sm font-semibold dark:border-[#1a0d30] dark:bg-white/5">
-                          {formatStarSummary(item.stargazerCount)}
+                      <div
+                        title={`${item.username}/${item.repo}`}
+                        className="flex h-full w-full flex-col px-4 pt-5 pb-5 lg:px-5 lg:py-4"
+                      >
+                        <span className="block text-[1.4rem] leading-[1.05] font-semibold tracking-tight break-all lg:overflow-hidden lg:text-lg lg:leading-tight lg:break-normal lg:text-ellipsis lg:whitespace-nowrap">
+                          {item.username}/{item.repo}
                         </span>
+                        <span className="mt-3 block lg:hidden">
+                          <span className="inline-flex items-center rounded-full border-[2px] border-black bg-black/5 px-3 py-1 text-sm font-semibold dark:border-[#1a0d30] dark:bg-white/5">
+                            {formatStarSummary(item.stargazerCount)}
+                          </span>
+                        </span>
+                      </div>
+                    </td>
+                    <td className="hidden px-5 py-4 text-sm font-semibold whitespace-nowrap lg:table-cell">
+                      {formatStarCount(item.stargazerCount)}
+                    </td>
+                    <td className="block px-4 pt-4 text-[hsl(var(--neo-soft-text))] lg:table-cell lg:px-5 lg:py-4 lg:text-sm dark:text-neutral-300">
+                      <span className="block text-[11px] font-semibold tracking-[0.18em] text-[hsl(var(--neo-soft-text))] uppercase lg:hidden dark:text-neutral-400">
+                        Last Generated
                       </span>
-                    </div>
-                  </td>
-                  <td className="hidden px-5 py-4 text-sm font-semibold whitespace-nowrap lg:table-cell">
-                    {formatStarCount(item.stargazerCount)}
-                  </td>
-                  <td className="block px-4 pt-4 text-[hsl(var(--neo-soft-text))] lg:table-cell lg:px-5 lg:py-4 lg:text-sm dark:text-neutral-300">
-                    <span className="block text-[11px] font-semibold tracking-[0.18em] text-[hsl(var(--neo-soft-text))] uppercase lg:hidden dark:text-neutral-400">
-                      Last Generated
-                    </span>
-                    <time dateTime={item.lastSuccessfulAt}>
-                      <span className="mt-2 block text-base leading-snug font-medium text-[hsl(var(--foreground))] lg:mt-0 lg:text-sm lg:font-normal lg:whitespace-nowrap lg:text-[hsl(var(--neo-soft-text))] dark:text-[hsl(var(--foreground))] lg:dark:text-neutral-300">
-                        {formatGeneratedAt(item.lastSuccessfulAt)}
-                      </span>
-                    </time>
-                  </td>
-                  <td className="block px-4 py-4 lg:table-cell lg:px-5 lg:py-4 lg:pr-6 xl:px-6 xl:pr-7">
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-center xl:flex xl:gap-3 xl:whitespace-nowrap">
-                      <Link
-                        href={diagramPath}
-                        className="neo-button inline-flex min-h-[52px] w-full items-center justify-center rounded-md px-4 py-3 text-base font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[148px] xl:px-4"
-                      >
-                        Open Diagram
-                      </Link>
-                      <Link
-                        href={githubPath}
-                        className="browse-muted-button inline-flex min-h-[52px] w-full items-center justify-center rounded-md px-4 py-3 text-base font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[104px] xl:px-4"
-                      >
-                        GitHub
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
+                      <time dateTime={item.lastSuccessfulAt}>
+                        <span className="mt-2 block text-base leading-snug font-medium text-[hsl(var(--foreground))] lg:mt-0 lg:text-sm lg:font-normal lg:whitespace-nowrap lg:text-[hsl(var(--neo-soft-text))] dark:text-[hsl(var(--foreground))] lg:dark:text-neutral-300">
+                          {formatGeneratedAt(item.lastSuccessfulAt)}
+                        </span>
+                      </time>
+                    </td>
+                    <td className="block px-4 py-4 lg:table-cell lg:px-5 lg:py-4 lg:pr-6 xl:px-6 xl:pr-7">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-center xl:flex xl:gap-3 xl:whitespace-nowrap">
+                        <Link
+                          href={diagramPath}
+                          className="neo-button inline-flex min-h-[52px] w-full items-center justify-center rounded-md px-4 py-3 text-base font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[148px] xl:px-4"
+                        >
+                          Open Diagram
+                        </Link>
+                        <Link
+                          href={githubPath}
+                          className="browse-muted-button inline-flex min-h-[52px] w-full items-center justify-center rounded-md px-4 py-3 text-base font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[104px] xl:px-4"
+                        >
+                          GitHub
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                </Fragment>
               );
             })}
           </tbody>

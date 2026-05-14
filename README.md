@@ -9,6 +9,8 @@ Turn any GitHub repository into an interactive diagram for visualization in seco
 
 You can also replace `hub` with `diagram` in any Github URL to access its diagram.
 
+> **Sponsor slot:** Your devtool here. Reach developers who are actively exploring codebases with GitDiagram. [Sponsor GitDiagram](https://gitdiagram.com/sponsor).
+
 ## 🚀 Features
 
 - 👀 **Instant Visualization**: Convert any GitHub repository structure into a system design / architecture diagram
@@ -39,10 +41,12 @@ There is no Postgres or Neon runtime path anymore.
 ## 🔄 Generation Backends
 
 GitDiagram supports two generation backends:
+
 - `fastapi`: external FastAPI service
 - `next`: in-repo Next.js Route Handlers that validate Mermaid in-process and can be deployed on Vercel with the checked-in Bun runtime config
 
 Frontend routing is explicit:
+
 - `NEXT_PUBLIC_GENERATION_BACKEND=fastapi` with `NEXT_PUBLIC_GENERATE_API_BASE_URL=https://<your-backend>/generate` for the production-style path
 - or `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
@@ -117,6 +121,7 @@ bun run dev
 You can now access the website at `localhost:3000`.
 
 This is the simplest local mode and works with:
+
 - `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
 Run FastAPI backend only if you want production parity:
@@ -127,10 +132,12 @@ docker-compose logs -f api
 ```
 
 To use the FastAPI backend from the frontend, set:
+
 - `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
 - `NEXT_PUBLIC_GENERATE_API_BASE_URL=http://localhost:8000/generate`
 
 To use the built-in Next.js Route Handlers instead, set:
+
 - `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
 Quick validation:
