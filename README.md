@@ -15,7 +15,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 
 - 👀 **Instant Visualization**: Convert any GitHub repository structure into a system design / architecture diagram
 - 🎨 **Interactivity**: Click on components to navigate directly to source files and relevant directories
-- ⚡ **Fast Generation**: Powered by GPT-5-family models, with OpenAI for user-supplied browser keys and optional OpenRouter for self-hosted deployments
+- ⚡ **Fast Generation**: Powered by GPT-5-family models, with OpenAI for user-supplied browser keys and optional self-hosted providers such as OpenRouter or [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=gitdiagram)
 - 🖼️ **Export Options**: Copy Mermaid code or download the generated diagram as PNG
 
 ## ⚙️ Tech Stack
@@ -23,7 +23,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 - **Frontend**: Next.js, TypeScript, Tailwind CSS, ShadCN
 - **Backend**: FastAPI (Railway) or Next.js Route Handlers, selected explicitly via environment
 - **Storage**: Cloudflare R2 (diagram artifacts) + Upstash Redis (quota and failure summaries)
-- **AI**: OpenAI or OpenRouter (via `AI_PROVIDER`)
+- **AI**: OpenAI, OpenRouter, or [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=gitdiagram) (via `AI_PROVIDER`)
 - **Deployment**: Vercel (frontend) + Railway (backend)
 - **CI/CD**: GitHub Actions
 - **Analytics**: PostHog, Api-Analytics
@@ -61,7 +61,7 @@ Frontend routing is explicit:
 
 I created this because I wanted to contribute to open-source projects but quickly realized their codebases are too massive for me to dig through manually, so this helps me get started - but it's definitely got many more use cases!
 
-Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with GPT-5-family models. The default setup uses GPT-5.4 mini through OpenAI, while self-hosted operators can optionally point the backend at OpenRouter via environment configuration.
+Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with GPT-5-family models. The default setup uses GPT-5.4 mini through OpenAI, while self-hosted operators can optionally point the backend at OpenRouter or [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=gitdiagram) via environment configuration.
 
 ## ⚙️ How GitDiagram Works
 
@@ -109,6 +109,13 @@ cp .env.example .env
 ```
 
 Then edit the `.env` file with your backend AI credentials and optional GitHub personal access token.
+
+For Atlas Cloud, set:
+
+- `AI_PROVIDER=atlas`
+- `ATLAS_API_KEY=...`
+- `ATLAS_MODEL=deepseek-ai/DeepSeek-V3-0324`
+- `ATLAS_BASE_URL=https://api.atlascloud.ai/v1`
 
 Use `.env.example` as the canonical list of required and optional variables.
 

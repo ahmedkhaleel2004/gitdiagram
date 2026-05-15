@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 from typing import Literal
 
-AIProvider = Literal["openai", "openrouter"]
+AIProvider = Literal["atlas", "openai", "openrouter"]
 
 DEFAULT_PROVIDER: AIProvider = "openai"
+DEFAULT_ATLAS_MODEL = "deepseek-ai/DeepSeek-V3-0324"
 DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
 DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.4"
 
@@ -17,12 +18,16 @@ def _read_env(name: str) -> str | None:
 
 def get_provider(override_provider: str | None = None) -> AIProvider:
     candidate = (override_provider or _read_env("AI_PROVIDER") or "").strip().lower()
+    if candidate == "atlas":
+        return "atlas"
     if candidate == "openrouter":
         return "openrouter"
     return DEFAULT_PROVIDER
 
 
 def get_provider_label(provider: AIProvider) -> str:
+    if provider == "atlas":
+        return "Atlas Cloud"
     return "OpenRouter" if provider == "openrouter" else "OpenAI"
 
 
@@ -39,6 +44,8 @@ def should_use_exact_input_token_count(
 
 def get_model(provider: AIProvider | None = None) -> str:
     resolved_provider = provider or get_provider()
+    if resolved_provider == "atlas":
+        return _read_env("ATLAS_MODEL") or DEFAULT_ATLAS_MODEL
     if resolved_provider == "openrouter":
         return _read_env("OPENROUTER_MODEL") or DEFAULT_OPENROUTER_MODEL
 

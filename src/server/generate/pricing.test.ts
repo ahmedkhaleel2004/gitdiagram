@@ -17,6 +17,12 @@ describe("resolvePricingModel", () => {
     expect(resolvePricingModel("openai/gpt-5.4")).toBe("gpt-5.4");
     expect(resolvePricingModel("openai/gpt-5.4-mini")).toBe("gpt-5.4-mini");
   });
+
+  it("maps Atlas model ids onto their underlying pricing tier when prefixed", () => {
+    expect(resolvePricingModel("deepseek-ai/DeepSeek-V3-0324")).toBe(
+      "deepseek-v3-0324",
+    );
+  });
 });
 
 describe("estimateTextTokenCostUsd", () => {

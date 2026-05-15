@@ -1,6 +1,7 @@
-export type AIProvider = "openai" | "openrouter";
+export type AIProvider = "atlas" | "openai" | "openrouter";
 
 const DEFAULT_PROVIDER: AIProvider = "openai";
+const DEFAULT_ATLAS_MODEL = "deepseek-ai/DeepSeek-V3-0324";
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.4";
 
@@ -10,9 +11,14 @@ function readEnvValue(name: string): string | undefined {
 }
 
 function normalizeProvider(value?: string): AIProvider {
-  return value?.trim().toLowerCase() === "openrouter"
-    ? "openrouter"
-    : DEFAULT_PROVIDER;
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "atlas") {
+    return "atlas";
+  }
+  if (normalized === "openrouter") {
+    return "openrouter";
+  }
+  return DEFAULT_PROVIDER;
 }
 
 export function getProvider(overrideProvider?: string): AIProvider {
@@ -20,6 +26,9 @@ export function getProvider(overrideProvider?: string): AIProvider {
 }
 
 export function getProviderLabel(provider: AIProvider): string {
+  if (provider === "atlas") {
+    return "Atlas Cloud";
+  }
   return provider === "openrouter" ? "OpenRouter" : "OpenAI";
 }
 
@@ -35,6 +44,9 @@ export function shouldUseExactInputTokenCount(params: {
 }
 
 export function getModel(provider = getProvider()): string {
+  if (provider === "atlas") {
+    return readEnvValue("ATLAS_MODEL") ?? DEFAULT_ATLAS_MODEL;
+  }
   if (provider === "openrouter") {
     return readEnvValue("OPENROUTER_MODEL") ?? DEFAULT_OPENROUTER_MODEL;
   }
