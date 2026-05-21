@@ -12,6 +12,8 @@ export const metadata: Metadata = {
 };
 
 export default function HomePage() {
+  const localMode = process.env.LOCAL_MODE?.trim().toLowerCase() === "true";
+
   return (
     <main className="flex min-h-[calc(100svh-8.5rem)] flex-col justify-center px-4 py-8 sm:block sm:min-h-0 sm:px-8 sm:pt-8 sm:pb-8 md:p-8">
       <div className="mx-auto mb-9 max-w-4xl sm:mb-4 lg:my-8">
@@ -28,7 +30,7 @@ export default function HomePage() {
         </div>
       </div>
       <div className="flex justify-center sm:mb-16 lg:mb-0">
-        <MainCard />
+        <MainCard localMode={localMode} />
       </div>
     </main>
   );

@@ -47,6 +47,7 @@ export async function getGenerationCost(
   repo: string,
   githubPat?: string,
   apiKey?: string,
+  localPath?: string,
 ): Promise<DiagramCostResponse> {
   try {
     const response = await fetch(`${getGenerateBasePath()}/cost`, {
@@ -57,6 +58,7 @@ export async function getGenerationCost(
       body: JSON.stringify({
         username,
         repo,
+        local_path: localPath,
         api_key: apiKey,
         github_pat: githubPat,
       }),
@@ -104,6 +106,7 @@ export async function streamDiagramGeneration(
     body: JSON.stringify({
       username: params.username,
       repo: params.repo,
+      local_path: params.localPath,
       api_key: params.apiKey,
       github_pat: params.githubPat,
     }),

@@ -10,6 +10,7 @@ import { getStoredOpenAiKey } from "~/lib/openai-key";
 interface UseDiagramStreamOptions {
   username: string;
   repo: string;
+  localPath?: string;
   initialState?: DiagramStreamState;
   onComplete: (result: {
     diagram: string;
@@ -24,6 +25,7 @@ interface UseDiagramStreamOptions {
 export function useDiagramStream({
   username,
   repo,
+  localPath,
   initialState,
   onComplete,
   onError,
@@ -149,6 +151,7 @@ export function useDiagramStream({
         {
           username,
           repo,
+          localPath,
           apiKey: getStoredOpenAiKey(),
           githubPat,
         },
@@ -157,7 +160,7 @@ export function useDiagramStream({
         },
       );
     },
-    [handleStreamMessage, repo, username],
+    [handleStreamMessage, localPath, repo, username],
   );
 
   return {
