@@ -54,7 +54,9 @@ export function parseDiagramGraph(rawOutput: string): {
       issues: [
         buildIssue(
           "graph",
-          error instanceof Error ? error.message : "Graph output was not valid JSON.",
+          error instanceof Error
+            ? error.message
+            : "Graph output was not valid JSON.",
         ),
       ],
     };
@@ -71,14 +73,18 @@ export function validateDiagramGraph(
 
   graph.groups.forEach((group, index) => {
     if (groupIds.has(group.id)) {
-      issues.push(buildIssue(`groups.${index}.id`, `Duplicate group id "${group.id}".`));
+      issues.push(
+        buildIssue(`groups.${index}.id`, `Duplicate group id "${group.id}".`),
+      );
     }
     groupIds.add(group.id);
   });
 
   graph.nodes.forEach((node, index) => {
     if (nodeIds.has(node.id)) {
-      issues.push(buildIssue(`nodes.${index}.id`, `Duplicate node id "${node.id}".`));
+      issues.push(
+        buildIssue(`nodes.${index}.id`, `Duplicate node id "${node.id}".`),
+      );
     }
     nodeIds.add(node.id);
 
@@ -104,7 +110,10 @@ export function validateDiagramGraph(
   graph.edges.forEach((edge, index) => {
     if (!nodeIds.has(edge.from)) {
       issues.push(
-        buildIssue(`edges.${index}.from`, `Unknown source node id "${edge.from}".`),
+        buildIssue(
+          `edges.${index}.from`,
+          `Unknown source node id "${edge.from}".`,
+        ),
       );
     }
     if (!nodeIds.has(edge.to)) {
@@ -120,7 +129,9 @@ export function validateDiagramGraph(
   };
 }
 
-export function formatGraphValidationFeedback(issues: GraphValidationIssue[]): string {
+export function formatGraphValidationFeedback(
+  issues: GraphValidationIssue[],
+): string {
   return issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
 }
 
@@ -186,7 +197,9 @@ function labelForNode(node: DiagramGraphNode): string {
   const secondaryDetail = detailForNode(node);
   const fileHint = fileHintForNode(node);
 
-  return [primaryLabel, secondaryDetail, fileHint].filter(Boolean).join("<br/>");
+  return [primaryLabel, secondaryDetail, fileHint]
+    .filter(Boolean)
+    .join("<br/>");
 }
 
 function mermaidNodeId(nodeId: string): string {
@@ -237,7 +250,10 @@ const toneClassNames = [
   "toneTeal",
 ] as const;
 
-function toneClassForGroup(groupId: string | null | undefined, groupOrder: Map<string, number>): string {
+function toneClassForGroup(
+  groupId: string | null | undefined,
+  groupOrder: Map<string, number>,
+): string {
   if (!groupId) {
     return "toneNeutral";
   }
@@ -266,12 +282,15 @@ export function compileDiagramGraph(params: {
   username: string;
   repo: string;
   branch: string;
+  includeGitHubLinks?: boolean;
 }): string {
-  const { graph, username, repo, branch } = params;
+  const { graph, username, repo, branch, includeGitHubLinks = true } = params;
   const lines: string[] = ["flowchart TD"];
   const groupedNodeIds = new Set<string>();
   const classAssignments = new Map<string, string[]>();
-  const groupOrder = new Map(graph.groups.map((group, index) => [group.id, index]));
+  const groupOrder = new Map(
+    graph.groups.map((group, index) => [group.id, index]),
+  );
 
   const pushNode = (node: DiagramGraphNode, indent = "") => {
     lines.push(`${indent}${renderNode(node)}`);
@@ -287,14 +306,18 @@ export function compileDiagramGraph(params: {
     lines.push(
       `subgraph ${mermaidGroupId(group.id)}["${escapeMermaidText(group.label)}"]`,
     );
-    for (const node of graph.nodes.filter((candidate) => candidate.groupId === group.id)) {
+    for (const node of graph.nodes.filter(
+      (candidate) => candidate.groupId === group.id,
+    )) {
       pushNode(node, "  ");
       groupedNodeIds.add(node.id);
     }
     lines.push("end");
   }
 
-  const ungroupedNodes = graph.nodes.filter((node) => !groupedNodeIds.has(node.id));
+  const ungroupedNodes = graph.nodes.filter(
+    (node) => !groupedNodeIds.has(node.id),
+  );
   if (ungroupedNodes.length) {
     lines.push("");
     for (const node of ungroupedNodes) {
@@ -309,7 +332,9 @@ export function compileDiagramGraph(params: {
     }
   }
 
-  const nodesWithPaths = graph.nodes.filter((node) => node.path);
+  const nodesWithPaths = includeGitHubLinks
+    ? graph.nodes.filter((node) => node.path)
+    : [];
   if (nodesWithPaths.length) {
     lines.push("");
     for (const node of nodesWithPaths) {
@@ -320,13 +345,27 @@ export function compileDiagramGraph(params: {
   }
 
   lines.push("");
-  lines.push('classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a');
-  lines.push('classDef toneBlue fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#172554');
-  lines.push('classDef toneAmber fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f');
-  lines.push('classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d');
-  lines.push('classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337');
-  lines.push('classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81');
-  lines.push('classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a');
+  lines.push(
+    "classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a",
+  );
+  lines.push(
+    "classDef toneBlue fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#172554",
+  );
+  lines.push(
+    "classDef toneAmber fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f",
+  );
+  lines.push(
+    "classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d",
+  );
+  lines.push(
+    "classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337",
+  );
+  lines.push(
+    "classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81",
+  );
+  lines.push(
+    "classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a",
+  );
 
   for (const [className, nodeIds] of classAssignments) {
     if (!nodeIds.length) continue;

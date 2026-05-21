@@ -74,6 +74,7 @@ export interface DiagramCostResponse {
 export interface StreamGenerationParams {
   username: string;
   repo: string;
+  localPath?: string;
   apiKey?: string;
   githubPat?: string;
 }

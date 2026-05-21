@@ -3,6 +3,8 @@ import { zodTextFormat } from "openai/helpers/zod";
 import type { ZodType } from "zod";
 
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
+import { diagramNodeShapeSchema } from "~/features/diagram/graph";
+import { runCliCompletion } from "~/server/generate/cli";
 import {
   getProviderLabel,
   type AIProvider,
@@ -12,6 +14,10 @@ import { normalizeGenerationUsage } from "~/server/generate/pricing";
 export type ReasoningEffort = "low" | "medium" | "high";
 
 function getEnvApiKey(provider: AIProvider): string | undefined {
+  if (provider === "cli") {
+    return undefined;
+  }
+
   if (provider === "openrouter") {
     return process.env.OPENROUTER_API_KEY?.trim();
   }
@@ -36,6 +42,10 @@ function getOpenRouterHeaders(): Record<string, string> {
 }
 
 function createClient(provider: AIProvider, apiKey: string): OpenAI {
+  if (provider === "cli") {
+    throw new Error("CLI provider does not use the OpenAI client.");
+  }
+
   if (provider === "openrouter") {
     return new OpenAI({
       apiKey,
@@ -52,6 +62,10 @@ function createClient(provider: AIProvider, apiKey: string): OpenAI {
 }
 
 function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
+  if (provider === "cli") {
+    return "";
+  }
+
   const apiKey = overrideApiKey?.trim() || getEnvApiKey(provider);
   if (!apiKey) {
     throw new Error(
@@ -95,6 +109,156 @@ interface StructuredCompletionParams<T> {
 interface StreamCompletionResult {
   stream: AsyncGenerator<string, void, void>;
   usagePromise: Promise<GenerationTokenUsage | null>;
+}
+
+function extractJsonObject(text: string): string {
+  const unfenced = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const firstBrace = unfenced.indexOf("{");
+  const lastBrace = unfenced.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    return unfenced;
+  }
+
+  return unfenced.slice(firstBrace, lastBrace + 1);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function fillMissingNullableField(
+  value: Record<string, unknown>,
+  field: string,
+) {
+  if (!(field in value)) {
+    value[field] = null;
+  }
+}
+
+function readStringAlias(value: Record<string, unknown>, aliases: string[]) {
+  for (const alias of aliases) {
+    const aliasValue = value[alias];
+    if (typeof aliasValue === "string" && aliasValue.trim()) {
+      return aliasValue;
+    }
+  }
+
+  return undefined;
+}
+
+function slugId(value: unknown, fallback: string): string {
+  const raw = typeof value === "string" ? value : fallback;
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const withLeadingLetter = /^[a-z]/.test(normalized)
+    ? normalized
+    : `id_${normalized}`;
+
+  return /^[a-z][a-z0-9_]*$/.test(withLeadingLetter)
+    ? withLeadingLetter
+    : fallback;
+}
+
+function uniqueId(
+  value: unknown,
+  fallbackPrefix: string,
+  index: number,
+  usedIds: Set<string>,
+): string {
+  const base = slugId(value, `${fallbackPrefix}_${index + 1}`);
+  let candidate = base;
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(candidate);
+  return candidate;
+}
+
+export function normalizeCliStructuredOutput(
+  schemaName: string,
+  value: unknown,
+): unknown {
+  if (schemaName !== "diagram_graph" || !isRecord(value)) {
+    return value;
+  }
+
+  const groupIds = new Map<string, string>();
+  if (Array.isArray(value.groups)) {
+    const usedGroupIds = new Set<string>();
+    value.groups.forEach((group, index) => {
+      if (!isRecord(group)) return;
+      const originalId = typeof group.id === "string" ? group.id : undefined;
+      const normalizedId = uniqueId(group.id, "group", index, usedGroupIds);
+      group.id = normalizedId;
+      if (originalId) {
+        groupIds.set(originalId, normalizedId);
+      }
+      fillMissingNullableField(group, "description");
+    });
+  }
+
+  const nodeIds = new Map<string, string>();
+  if (Array.isArray(value.nodes)) {
+    const usedNodeIds = new Set<string>();
+    value.nodes.forEach((node, index) => {
+      if (!isRecord(node)) return;
+      const originalId = typeof node.id === "string" ? node.id : undefined;
+      const normalizedId = uniqueId(node.id, "node", index, usedNodeIds);
+      node.id = normalizedId;
+      if (originalId) {
+        nodeIds.set(originalId, normalizedId);
+      }
+      fillMissingNullableField(node, "description");
+      fillMissingNullableField(node, "groupId");
+      if (typeof node.groupId === "string") {
+        node.groupId =
+          groupIds.get(node.groupId) ?? slugId(node.groupId, node.groupId);
+      }
+      fillMissingNullableField(node, "path");
+      fillMissingNullableField(node, "shape");
+      if (!diagramNodeShapeSchema.safeParse(node.shape).success) {
+        node.shape = null;
+      }
+    });
+  }
+
+  if (Array.isArray(value.edges)) {
+    for (const edge of value.edges) {
+      if (!isRecord(edge)) continue;
+      edge.from =
+        typeof edge.from === "string"
+          ? edge.from
+          : readStringAlias(edge, ["source", "sourceId", "source_id"]);
+      edge.to =
+        typeof edge.to === "string"
+          ? edge.to
+          : readStringAlias(edge, ["target", "targetId", "target_id"]);
+      if (typeof edge.from === "string") {
+        edge.from = nodeIds.get(edge.from) ?? slugId(edge.from, edge.from);
+      }
+      if (typeof edge.to === "string") {
+        edge.to = nodeIds.get(edge.to) ?? slugId(edge.to, edge.to);
+      }
+      fillMissingNullableField(edge, "label");
+      fillMissingNullableField(edge, "description");
+      fillMissingNullableField(edge, "style");
+      if (edge.style !== "solid" && edge.style !== "dashed") {
+        edge.style = null;
+      }
+    }
+  }
+
+  return value;
 }
 
 function getResponseFailureMessage(response: {
@@ -151,6 +315,24 @@ export async function streamCompletion({
   maxOutputTokens,
   signal,
 }: StreamCompletionParams): Promise<StreamCompletionResult> {
+  if (provider === "cli") {
+    const result = await runCliCompletion({
+      systemPrompt,
+      userPrompt,
+      reasoningEffort,
+      signal,
+    });
+
+    async function* outputStream(): AsyncGenerator<string, void, void> {
+      yield result.text;
+    }
+
+    return {
+      stream: outputStream(),
+      usagePromise: Promise.resolve(result.usage),
+    };
+  }
+
   const client = createClient(provider, resolveApiKey(provider, apiKey));
   const stream = await client.responses.create(
     {
@@ -168,11 +350,9 @@ export async function streamCompletion({
 
   let usageSettled = false;
   let resolveUsage!: (usage: GenerationTokenUsage | null) => void;
-  const usagePromise = new Promise<GenerationTokenUsage | null>(
-    (resolve) => {
-      resolveUsage = resolve;
-    },
-  );
+  const usagePromise = new Promise<GenerationTokenUsage | null>((resolve) => {
+    resolveUsage = resolve;
+  });
 
   async function* outputStream(): AsyncGenerator<string, void, void> {
     let responseId: string | undefined;
@@ -226,7 +406,11 @@ export async function streamCompletion({
 
       if (!finalUsage) {
         try {
-          finalUsage = await retrieveUsageFromResponseId(client, responseId, signal);
+          finalUsage = await retrieveUsageFromResponseId(
+            client,
+            responseId,
+            signal,
+          );
         } catch {
           finalUsage = null;
         }
@@ -268,6 +452,10 @@ export async function countInputTokens({
   apiKey,
   reasoningEffort,
 }: CountInputTokensParams): Promise<number> {
+  if (provider === "cli") {
+    return estimateTokens(`${systemPrompt}\n${userPrompt}`);
+  }
+
   const client = createClient(provider, resolveApiKey(provider, apiKey));
 
   const response = await client.responses.inputTokens.count({
@@ -298,6 +486,32 @@ export async function generateStructuredOutput<T>({
   rawText: string;
   usage: GenerationTokenUsage | null;
 }> {
+  if (provider === "cli") {
+    const result = await runCliCompletion({
+      systemPrompt: `${systemPrompt}\n\nReturn only valid JSON for the ${schemaName} schema. Do not wrap it in markdown fences. Include nullable fields explicitly with null when there is no value. For diagram_graph ids, use lowercase snake_case matching /^[a-z][a-z0-9_]*$/. For diagram_graph edges, use from/to exactly, not source/target. For node shape, use only box, database, queue, document, circle, hexagon, or null.`,
+      userPrompt,
+      reasoningEffort,
+      signal,
+    });
+    const rawText = extractJsonObject(result.text);
+    const parsed = normalizeCliStructuredOutput(
+      schemaName,
+      JSON.parse(rawText) as unknown,
+    );
+    const schemaResult = schema.safeParse(parsed);
+    if (!schemaResult.success) {
+      throw new Error(
+        `CLI structured output failed validation: ${schemaResult.error.message}`,
+      );
+    }
+
+    return {
+      output: schemaResult.data,
+      rawText,
+      usage: result.usage,
+    };
+  }
+
   const client = createClient(provider, resolveApiKey(provider, apiKey));
 
   try {
@@ -332,7 +546,9 @@ export async function generateStructuredOutput<T>({
     };
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Structured output request failed.";
+      error instanceof Error
+        ? error.message
+        : "Structured output request failed.";
     if (provider === "openrouter") {
       throw new Error(
         `OpenRouter model does not support the required structured graph output: ${message}`,

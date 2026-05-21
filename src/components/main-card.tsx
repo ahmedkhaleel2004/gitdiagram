@@ -16,6 +16,7 @@ import { SponsorSlot } from "~/components/sponsor-slot";
 
 interface MainCardProps {
   isHome?: boolean;
+  localMode?: boolean;
   username?: string;
   repo?: string;
   hasDiagram?: boolean;
@@ -31,6 +32,7 @@ interface MainCardProps {
 
 export default function MainCard({
   isHome = true,
+  localMode = false,
   username,
   repo,
   hasDiagram = false,
@@ -60,6 +62,16 @@ export default function MainCard({
     e.preventDefault();
     setError("");
 
+    if (localMode && isHome) {
+      if (!repoUrl.trim()) {
+        setError("Please enter a local repository folder path");
+        return;
+      }
+
+      router.push(`/local?path=${encodeURIComponent(repoUrl.trim())}`);
+      return;
+    }
+
     const parsed = parseGitHubRepoUrl(repoUrl);
     if (!parsed) {
       setError("Please enter a valid GitHub repository URL or owner/repo");
@@ -86,7 +98,11 @@ export default function MainCard({
       <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <Input
-            placeholder="owner/repo or GitHub URL"
+            placeholder={
+              localMode && isHome
+                ? "Local repository folder path"
+                : "owner/repo or GitHub URL"
+            }
             className="neo-input min-w-0 flex-1 rounded-md px-3 py-4 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
@@ -201,21 +217,25 @@ export default function MainCard({
           <div className="space-y-4">
             <div className="space-y-3">
               <div className="text-sm font-medium text-gray-700 sm:text-base dark:text-neutral-300">
-                Try these example repositories:
+                {localMode
+                  ? "Local mode is enabled for this self-hosted instance."
+                  : "Try these example repositories:"}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(exampleRepos).map(([name, path]) => (
-                  <Button
-                    key={name}
-                    type="button"
-                    variant="outline"
-                    className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]"
-                    onClick={(e) => handleExampleClick(path, e)}
-                  >
-                    {name}
-                  </Button>
-                ))}
-              </div>
+              {!localMode && (
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(exampleRepos).map(([name, path]) => (
+                    <Button
+                      key={name}
+                      type="button"
+                      variant="outline"
+                      className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]"
+                      onClick={(e) => handleExampleClick(path, e)}
+                    >
+                      {name}
+                    </Button>
+                  ))}
+                </div>
+              )}
             </div>
             <SponsorSlot surface="home" />
           </div>

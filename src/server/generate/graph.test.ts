@@ -76,13 +76,17 @@ describe("compileDiagramGraph", () => {
 
     expect(diagram).toContain("flowchart TD");
     expect(diagram).toContain('subgraph group_runtime["Runtime"]');
-    expect(diagram).toContain('click node_api "https://github.com/acme/demo/blob/main/src/api.ts"');
+    expect(diagram).toContain(
+      'click node_api "https://github.com/acme/demo/blob/main/src/api.ts"',
+    );
     expect(diagram).toContain('node_api -->|"dispatches"| node_worker');
     expect(diagram).toContain('node_api[("API<br/>[api.ts]")]');
     expect(diagram).not.toContain("(service)");
     expect(diagram).toContain('node_worker["Worker<br/>job runner"]');
     expect(diagram).toContain("classDef toneBlue");
-    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({ valid: true });
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
   });
 
   it("maps reserved graph ids to Mermaid-safe ids", async () => {
@@ -126,8 +130,38 @@ describe("compileDiagramGraph", () => {
 
     expect(diagram).toContain('subgraph group_style["Style"]');
     expect(diagram).toContain('node_class["Class<br/>[class.ts]"]');
-    expect(diagram).toContain('node_class --> node_end');
-    expect(diagram).toContain('click node_class "https://github.com/acme/demo/blob/main/src/class.ts"');
-    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({ valid: true });
+    expect(diagram).toContain("node_class --> node_end");
+    expect(diagram).toContain(
+      'click node_class "https://github.com/acme/demo/blob/main/src/class.ts"',
+    );
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
+  });
+
+  it("omits click urls for local diagrams", () => {
+    const diagram = compileDiagramGraph({
+      graph: {
+        groups: [],
+        nodes: [
+          {
+            id: "app",
+            label: "App",
+            type: "Application",
+            description: null,
+            groupId: null,
+            path: "src/index.ts",
+            shape: "box",
+          },
+        ],
+        edges: [],
+      },
+      username: "local",
+      repo: "demo",
+      branch: "local",
+      includeGitHubLinks: false,
+    });
+
+    expect(diagram).not.toContain("click ");
   });
 });
