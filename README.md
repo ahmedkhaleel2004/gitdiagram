@@ -9,6 +9,8 @@ Turn any GitHub repository into an interactive diagram for visualization in seco
 
 You can also replace `hub` with `diagram` in any Github URL to access its diagram.
 
+> **Fork note:** This fork adds local folder generation for self-hosted runs and supports using an AI CLI command, such as Codex or Gemini CLI, instead of a hosted AI API.
+
 > **Sponsor slot:** Your devtool here. Reach developers who are actively exploring codebases with GitDiagram. [Sponsor GitDiagram](https://gitdiagram.com/sponsor).
 
 ## 🚀 Features
