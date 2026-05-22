@@ -42,7 +42,7 @@ bun --bun next dev
 Then open:
 
 ```text
-http://localhost:3000/local?path=F%3A%5CProjects%5CRecommended
+http://localhost:3000/local?path=%2Fpath%2Fto%2Fyour-project
 ```
 
 Or use the home page input when `LOCAL_MODE=true`; it accepts a local folder path.
