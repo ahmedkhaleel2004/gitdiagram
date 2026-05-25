@@ -11,6 +11,10 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 
 > **Sponsor slot:** Your devtool here. Reach developers who are actively exploring codebases with GitDiagram. [Sponsor GitDiagram](https://gitdiagram.com/sponsor).
 
+> 🎁 **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=gitdiagram)** is a full-modal AI inference platform that gives developers a single AI API to access video generation, image generation, and LLM APIs. Instead of managing multiple vendor integrations, you connect once and get unified access to 300+ curated models across all modalities.
+>
+> Check out Atlas Cloud's new coding plan promotion for more budget-friendly API access: [https://www.atlascloud.ai/console/coding-plan](https://www.atlascloud.ai/console/coding-plan)
+
 ## 🚀 Features
 
 - 👀 **Instant Visualization**: Convert any GitHub repository structure into a system design / architecture diagram
