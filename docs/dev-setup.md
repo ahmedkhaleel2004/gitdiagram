@@ -82,6 +82,7 @@ Optional:
 - `NEXT_PUBLIC_POSTHOG_KEY`
 - `NEXT_PUBLIC_GENERATION_BACKEND`
 - `NEXT_PUBLIC_GENERATE_API_BASE_URL` when `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
+- `AI_CLI_COMMAND` and `AI_CLI_MODEL_LABEL` when `AI_PROVIDER=cli`
 
 Example OpenRouter local config:
 
@@ -92,6 +93,18 @@ OPENROUTER_MODEL=openai/gpt-5.4
 OPENROUTER_SITE_URL=http://localhost:3000
 OPENROUTER_APP_NAME=GitDiagram
 ```
+
+Example GitHub Copilot CLI local config:
+
+```bash
+AI_PROVIDER=cli
+AI_CLI_COMMAND="copilot --model gpt-5.4"
+AI_CLI_TIMEOUT_MS=900000
+AI_CLI_MODEL_LABEL="GitHub Copilot CLI"
+NEXT_PUBLIC_GENERATION_BACKEND=next
+```
+
+For `copilot`, GitDiagram manages the prompt transport itself with a temporary attachment file, so do not add `-p` or `--attachment` to `AI_CLI_COMMAND`.
 
 ## 6) Start local services
 

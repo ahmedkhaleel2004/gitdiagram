@@ -129,6 +129,110 @@ export function validateDiagramGraph(
   };
 }
 
+function canonicalizeCompact(value: string): string {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
+function canonicalizeIdentifier(value: string): string {
+  return value.replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+function buildUniqueMatchLookup(
+  values: Iterable<string>,
+  canonicalize: (value: string) => string,
+): Map<string, string> {
+  const matchMap = new Map<string, string>();
+  const ambiguous = new Set<string>();
+
+  for (const value of values) {
+    const key = canonicalize(value);
+    if (!key) {
+      continue;
+    }
+
+    if (ambiguous.has(key)) {
+      continue;
+    }
+
+    const existing = matchMap.get(key);
+    if (!existing) {
+      matchMap.set(key, value);
+      continue;
+    }
+
+    if (existing !== value) {
+      matchMap.delete(key);
+      ambiguous.add(key);
+    }
+  }
+
+  return matchMap;
+}
+
+export function repairDiagramGraph(
+  graph: DiagramGraph,
+  fileTreeLookup: Set<string>,
+): DiagramGraph {
+  const repaired: DiagramGraph = {
+    groups: graph.groups.map((group) => ({ ...group })),
+    nodes: graph.nodes.map((node) => ({ ...node })),
+    edges: graph.edges.map((edge) => ({ ...edge })),
+  };
+
+  const canonicalGroupIds = buildUniqueMatchLookup(
+    repaired.groups.map((group) => group.id),
+    canonicalizeIdentifier,
+  );
+
+  repaired.nodes.forEach((node) => {
+    if (!node.groupId) {
+      return;
+    }
+
+    const repairedGroupId = canonicalGroupIds.get(
+      canonicalizeIdentifier(node.groupId),
+    );
+    if (repairedGroupId) {
+      node.groupId = repairedGroupId;
+    }
+  });
+
+  const canonicalNodeIds = buildUniqueMatchLookup(
+    repaired.nodes.map((node) => node.id),
+    canonicalizeIdentifier,
+  );
+
+  repaired.edges.forEach((edge) => {
+    const repairedFrom = canonicalNodeIds.get(canonicalizeIdentifier(edge.from));
+    if (repairedFrom) {
+      edge.from = repairedFrom;
+    }
+
+    const repairedTo = canonicalNodeIds.get(canonicalizeIdentifier(edge.to));
+    if (repairedTo) {
+      edge.to = repairedTo;
+    }
+  });
+
+  const canonicalPaths = buildUniqueMatchLookup(
+    fileTreeLookup,
+    canonicalizeCompact,
+  );
+
+  repaired.nodes.forEach((node) => {
+    if (!node.path || fileTreeLookup.has(node.path)) {
+      return;
+    }
+
+    const repairedPath = canonicalPaths.get(canonicalizeCompact(node.path));
+    if (repairedPath) {
+      node.path = repairedPath;
+    }
+  });
+
+  return repaired;
+}
+
 export function formatGraphValidationFeedback(
   issues: GraphValidationIssue[],
 ): string {

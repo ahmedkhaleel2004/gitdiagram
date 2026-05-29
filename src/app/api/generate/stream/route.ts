@@ -40,6 +40,7 @@ import {
   buildFileTreeLookup,
   compileDiagramGraph,
   formatGraphValidationFeedback,
+  repairDiagramGraph,
   validateDiagramGraph,
 } from "~/server/generate/graph";
 import {
@@ -605,7 +606,7 @@ export async function POST(request: Request) {
             });
 
             const {
-              output: graph,
+              output: rawGraph,
               rawText,
               usage,
             } = await generateStructuredOutput({
@@ -627,6 +628,8 @@ export async function POST(request: Request) {
               maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
               signal: generationAbortController.signal,
             });
+
+            const graph = repairDiagramGraph(rawGraph, fileTreeLookup);
 
             if (usage) {
               actualUsages.push(usage);

@@ -47,6 +47,11 @@ export default function LocalPageClient({ localPath }: { localPath: string }) {
     try {
       await runGeneration();
     } catch {
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        error: "Something went wrong. Please try again later.",
+      }));
       setLoading(false);
     }
   }, [runGeneration, setState]);

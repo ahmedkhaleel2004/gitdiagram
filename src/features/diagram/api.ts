@@ -13,19 +13,17 @@ interface StreamHandlers {
 
 type GenerationBackendMode = "next" | "fastapi";
 
-function getGenerationBackendMode(): GenerationBackendMode {
+export function getGenerationBackendMode(): GenerationBackendMode {
   const mode = process.env.NEXT_PUBLIC_GENERATION_BACKEND?.trim().toLowerCase();
 
   if (mode === "next" || mode === "fastapi") {
     return mode;
   }
 
-  throw new Error(
-    "Missing NEXT_PUBLIC_GENERATION_BACKEND. Set it to 'next' or 'fastapi'.",
-  );
+  return "next";
 }
 
-function getGenerateBasePath() {
+export function getGenerateBasePath() {
   const mode = getGenerationBackendMode();
 
   if (mode === "next") {

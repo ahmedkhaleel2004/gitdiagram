@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFileTreeLookup,
   compileDiagramGraph,
+  repairDiagramGraph,
   validateDiagramGraph,
 } from "~/server/generate/graph";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
@@ -31,6 +32,45 @@ describe("validateDiagramGraph", () => {
 
     expect(result.valid).toBe(false);
     expect(result.issues[0]?.path).toBe("nodes.0.path");
+  });
+});
+
+describe("repairDiagramGraph", () => {
+  it("repairs wrapped paths, group ids, and edge ids before validation", () => {
+    const repaired = repairDiagramGraph(
+      {
+        groups: [{ id: "generated_outputs", label: "Generated", description: null }],
+        nodes: [
+          {
+            id: "service_artifacts",
+            label: "Service Artifacts",
+            type: "document",
+            description: null,
+            groupId: "generated\n  outputs",
+            path: "Output/DataSources/Threat Model and Data\n   Flow Diagram - DataSources.drawio",
+            shape: null,
+          },
+        ],
+        edges: [
+          {
+            from: "service\n  artifacts",
+            to: "service_artifacts",
+            label: null,
+            description: null,
+            style: null,
+          },
+        ],
+      },
+      buildFileTreeLookup(
+        "Output/DataSources/Threat Model and Data Flow Diagram - DataSources.drawio",
+      ),
+    );
+
+    expect(repaired.nodes[0]?.groupId).toBe("generated_outputs");
+    expect(repaired.nodes[0]?.path).toBe(
+      "Output/DataSources/Threat Model and Data Flow Diagram - DataSources.drawio",
+    );
+    expect(repaired.edges[0]?.from).toBe("service_artifacts");
   });
 });
 
