@@ -1,7 +1,8 @@
 export type AIProvider = "atlas" | "openai" | "openrouter";
 
+import { DEFAULT_ATLAS_MODEL } from "~/server/generate/atlas-models";
+
 const DEFAULT_PROVIDER: AIProvider = "openai";
-const DEFAULT_ATLAS_MODEL = "deepseek-ai/DeepSeek-V3-0324";
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.4";
 
