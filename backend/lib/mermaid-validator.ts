@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 import { parseHTML } from "linkedom";
-import mermaid from "mermaid";
+import type mermaid from "mermaid";
 
 function normalizeParserMessage(message?: string): string {
   if (!message) {
@@ -27,14 +27,76 @@ export interface MermaidValidationResult {
 
 let initialized = false;
 let domPurifyPatched = false;
+let mermaidRuntime: typeof mermaid | null = null;
+let serverWindow: ReturnType<typeof parseHTML>["window"] | null = null;
+
+type ServerGlobalWithDom = typeof globalThis & {
+  document?: unknown;
+  window?: unknown;
+};
+
+function getServerWindow() {
+  if (serverWindow) {
+    return serverWindow;
+  }
+
+  const { window } = parseHTML("<!doctype html><html><body></body></html>");
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: {
+      host: "gitdiagram.local",
+      hostname: "gitdiagram.local",
+      href: "https://gitdiagram.local/",
+      pathname: "/",
+      port: "",
+      protocol: "https:",
+      search: "",
+    },
+  });
+  serverWindow = window;
+  return serverWindow;
+}
+
+async function withServerDomGlobals<T>(callback: () => T | Promise<T>) {
+  const runtimeWindow = getServerWindow();
+  const serverGlobal = globalThis as ServerGlobalWithDom;
+  const hadWindow = Object.prototype.hasOwnProperty.call(
+    serverGlobal,
+    "window",
+  );
+  const hadDocument = Object.prototype.hasOwnProperty.call(
+    serverGlobal,
+    "document",
+  );
+  const previousWindow = serverGlobal.window;
+  const previousDocument = serverGlobal.document;
+
+  serverGlobal.window = runtimeWindow;
+  serverGlobal.document = runtimeWindow.document;
+
+  try {
+    return await callback();
+  } finally {
+    if (hadWindow) {
+      serverGlobal.window = previousWindow;
+    } else {
+      Reflect.deleteProperty(serverGlobal, "window");
+    }
+
+    if (hadDocument) {
+      serverGlobal.document = previousDocument;
+    } else {
+      Reflect.deleteProperty(serverGlobal, "document");
+    }
+  }
+}
 
 function ensureDomPurifyPatched() {
   if (domPurifyPatched) {
     return;
   }
 
-  const { window } = parseHTML("<!doctype html><html><body></body></html>");
-  const purify = DOMPurify(window);
+  const purify = DOMPurify(getServerWindow());
   Object.assign(DOMPurify, purify);
   domPurifyPatched = true;
 }
@@ -42,15 +104,22 @@ function ensureDomPurifyPatched() {
 async function ensureMermaidInitialized() {
   ensureDomPurifyPatched();
 
+  mermaidRuntime ??= await withServerDomGlobals(
+    async () => (await import("mermaid")).default,
+  );
+  const runtime = mermaidRuntime;
+
   if (!initialized) {
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: "loose",
+    await withServerDomGlobals(() => {
+      runtime.initialize({
+        startOnLoad: false,
+        securityLevel: "loose",
+      });
     });
     initialized = true;
   }
 
-  return mermaid;
+  return runtime;
 }
 
 function normalizeError(error: unknown): MermaidValidationResult {
@@ -77,14 +146,16 @@ export async function validateMermaidSyntax(
 ): Promise<MermaidValidationResult> {
   try {
     const runtime = await ensureMermaidInitialized();
-    await runtime.parse(diagram);
+    await withServerDomGlobals(() => runtime.parse(diagram));
     return { valid: true };
   } catch (error) {
     return normalizeError(error);
   }
 }
 
-export function formatValidationFeedback(result: MermaidValidationResult): string {
+export function formatValidationFeedback(
+  result: MermaidValidationResult,
+): string {
   if (result.valid) {
     return "No syntax errors found.";
   }
