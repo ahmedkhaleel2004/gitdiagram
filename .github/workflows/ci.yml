@@ -10,7 +10,7 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -29,7 +29,7 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
