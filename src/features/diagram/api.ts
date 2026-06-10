@@ -13,19 +13,17 @@ interface StreamHandlers {
 
 type GenerationBackendMode = "next" | "fastapi";
 
-function getGenerationBackendMode(): GenerationBackendMode {
+export function getGenerationBackendMode(): GenerationBackendMode {
   const mode = process.env.NEXT_PUBLIC_GENERATION_BACKEND?.trim().toLowerCase();
 
   if (mode === "next" || mode === "fastapi") {
     return mode;
   }
 
-  throw new Error(
-    "Missing NEXT_PUBLIC_GENERATION_BACKEND. Set it to 'next' or 'fastapi'.",
-  );
+  return "next";
 }
 
-function getGenerateBasePath() {
+export function getGenerateBasePath() {
   const mode = getGenerationBackendMode();
 
   if (mode === "next") {
@@ -47,6 +45,7 @@ export async function getGenerationCost(
   repo: string,
   githubPat?: string,
   apiKey?: string,
+  localPath?: string,
 ): Promise<DiagramCostResponse> {
   try {
     const response = await fetch(`${getGenerateBasePath()}/cost`, {
@@ -57,6 +56,7 @@ export async function getGenerationCost(
       body: JSON.stringify({
         username,
         repo,
+        local_path: localPath,
         api_key: apiKey,
         github_pat: githubPat,
       }),
@@ -104,6 +104,7 @@ export async function streamDiagramGeneration(
     body: JSON.stringify({
       username: params.username,
       repo: params.repo,
+      local_path: params.localPath,
       api_key: params.apiKey,
       github_pat: params.githubPat,
     }),

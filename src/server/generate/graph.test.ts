@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFileTreeLookup,
   compileDiagramGraph,
+  repairDiagramGraph,
   validateDiagramGraph,
 } from "~/server/generate/graph";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
@@ -31,6 +32,45 @@ describe("validateDiagramGraph", () => {
 
     expect(result.valid).toBe(false);
     expect(result.issues[0]?.path).toBe("nodes.0.path");
+  });
+});
+
+describe("repairDiagramGraph", () => {
+  it("repairs wrapped paths, group ids, and edge ids before validation", () => {
+    const repaired = repairDiagramGraph(
+      {
+        groups: [{ id: "generated_outputs", label: "Generated", description: null }],
+        nodes: [
+          {
+            id: "service_artifacts",
+            label: "Service Artifacts",
+            type: "document",
+            description: null,
+            groupId: "generated\n  outputs",
+            path: "Output/DataSources/Threat Model and Data\n   Flow Diagram - DataSources.drawio",
+            shape: null,
+          },
+        ],
+        edges: [
+          {
+            from: "service\n  artifacts",
+            to: "service_artifacts",
+            label: null,
+            description: null,
+            style: null,
+          },
+        ],
+      },
+      buildFileTreeLookup(
+        "Output/DataSources/Threat Model and Data Flow Diagram - DataSources.drawio",
+      ),
+    );
+
+    expect(repaired.nodes[0]?.groupId).toBe("generated_outputs");
+    expect(repaired.nodes[0]?.path).toBe(
+      "Output/DataSources/Threat Model and Data Flow Diagram - DataSources.drawio",
+    );
+    expect(repaired.edges[0]?.from).toBe("service_artifacts");
   });
 });
 
@@ -76,13 +116,17 @@ describe("compileDiagramGraph", () => {
 
     expect(diagram).toContain("flowchart TD");
     expect(diagram).toContain('subgraph group_runtime["Runtime"]');
-    expect(diagram).toContain('click node_api "https://github.com/acme/demo/blob/main/src/api.ts"');
+    expect(diagram).toContain(
+      'click node_api "https://github.com/acme/demo/blob/main/src/api.ts"',
+    );
     expect(diagram).toContain('node_api -->|"dispatches"| node_worker');
     expect(diagram).toContain('node_api[("API<br/>[api.ts]")]');
     expect(diagram).not.toContain("(service)");
     expect(diagram).toContain('node_worker["Worker<br/>job runner"]');
     expect(diagram).toContain("classDef toneBlue");
-    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({ valid: true });
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
   });
 
   it("maps reserved graph ids to Mermaid-safe ids", async () => {
@@ -126,8 +170,38 @@ describe("compileDiagramGraph", () => {
 
     expect(diagram).toContain('subgraph group_style["Style"]');
     expect(diagram).toContain('node_class["Class<br/>[class.ts]"]');
-    expect(diagram).toContain('node_class --> node_end');
-    expect(diagram).toContain('click node_class "https://github.com/acme/demo/blob/main/src/class.ts"');
-    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({ valid: true });
+    expect(diagram).toContain("node_class --> node_end");
+    expect(diagram).toContain(
+      'click node_class "https://github.com/acme/demo/blob/main/src/class.ts"',
+    );
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
+  });
+
+  it("omits click urls for local diagrams", () => {
+    const diagram = compileDiagramGraph({
+      graph: {
+        groups: [],
+        nodes: [
+          {
+            id: "app",
+            label: "App",
+            type: "Application",
+            description: null,
+            groupId: null,
+            path: "src/index.ts",
+            shape: "box",
+          },
+        ],
+        edges: [],
+      },
+      username: "local",
+      repo: "demo",
+      branch: "local",
+      includeGitHubLinks: false,
+    });
+
+    expect(diagram).not.toContain("click ");
   });
 });

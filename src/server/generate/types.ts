@@ -3,6 +3,7 @@ import { z } from "zod";
 export const generateRequestSchema = z.object({
   username: z.string().min(1),
   repo: z.string().min(1),
+  local_path: z.string().min(1).optional(),
   api_key: z.string().min(1).optional(),
   github_pat: z.string().min(1).optional(),
 });

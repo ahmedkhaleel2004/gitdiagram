@@ -14,6 +14,7 @@ import {
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
 import { generateRequestSchema } from "~/server/generate/types";
+import { getLocalData } from "~/server/generate/local";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,13 +34,14 @@ export async function POST(request: Request) {
     const {
       username,
       repo,
+      local_path: localPath,
       api_key: apiKey,
       github_pat: githubPat,
     } = parsed.data;
     const provider = getProvider();
     const model = getModel(provider);
 
-    if (isComplimentaryGateEnabled() && !apiKey) {
+    if (provider !== "cli" && isComplimentaryGateEnabled() && !apiKey) {
       if (provider !== "openai") {
         return NextResponse.json({
           ok: false,
@@ -57,12 +59,14 @@ export async function POST(request: Request) {
       }
     }
 
-    const githubData = await getGithubData(username, repo, githubPat);
+    const repositoryData = localPath
+      ? await getLocalData(localPath)
+      : await getGithubData(username, repo, githubPat);
     const estimate = await estimateGenerationCost({
       provider,
       model,
-      fileTree: githubData.fileTree,
-      readme: githubData.readme,
+      fileTree: repositoryData.fileTree,
+      readme: repositoryData.readme,
       username,
       repo,
       apiKey,

@@ -3,7 +3,10 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { after } from "next/server";
 
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
-import { diagramGraphSchema, MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
+import {
+  diagramGraphSchema,
+  MAX_GRAPH_ATTEMPTS,
+} from "~/features/diagram/graph";
 import type { ArtifactVisibility } from "~/server/storage/types";
 import { revalidateBrowseIndexCache } from "~/app/browse/data";
 import {
@@ -27,12 +30,17 @@ import {
   estimateGenerationCost,
   type GenerationEstimateResult,
 } from "~/server/generate/cost-estimate";
-import { extractTaggedSection, toTaggedMessage } from "~/server/generate/format";
+import {
+  extractTaggedSection,
+  toTaggedMessage,
+} from "~/server/generate/format";
 import { getGithubData } from "~/server/generate/github";
+import { getLocalData } from "~/server/generate/local";
 import {
   buildFileTreeLookup,
   compileDiagramGraph,
   formatGraphValidationFeedback,
+  repairDiagramGraph,
   validateDiagramGraph,
 } from "~/server/generate/graph";
 import {
@@ -41,9 +49,15 @@ import {
   getProviderLabel,
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
-import { generateStructuredOutput, streamCompletion } from "~/server/generate/openai";
+import {
+  generateStructuredOutput,
+  streamCompletion,
+} from "~/server/generate/openai";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
-import { SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT } from "~/server/generate/prompts";
+import {
+  SYSTEM_FIRST_PROMPT,
+  SYSTEM_GRAPH_PROMPT,
+} from "~/server/generate/prompts";
 import {
   getPublicDiagramStateCacheTag,
   getRepoPagePath,
@@ -164,9 +178,11 @@ export async function POST(request: Request) {
   const {
     username,
     repo,
+    local_path: localPath,
     api_key: apiKey,
     github_pat: githubPat,
   } = parsed.data;
+  const isLocalRequest = Boolean(localPath);
 
   const encoder = new TextEncoder();
   const generationAbortController = new AbortController();
@@ -221,6 +237,10 @@ export async function POST(request: Request) {
           : "public";
 
         const persistTerminalAudit = async (nextAudit = audit) => {
+          if (isLocalRequest) {
+            return;
+          }
+
           await persistTerminalSessionAudit({
             username,
             repo,
@@ -236,7 +256,7 @@ export async function POST(request: Request) {
           const providerLabel = getProviderLabel(provider);
           const model = getModel(provider);
 
-          if (isComplimentaryGateEnabled() && !apiKey) {
+          if (provider !== "cli" && isComplimentaryGateEnabled() && !apiKey) {
             if (provider !== "openai") {
               const error = getComplimentaryProviderMismatchMessage();
               audit = withFailure(
@@ -296,18 +316,24 @@ export async function POST(request: Request) {
             }
           }
 
-          const githubData = await getGithubData(
-            username,
-            repo,
-            githubPat,
-            generationAbortController.signal,
-          );
-          storageVisibility = githubData.isPrivate ? "private" : "public";
+          const repositoryData = localPath
+            ? await getLocalData(localPath)
+            : await getGithubData(
+                username,
+                repo,
+                githubPat,
+                generationAbortController.signal,
+              );
+          storageVisibility = isLocalRequest
+            ? "private"
+            : repositoryData.isPrivate
+              ? "private"
+              : "public";
           estimate = await estimateGenerationCost({
             provider,
             model,
-            fileTree: githubData.fileTree,
-            readme: githubData.readme,
+            fileTree: repositoryData.fileTree,
+            readme: repositoryData.readme,
             username,
             repo,
             apiKey,
@@ -343,7 +369,10 @@ export async function POST(request: Request) {
           });
 
           throwIfAborted(generationAbortController.signal);
-          if (shouldApplyComplimentaryGate({ provider, model, apiKey })) {
+          if (
+            provider !== "cli" &&
+            shouldApplyComplimentaryGate({ provider, model, apiKey })
+          ) {
             if (!modelMatchesComplimentaryFamily(model)) {
               const error = getComplimentaryModelMismatchMessage();
               audit = withFailure(
@@ -381,7 +410,8 @@ export async function POST(request: Request) {
             });
 
             if (!reservation.admitted) {
-              const error = reservation.message || getComplimentaryDenialMessage();
+              const error =
+                reservation.message || getComplimentaryDenialMessage();
               audit = withFailure(
                 {
                   ...audit,
@@ -422,10 +452,10 @@ export async function POST(request: Request) {
           if (
             tokenCount > FREE_GENERATION_INPUT_TOKEN_LIMIT &&
             tokenCount < HARD_GENERATION_INPUT_TOKEN_LIMIT &&
-            !apiKey
+            !apiKey &&
+            provider !== "cli"
           ) {
-            const error =
-              `File tree and README combined exceeds token limit (${FREE_GENERATION_INPUT_TOKEN_LIMIT.toLocaleString("en-US")}). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`;
+            const error = `File tree and README combined exceeds token limit (${FREE_GENERATION_INPUT_TOKEN_LIMIT.toLocaleString("en-US")}). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`;
             audit = withFailure(audit, {
               failureStage: "started",
               validationError: error,
@@ -480,7 +510,11 @@ export async function POST(request: Request) {
           await sleep(80);
           throwIfAborted(generationAbortController.signal);
 
-          audit = withTimelineEvent(audit, "explanation", "Analyzing repository structure...");
+          audit = withTimelineEvent(
+            audit,
+            "explanation",
+            "Analyzing repository structure...",
+          );
           send({
             status: "explanation",
             session_id: audit.sessionId,
@@ -493,8 +527,8 @@ export async function POST(request: Request) {
             model,
             systemPrompt: SYSTEM_FIRST_PROMPT,
             userPrompt: toTaggedMessage({
-              file_tree: githubData.fileTree,
-              readme: githubData.readme,
+              file_tree: repositoryData.fileTree,
+              readme: repositoryData.readme,
             }),
             apiKey,
             reasoningEffort: "medium",
@@ -504,7 +538,11 @@ export async function POST(request: Request) {
           for await (const chunk of explanationStream.stream) {
             throwIfAborted(generationAbortController.signal);
             explanationResponse += chunk;
-            send({ status: "explanation_chunk", session_id: audit.sessionId, chunk });
+            send({
+              status: "explanation_chunk",
+              session_id: audit.sessionId,
+              chunk,
+            });
           }
           let explanationUsage: GenerationTokenUsage | null = null;
           try {
@@ -529,13 +567,18 @@ export async function POST(request: Request) {
             hasCompleteMeasuredUsage = false;
           }
 
-          const explanation = extractTaggedSection(explanationResponse, "explanation");
+          const explanation = extractTaggedSection(
+            explanationResponse,
+            "explanation",
+          );
           if (!explanation.trim()) {
-            throw new Error("OpenAI explanation generation returned no usable output.");
+            throw new Error(
+              "OpenAI explanation generation returned no usable output.",
+            );
           }
           audit = withExplanation(audit, explanation);
 
-          const fileTreeLookup = buildFileTreeLookup(githubData.fileTree);
+          const fileTreeLookup = buildFileTreeLookup(repositoryData.fileTree);
           let validGraph = null;
           let validationFeedback: string | undefined;
           let previousGraphRaw: string | undefined;
@@ -562,13 +605,17 @@ export async function POST(request: Request) {
               graph_attempts: audit.graphAttempts,
             });
 
-            const { output: graph, rawText, usage } = await generateStructuredOutput({
+            const {
+              output: rawGraph,
+              rawText,
+              usage,
+            } = await generateStructuredOutput({
               provider,
               model,
               systemPrompt: SYSTEM_GRAPH_PROMPT,
               userPrompt: toTaggedMessage({
                 explanation,
-                file_tree: githubData.fileTree,
+                file_tree: repositoryData.fileTree,
                 repo_owner: username,
                 repo_name: repo,
                 previous_graph: previousGraphRaw,
@@ -581,6 +628,8 @@ export async function POST(request: Request) {
               maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
               signal: generationAbortController.signal,
             });
+
+            const graph = repairDiagramGraph(rawGraph, fileTreeLookup);
 
             if (usage) {
               actualUsages.push(usage);
@@ -623,7 +672,9 @@ export async function POST(request: Request) {
             audit = withGraphAttempt(audit, attemptAudit);
 
             if (!graphValidation.valid) {
-              validationFeedback = formatGraphValidationFeedback(graphValidation.issues);
+              validationFeedback = formatGraphValidationFeedback(
+                graphValidation.issues,
+              );
               previousGraphRaw = rawText;
               audit = withTimelineEvent(
                 audit,
@@ -669,7 +720,11 @@ export async function POST(request: Request) {
             return;
           }
 
-          audit = withTimelineEvent(audit, "diagram_compiling", "Compiling Mermaid diagram...");
+          audit = withTimelineEvent(
+            audit,
+            "diagram_compiling",
+            "Compiling Mermaid diagram...",
+          );
           send({
             status: "diagram_compiling",
             session_id: audit.sessionId,
@@ -683,7 +738,8 @@ export async function POST(request: Request) {
             graph: validGraph,
             username,
             repo,
-            branch: githubData.defaultBranch,
+            branch: repositoryData.defaultBranch,
+            includeGitHubLinks: !isLocalRequest,
           });
           audit = withCompiledDiagram(audit, diagram);
           send({
@@ -699,7 +755,8 @@ export async function POST(request: Request) {
           const mermaidValidation = await validateMermaidSyntax(diagram);
           if (!mermaidValidation.valid) {
             const compilerError =
-              mermaidValidation.message ?? "Compiled Mermaid failed validation.";
+              mermaidValidation.message ??
+              "Compiled Mermaid failed validation.";
             audit = withFailure(audit, {
               failureStage: "diagram_compiling",
               compilerError,
@@ -729,40 +786,54 @@ export async function POST(request: Request) {
             : {
                 ...estimate.costSummary,
                 kind: "actual" as const,
-                note:
-                  "Some stage usage was unavailable, so the final cost remains approximate.",
+                note: "Some stage usage was unavailable, so the final cost remains approximate.",
               };
           throwIfAborted(generationAbortController.signal);
           audit = withFinalCost(audit, finalCost);
-          audit = withSuccess(withTimelineEvent(audit, "complete", "Diagram generation complete."));
-          await saveSuccessfulDiagramState({
-            username,
-            repo,
-            githubPat,
-            visibility: storageVisibility,
-            stargazerCount: githubData.stargazerCount,
-            explanation,
-            graph: validGraph,
-            diagram,
-            audit,
-            usedOwnKey: Boolean(apiKey),
-          });
+          audit = withSuccess(
+            withTimelineEvent(
+              audit,
+              "complete",
+              "Diagram generation complete.",
+            ),
+          );
+          if (!isLocalRequest) {
+            await saveSuccessfulDiagramState({
+              username,
+              repo,
+              githubPat,
+              visibility: storageVisibility,
+              stargazerCount: repositoryData.stargazerCount,
+              explanation,
+              graph: validGraph,
+              diagram,
+              audit,
+              usedOwnKey: Boolean(apiKey),
+            });
+          }
 
-          if (storageVisibility === "public") {
-            const lastSuccessfulAt = audit.updatedAt ?? new Date().toISOString();
+          if (!isLocalRequest && storageVisibility === "public") {
+            const lastSuccessfulAt =
+              audit.updatedAt ?? new Date().toISOString();
             postResponseTasks.push(async () => {
               try {
                 revalidatePath(getRepoPagePath(username, repo));
-                revalidateTag(getPublicDiagramStateCacheTag(username, repo), "max");
+                revalidateTag(
+                  getPublicDiagramStateCacheTag(username, repo),
+                  "max",
+                );
                 await updatePublicBrowseIndexForSuccessfulDiagram({
                   username,
                   repo,
                   lastSuccessfulAt,
-                  stargazerCount: githubData.stargazerCount,
+                  stargazerCount: repositoryData.stargazerCount,
                 });
                 revalidateBrowseIndexCache();
               } catch (error) {
-                console.error("Failed to update browse index after completion:", error);
+                console.error(
+                  "Failed to update browse index after completion:",
+                  error,
+                );
               }
             });
           }
@@ -785,7 +856,9 @@ export async function POST(request: Request) {
           }
           hasCompleteMeasuredUsage = false;
           const rawMessage =
-            error instanceof Error ? error.message : "Streaming generation failed.";
+            error instanceof Error
+              ? error.message
+              : "Streaming generation failed.";
           const { message, errorCode } = normalizeGenerationError({
             provider: audit.provider,
             apiKey,

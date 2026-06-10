@@ -26,6 +26,7 @@ export const GRAPH_MAX_OUTPUT_TOKENS = 6000;
 const DEFAULT_PRICING_MODEL = "gpt-5.4-mini";
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
+  cli: { inputPerMillionUsd: 0, outputPerMillionUsd: 0 },
   "gpt-5.4": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
   "gpt-5.4-pro": { inputPerMillionUsd: 30.0, outputPerMillionUsd: 180.0 },
   "gpt-5.4-mini": { inputPerMillionUsd: 0.75, outputPerMillionUsd: 4.5 },
@@ -33,7 +34,10 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // Retain pricing entries for older model ids that may still appear in stored data or requests.
   "gpt-5.2": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
-  "gpt-5.2-chat-latest": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
+  "gpt-5.2-chat-latest": {
+    inputPerMillionUsd: 1.75,
+    outputPerMillionUsd: 14.0,
+  },
   "gpt-5.2-codex": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
   "gpt-5.2-pro": { inputPerMillionUsd: 21.0, outputPerMillionUsd: 168.0 },
 
@@ -54,7 +58,7 @@ function stripDateSnapshotSuffix(model: string): string {
 }
 
 function stripProviderPrefix(model: string): string {
-  return model.includes("/") ? model.split("/").at(-1) ?? model : model;
+  return model.includes("/") ? (model.split("/").at(-1) ?? model) : model;
 }
 
 export function resolvePricingModel(model: string): string {
@@ -88,7 +92,8 @@ export function estimateTextTokenCostUsd(
 ): { costUsd: number; pricingModel: string; pricing: ModelPricing } {
   const pricingModel = resolvePricingModel(model);
   const pricing = MODEL_PRICING[pricingModel] ?? DEFAULT_PRICING;
-  const inputCost = (Math.max(inputTokens, 0) / 1_000_000) * pricing.inputPerMillionUsd;
+  const inputCost =
+    (Math.max(inputTokens, 0) / 1_000_000) * pricing.inputPerMillionUsd;
   const outputCost =
     (Math.max(outputTokens, 0) / 1_000_000) * pricing.outputPerMillionUsd;
 
@@ -116,9 +121,7 @@ export function normalizeGenerationUsage(
     inputTokens,
     outputTokens,
     totalTokens,
-    ...(typeof cachedInputTokens === "number"
-      ? { cachedInputTokens }
-      : {}),
+    ...(typeof cachedInputTokens === "number" ? { cachedInputTokens } : {}),
     ...(typeof reasoningTokens === "number" ? { reasoningTokens } : {}),
   };
 }

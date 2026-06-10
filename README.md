@@ -9,6 +9,61 @@ Turn any GitHub repository into an interactive diagram for visualization in seco
 
 You can also replace `hub` with `diagram` in any Github URL to access its diagram.
 
+> **Fork note:** This fork adds local folder generation for self-hosted runs and supports using an AI CLI command, such as Codex, Gemini CLI, or GitHub Copilot CLI, instead of a hosted AI API.
+
+## 🧪 Fork: Local Folder + AI CLI Mode
+
+This fork can generate a diagram from a local folder instead of a GitHub URL. It can also call an installed AI CLI for generation, so you can use an existing Codex, Gemini CLI, or GitHub Copilot CLI login instead of setting an OpenAI/OpenRouter API key.
+
+Example local setup:
+
+```bash
+bun install
+```
+
+```bash
+LOCAL_MODE=true \
+AI_PROVIDER=cli \
+AI_CLI_COMMAND="codex exec --sandbox read-only -" \
+NEXT_PUBLIC_GENERATION_BACKEND=next \
+bun --bun next dev
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:LOCAL_MODE="true"
+$env:AI_PROVIDER="cli"
+$env:AI_CLI_COMMAND="codex exec --sandbox read-only -"
+$env:NEXT_PUBLIC_GENERATION_BACKEND="next"
+bun --bun next dev
+```
+
+Then open:
+
+```text
+http://localhost:3000/local?path=%2Fpath%2Fto%2Fyour-project
+```
+
+Or use the home page input when `LOCAL_MODE=true`; it accepts a local folder path.
+
+`AI_CLI_COMMAND` is split into a command plus arguments. For stdin-based CLIs such as Codex, GitDiagram writes the generated prompt to stdin; the trailing `-` in the Codex example tells `codex exec` to read from stdin, avoiding Windows command-line length limits for large repositories.
+
+Gemini-style example:
+
+```bash
+AI_CLI_COMMAND='gemini --approval-mode plan --prompt "Generate the requested GitDiagram output from stdin."'
+```
+
+GitHub Copilot CLI example:
+
+```bash
+AI_CLI_COMMAND='copilot --model gpt-5.4'
+AI_CLI_MODEL_LABEL='GitHub Copilot CLI'
+```
+
+When `AI_CLI_COMMAND` starts with `copilot`, GitDiagram automatically writes the full prompt to a temporary markdown attachment and invokes Copilot in non-interactive text mode, so you should not add `-p` or `--attachment` yourself.
+
 > **Sponsor slot:** Your devtool here. Reach developers who are actively exploring codebases with GitDiagram. [Sponsor GitDiagram](https://gitdiagram.com/sponsor).
 
 ## 🚀 Features
