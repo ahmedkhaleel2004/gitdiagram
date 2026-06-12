@@ -26,6 +26,10 @@ def test_estimate_text_token_cost_uses_gpt_5_4_mini_pricing():
     assert cost_usd == 5.25
 
 
+def test_resolve_pricing_model_maps_atlas_model_prefix():
+    assert resolve_pricing_model("deepseek-ai/DeepSeek-V3-0324") == "deepseek-v3-0324"
+
+
 def test_normalize_generation_usage_maps_usage_payload():
     usage = normalize_generation_usage(
         SimpleNamespace(

@@ -26,6 +26,7 @@ export const GRAPH_MAX_OUTPUT_TOKENS = 6000;
 const DEFAULT_PRICING_MODEL = "gpt-5.4-mini";
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
+  "deepseek-v3-0324": { inputPerMillionUsd: 0.216, outputPerMillionUsd: 0.88 },
   "gpt-5.4": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
   "gpt-5.4-pro": { inputPerMillionUsd: 30.0, outputPerMillionUsd: 180.0 },
   "gpt-5.4-mini": { inputPerMillionUsd: 0.75, outputPerMillionUsd: 4.5 },
@@ -77,6 +78,7 @@ export function resolvePricingModel(model: string): string {
   if (withoutDate.startsWith("gpt-5-nano")) return "gpt-5-nano";
   if (withoutDate.startsWith("gpt-5")) return "gpt-5";
   if (withoutDate.startsWith("o4-mini")) return "o4-mini";
+  if (withoutDate.startsWith("deepseek-v3-0324")) return "deepseek-v3-0324";
 
   return DEFAULT_PRICING_MODEL;
 }

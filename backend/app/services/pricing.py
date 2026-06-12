@@ -24,6 +24,9 @@ class GenerationTokenUsage:
 
 
 MODEL_PRICING: dict[str, ModelPricing] = {
+    "deepseek-v3-0324": ModelPricing(
+        input_per_million_usd=0.216, output_per_million_usd=0.88
+    ),
     "gpt-5.4": ModelPricing(input_per_million_usd=2.5, output_per_million_usd=15.0),
     "gpt-5.4-pro": ModelPricing(input_per_million_usd=30.0, output_per_million_usd=180.0),
     "gpt-5.4-mini": ModelPricing(input_per_million_usd=0.75, output_per_million_usd=4.5),
@@ -92,6 +95,8 @@ def resolve_pricing_model(model: str) -> str:
         return "gpt-5"
     if without_date.startswith("o4-mini"):
         return "o4-mini"
+    if without_date.startswith("deepseek-v3-0324"):
+        return "deepseek-v3-0324"
 
     return DEFAULT_PRICING_MODEL
 
