@@ -1,5 +1,5 @@
 import { CopyButton } from "./copy-button";
-import { Image } from "lucide-react";
+import { Image, FileText, Loader2 } from "lucide-react";
 import { ActionButton } from "./action-button";
 
 interface ExportDropdownProps {
@@ -7,6 +7,8 @@ interface ExportDropdownProps {
   lastGenerated?: Date;
   actualCost?: string;
   onExportImage: () => void;
+  onExportPdf: () => void;
+  isExportingPdf: boolean;
 }
 
 export function ExportDropdown({
@@ -14,6 +16,8 @@ export function ExportDropdown({
   lastGenerated,
   actualCost,
   onExportImage,
+  onExportPdf,
+  isExportingPdf,
 }: ExportDropdownProps) {
   return (
     <div className="space-y-4">
@@ -23,6 +27,14 @@ export function ExportDropdown({
           icon={Image}
           tooltipText="Download diagram as high-quality PNG"
           text="Download PNG"
+        />
+        <ActionButton
+          onClick={onExportPdf}
+          icon={isExportingPdf ? Loader2 : FileText}
+          iconClassName={isExportingPdf ? "animate-spin" : ""}
+          tooltipText="Download diagram as high-quality PDF"
+          text="Export PDF"
+          disabled={isExportingPdf}
         />
         <CopyButton onClick={onCopy} />
       </div>
