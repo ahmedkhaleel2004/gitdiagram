@@ -13,6 +13,7 @@ interface ActionButtonProps {
   tooltipText: string;
   disabled?: boolean;
   text?: string;
+  iconClassName?: string;
 }
 
 export function ActionButton({
@@ -21,6 +22,7 @@ export function ActionButton({
   tooltipText,
   disabled,
   text,
+  iconClassName,
 }: ActionButtonProps) {
   return (
     <TooltipProvider>
@@ -34,7 +36,7 @@ export function ActionButton({
             disabled={disabled}
             className="neo-button p-4 px-4 text-base sm:p-6 sm:px-6 sm:text-lg"
           >
-            <Icon className="h-6 w-6" />
+            <Icon className={`h-6 w-6 ${iconClassName || ""}`} />
             {text && <span className="text-sm">{text}</span>}
           </Button>
         </TooltipTrigger>

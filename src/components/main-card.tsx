@@ -23,6 +23,8 @@ interface MainCardProps {
   lastGenerated?: Date;
   actualCost?: string;
   onExportImage?: () => void;
+  onExportPdf?: () => void;
+  isExportingPdf?: boolean;
   onRegenerate?: () => void;
   zoomingEnabled?: boolean;
   onZoomToggle?: () => void;
@@ -38,6 +40,8 @@ export default function MainCard({
   lastGenerated,
   actualCost,
   onExportImage,
+  onExportPdf,
+  isExportingPdf,
   onRegenerate,
   zoomingEnabled,
   onZoomToggle,
@@ -188,6 +192,8 @@ export default function MainCard({
                       lastGenerated={lastGenerated}
                       actualCost={actualCost}
                       onExportImage={onExportImage!}
+                      onExportPdf={onExportPdf!}
+                      isExportingPdf={!!isExportingPdf}
                     />
                   )}
                 </div>

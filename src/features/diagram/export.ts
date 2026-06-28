@@ -1,3 +1,6 @@
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
+
 export function exportMermaidSvgAsPng(svgElement: SVGSVGElement): void {
   const canvas = document.createElement("canvas");
   const scale = 4;
@@ -35,4 +38,45 @@ export function exportMermaidSvgAsPng(svgElement: SVGSVGElement): void {
   img.src =
     "data:image/svg+xml;base64," +
     btoa(unescape(encodeURIComponent(svgData)));
+}
+
+export async function exportDiagramAsPdf(
+  element: HTMLElement,
+  filename: string
+): Promise<void> {
+  const canvas = await html2canvas(element, {
+    scale: 2, // High DPI for better quality
+    useCORS: true, // Allow cross-origin images if any
+    backgroundColor: "#ffffff", // Ensure white background
+  });
+
+  const imgData = canvas.toDataURL("image/png");
+
+  // Initialize jsPDF with A4 landscape
+  const pdf = new jsPDF({
+    orientation: "landscape",
+    unit: "mm",
+    format: "a4",
+  });
+
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = pdf.internal.pageSize.getHeight();
+
+  // Margins in mm
+  const margin = 10;
+  const maxWidth = pdfWidth - margin * 2;
+  const maxHeight = pdfHeight - margin * 2;
+
+  // Calculate ratio to fit within max bounds
+  const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
+
+  const finalWidth = canvas.width * ratio;
+  const finalHeight = canvas.height * ratio;
+
+  // Center horizontally and vertically
+  const x = (pdfWidth - finalWidth) / 2;
+  const y = (pdfHeight - finalHeight) / 2;
+
+  pdf.addImage(imgData, "PNG", x, y, finalWidth, finalHeight);
+  pdf.save(filename);
 }
