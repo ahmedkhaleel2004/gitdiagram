@@ -45,6 +45,9 @@ next-env.d.ts
 # Claude Code worktrees
 .claude/
 
+# Playwright MCP local artifacts
+.playwright-mcp/
+
 __pycache__/
 venv
 backend/.venv
