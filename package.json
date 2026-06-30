@@ -62,7 +62,7 @@
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.1",
     "dotenv": "^17.4.2",
-    "eslint": "^10.5.0",
+    "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.9",
     "jsdom": "29.1.1",
     "postcss": "^8.5.15",
