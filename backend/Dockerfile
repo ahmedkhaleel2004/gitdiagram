@@ -1,5 +1,5 @@
 FROM oven/bun:1.3.14 AS bun-runtime
-FROM python:3.14.5-slim
+FROM python:3.14.6-slim
 
 WORKDIR /app
 ENV ENVIRONMENT=production
