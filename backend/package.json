@@ -9,7 +9,7 @@
   "dependencies": {
     "dompurify": "3.4.11",
     "linkedom": "0.18.12",
-    "mermaid": "11.15.0"
+    "mermaid": "11.16.0"
   },
   "overrides": {
     "dompurify": "^3.4.2"
