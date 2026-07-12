@@ -205,9 +205,10 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
             "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
             "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 1000,
-            "estimated_output_tokens": 18_000,
+            "estimated_output_tokens": 12_000,
             "explanation_input_tokens": 1000,
             "graph_static_input_tokens": 200,
+            "graph_repair_static_input_tokens": 300,
         }
 
     async def fake_stream_completion(
@@ -218,9 +219,13 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
         data,
         api_key=None,
         reasoning_effort=None,
+        text_verbosity=None,
         max_output_tokens=None,
     ):
-        assert "explain its architecture clearly" in system_prompt
+        assert "compact, repo-specific architecture brief" in system_prompt
+        assert reasoning_effort == "medium"
+        assert text_verbosity == "low"
+        assert max_output_tokens == 6_000
 
         async def generator():
             yield "<explanation>Repo explanation</explanation>"
@@ -274,7 +279,10 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
         ]
     )
 
+    graph_requests = []
+
     async def fake_generate_structured_output(**kwargs):
+        graph_requests.append(kwargs)
         return next(graph_outputs)
 
     monkeypatch.setattr(generate, "estimate_generation_cost", fake_estimate_generation_cost)
@@ -304,6 +312,15 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
     assert payloads[-1]["graph"]["nodes"][0]["path"] == "src/main.py"
     assert payloads[0]["cost_summary"]["kind"] == "estimate"
     assert payloads[-1]["cost_summary"]["kind"] == "actual"
+    assert graph_requests[0]["data"] == {"explanation": "Repo explanation"}
+    assert graph_requests[0]["reasoning_effort"] == "low"
+    assert graph_requests[0]["text_verbosity"] == "low"
+    assert graph_requests[0]["max_output_tokens"] == 6_000
+    assert graph_requests[1]["data"]["file_tree"] == "src/main.py"
+    assert "missing.py" in graph_requests[1]["data"]["previous_graph"]
+    assert graph_requests[1]["data"]["validation_feedback"]
+    assert "repo_owner" not in graph_requests[1]["data"]
+    assert "repo_name" not in graph_requests[1]["data"]
 
 
 def test_generate_stream_blocks_when_daily_free_quota_is_exhausted(monkeypatch):
@@ -332,9 +349,10 @@ def test_generate_stream_blocks_when_daily_free_quota_is_exhausted(monkeypatch):
             "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
             "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 18_000,
+            "estimated_output_tokens": 12_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
+            "graph_repair_static_input_tokens": 300,
         }
 
     monkeypatch.setattr(generate, "estimate_generation_cost", fake_estimate_generation_cost)
@@ -384,9 +402,10 @@ def test_generate_stream_bypasses_quota_gate_for_user_api_keys(monkeypatch):
             "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
             "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 18_000,
+            "estimated_output_tokens": 12_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
+            "graph_repair_static_input_tokens": 300,
         }
 
     async def fake_stream_completion(**kwargs):
@@ -470,9 +489,10 @@ def test_generate_stream_requires_user_key_above_free_input_limit(monkeypatch):
             "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
             "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100_001,
-            "estimated_output_tokens": 18_000,
+            "estimated_output_tokens": 12_000,
             "explanation_input_tokens": 100_001,
             "graph_static_input_tokens": 200,
+            "graph_repair_static_input_tokens": 300,
         }
 
     async def unexpected_stream_completion(**kwargs):
@@ -520,9 +540,10 @@ def test_generate_stream_completes_without_storage_when_quota_gate_disabled(monk
             "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
             "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 18_000,
+            "estimated_output_tokens": 12_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
+            "graph_repair_static_input_tokens": 300,
         }
 
     async def fake_stream_completion(**kwargs):
@@ -598,9 +619,10 @@ def test_generate_stream_errors_when_quota_gate_enabled_without_upstash(monkeypa
             "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
             "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 18_000,
+            "estimated_output_tokens": 12_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
+            "graph_repair_static_input_tokens": 300,
         }
 
     monkeypatch.setattr(generate, "estimate_generation_cost", fake_estimate_generation_cost)
@@ -646,9 +668,10 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
             "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
             "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 18_000,
+            "estimated_output_tokens": 12_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
+            "graph_repair_static_input_tokens": 300,
         }
 
     async def fake_stream_completion(**kwargs):
@@ -721,7 +744,7 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
                 quota_bucket="openai-complimentary-small-models",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
-                reserved_tokens=82_700,
+                reserved_tokens=58_900,
             ),
             "2026-03-29T00:00:00+00:00",
         ),
@@ -773,9 +796,10 @@ def test_generate_stream_finalizes_with_measured_usage_after_failure(monkeypatch
             "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
             "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 18_000,
+            "estimated_output_tokens": 12_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
+            "graph_repair_static_input_tokens": 300,
         }
 
     async def fake_stream_completion(**kwargs):
@@ -805,7 +829,7 @@ def test_generate_stream_finalizes_with_measured_usage_after_failure(monkeypatch
                 quota_bucket="openai-complimentary-small-models",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
-                reserved_tokens=82_700,
+                reserved_tokens=58_900,
             ),
             "2026-03-29T00:00:00+00:00",
         ),
@@ -853,9 +877,10 @@ def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reser
             "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
             "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
-            "estimated_output_tokens": 18_000,
+            "estimated_output_tokens": 12_000,
             "explanation_input_tokens": 100,
             "graph_static_input_tokens": 200,
+            "graph_repair_static_input_tokens": 300,
         }
 
     async def fake_stream_completion(**kwargs):
@@ -878,7 +903,7 @@ def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reser
                 quota_bucket="openai-complimentary-small-models",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
-                reserved_tokens=82_700,
+                reserved_tokens=58_900,
             ),
             "2026-03-29T00:00:00+00:00",
         ),

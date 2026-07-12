@@ -63,6 +63,6 @@ def test_create_estimate_cost_summary_uses_stage_caps():
 
     assert summary["kind"] == "estimate"
     assert summary["approximate"] is True
-    assert summary["usage"]["inputTokens"] == 12300
-    assert summary["usage"]["outputTokens"] == 18000
+    assert summary["usage"]["inputTokens"] == 6_300
+    assert summary["usage"]["outputTokens"] == 12_000
     assert "configured output caps" in summary["note"]

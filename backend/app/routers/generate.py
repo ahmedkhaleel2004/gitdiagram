@@ -26,6 +26,14 @@ from app.services.complimentary_gate import (
     should_apply_complimentary_gate,
 )
 from app.services.cost_estimator import estimate_generation_cost
+from app.services.generation_policy import (
+    EXPLANATION_MAX_OUTPUT_TOKENS,
+    EXPLANATION_REASONING_EFFORT,
+    EXPLANATION_TEXT_VERBOSITY,
+    GRAPH_MAX_OUTPUT_TOKENS,
+    GRAPH_REASONING_EFFORT,
+    GRAPH_TEXT_VERBOSITY,
+)
 from app.services.diagram_state_repository import DiagramStateRepository
 from app.services.github_service import GitHubService
 from app.services.graph_service import (
@@ -45,8 +53,6 @@ from app.services.model_config import (
 )
 from app.services.openai_service import OpenAIService
 from app.services.pricing import (
-    EXPLANATION_MAX_OUTPUT_TOKENS,
-    GRAPH_MAX_OUTPUT_TOKENS,
     create_cost_summary,
     sum_generation_usage,
 )
@@ -602,6 +608,9 @@ async def generate_stream(request: Request):
                 requested_tokens = build_complimentary_admission_tokens(
                     explanation_input_tokens=estimate["explanation_input_tokens"],
                     graph_static_input_tokens=estimate["graph_static_input_tokens"],
+                    graph_repair_static_input_tokens=estimate[
+                        "graph_repair_static_input_tokens"
+                    ],
                 )
                 admitted, quota_reservation, quota_reset_at = await asyncio.to_thread(
                     admit_complimentary_quota,
@@ -710,7 +719,8 @@ async def generate_stream(request: Request):
                 system_prompt=SYSTEM_FIRST_PROMPT,
                 data={"file_tree": github_data.file_tree, "readme": github_data.readme},
                 api_key=parsed.api_key,
-                reasoning_effort="medium",
+                reasoning_effort=EXPLANATION_REASONING_EFFORT,
+                text_verbosity=EXPLANATION_TEXT_VERBOSITY,
                 max_output_tokens=EXPLANATION_MAX_OUTPUT_TOKENS,
             )
             async for chunk in explanation_stream:
@@ -779,21 +789,25 @@ async def generate_stream(request: Request):
                     }
                 )
 
+                graph_data: dict[str, str | None] = {"explanation": explanation}
+                if attempt > 1:
+                    graph_data.update(
+                        {
+                            "file_tree": github_data.file_tree,
+                            "previous_graph": previous_graph,
+                            "validation_feedback": validation_feedback,
+                        }
+                    )
+
                 graph, raw_output, usage = await openai_service.generate_structured_output(
                     provider=provider,
                     model=model,
                     system_prompt=SYSTEM_GRAPH_PROMPT,
-                    data={
-                        "explanation": explanation,
-                        "file_tree": github_data.file_tree,
-                        "repo_owner": parsed.username,
-                        "repo_name": parsed.repo,
-                        "previous_graph": previous_graph,
-                        "validation_feedback": validation_feedback,
-                    },
+                    data=graph_data,
                     text_format=DiagramGraph,
                     api_key=parsed.api_key,
-                    reasoning_effort="low",
+                    reasoning_effort=GRAPH_REASONING_EFFORT,
+                    text_verbosity=GRAPH_TEXT_VERBOSITY,
                     max_output_tokens=GRAPH_MAX_OUTPUT_TOKENS,
                 )
 

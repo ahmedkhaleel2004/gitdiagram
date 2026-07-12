@@ -126,6 +126,7 @@ def build_complimentary_admission_tokens(
     *,
     explanation_input_tokens: int,
     graph_static_input_tokens: int,
+    graph_repair_static_input_tokens: int,
 ) -> int:
     explanation_stage_tokens = explanation_input_tokens + EXPLANATION_MAX_OUTPUT_TOKENS
     first_graph_attempt_tokens = (
@@ -134,7 +135,7 @@ def build_complimentary_admission_tokens(
         + GRAPH_MAX_OUTPUT_TOKENS
     )
     retry_graph_attempt_tokens = (
-        graph_static_input_tokens
+        graph_repair_static_input_tokens
         + EXPLANATION_MAX_OUTPUT_TOKENS
         + GRAPH_MAX_OUTPUT_TOKENS
         + RETRY_INPUT_BUFFER_TOKENS

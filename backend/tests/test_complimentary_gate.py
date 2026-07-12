@@ -33,13 +33,14 @@ def test_get_complimentary_model_family_normalizes_snapshot(monkeypatch):
     assert model_matches_complimentary_family("not-a-real-model") is False
 
 
-def test_build_complimentary_admission_tokens():
+def test_build_complimentary_admission_tokens_uses_repair_static_input_for_retries():
     assert (
         build_complimentary_admission_tokens(
             explanation_input_tokens=100,
             graph_static_input_tokens=200,
+            graph_repair_static_input_tokens=300,
         )
-        == 82_700
+        == 58_900
     )
 
 

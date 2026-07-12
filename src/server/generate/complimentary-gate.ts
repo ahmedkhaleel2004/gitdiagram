@@ -30,6 +30,7 @@ export interface ComplimentaryQuotaReservation {
 export interface ComplimentaryAdmissionEstimate {
   explanationInputTokens: number;
   graphStaticInputTokens: number;
+  graphRepairStaticInputTokens: number;
 }
 
 function readEnvFlag(name: string): boolean {
@@ -128,7 +129,7 @@ export function buildComplimentaryAdmissionTokens(
     EXPLANATION_MAX_OUTPUT_TOKENS +
     GRAPH_MAX_OUTPUT_TOKENS;
   const retryGraphAttemptTokens =
-    estimate.graphStaticInputTokens +
+    estimate.graphRepairStaticInputTokens +
     EXPLANATION_MAX_OUTPUT_TOKENS +
     GRAPH_MAX_OUTPUT_TOKENS +
     RETRY_INPUT_BUFFER_TOKENS +

@@ -27,6 +27,14 @@ import {
   estimateGenerationCost,
   type GenerationEstimateResult,
 } from "~/server/generate/cost-estimate";
+import {
+  EXPLANATION_MAX_OUTPUT_TOKENS,
+  EXPLANATION_REASONING_EFFORT,
+  EXPLANATION_TEXT_VERBOSITY,
+  GRAPH_MAX_OUTPUT_TOKENS,
+  GRAPH_REASONING_EFFORT,
+  GRAPH_TEXT_VERBOSITY,
+} from "~/server/generate/generation-policy";
 import { extractTaggedSection, toTaggedMessage } from "~/server/generate/format";
 import { getGithubData } from "~/server/generate/github";
 import {
@@ -63,8 +71,6 @@ import {
 } from "~/server/generate/session-audit";
 import {
   createCostSummary,
-  EXPLANATION_MAX_OUTPUT_TOKENS,
-  GRAPH_MAX_OUTPUT_TOKENS,
   sumGenerationUsage,
 } from "~/server/generate/pricing";
 import { generateRequestSchema, sseMessage } from "~/server/generate/types";
@@ -374,6 +380,7 @@ export async function POST(request: Request) {
             const requestedTokens = buildComplimentaryAdmissionTokens({
               explanationInputTokens: estimate.explanationInputTokens,
               graphStaticInputTokens: estimate.graphStaticInputTokens,
+              graphRepairStaticInputTokens: estimate.graphRepairStaticInputTokens,
             });
             const reservation = await admitComplimentaryQuota({
               model,
@@ -497,7 +504,8 @@ export async function POST(request: Request) {
               readme: githubData.readme,
             }),
             apiKey,
-            reasoningEffort: "medium",
+            reasoningEffort: EXPLANATION_REASONING_EFFORT,
+            textVerbosity: EXPLANATION_TEXT_VERBOSITY,
             maxOutputTokens: EXPLANATION_MAX_OUTPUT_TOKENS,
             signal: generationAbortController.signal,
           });
@@ -566,18 +574,21 @@ export async function POST(request: Request) {
               provider,
               model,
               systemPrompt: SYSTEM_GRAPH_PROMPT,
-              userPrompt: toTaggedMessage({
-                explanation,
-                file_tree: githubData.fileTree,
-                repo_owner: username,
-                repo_name: repo,
-                previous_graph: previousGraphRaw,
-                validation_feedback: validationFeedback,
-              }),
+              userPrompt: toTaggedMessage(
+                attempt === 1
+                  ? { explanation }
+                  : {
+                      explanation,
+                      file_tree: githubData.fileTree,
+                      previous_graph: previousGraphRaw,
+                      validation_feedback: validationFeedback,
+                    },
+              ),
               schema: diagramGraphSchema,
               schemaName: "diagram_graph",
               apiKey,
-              reasoningEffort: "low",
+              reasoningEffort: GRAPH_REASONING_EFFORT,
+              textVerbosity: GRAPH_TEXT_VERBOSITY,
               maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
               signal: generationAbortController.signal,
             });

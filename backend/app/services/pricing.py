@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.generation_policy import (
+    EXPLANATION_MAX_OUTPUT_TOKENS,
+    GRAPH_MAX_OUTPUT_TOKENS,
+)
+
 DEFAULT_PRICING_MODEL = "gpt-5.6-terra"
-EXPLANATION_MAX_OUTPUT_TOKENS = 12000
-GRAPH_MAX_OUTPUT_TOKENS = 6000
 
 
 @dataclass(frozen=True)

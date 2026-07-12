@@ -81,7 +81,7 @@ Optional:
 - `OPENAI_COMPLIMENTARY_GATE_ENABLED` to hard-stop default-key usage at the configured complimentary small-model daily ceiling
 - `OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS` when the complimentary gate is enabled (defaults to `10000000`)
 - `OPENAI_COMPLIMENTARY_MODEL_FAMILY` when the complimentary gate is enabled (defaults to `gpt-5.6-terra`)
-- `OPENROUTER_MODEL` when `AI_PROVIDER=openrouter` (defaults to `openai/gpt-5.4`)
+- `OPENROUTER_MODEL` when `AI_PROVIDER=openrouter` (defaults to `openai/gpt-5.6-terra`)
 - `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME` for OpenRouter attribution headers
 - `GITHUB_PAT`
 - `NEXT_PUBLIC_POSTHOG_KEY`
@@ -93,7 +93,7 @@ Example OpenRouter local config:
 ```bash
 AI_PROVIDER=openrouter
 OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=openai/gpt-5.4
+OPENROUTER_MODEL=openai/gpt-5.6-terra
 OPENROUTER_SITE_URL=http://localhost:3000
 OPENROUTER_APP_NAME=GitDiagram
 ```

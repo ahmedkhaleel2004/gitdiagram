@@ -5,11 +5,13 @@ import type { ZodType } from "zod";
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
 import {
   getProviderLabel,
+  supportsTextVerbosity,
   type AIProvider,
 } from "~/server/generate/model-config";
 import { normalizeGenerationUsage } from "~/server/generate/pricing";
 
 export type ReasoningEffort = "low" | "medium" | "high";
+export type TextVerbosity = "low" | "medium" | "high";
 
 const DEFAULT_ATLAS_BASE_URL = "https://api.atlascloud.ai/v1";
 
@@ -168,6 +170,7 @@ interface StreamCompletionParams {
   userPrompt: string;
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
+  textVerbosity?: TextVerbosity;
   maxOutputTokens?: number;
   signal?: AbortSignal;
 }
@@ -181,6 +184,7 @@ interface StructuredCompletionParams<T> {
   schemaName: string;
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
+  textVerbosity?: TextVerbosity;
   maxOutputTokens?: number;
   signal?: AbortSignal;
 }
@@ -203,18 +207,6 @@ function getResponseFailureMessage(response: {
   }
 
   return "OpenAI response did not complete successfully.";
-}
-
-function isRecoverableMaxOutputIncomplete(params: {
-  response: {
-    incomplete_details?: { reason?: string | null } | null;
-  };
-  hasVisibleOutput: boolean;
-}): boolean {
-  return (
-    params.hasVisibleOutput &&
-    params.response.incomplete_details?.reason === "max_output_tokens"
-  );
 }
 
 async function retrieveUsageFromResponseId(
@@ -241,6 +233,7 @@ export async function streamCompletion({
   userPrompt,
   apiKey,
   reasoningEffort,
+  textVerbosity,
   maxOutputTokens,
   signal,
 }: StreamCompletionParams): Promise<StreamCompletionResult> {
@@ -299,6 +292,9 @@ export async function streamCompletion({
       stream: true,
       input: buildMessages(systemPrompt, userPrompt),
       ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+      ...(textVerbosity && supportsTextVerbosity(provider, model)
+        ? { text: { verbosity: textVerbosity } }
+        : {}),
       ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
     },
     signal ? { signal } : undefined,
@@ -315,7 +311,6 @@ export async function streamCompletion({
   async function* outputStream(): AsyncGenerator<string, void, void> {
     let responseId: string | undefined;
     let finalUsage: GenerationTokenUsage | null = null;
-    let hasVisibleOutput = false;
 
     try {
       for await (const event of stream) {
@@ -326,7 +321,6 @@ export async function streamCompletion({
 
         if (event.type === "response.output_text.delta") {
           if (event.delta) {
-            hasVisibleOutput = true;
             yield event.delta;
           }
           continue;
@@ -342,17 +336,6 @@ export async function streamCompletion({
         }
 
         if (event.type === "response.incomplete") {
-          if (
-            isRecoverableMaxOutputIncomplete({
-              response: event.response,
-              hasVisibleOutput,
-            })
-          ) {
-            finalUsage =
-              normalizeGenerationUsage(event.response.usage) ?? finalUsage;
-            continue;
-          }
-
           throw new Error(getResponseFailureMessage(event.response));
         }
 
@@ -433,6 +416,7 @@ export async function generateStructuredOutput<T>({
   schemaName,
   apiKey,
   reasoningEffort,
+  textVerbosity,
   maxOutputTokens,
   signal,
 }: StructuredCompletionParams<T>): Promise<{
@@ -482,6 +466,9 @@ export async function generateStructuredOutput<T>({
         input: buildMessages(systemPrompt, userPrompt),
         text: {
           format: zodTextFormat(schema, schemaName),
+          ...(textVerbosity && supportsTextVerbosity(provider, model)
+            ? { verbosity: textVerbosity }
+            : {}),
         },
         ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
         ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),

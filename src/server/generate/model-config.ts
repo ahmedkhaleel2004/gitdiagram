@@ -4,7 +4,9 @@ import { DEFAULT_ATLAS_MODEL } from "~/server/generate/atlas-models";
 
 const DEFAULT_PROVIDER: AIProvider = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.6-terra";
-const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.4";
+const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-terra";
+const GPT_56_MODEL_PATTERN =
+  /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/i;
 
 function readEnvValue(name: string): string | undefined {
   const value = process.env[name]?.trim();
@@ -35,6 +37,13 @@ export function getProviderLabel(provider: AIProvider): string {
 
 export function supportsExactInputTokenCount(provider: AIProvider): boolean {
   return provider === "openai";
+}
+
+export function supportsTextVerbosity(
+  provider: AIProvider,
+  model: string,
+): boolean {
+  return provider === "openai" && GPT_56_MODEL_PATTERN.test(model.trim());
 }
 
 export function shouldUseExactInputTokenCount(params: {

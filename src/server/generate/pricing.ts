@@ -2,6 +2,15 @@ import type {
   GenerationCostSummary,
   GenerationTokenUsage,
 } from "~/features/diagram/cost";
+import {
+  EXPLANATION_MAX_OUTPUT_TOKENS,
+  GRAPH_MAX_OUTPUT_TOKENS,
+} from "~/server/generate/generation-policy";
+
+export {
+  EXPLANATION_MAX_OUTPUT_TOKENS,
+  GRAPH_MAX_OUTPUT_TOKENS,
+} from "~/server/generate/generation-policy";
 
 export interface ModelPricing {
   inputPerMillionUsd: number;
@@ -19,9 +28,6 @@ interface RawResponseUsage {
     reasoning_tokens?: number;
   };
 }
-
-export const EXPLANATION_MAX_OUTPUT_TOKENS = 12000;
-export const GRAPH_MAX_OUTPUT_TOKENS = 6000;
 
 const DEFAULT_PRICING_MODEL = "gpt-5.6-terra";
 

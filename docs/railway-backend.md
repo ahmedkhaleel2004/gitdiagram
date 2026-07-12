@@ -46,7 +46,7 @@ Recommended:
 - `OPENAI_COMPLIMENTARY_GATE_ENABLED=true` if you want Railway to stop default-key requests at the complimentary small-model daily limit
 - `OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS=10000000` when the complimentary gate is enabled
 - `OPENAI_COMPLIMENTARY_MODEL_FAMILY=gpt-5.6-terra` when the complimentary gate is enabled
-- `OPENROUTER_MODEL=openai/gpt-5.4` when `AI_PROVIDER=openrouter`
+- `OPENROUTER_MODEL=openai/gpt-5.6-terra` when `AI_PROVIDER=openrouter`
 - `ENVIRONMENT=production`
 - `WEB_CONCURRENCY=1`
 - `CORS_ORIGINS=https://gitdiagram.com,https://www.gitdiagram.com,https://<your-vercel-domain>`

@@ -66,13 +66,14 @@ describe("complimentary gate", () => {
     expect(modelMatchesComplimentaryFamily("gpt-5.6-terra")).toBe(true);
   });
 
-  it("builds a conservative whole-run admission estimate", () => {
+  it("uses repair-static input only for graph retry admission estimates", () => {
     expect(
       buildComplimentaryAdmissionTokens({
         explanationInputTokens: 100,
         graphStaticInputTokens: 200,
+        graphRepairStaticInputTokens: 300,
       }),
-    ).toBe(82_700);
+    ).toBe(58_900);
   });
 
   it("returns a denial payload with the next UTC reset time", async () => {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Literal
 
 AIProvider = Literal["atlas", "openai", "openrouter"]
@@ -8,7 +9,11 @@ AIProvider = Literal["atlas", "openai", "openrouter"]
 DEFAULT_PROVIDER: AIProvider = "openai"
 DEFAULT_ATLAS_MODEL = "deepseek-ai/DeepSeek-V3-0324"
 DEFAULT_OPENAI_MODEL = "gpt-5.6-terra"
-DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.4"
+DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-terra"
+GPT_56_MODEL_PATTERN = re.compile(
+    r"^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$",
+    re.IGNORECASE,
+)
 
 
 def _read_env(name: str) -> str | None:
@@ -33,6 +38,10 @@ def get_provider_label(provider: AIProvider) -> str:
 
 def supports_exact_input_token_count(provider: AIProvider) -> bool:
     return provider == "openai"
+
+
+def supports_text_verbosity(provider: AIProvider, model: str) -> bool:
+    return provider == "openai" and bool(GPT_56_MODEL_PATTERN.fullmatch(model.strip()))
 
 
 def should_use_exact_input_token_count(

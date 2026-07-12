@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from app.prompts import SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT
+from app.services.generation_policy import (
+    EXPLANATION_MAX_OUTPUT_TOKENS,
+    EXPLANATION_REASONING_EFFORT,
+    GRAPH_MAX_OUTPUT_TOKENS,
+    GRAPH_REASONING_EFFORT,
+)
 from app.services.model_config import AIProvider, supports_exact_input_token_count
 from app.services.openai_service import OpenAIService
 from app.services.pricing import (
-    EXPLANATION_MAX_OUTPUT_TOKENS,
-    GRAPH_MAX_OUTPUT_TOKENS,
     create_estimate_cost_summary,
     estimate_text_token_cost_usd,
 )
@@ -62,7 +66,7 @@ async def estimate_generation_cost(
             "readme": readme,
         },
         api_key=api_key,
-        reasoning_effort="medium",
+        reasoning_effort=EXPLANATION_REASONING_EFFORT,
         prefer_exact_input_token_count=prefer_exact_input_token_count,
     )
     graph_static_count, graph_used_fallback = await _count_prompt_input_tokens(
@@ -71,21 +75,34 @@ async def estimate_generation_cost(
         system_prompt=SYSTEM_GRAPH_PROMPT,
         data={
             "explanation": "",
+        },
+        api_key=api_key,
+        reasoning_effort=GRAPH_REASONING_EFFORT,
+        prefer_exact_input_token_count=prefer_exact_input_token_count,
+    )
+    graph_repair_static_count, graph_repair_used_fallback = await _count_prompt_input_tokens(
+        provider=provider,
+        model=model,
+        system_prompt=SYSTEM_GRAPH_PROMPT,
+        data={
+            "explanation": "",
             "file_tree": file_tree,
-            "repo_owner": username,
-            "repo_name": repo,
             "previous_graph": "",
             "validation_feedback": "",
         },
         api_key=api_key,
-        reasoning_effort="low",
+        reasoning_effort=GRAPH_REASONING_EFFORT,
         prefer_exact_input_token_count=prefer_exact_input_token_count,
     )
 
     note_parts = [
         "Estimate assumes one graph-planning attempt and the configured output caps."
     ]
-    if explanation_used_fallback or graph_used_fallback:
+    if (
+        explanation_used_fallback
+        or graph_used_fallback
+        or graph_repair_used_fallback
+    ):
         note_parts.append("Some input tokens were approximated with a conservative local fallback.")
 
     cost_summary = create_estimate_cost_summary(
@@ -110,4 +127,5 @@ async def estimate_generation_cost(
         "pricing": pricing,
         "explanation_input_tokens": explanation_count,
         "graph_static_input_tokens": graph_static_count,
+        "graph_repair_static_input_tokens": graph_repair_static_count,
     }

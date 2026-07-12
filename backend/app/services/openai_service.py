@@ -10,13 +10,18 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from app.services.model_config import AIProvider, get_provider_label
+from app.services.model_config import (
+    AIProvider,
+    get_provider_label,
+    supports_text_verbosity,
+)
 from app.services.pricing import GenerationTokenUsage, normalize_generation_usage
 from app.utils.format_message import format_user_message
 
 load_dotenv()
 
 ReasoningEffort = Literal["low", "medium", "high"]
+TextVerbosity = Literal["low", "medium", "high"]
 StructuredOutputModel = TypeVar("StructuredOutputModel", bound=BaseModel)
 DEFAULT_ATLAS_BASE_URL = "https://api.atlascloud.ai/v1"
 
@@ -134,16 +139,6 @@ class OpenAIService:
         return "OpenAI response did not complete successfully."
 
     @staticmethod
-    def _is_recoverable_max_output_incomplete(
-        response: object | None,
-        *,
-        has_visible_output: bool,
-    ) -> bool:
-        incomplete_details = getattr(response, "incomplete_details", None)
-        reason = getattr(incomplete_details, "reason", None)
-        return has_visible_output and reason == "max_output_tokens"
-
-    @staticmethod
     def _create_client(provider: AIProvider, api_key: str) -> AsyncOpenAI:
         client_kwargs: dict = {
             "api_key": api_key,
@@ -178,6 +173,7 @@ class OpenAIService:
         data: dict[str, str | None],
         api_key: str | None = None,
         reasoning_effort: ReasoningEffort | None = None,
+        text_verbosity: TextVerbosity | None = None,
         max_output_tokens: int | None = None,
     ) -> tuple[AsyncGenerator[str, None], asyncio.Future[GenerationTokenUsage | None]]:
         user_prompt = format_user_message(data)
@@ -236,6 +232,8 @@ class OpenAIService:
         }
         if reasoning_effort:
             payload["reasoning"] = {"effort": reasoning_effort}
+        if text_verbosity and supports_text_verbosity(provider, model):
+            payload["text"] = {"verbosity": text_verbosity}
         if max_output_tokens:
             payload["max_output_tokens"] = max_output_tokens
 
@@ -247,7 +245,6 @@ class OpenAIService:
         async def text_stream() -> AsyncGenerator[str, None]:
             response_id: str | None = None
             final_usage: GenerationTokenUsage | None = None
-            has_visible_output = False
             try:
                 async for event in stream:
                     response = getattr(event, "response", None)
@@ -258,7 +255,6 @@ class OpenAIService:
                     if event.type == "response.output_text.delta":
                         delta = getattr(event, "delta", None)
                         if isinstance(delta, str) and delta:
-                            has_visible_output = True
                             yield delta
                         continue
 
@@ -272,18 +268,6 @@ class OpenAIService:
                         raise ValueError(self._get_response_failure_message(response))
 
                     if event.type == "response.incomplete":
-                        if self._is_recoverable_max_output_incomplete(
-                            response,
-                            has_visible_output=has_visible_output,
-                        ):
-                            final_usage = (
-                                normalize_generation_usage(
-                                    getattr(response, "usage", None)
-                                )
-                                or final_usage
-                            )
-                            continue
-
                         raise ValueError(self._get_response_failure_message(response))
 
                     if event.type == "error":
@@ -357,6 +341,7 @@ class OpenAIService:
         text_format: type[StructuredOutputModel],
         api_key: str | None = None,
         reasoning_effort: ReasoningEffort | None = None,
+        text_verbosity: TextVerbosity | None = None,
         max_output_tokens: int | None = None,
     ) -> tuple[StructuredOutputModel, str, GenerationTokenUsage | None]:
         user_prompt = format_user_message(data)
@@ -401,6 +386,8 @@ class OpenAIService:
         }
         if reasoning_effort:
             payload["reasoning"] = {"effort": reasoning_effort}
+        if text_verbosity and supports_text_verbosity(provider, model):
+            payload["text"] = {"verbosity": text_verbosity}
         if max_output_tokens:
             payload["max_output_tokens"] = max_output_tokens
 

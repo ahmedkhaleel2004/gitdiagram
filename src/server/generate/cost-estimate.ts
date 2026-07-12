@@ -5,13 +5,23 @@ import {
   type ReasoningEffort,
 } from "~/server/generate/openai";
 import {
-  createEstimateCostSummary,
   EXPLANATION_MAX_OUTPUT_TOKENS,
+  EXPLANATION_REASONING_EFFORT,
   GRAPH_MAX_OUTPUT_TOKENS,
+  GRAPH_REASONING_EFFORT,
+} from "~/server/generate/generation-policy";
+import {
+  createEstimateCostSummary,
   estimateTextTokenCostUsd,
 } from "~/server/generate/pricing";
-import { SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT } from "~/server/generate/prompts";
-import { type AIProvider, supportsExactInputTokenCount } from "~/server/generate/model-config";
+import {
+  SYSTEM_FIRST_PROMPT,
+  SYSTEM_GRAPH_PROMPT,
+} from "~/server/generate/prompts";
+import {
+  type AIProvider,
+  supportsExactInputTokenCount,
+} from "~/server/generate/model-config";
 
 interface CountPromptInputTokensParams {
   provider: AIProvider;
@@ -36,6 +46,7 @@ export interface GenerationEstimateResult {
   pricing: ReturnType<typeof estimateTextTokenCostUsd>["pricing"];
   explanationInputTokens: number;
   graphStaticInputTokens: number;
+  graphRepairStaticInputTokens: number;
 }
 
 async function countPromptInputTokens({
@@ -92,39 +103,56 @@ export async function estimateGenerationCost(params: {
   });
   const graphPromptWithoutExplanation = toTaggedMessage({
     explanation: "",
+  });
+  const graphRepairPromptWithoutExplanation = toTaggedMessage({
+    explanation: "",
     file_tree: params.fileTree,
-    repo_owner: params.username,
-    repo_name: params.repo,
     previous_graph: "",
     validation_feedback: "",
   });
 
-  const [explanationCount, graphStaticCount] = await Promise.all([
-    countPromptInputTokens({
-      provider: params.provider,
-      model: params.model,
-      systemPrompt: SYSTEM_FIRST_PROMPT,
-      userPrompt: explanationPrompt,
-      apiKey: params.apiKey,
-      reasoningEffort: "medium",
-      preferExactInputTokenCount: params.preferExactInputTokenCount,
-    }),
-    countPromptInputTokens({
-      provider: params.provider,
-      model: params.model,
-      systemPrompt: SYSTEM_GRAPH_PROMPT,
-      userPrompt: graphPromptWithoutExplanation,
-      apiKey: params.apiKey,
-      reasoningEffort: "low",
-      preferExactInputTokenCount: params.preferExactInputTokenCount,
-    }),
-  ]);
+  const [explanationCount, graphStaticCount, graphRepairStaticCount] =
+    await Promise.all([
+      countPromptInputTokens({
+        provider: params.provider,
+        model: params.model,
+        systemPrompt: SYSTEM_FIRST_PROMPT,
+        userPrompt: explanationPrompt,
+        apiKey: params.apiKey,
+        reasoningEffort: EXPLANATION_REASONING_EFFORT,
+        preferExactInputTokenCount: params.preferExactInputTokenCount,
+      }),
+      countPromptInputTokens({
+        provider: params.provider,
+        model: params.model,
+        systemPrompt: SYSTEM_GRAPH_PROMPT,
+        userPrompt: graphPromptWithoutExplanation,
+        apiKey: params.apiKey,
+        reasoningEffort: GRAPH_REASONING_EFFORT,
+        preferExactInputTokenCount: params.preferExactInputTokenCount,
+      }),
+      countPromptInputTokens({
+        provider: params.provider,
+        model: params.model,
+        systemPrompt: SYSTEM_GRAPH_PROMPT,
+        userPrompt: graphRepairPromptWithoutExplanation,
+        apiKey: params.apiKey,
+        reasoningEffort: GRAPH_REASONING_EFFORT,
+        preferExactInputTokenCount: params.preferExactInputTokenCount,
+      }),
+    ]);
 
   const noteParts = [
     "Estimate assumes one graph-planning attempt and the configured output caps.",
   ];
-  if (explanationCount.usedFallback || graphStaticCount.usedFallback) {
-    noteParts.push("Some input tokens were approximated with a conservative local fallback.");
+  if (
+    explanationCount.usedFallback ||
+    graphStaticCount.usedFallback ||
+    graphRepairStaticCount.usedFallback
+  ) {
+    noteParts.push(
+      "Some input tokens were approximated with a conservative local fallback.",
+    );
   }
 
   const costSummary = createEstimateCostSummary({
@@ -150,5 +178,6 @@ export async function estimateGenerationCost(params: {
     pricing,
     explanationInputTokens: explanationCount.inputTokens,
     graphStaticInputTokens: graphStaticCount.inputTokens,
+    graphRepairStaticInputTokens: graphRepairStaticCount.inputTokens,
   };
 }
