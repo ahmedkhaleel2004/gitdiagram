@@ -8,6 +8,17 @@ import {
 } from "~/server/generate/pricing";
 
 describe("resolvePricingModel", () => {
+  it("keeps GPT-5.6 Terra on its own pricing tier", () => {
+    expect(resolvePricingModel("gpt-5.6-terra")).toBe("gpt-5.6-terra");
+    expect(resolvePricingModel("gpt-5.6-terra-2026-07-09")).toBe(
+      "gpt-5.6-terra",
+    );
+  });
+
+  it("prices the GPT-5.6 alias as Sol", () => {
+    expect(resolvePricingModel("gpt-5.6")).toBe("gpt-5.6-sol");
+  });
+
   it("keeps gpt-5.4-mini on its own pricing tier", () => {
     expect(resolvePricingModel("gpt-5.4-mini")).toBe("gpt-5.4-mini");
     expect(resolvePricingModel("gpt-5.4-mini-2026-03-17")).toBe("gpt-5.4-mini");
@@ -26,8 +37,25 @@ describe("resolvePricingModel", () => {
 });
 
 describe("estimateTextTokenCostUsd", () => {
+  it("uses GPT-5.6 Terra pricing for cost estimates", () => {
+    const result = estimateTextTokenCostUsd(
+      "gpt-5.6-terra",
+      1_000_000,
+      1_000_000,
+    );
+
+    expect(result.pricingModel).toBe("gpt-5.6-terra");
+    expect(result.pricing.inputPerMillionUsd).toBe(2.5);
+    expect(result.pricing.outputPerMillionUsd).toBe(15);
+    expect(result.costUsd).toBe(17.5);
+  });
+
   it("uses gpt-5.4-mini pricing for cost estimates", () => {
-    const result = estimateTextTokenCostUsd("gpt-5.4-mini", 1_000_000, 1_000_000);
+    const result = estimateTextTokenCostUsd(
+      "gpt-5.4-mini",
+      1_000_000,
+      1_000_000,
+    );
 
     expect(result.pricingModel).toBe("gpt-5.4-mini");
     expect(result.pricing.inputPerMillionUsd).toBe(0.75);

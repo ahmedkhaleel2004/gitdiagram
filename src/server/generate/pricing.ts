@@ -27,6 +27,9 @@ const DEFAULT_PRICING_MODEL = "gpt-5.4-mini";
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
   "deepseek-v3-0324": { inputPerMillionUsd: 0.216, outputPerMillionUsd: 0.88 },
+  "gpt-5.6-sol": { inputPerMillionUsd: 5.0, outputPerMillionUsd: 30.0 },
+  "gpt-5.6-terra": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
+  "gpt-5.6-luna": { inputPerMillionUsd: 1.0, outputPerMillionUsd: 6.0 },
   "gpt-5.4": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
   "gpt-5.4-pro": { inputPerMillionUsd: 30.0, outputPerMillionUsd: 180.0 },
   "gpt-5.4-mini": { inputPerMillionUsd: 0.75, outputPerMillionUsd: 4.5 },
@@ -34,7 +37,10 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // Retain pricing entries for older model ids that may still appear in stored data or requests.
   "gpt-5.2": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
-  "gpt-5.2-chat-latest": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
+  "gpt-5.2-chat-latest": {
+    inputPerMillionUsd: 1.75,
+    outputPerMillionUsd: 14.0,
+  },
   "gpt-5.2-codex": { inputPerMillionUsd: 1.75, outputPerMillionUsd: 14.0 },
   "gpt-5.2-pro": { inputPerMillionUsd: 21.0, outputPerMillionUsd: 168.0 },
 
@@ -55,7 +61,7 @@ function stripDateSnapshotSuffix(model: string): string {
 }
 
 function stripProviderPrefix(model: string): string {
-  return model.includes("/") ? model.split("/").at(-1) ?? model : model;
+  return model.includes("/") ? (model.split("/").at(-1) ?? model) : model;
 }
 
 export function resolvePricingModel(model: string): string {
@@ -65,6 +71,10 @@ export function resolvePricingModel(model: string): string {
   const withoutDate = stripDateSnapshotSuffix(stripProviderPrefix(normalized));
   if (MODEL_PRICING[withoutDate]) return withoutDate;
 
+  if (withoutDate === "gpt-5.6") return "gpt-5.6-sol";
+  if (withoutDate.startsWith("gpt-5.6-sol")) return "gpt-5.6-sol";
+  if (withoutDate.startsWith("gpt-5.6-terra")) return "gpt-5.6-terra";
+  if (withoutDate.startsWith("gpt-5.6-luna")) return "gpt-5.6-luna";
   if (withoutDate.startsWith("gpt-5.4-pro")) return "gpt-5.4-pro";
   if (withoutDate.startsWith("gpt-5.4-mini")) return "gpt-5.4-mini";
   if (withoutDate.startsWith("gpt-5.4-nano")) return "gpt-5.4-nano";
@@ -90,7 +100,8 @@ export function estimateTextTokenCostUsd(
 ): { costUsd: number; pricingModel: string; pricing: ModelPricing } {
   const pricingModel = resolvePricingModel(model);
   const pricing = MODEL_PRICING[pricingModel] ?? DEFAULT_PRICING;
-  const inputCost = (Math.max(inputTokens, 0) / 1_000_000) * pricing.inputPerMillionUsd;
+  const inputCost =
+    (Math.max(inputTokens, 0) / 1_000_000) * pricing.inputPerMillionUsd;
   const outputCost =
     (Math.max(outputTokens, 0) / 1_000_000) * pricing.outputPerMillionUsd;
 
@@ -118,9 +129,7 @@ export function normalizeGenerationUsage(
     inputTokens,
     outputTokens,
     totalTokens,
-    ...(typeof cachedInputTokens === "number"
-      ? { cachedInputTokens }
-      : {}),
+    ...(typeof cachedInputTokens === "number" ? { cachedInputTokens } : {}),
     ...(typeof reasoningTokens === "number" ? { reasoningTokens } : {}),
   };
 }

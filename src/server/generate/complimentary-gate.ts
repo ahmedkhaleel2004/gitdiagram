@@ -7,11 +7,11 @@ import type { AIProvider } from "~/server/generate/model-config";
 import {
   EXPLANATION_MAX_OUTPUT_TOKENS,
   GRAPH_MAX_OUTPUT_TOKENS,
-  resolvePricingModel,
 } from "~/server/generate/pricing";
 
 const DEFAULT_DAILY_LIMIT_TOKENS = 10_000_000;
 const DEFAULT_MODEL_FAMILY = "gpt-5.4-mini";
+const COMPLIMENTARY_QUOTA_BUCKET = "openai-complimentary-small-models";
 const RETRY_INPUT_BUFFER_TOKENS = 2_000;
 const DEFAULT_DENIAL_MESSAGE =
   "GitDiagram's free daily OpenAI capacity is used up for now. I'm a solo student engineer running this free and open source, so please try again after 00:00 UTC or use your own OpenAI API key.";
@@ -50,6 +50,14 @@ function readEnvString(name: string, fallback: string): string {
   return process.env[name]?.trim().toLowerCase() || fallback;
 }
 
+function normalizeModelFamily(model: string): string {
+  const normalized = model.trim().toLowerCase();
+  const withoutProvider = normalized.includes("/")
+    ? (normalized.split("/").at(-1) ?? normalized)
+    : normalized;
+  return withoutProvider.replace(/-\d{4}-\d{2}-\d{2}$/i, "");
+}
+
 export function isComplimentaryGateEnabled(): boolean {
   return readEnvFlag("OPENAI_COMPLIMENTARY_GATE_ENABLED");
 }
@@ -62,7 +70,7 @@ export function getComplimentaryDailyLimitTokens(): number {
 }
 
 export function getComplimentaryModelFamily(): string {
-  return resolvePricingModel(
+  return normalizeModelFamily(
     readEnvString("OPENAI_COMPLIMENTARY_MODEL_FAMILY", DEFAULT_MODEL_FAMILY),
   );
 }
@@ -102,11 +110,11 @@ export function shouldApplyComplimentaryGate(params: {
 }
 
 export function modelMatchesComplimentaryFamily(model: string): boolean {
-  return resolvePricingModel(model) === getComplimentaryModelFamily();
+  return normalizeModelFamily(model) === getComplimentaryModelFamily();
 }
 
-export function getComplimentaryQuotaBucket(model: string): string {
-  return `openai:${resolvePricingModel(model)}:complimentary`;
+export function getComplimentaryQuotaBucket(_model?: string): string {
+  return COMPLIMENTARY_QUOTA_BUCKET;
 }
 
 export function buildComplimentaryAdmissionTokens(

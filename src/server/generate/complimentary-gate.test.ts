@@ -53,8 +53,11 @@ describe("complimentary gate", () => {
   it("matches the complimentary family by resolved pricing model", () => {
     process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.4-mini";
 
-    expect(modelMatchesComplimentaryFamily("gpt-5.4-mini-2026-03-17")).toBe(true);
+    expect(modelMatchesComplimentaryFamily("gpt-5.4-mini-2026-03-17")).toBe(
+      true,
+    );
     expect(modelMatchesComplimentaryFamily("gpt-5.4")).toBe(false);
+    expect(modelMatchesComplimentaryFamily("not-a-real-model")).toBe(false);
   });
 
   it("normalizes the configured complimentary family before matching", () => {
@@ -92,7 +95,7 @@ describe("complimentary gate", () => {
     });
     expect(checkQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
-      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      quotaBucket: "openai-complimentary-small-models",
       requestedTokens: 82_700,
       tokenLimit: 10_000_000,
     });
@@ -105,7 +108,7 @@ describe("complimentary gate", () => {
 
     await finalizeComplimentaryQuota({
       reservation: {
-        quotaBucket: "openai:gpt-5.4-mini:complimentary",
+        quotaBucket: "openai-complimentary-small-models",
         quotaDateUtc: "2026-03-28",
         quotaResetAt: "2026-03-29T00:00:00.000Z",
       },
@@ -114,7 +117,7 @@ describe("complimentary gate", () => {
 
     expect(commitQuotaUsageInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
-      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      quotaBucket: "openai-complimentary-small-models",
       committedTokens: 345,
     });
   });
@@ -136,7 +139,7 @@ describe("complimentary gate", () => {
 
     expect(checkQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
-      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      quotaBucket: "openai-complimentary-small-models",
       requestedTokens: 1_000,
       tokenLimit: 10_000_000,
     });
@@ -153,7 +156,7 @@ describe("complimentary gate", () => {
 
     expect(commitQuotaUsageInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
-      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      quotaBucket: "openai-complimentary-small-models",
       committedTokens: 345,
     });
   });

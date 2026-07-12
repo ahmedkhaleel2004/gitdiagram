@@ -27,6 +27,9 @@ MODEL_PRICING: dict[str, ModelPricing] = {
     "deepseek-v3-0324": ModelPricing(
         input_per_million_usd=0.216, output_per_million_usd=0.88
     ),
+    "gpt-5.6-sol": ModelPricing(input_per_million_usd=5.0, output_per_million_usd=30.0),
+    "gpt-5.6-terra": ModelPricing(input_per_million_usd=2.5, output_per_million_usd=15.0),
+    "gpt-5.6-luna": ModelPricing(input_per_million_usd=1.0, output_per_million_usd=6.0),
     "gpt-5.4": ModelPricing(input_per_million_usd=2.5, output_per_million_usd=15.0),
     "gpt-5.4-pro": ModelPricing(input_per_million_usd=30.0, output_per_million_usd=180.0),
     "gpt-5.4-mini": ModelPricing(input_per_million_usd=0.75, output_per_million_usd=4.5),
@@ -69,6 +72,14 @@ def resolve_pricing_model(model: str) -> str:
     if without_date in MODEL_PRICING:
         return without_date
 
+    if without_date == "gpt-5.6":
+        return "gpt-5.6-sol"
+    if without_date.startswith("gpt-5.6-sol"):
+        return "gpt-5.6-sol"
+    if without_date.startswith("gpt-5.6-terra"):
+        return "gpt-5.6-terra"
+    if without_date.startswith("gpt-5.6-luna"):
+        return "gpt-5.6-luna"
     if without_date.startswith("gpt-5.4-pro"):
         return "gpt-5.4-pro"
     if without_date.startswith("gpt-5.4-mini"):

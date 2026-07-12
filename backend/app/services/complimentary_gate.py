@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -10,11 +11,11 @@ from app.services.model_config import AIProvider
 from app.services.pricing import (
     EXPLANATION_MAX_OUTPUT_TOKENS,
     GRAPH_MAX_OUTPUT_TOKENS,
-    resolve_pricing_model,
 )
 
 DEFAULT_DAILY_LIMIT_TOKENS = 10_000_000
 DEFAULT_MODEL_FAMILY = "gpt-5.4-mini"
+COMPLIMENTARY_QUOTA_BUCKET = "openai-complimentary-small-models"
 RETRY_INPUT_BUFFER_TOKENS = 2_000
 DEFAULT_DENIAL_MESSAGE = (
     "GitDiagram's free daily OpenAI capacity is used up for now. "
@@ -31,6 +32,8 @@ DEFAULT_MODEL_MISMATCH_MESSAGE = (
     "on the default server key. I'm a solo student engineer running this free and open "
     "source, so please switch the server back to OpenAI mini or use your own API key."
 )
+
+
 @dataclass(frozen=True)
 class ComplimentaryQuotaReservation:
     quota_bucket: str
@@ -60,6 +63,11 @@ def _read_str(name: str, fallback: str) -> str:
     return value or fallback
 
 
+def _normalize_model_family(model: str) -> str:
+    without_provider = model.strip().lower().rsplit("/", maxsplit=1)[-1]
+    return re.sub(r"-\d{4}-\d{2}-\d{2}$", "", without_provider, flags=re.IGNORECASE)
+
+
 def is_complimentary_gate_enabled() -> bool:
     return _read_flag("OPENAI_COMPLIMENTARY_GATE_ENABLED")
 
@@ -78,13 +86,13 @@ def should_apply_complimentary_gate(
 
 
 def get_complimentary_model_family() -> str:
-    return resolve_pricing_model(
+    return _normalize_model_family(
         _read_str("OPENAI_COMPLIMENTARY_MODEL_FAMILY", DEFAULT_MODEL_FAMILY)
     )
 
 
 def model_matches_complimentary_family(model: str) -> bool:
-    return resolve_pricing_model(model) == get_complimentary_model_family()
+    return _normalize_model_family(model) == get_complimentary_model_family()
 
 
 def get_complimentary_daily_limit_tokens() -> int:
@@ -109,8 +117,8 @@ def get_complimentary_quota_reset_at(now: datetime | None = None) -> str:
     return next_reset.isoformat()
 
 
-def get_complimentary_quota_bucket(model: str) -> str:
-    return f"openai:{resolve_pricing_model(model)}:complimentary"
+def get_complimentary_quota_bucket(_model: str | None = None) -> str:
+    return COMPLIMENTARY_QUOTA_BUCKET
 
 
 def build_complimentary_admission_tokens(

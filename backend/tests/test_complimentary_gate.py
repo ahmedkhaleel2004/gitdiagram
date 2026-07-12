@@ -1,6 +1,7 @@
 from app.services.complimentary_gate import (
     build_complimentary_admission_tokens,
     get_complimentary_model_family,
+    model_matches_complimentary_family,
 )
 
 
@@ -11,6 +12,7 @@ def test_get_complimentary_model_family_normalizes_snapshot(monkeypatch):
     )
 
     assert get_complimentary_model_family() == "gpt-5.4-mini"
+    assert model_matches_complimentary_family("not-a-real-model") is False
 
 
 def test_build_complimentary_admission_tokens():

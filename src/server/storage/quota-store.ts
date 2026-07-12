@@ -1,5 +1,4 @@
 import { upstashEval } from "~/server/storage/upstash";
-import { resolvePricingModel } from "~/server/generate/pricing";
 
 const QUOTA_TTL_SECONDS = 3 * 24 * 60 * 60;
 
@@ -32,10 +31,12 @@ redis.call("EXPIRE", key, ttl)
 return next_used_tokens
 `;
 
-export function buildQuotaKey(quotaDateUtc: string, quotaBucket: string): string {
-  const rawPricingModel = quotaBucket.split(":")[1] ?? quotaBucket;
-  const pricingModel = resolvePricingModel(rawPricingModel);
-  return `quota:v1:${quotaDateUtc}:${pricingModel}`;
+export function buildQuotaKey(
+  quotaDateUtc: string,
+  quotaBucket: string,
+): string {
+  const normalizedBucket = encodeURIComponent(quotaBucket.trim().toLowerCase());
+  return `quota:v2:${quotaDateUtc}:${normalizedBucket}`;
 }
 
 export interface DailyQuotaUsage {
