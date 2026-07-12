@@ -7,7 +7,7 @@ AIProvider = Literal["atlas", "openai", "openrouter"]
 
 DEFAULT_PROVIDER: AIProvider = "openai"
 DEFAULT_ATLAS_MODEL = "deepseek-ai/DeepSeek-V3-0324"
-DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
+DEFAULT_OPENAI_MODEL = "gpt-5.6-terra"
 DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.4"
 
 

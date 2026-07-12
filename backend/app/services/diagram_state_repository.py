@@ -21,12 +21,17 @@ CHECK_QUOTA_SCRIPT = """
 local key = KEYS[1]
 local token_limit = tonumber(ARGV[1])
 local requested_tokens = tonumber(ARGV[2])
+local ttl = tonumber(ARGV[3])
 
 local used_tokens = tonumber(redis.call("HGET", key, "used_tokens") or "0")
+local reserved_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
 
-if used_tokens + requested_tokens > token_limit then
+if used_tokens + reserved_tokens + requested_tokens > token_limit then
   return {0, used_tokens}
 end
+
+redis.call("HSET", key, "reserved_tokens", reserved_tokens + requested_tokens)
+redis.call("EXPIRE", key, ttl)
 
 return {1, used_tokens}
 """
@@ -34,13 +39,20 @@ return {1, used_tokens}
 FINALIZE_QUOTA_SCRIPT = """
 local key = KEYS[1]
 local committed_tokens = tonumber(ARGV[1])
-local ttl = tonumber(ARGV[2])
+local reservation_tokens = tonumber(ARGV[2])
+local ttl = tonumber(ARGV[3])
 
 local used_tokens = tonumber(redis.call("HGET", key, "used_tokens") or "0")
+local reserved_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
 
 local next_used_tokens = used_tokens + math.max(committed_tokens, 0)
+local next_reserved_tokens = math.max(reserved_tokens - math.max(reservation_tokens, 0), 0)
 redis.call("HSET", key, "used_tokens", next_used_tokens)
-redis.call("HDEL", key, "reserved_tokens")
+if next_reserved_tokens == 0 then
+  redis.call("HDEL", key, "reserved_tokens")
+else
+  redis.call("HSET", key, "reserved_tokens", next_reserved_tokens)
+end
 redis.call("EXPIRE", key, ttl)
 
 return next_used_tokens
@@ -475,7 +487,7 @@ class _QuotaStore:
         result = self.redis.eval(
             script=CHECK_QUOTA_SCRIPT,
             keys=[self._quota_key(quota_date_utc, quota_bucket)],
-            args=[token_limit, requested_tokens],
+            args=[token_limit, requested_tokens, QUOTA_TTL_SECONDS],
         )
         return bool(result[0] == 1), int(result[1] or 0)
 
@@ -485,11 +497,12 @@ class _QuotaStore:
         quota_date_utc: str,
         quota_bucket: str,
         committed_tokens: int,
+        reservation_tokens: int,
     ) -> int:
         result = self.redis.eval(
             script=FINALIZE_QUOTA_SCRIPT,
             keys=[self._quota_key(quota_date_utc, quota_bucket)],
-            args=[committed_tokens, QUOTA_TTL_SECONDS],
+            args=[committed_tokens, reservation_tokens, QUOTA_TTL_SECONDS],
         )
         return int(result or 0)
 
@@ -685,9 +698,11 @@ class DiagramStateRepository:
         quota_date_utc: str,
         quota_bucket: str,
         committed_tokens: int,
+        reservation_tokens: int,
     ) -> int:
         return self.quota_store.finalize(
             quota_date_utc=quota_date_utc,
             quota_bucket=quota_bucket,
             committed_tokens=committed_tokens,
+            reservation_tokens=reservation_tokens,
         )

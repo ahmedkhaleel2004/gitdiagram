@@ -56,9 +56,7 @@ vi.mock("~/hooks/diagram/useDiagramStream", () => ({
           | ((prev: DiagramStreamState) => DiagramStreamState),
       ) => {
         setStreamState(next);
-        setState((prev) =>
-          typeof next === "function" ? next(prev) : next,
-        );
+        setState((prev) => (typeof next === "function" ? next(prev) : next));
       },
       [setState],
     );
@@ -169,7 +167,7 @@ describe("useDiagram", () => {
           status: "failed",
           stage: "started",
           provider: "openai",
-          model: "gpt-5.4-mini",
+          model: "gpt-5.6-terra",
           stageUsages: [],
           graph: null,
           graphAttempts: [],

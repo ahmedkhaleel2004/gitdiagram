@@ -101,7 +101,7 @@ def test_generate_cost_success(monkeypatch):
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
 
     async def unexpected_count_input_tokens(**kwargs):
         raise AssertionError("default-key cost estimates should use the conservative local fallback")
@@ -113,8 +113,8 @@ def test_generate_cost_success(monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
-    assert data["model"] == "gpt-5.4-mini"
-    assert data["pricing_model"] == "gpt-5.4-mini"
+    assert data["model"] == "gpt-5.6-terra"
+    assert data["pricing_model"] == "gpt-5.6-terra"
     assert data["cost_summary"]["kind"] == "estimate"
     assert data["cost"] == data["cost_summary"]["display"]
 
@@ -130,7 +130,7 @@ def test_generate_cost_uses_exact_count_when_user_api_key_is_provided(monkeypatc
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
 
     async def fake_count_input_tokens(
         *,
@@ -155,7 +155,7 @@ def test_generate_cost_uses_exact_count_when_user_api_key_is_provided(monkeypatc
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
-    assert data["pricing_model"] == "gpt-5.4-mini"
+    assert data["pricing_model"] == "gpt-5.6-terra"
 
 
 def test_generate_cost_blocks_provider_mismatch_when_complimentary_gate_is_enabled(monkeypatch):
@@ -187,7 +187,7 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
     monkeypatch.setattr(
         generate.diagram_state_repository,
         "persist_terminal_session_audit",
@@ -202,8 +202,8 @@ def test_generate_stream_retries_invalid_graph_once(monkeypatch):
     async def fake_estimate_generation_cost(**kwargs):
         return {
             "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
-            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
-            "pricing_model": "gpt-5.4-mini",
+            "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
+            "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 1000,
             "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 1000,
@@ -317,7 +317,7 @@ def test_generate_stream_blocks_when_daily_free_quota_is_exhausted(monkeypatch):
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
     monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: True)
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
@@ -329,8 +329,8 @@ def test_generate_stream_blocks_when_daily_free_quota_is_exhausted(monkeypatch):
     async def fake_estimate_generation_cost(**kwargs):
         return {
             "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
-            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
-            "pricing_model": "gpt-5.4-mini",
+            "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
+            "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
             "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
@@ -366,7 +366,7 @@ def test_generate_stream_bypasses_quota_gate_for_user_api_keys(monkeypatch):
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
     monkeypatch.setattr(
         generate.diagram_state_repository,
         "persist_terminal_session_audit",
@@ -381,8 +381,8 @@ def test_generate_stream_bypasses_quota_gate_for_user_api_keys(monkeypatch):
     async def fake_estimate_generation_cost(**kwargs):
         return {
             "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
-            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
-            "pricing_model": "gpt-5.4-mini",
+            "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
+            "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
             "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
@@ -461,14 +461,14 @@ def test_generate_stream_requires_user_key_above_free_input_limit(monkeypatch):
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
     monkeypatch.setattr(generate, "get_provider_label", lambda provider: "OpenAI")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
     monkeypatch.setattr(generate, "should_apply_complimentary_gate", lambda **kwargs: False)
 
     async def fake_estimate_generation_cost(**kwargs):
         return {
             "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
-            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
-            "pricing_model": "gpt-5.4-mini",
+            "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
+            "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100_001,
             "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100_001,
@@ -501,7 +501,7 @@ def test_generate_stream_completes_without_storage_when_quota_gate_disabled(monk
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
     monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: False)
     monkeypatch.setattr(
         generate.diagram_state_repository,
@@ -517,8 +517,8 @@ def test_generate_stream_completes_without_storage_when_quota_gate_disabled(monk
     async def fake_estimate_generation_cost(**kwargs):
         return {
             "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
-            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
-            "pricing_model": "gpt-5.4-mini",
+            "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
+            "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
             "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
@@ -584,7 +584,7 @@ def test_generate_stream_errors_when_quota_gate_enabled_without_upstash(monkeypa
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: False)
     monkeypatch.setattr(
         generate,
@@ -595,8 +595,8 @@ def test_generate_stream_errors_when_quota_gate_enabled_without_upstash(monkeypa
     async def fake_estimate_generation_cost(**kwargs):
         return {
             "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
-            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
-            "pricing_model": "gpt-5.4-mini",
+            "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
+            "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
             "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
@@ -626,7 +626,7 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
     monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: True)
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
@@ -643,8 +643,8 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
     async def fake_estimate_generation_cost(**kwargs):
         return {
             "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
-            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
-            "pricing_model": "gpt-5.4-mini",
+            "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
+            "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
             "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
@@ -718,9 +718,10 @@ def test_generate_stream_finalizes_quota_with_exact_usage(monkeypatch):
         lambda **kwargs: (
             True,
             ComplimentaryQuotaReservation(
-                quota_bucket="openai:gpt-5.4-mini:complimentary",
+                quota_bucket="openai-complimentary-small-models",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
+                reserved_tokens=82_700,
             ),
             "2026-03-29T00:00:00+00:00",
         ),
@@ -757,7 +758,7 @@ def test_generate_stream_finalizes_with_measured_usage_after_failure(monkeypatch
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
     monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: True)
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
@@ -769,8 +770,8 @@ def test_generate_stream_finalizes_with_measured_usage_after_failure(monkeypatch
     async def fake_estimate_generation_cost(**kwargs):
         return {
             "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
-            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
-            "pricing_model": "gpt-5.4-mini",
+            "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
+            "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
             "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
@@ -801,9 +802,10 @@ def test_generate_stream_finalizes_with_measured_usage_after_failure(monkeypatch
         lambda **kwargs: (
             True,
             ComplimentaryQuotaReservation(
-                quota_bucket="openai:gpt-5.4-mini:complimentary",
+                quota_bucket="openai-complimentary-small-models",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
+                reserved_tokens=82_700,
             ),
             "2026-03-29T00:00:00+00:00",
         ),
@@ -836,7 +838,7 @@ def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reser
         ),
     )
     monkeypatch.setattr(generate, "get_provider", lambda: "openai")
-    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.4-mini")
+    monkeypatch.setattr(generate, "get_model", lambda provider=None: "gpt-5.6-terra")
     monkeypatch.setattr(generate.diagram_state_repository, "is_configured", lambda: True)
     monkeypatch.setattr(generate.diagram_state_repository, "quota_is_configured", lambda: True)
     monkeypatch.setattr(
@@ -848,8 +850,8 @@ def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reser
     async def fake_estimate_generation_cost(**kwargs):
         return {
             "cost_summary": {"kind": "estimate", "display": "$0.01 USD"},
-            "pricing": SimpleNamespace(input_per_million_usd=0.75, output_per_million_usd=4.5),
-            "pricing_model": "gpt-5.4-mini",
+            "pricing": SimpleNamespace(input_per_million_usd=2.5, output_per_million_usd=15.0),
+            "pricing_model": "gpt-5.6-terra",
             "estimated_input_tokens": 100,
             "estimated_output_tokens": 18_000,
             "explanation_input_tokens": 100,
@@ -873,9 +875,10 @@ def test_generate_stream_rewrites_default_key_quota_errors_without_burning_reser
         lambda **kwargs: (
             True,
             ComplimentaryQuotaReservation(
-                quota_bucket="openai:gpt-5.4-mini:complimentary",
+                quota_bucket="openai-complimentary-small-models",
                 quota_date_utc="2026-03-28",
                 quota_reset_at="2026-03-29T00:00:00+00:00",
+                reserved_tokens=82_700,
             ),
             "2026-03-29T00:00:00+00:00",
         ),

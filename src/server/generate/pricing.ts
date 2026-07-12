@@ -23,7 +23,7 @@ interface RawResponseUsage {
 export const EXPLANATION_MAX_OUTPUT_TOKENS = 12000;
 export const GRAPH_MAX_OUTPUT_TOKENS = 6000;
 
-const DEFAULT_PRICING_MODEL = "gpt-5.4-mini";
+const DEFAULT_PRICING_MODEL = "gpt-5.6-terra";
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
   "deepseek-v3-0324": { inputPerMillionUsd: 0.216, outputPerMillionUsd: 0.88 },
@@ -32,7 +32,6 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.6-luna": { inputPerMillionUsd: 1.0, outputPerMillionUsd: 6.0 },
   "gpt-5.4": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
   "gpt-5.4-pro": { inputPerMillionUsd: 30.0, outputPerMillionUsd: 180.0 },
-  "gpt-5.4-mini": { inputPerMillionUsd: 0.75, outputPerMillionUsd: 4.5 },
   "gpt-5.4-nano": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 1.25 },
 
   // Retain pricing entries for older model ids that may still appear in stored data or requests.
@@ -76,7 +75,6 @@ export function resolvePricingModel(model: string): string {
   if (withoutDate.startsWith("gpt-5.6-terra")) return "gpt-5.6-terra";
   if (withoutDate.startsWith("gpt-5.6-luna")) return "gpt-5.6-luna";
   if (withoutDate.startsWith("gpt-5.4-pro")) return "gpt-5.4-pro";
-  if (withoutDate.startsWith("gpt-5.4-mini")) return "gpt-5.4-mini";
   if (withoutDate.startsWith("gpt-5.4-nano")) return "gpt-5.4-nano";
   if (withoutDate.startsWith("gpt-5.4")) return "gpt-5.4";
   if (withoutDate.startsWith("gpt-5.2-pro")) return "gpt-5.2-pro";

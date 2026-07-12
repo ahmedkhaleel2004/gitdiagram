@@ -10,20 +10,21 @@ import {
 } from "~/server/generate/pricing";
 
 const DEFAULT_DAILY_LIMIT_TOKENS = 10_000_000;
-const DEFAULT_MODEL_FAMILY = "gpt-5.4-mini";
+const DEFAULT_MODEL_FAMILY = "gpt-5.6-terra";
 const COMPLIMENTARY_QUOTA_BUCKET = "openai-complimentary-small-models";
 const RETRY_INPUT_BUFFER_TOKENS = 2_000;
 const DEFAULT_DENIAL_MESSAGE =
   "GitDiagram's free daily OpenAI capacity is used up for now. I'm a solo student engineer running this free and open source, so please try again after 00:00 UTC or use your own OpenAI API key.";
 const DEFAULT_PROVIDER_MISMATCH_MESSAGE =
-  "GitDiagram's complimentary-only mode requires AI_PROVIDER=openai on the default server key. I'm a solo student engineer running this free and open source, so please either switch the server back to OpenAI mini or use your own API key.";
+  "GitDiagram's complimentary-only mode requires AI_PROVIDER=openai on the default server key. I'm a solo student engineer running this free and open source, so please switch the server back to OpenAI or use your own API key.";
 const DEFAULT_MODEL_MISMATCH_MESSAGE =
-  "GitDiagram's complimentary-only mode requires the gpt-5.4-mini model family on the default server key. I'm a solo student engineer running this free and open source, so please switch the server back to OpenAI mini or use your own API key.";
+  "GitDiagram's complimentary-only mode requires the gpt-5.6-terra model family on the default server key. I'm a solo student engineer running this free and open source, so please switch the server back to GPT-5.6 Terra or use your own API key.";
 
 export interface ComplimentaryQuotaReservation {
   quotaBucket: string;
   quotaDateUtc: string;
   quotaResetAt: string;
+  reservedTokens: number;
 }
 
 export interface ComplimentaryAdmissionEstimate {
@@ -184,6 +185,7 @@ export async function admitComplimentaryQuota(params: {
       quotaBucket,
       quotaDateUtc,
       quotaResetAt,
+      reservedTokens: params.requestedTokens,
     },
   };
 }
@@ -196,5 +198,6 @@ export async function finalizeComplimentaryQuota(params: {
     quotaDateUtc: params.reservation.quotaDateUtc,
     quotaBucket: params.reservation.quotaBucket,
     committedTokens: params.committedTokens,
+    reservationTokens: params.reservation.reservedTokens,
   });
 }

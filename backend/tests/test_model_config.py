@@ -19,6 +19,18 @@ def test_get_model_prefers_atlas_override(monkeypatch):
     assert get_model("atlas") == "deepseek-ai/DeepSeek-V3-0324"
 
 
+def test_get_model_uses_gpt_5_6_terra_as_openai_default(monkeypatch):
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+
+    assert get_model("openai") == "gpt-5.6-terra"
+
+
+def test_get_model_preserves_openai_override(monkeypatch):
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-luna")
+
+    assert get_model("openai") == "gpt-5.6-luna"
+
+
 def test_get_model_uses_documented_atlas_default(monkeypatch):
     monkeypatch.delenv("ATLAS_MODEL", raising=False)
 

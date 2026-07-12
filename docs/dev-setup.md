@@ -1,12 +1,14 @@
 # Local Development Setup
 
 This project supports two explicit generation backends:
+
 - FastAPI in `backend/` (recommended for production and Railway parity)
 - Next.js Route Handlers under `/api/generate/*`
 
 ## 1) Install tool versions
 
 Recommended versions:
+
 - Bun: `1.3.11`
 - Python: `3.14.x` (required for FastAPI backend work)
 - uv: `0.11.2` (required for FastAPI backend work)
@@ -22,6 +24,7 @@ docker --version
 ```
 
 Expected:
+
 - Bun prints `1.3.11` (or a compatible `1.3.x`)
 - Python starts with `3.14`
 
@@ -60,6 +63,7 @@ cp .env.example .env
 ```
 
 Then set at least:
+
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
@@ -72,10 +76,11 @@ Then set at least:
 - `OPENAI_API_KEY` or `OPENROUTER_API_KEY`
 
 Optional:
-- `OPENAI_MODEL` when `AI_PROVIDER=openai` (defaults to `gpt-5.4-mini`)
-- `OPENAI_COMPLIMENTARY_GATE_ENABLED` to hard-stop default-key OpenAI mini usage at the configured daily free-token ceiling
+
+- `OPENAI_MODEL` when `AI_PROVIDER=openai` (defaults to `gpt-5.6-terra`)
+- `OPENAI_COMPLIMENTARY_GATE_ENABLED` to hard-stop default-key usage at the configured complimentary small-model daily ceiling
 - `OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS` when the complimentary gate is enabled (defaults to `10000000`)
-- `OPENAI_COMPLIMENTARY_MODEL_FAMILY` when the complimentary gate is enabled (defaults to `gpt-5.4-mini`)
+- `OPENAI_COMPLIMENTARY_MODEL_FAMILY` when the complimentary gate is enabled (defaults to `gpt-5.6-terra`)
 - `OPENROUTER_MODEL` when `AI_PROVIDER=openrouter` (defaults to `openai/gpt-5.4`)
 - `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME` for OpenRouter attribution headers
 - `GITHUB_PAT`
@@ -102,6 +107,7 @@ bun run dev
 ```
 
 with:
+
 - `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
 Production-parity mode:
@@ -126,10 +132,12 @@ bun run dev:backend
 The checked-in `docker-compose.yml` preserves the container's `.venv` and `node_modules`, so the production-parity container does not depend on host-installed backend dependencies after `docker-compose up --build`.
 
 If the FastAPI backend is running locally at `http://localhost:8000`, set:
+
 - `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
 - `NEXT_PUBLIC_GENERATE_API_BASE_URL=http://localhost:8000/generate`
 
 If you want to use the Next.js Route Handlers instead, set:
+
 - `NEXT_PUBLIC_GENERATION_BACKEND=next`
 
 ## 7) Verification commands

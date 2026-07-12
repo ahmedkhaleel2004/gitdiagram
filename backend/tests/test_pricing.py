@@ -8,11 +8,6 @@ from app.services.pricing import (
 )
 
 
-def test_resolve_pricing_model_keeps_gpt_5_4_mini_on_its_own_tier():
-    assert resolve_pricing_model("gpt-5.4-mini") == "gpt-5.4-mini"
-    assert resolve_pricing_model("gpt-5.4-mini-2026-03-17") == "gpt-5.4-mini"
-
-
 def test_resolve_pricing_model_keeps_gpt_5_6_terra_on_its_own_tier():
     assert resolve_pricing_model("gpt-5.6-terra") == "gpt-5.6-terra"
     assert resolve_pricing_model("gpt-5.6-terra-2026-07-09") == "gpt-5.6-terra"
@@ -20,19 +15,6 @@ def test_resolve_pricing_model_keeps_gpt_5_6_terra_on_its_own_tier():
 
 def test_resolve_pricing_model_prices_gpt_5_6_alias_as_sol():
     assert resolve_pricing_model("gpt-5.6") == "gpt-5.6-sol"
-
-
-def test_estimate_text_token_cost_uses_gpt_5_4_mini_pricing():
-    cost_usd, pricing_model, pricing = estimate_text_token_cost_usd(
-        model="gpt-5.4-mini",
-        input_tokens=1_000_000,
-        output_tokens=1_000_000,
-    )
-
-    assert pricing_model == "gpt-5.4-mini"
-    assert pricing.input_per_million_usd == 0.75
-    assert pricing.output_per_million_usd == 4.5
-    assert cost_usd == 5.25
 
 
 def test_estimate_text_token_cost_uses_gpt_5_6_terra_pricing():
@@ -73,7 +55,7 @@ def test_normalize_generation_usage_maps_usage_payload():
 
 def test_create_estimate_cost_summary_uses_stage_caps():
     summary = create_estimate_cost_summary(
-        model="gpt-5.4-mini",
+        model="gpt-5.6-terra",
         explanation_input_tokens=100,
         graph_static_input_tokens=200,
         approximate=True,

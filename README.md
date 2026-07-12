@@ -38,7 +38,7 @@ You can also replace `hub` with `diagram` in any Github URL to access its diagra
 - **Railway** runs the long-lived FastAPI generation backend in production
 - **Cloudflare R2** stores successful diagram artifacts
 - **Upstash Redis** stores complimentary quota state and short-lived terminal failure summaries
-- **OpenAI `gpt-5.4-mini`** is the default server-side generation model
+- **OpenAI `gpt-5.6-terra`** is the default server-side generation model
 
 There is no Postgres or Neon runtime path anymore.
 
@@ -65,7 +65,7 @@ Frontend routing is explicit:
 
 I created this because I wanted to contribute to open-source projects but quickly realized their codebases are too massive for me to dig through manually, so this helps me get started - but it's definitely got many more use cases!
 
-Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with GPT-5-family models. The default setup uses GPT-5.4 mini through OpenAI, while self-hosted operators can optionally point the backend at OpenRouter or [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=gitdiagram) via environment configuration.
+Given any public (or private!) GitHub repository it generates diagrams in Mermaid.js with GPT-5-family models. The default setup uses GPT-5.6 Terra through OpenAI, while self-hosted operators can optionally point the backend at OpenRouter or [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=gitdiagram) via environment configuration.
 
 ## ⚙️ How GitDiagram Works
 

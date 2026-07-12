@@ -13,7 +13,7 @@ vi.mock("~/features/diagram/api", () => ({
         approximate: true,
         amountUsd: 0.0123,
         display: "$0.0123 USD",
-        pricingModel: "gpt-5.4-mini",
+        pricingModel: "gpt-5.6-terra",
         usage: {
           inputTokens: 1000,
           outputTokens: 2000,
@@ -21,7 +21,10 @@ vi.mock("~/features/diagram/api", () => ({
         },
       },
     });
-    await handlers.onMessage({ status: "explanation_chunk", chunk: "Repo details" });
+    await handlers.onMessage({
+      status: "explanation_chunk",
+      chunk: "Repo details",
+    });
     await handlers.onMessage({
       status: "complete",
       cost_summary: {
@@ -29,7 +32,7 @@ vi.mock("~/features/diagram/api", () => ({
         approximate: false,
         amountUsd: 0.009,
         display: "$0.0090 USD",
-        pricingModel: "gpt-5.4-mini",
+        pricingModel: "gpt-5.6-terra",
         usage: {
           inputTokens: 900,
           outputTokens: 1800,

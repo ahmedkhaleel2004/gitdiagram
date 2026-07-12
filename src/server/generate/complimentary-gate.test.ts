@@ -32,13 +32,13 @@ describe("complimentary gate", () => {
     expect(
       shouldApplyComplimentaryGate({
         provider: "openai",
-        model: "gpt-5.4-mini",
+        model: "gpt-5.6-terra",
       }),
     ).toBe(true);
     expect(
       shouldApplyComplimentaryGate({
         provider: "openai",
-        model: "gpt-5.4-mini",
+        model: "gpt-5.6-terra",
         apiKey: "sk-user",
       }),
     ).toBe(false);
@@ -51,9 +51,9 @@ describe("complimentary gate", () => {
   });
 
   it("matches the complimentary family by resolved pricing model", () => {
-    process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.4-mini";
+    process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.6-terra";
 
-    expect(modelMatchesComplimentaryFamily("gpt-5.4-mini-2026-03-17")).toBe(
+    expect(modelMatchesComplimentaryFamily("gpt-5.6-terra-2026-07-09")).toBe(
       true,
     );
     expect(modelMatchesComplimentaryFamily("gpt-5.4")).toBe(false);
@@ -61,9 +61,9 @@ describe("complimentary gate", () => {
   });
 
   it("normalizes the configured complimentary family before matching", () => {
-    process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.4-mini-2026-03-17";
+    process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.6-terra-2026-07-09";
 
-    expect(modelMatchesComplimentaryFamily("gpt-5.4-mini")).toBe(true);
+    expect(modelMatchesComplimentaryFamily("gpt-5.6-terra")).toBe(true);
   });
 
   it("builds a conservative whole-run admission estimate", () => {
@@ -82,7 +82,7 @@ describe("complimentary gate", () => {
     });
 
     const result = await admitComplimentaryQuota({
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-terra",
       requestedTokens: 82_700,
       now: new Date("2026-03-28T12:34:56.000Z"),
     });
@@ -111,6 +111,7 @@ describe("complimentary gate", () => {
         quotaBucket: "openai-complimentary-small-models",
         quotaDateUtc: "2026-03-28",
         quotaResetAt: "2026-03-29T00:00:00.000Z",
+        reservedTokens: 1_000,
       },
       committedTokens: 345,
     });
@@ -119,6 +120,7 @@ describe("complimentary gate", () => {
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai-complimentary-small-models",
       committedTokens: 345,
+      reservationTokens: 1_000,
     });
   });
 
@@ -132,7 +134,7 @@ describe("complimentary gate", () => {
     });
 
     const reservation = await admitComplimentaryQuota({
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-terra",
       requestedTokens: 1_000,
       now: new Date("2026-03-28T12:34:56.000Z"),
     });
@@ -149,6 +151,8 @@ describe("complimentary gate", () => {
       throw new Error("expected admitted reservation");
     }
 
+    expect(reservation.reservation.reservedTokens).toBe(1_000);
+
     await finalizeComplimentaryQuota({
       reservation: reservation.reservation,
       committedTokens: 345,
@@ -158,6 +162,7 @@ describe("complimentary gate", () => {
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai-complimentary-small-models",
       committedTokens: 345,
+      reservationTokens: 1_000,
     });
   });
 });

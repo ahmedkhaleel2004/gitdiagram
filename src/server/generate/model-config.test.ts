@@ -23,6 +23,18 @@ describe("getProvider", () => {
 });
 
 describe("getModel", () => {
+  it("uses GPT-5.6 Terra as the OpenAI default", () => {
+    delete process.env.OPENAI_MODEL;
+
+    expect(getModel("openai")).toBe("gpt-5.6-terra");
+  });
+
+  it("preserves an explicit OpenAI model override", () => {
+    process.env.OPENAI_MODEL = "gpt-5.6-luna";
+
+    expect(getModel("openai")).toBe("gpt-5.6-luna");
+  });
+
   it("uses the Atlas model override when configured", () => {
     process.env.ATLAS_MODEL = "deepseek-ai/DeepSeek-V3-0324";
 

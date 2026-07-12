@@ -14,7 +14,7 @@ from app.services.pricing import (
 )
 
 DEFAULT_DAILY_LIMIT_TOKENS = 10_000_000
-DEFAULT_MODEL_FAMILY = "gpt-5.4-mini"
+DEFAULT_MODEL_FAMILY = "gpt-5.6-terra"
 COMPLIMENTARY_QUOTA_BUCKET = "openai-complimentary-small-models"
 RETRY_INPUT_BUFFER_TOKENS = 2_000
 DEFAULT_DENIAL_MESSAGE = (
@@ -25,12 +25,12 @@ DEFAULT_DENIAL_MESSAGE = (
 DEFAULT_PROVIDER_MISMATCH_MESSAGE = (
     "GitDiagram's complimentary-only mode requires AI_PROVIDER=openai on the "
     "default server key. I'm a solo student engineer running this free and open "
-    "source, so please either switch the server back to OpenAI mini or use your own API key."
+    "source, so please switch the server back to OpenAI or use your own API key."
 )
 DEFAULT_MODEL_MISMATCH_MESSAGE = (
-    "GitDiagram's complimentary-only mode requires the gpt-5.4-mini model family "
+    "GitDiagram's complimentary-only mode requires the gpt-5.6-terra model family "
     "on the default server key. I'm a solo student engineer running this free and open "
-    "source, so please switch the server back to OpenAI mini or use your own API key."
+    "source, so please switch the server back to GPT-5.6 Terra or use your own API key."
 )
 
 
@@ -39,6 +39,7 @@ class ComplimentaryQuotaReservation:
     quota_bucket: str
     quota_date_utc: str
     quota_reset_at: str
+    reserved_tokens: int
 
 
 def _read_flag(name: str) -> bool:
@@ -184,6 +185,7 @@ def admit_complimentary_quota(
             quota_bucket=quota_bucket,
             quota_date_utc=quota_date_utc,
             quota_reset_at=quota_reset_at,
+            reserved_tokens=requested_tokens,
         ),
         quota_reset_at,
     )
@@ -199,4 +201,5 @@ def finalize_complimentary_quota(
         quota_date_utc=reservation.quota_date_utc,
         quota_bucket=reservation.quota_bucket,
         committed_tokens=committed_tokens,
+        reservation_tokens=reservation.reserved_tokens,
     )

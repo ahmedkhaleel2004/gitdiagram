@@ -42,10 +42,10 @@ Required:
 
 Recommended:
 
-- `OPENAI_MODEL=gpt-5.4-mini` when `AI_PROVIDER=openai`
-- `OPENAI_COMPLIMENTARY_GATE_ENABLED=true` if you want Railway to stop default-key requests at the daily complimentary mini-token limit
+- `OPENAI_MODEL=gpt-5.6-terra` when `AI_PROVIDER=openai`
+- `OPENAI_COMPLIMENTARY_GATE_ENABLED=true` if you want Railway to stop default-key requests at the complimentary small-model daily limit
 - `OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS=10000000` when the complimentary gate is enabled
-- `OPENAI_COMPLIMENTARY_MODEL_FAMILY=gpt-5.4-mini` when the complimentary gate is enabled
+- `OPENAI_COMPLIMENTARY_MODEL_FAMILY=gpt-5.6-terra` when the complimentary gate is enabled
 - `OPENROUTER_MODEL=openai/gpt-5.4` when `AI_PROVIDER=openrouter`
 - `ENVIRONMENT=production`
 - `WEB_CONCURRENCY=1`
@@ -74,7 +74,7 @@ railway variable set UPSTASH_REDIS_REST_URL=... --service gitdiagram-api
 railway variable set UPSTASH_REDIS_REST_TOKEN=... --service gitdiagram-api
 railway variable set AI_PROVIDER=openai --service gitdiagram-api
 railway variable set OPENAI_API_KEY=... --service gitdiagram-api
-railway variable set OPENAI_MODEL=gpt-5.4-mini --service gitdiagram-api
+railway variable set OPENAI_MODEL=gpt-5.6-terra --service gitdiagram-api
 railway variable set ENVIRONMENT=production --service gitdiagram-api
 railway variable set WEB_CONCURRENCY=1 --service gitdiagram-api
 railway variable set CORS_ORIGINS=https://gitdiagram.com,https://www.gitdiagram.com,https://<your-vercel-domain> --service gitdiagram-api

@@ -35,7 +35,7 @@ const baseAudit = {
   status: "succeeded" as const,
   stage: "complete",
   provider: "openai",
-  model: "gpt-5.4-mini",
+  model: "gpt-5.6-terra",
   graph: {
     groups: [],
     nodes: [],
