@@ -34,6 +34,7 @@ export interface DiagramStreamState {
   validationError?: string;
   failureStage?: string;
   latestSessionAudit?: GenerationSessionAudit;
+  persistenceWarning?: string;
 }
 
 export interface DiagramStreamMessage {
@@ -53,6 +54,7 @@ export interface DiagramStreamMessage {
   failure_stage?: string;
   latest_session_audit?: GenerationSessionAudit;
   generated_at?: string;
+  persistence_warning?: string;
 }
 
 export interface DiagramCostResponse {
@@ -76,6 +78,7 @@ export interface StreamGenerationParams {
   repo: string;
   apiKey?: string;
   githubPat?: string;
+  signal?: AbortSignal;
 }
 
 export interface DiagramStateResponse {

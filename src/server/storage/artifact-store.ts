@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import type { GenerationSessionAudit } from "~/features/diagram/graph";
 import {
@@ -6,11 +8,22 @@ import {
   getPublicLocation,
   type StorageLocation,
 } from "~/server/storage/cache-key";
-import { getJsonObject, putJsonObject } from "~/server/storage/r2";
+import {
+  getJsonObject,
+  putJsonObject,
+  R2_REQUEST_TIMEOUT_MS,
+} from "~/server/storage/r2";
+import { withDistributedLock } from "~/server/storage/distributed-lock";
 import type {
   ArtifactVisibility,
   DiagramArtifact,
 } from "~/server/storage/types";
+
+// Artifact replacement performs a serialized R2 read and write. Keep the
+// lease comfortably above both request timeout budgets, and let contenders
+// wait long enough for one normal replacement to finish.
+const ARTIFACT_LOCK_TTL_MS = R2_REQUEST_TIMEOUT_MS * 2 + 25_000;
+const ARTIFACT_LOCK_WAIT_MS = R2_REQUEST_TIMEOUT_MS * 2 + 10_000;
 
 export function toStoredSessionSummary(
   audit: GenerationSessionAudit,
@@ -39,6 +52,38 @@ export function toStoredSessionSummary(
     createdAt: audit.createdAt,
     updatedAt: audit.updatedAt,
   };
+}
+
+function getArtifactLockKey(location: StorageLocation): string {
+  const digest = createHash("sha256")
+    .update(`${location.bucket}:${location.artifactKey}`)
+    .digest("hex");
+  return `lock:v1:artifact:${digest}`;
+}
+
+function shouldReplaceSessionSummary(
+  current: GenerationSessionAudit,
+  incoming: GenerationSessionAudit,
+): boolean {
+  const sameSession = current.sessionId === incoming.sessionId;
+  const currentTimestamp = Date.parse(
+    sameSession ? current.updatedAt : current.createdAt,
+  );
+  const incomingTimestamp = Date.parse(
+    sameSession ? incoming.updatedAt : incoming.createdAt,
+  );
+
+  if (!Number.isFinite(incomingTimestamp)) {
+    return false;
+  }
+  if (!Number.isFinite(currentTimestamp)) {
+    return true;
+  }
+  if (incomingTimestamp !== currentTimestamp) {
+    return incomingTimestamp > currentTimestamp;
+  }
+
+  return sameSession || incoming.sessionId > current.sessionId;
 }
 
 function toDiagramStateResponse(
@@ -123,7 +168,7 @@ export async function writeDiagramArtifact(params: {
   usedOwnKey: boolean;
   latestSessionSummary: GenerationSessionAudit;
   lastSuccessfulAt: string;
-}): Promise<void> {
+}): Promise<boolean> {
   const location =
     params.visibility === "private"
       ? getPrivateLocation(params.username, params.repo, params.githubPat ?? "")
@@ -144,7 +189,26 @@ export async function writeDiagramArtifact(params: {
     lastSuccessfulAt: params.lastSuccessfulAt,
   };
 
-  await putJsonObject(location.bucket, location.artifactKey, artifact);
+  return withDistributedLock({
+    key: getArtifactLockKey(location),
+    ttlMs: ARTIFACT_LOCK_TTL_MS,
+    waitMs: ARTIFACT_LOCK_WAIT_MS,
+    callback: async () => {
+      const currentArtifact = await getArtifactForLocation(location);
+      if (
+        currentArtifact &&
+        !shouldReplaceSessionSummary(
+          currentArtifact.latestSessionSummary,
+          artifact.latestSessionSummary,
+        )
+      ) {
+        return false;
+      }
+
+      await putJsonObject(location.bucket, location.artifactKey, artifact);
+      return true;
+    },
+  });
 }
 
 export async function updateArtifactLatestSessionSummary(params: {
@@ -159,14 +223,30 @@ export async function updateArtifactLatestSessionSummary(params: {
       ? getPrivateLocation(params.username, params.repo, params.githubPat ?? "")
       : getPublicLocation(params.username, params.repo);
 
-  const artifact = await getArtifactForLocation(location);
-  if (!artifact) {
-    return false;
-  }
+  return withDistributedLock({
+    key: getArtifactLockKey(location),
+    ttlMs: ARTIFACT_LOCK_TTL_MS,
+    waitMs: ARTIFACT_LOCK_WAIT_MS,
+    callback: async () => {
+      const artifact = await getArtifactForLocation(location);
+      if (!artifact) {
+        return false;
+      }
 
-  await putJsonObject(location.bucket, location.artifactKey, {
-    ...artifact,
-    latestSessionSummary: params.latestSessionSummary,
-  } satisfies DiagramArtifact);
-  return true;
+      if (
+        !shouldReplaceSessionSummary(
+          artifact.latestSessionSummary,
+          params.latestSessionSummary,
+        )
+      ) {
+        return true;
+      }
+
+      await putJsonObject(location.bucket, location.artifactKey, {
+        ...artifact,
+        latestSessionSummary: params.latestSessionSummary,
+      } satisfies DiagramArtifact);
+      return true;
+    },
+  });
 }

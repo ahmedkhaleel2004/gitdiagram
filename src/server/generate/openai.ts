@@ -14,6 +14,8 @@ export type ReasoningEffort = "low" | "medium" | "high";
 export type TextVerbosity = "low" | "medium" | "high";
 
 const DEFAULT_ATLAS_BASE_URL = "https://api.atlascloud.ai/v1";
+export const AI_REQUEST_TIMEOUT_MS = 150_000;
+export const AI_MAX_RETRIES = 0;
 
 function getEnvApiKey(provider: AIProvider): string | undefined {
   if (provider === "atlas") {
@@ -47,7 +49,8 @@ function createClient(provider: AIProvider, apiKey: string): OpenAI {
     return new OpenAI({
       apiKey,
       baseURL: process.env.ATLAS_BASE_URL?.trim() || DEFAULT_ATLAS_BASE_URL,
-      maxRetries: 0,
+      maxRetries: AI_MAX_RETRIES,
+      timeout: AI_REQUEST_TIMEOUT_MS,
     });
   }
   if (provider === "openrouter") {
@@ -55,14 +58,36 @@ function createClient(provider: AIProvider, apiKey: string): OpenAI {
       apiKey,
       baseURL: "https://openrouter.ai/api/v1",
       defaultHeaders: getOpenRouterHeaders(),
-      maxRetries: 0,
+      maxRetries: AI_MAX_RETRIES,
+      timeout: AI_REQUEST_TIMEOUT_MS,
     });
   }
 
   return new OpenAI({
     apiKey,
-    maxRetries: 0,
+    maxRetries: AI_MAX_RETRIES,
+    timeout: AI_REQUEST_TIMEOUT_MS,
   });
+}
+
+function buildRequestOptions(params: {
+  provider: AIProvider;
+  signal?: AbortSignal;
+  clientRequestId?: string;
+}) {
+  const headers =
+    params.provider === "openai" && params.clientRequestId
+      ? { "X-Client-Request-Id": params.clientRequestId }
+      : undefined;
+
+  if (!params.signal && !headers) {
+    return undefined;
+  }
+
+  return {
+    ...(params.signal ? { signal: params.signal } : {}),
+    ...(headers ? { headers } : {}),
+  };
 }
 
 function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
@@ -104,15 +129,22 @@ function extractChatCompletionText(
   }
 
   return content
-    .map((part) => (part?.type === "text" && typeof part.text === "string" ? part.text : ""))
+    .map((part) =>
+      part?.type === "text" && typeof part.text === "string" ? part.text : "",
+    )
     .join("");
 }
 
-function normalizeChatCompletionUsage(usage: {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  total_tokens?: number;
-} | null | undefined): GenerationTokenUsage | null {
+function normalizeChatCompletionUsage(
+  usage:
+    | {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      }
+    | null
+    | undefined,
+): GenerationTokenUsage | null {
   if (!usage) {
     return null;
   }
@@ -140,17 +172,17 @@ function buildAtlasStructuredOutputPrompt(params: {
       "Return valid JSON only.",
       'Schema name: "diagram_graph".',
       "Use this exact shape:",
-      '{',
+      "{",
       '  "groups": [{"id": "group_id", "label": "Group", "description": null}],',
       '  "nodes": [{"id": "node_id", "label": "Node", "type": "Subsystem", "description": null, "groupId": null, "path": null, "shape": null}],',
       '  "edges": [{"from": "source_id", "to": "target_id", "label": null, "description": null, "style": null}]',
       "}",
       "Required constraints:",
       '- Always include "groups", "nodes", and "edges".',
-      '- Always include every object field. Use null instead of omitting optional fields.',
+      "- Always include every object field. Use null instead of omitting optional fields.",
       '- "shape" must be one of: box, database, queue, document, circle, hexagon, or null.',
       '- "style" must be one of: solid, dashed, or null.',
-      '- IDs must match ^[a-z][a-z0-9_]*$.',
+      "- IDs must match ^[a-z][a-z0-9_]*$.",
       "- Return JSON only with no markdown fences or commentary.",
     ].join("\n");
   }
@@ -173,6 +205,7 @@ interface StreamCompletionParams {
   textVerbosity?: TextVerbosity;
   maxOutputTokens?: number;
   signal?: AbortSignal;
+  clientRequestId?: string;
 }
 
 interface StructuredCompletionParams<T> {
@@ -187,6 +220,7 @@ interface StructuredCompletionParams<T> {
   textVerbosity?: TextVerbosity;
   maxOutputTokens?: number;
   signal?: AbortSignal;
+  clientRequestId?: string;
 }
 
 interface StreamCompletionResult {
@@ -211,8 +245,10 @@ function getResponseFailureMessage(response: {
 
 async function retrieveUsageFromResponseId(
   client: OpenAI,
+  provider: AIProvider,
   responseId: string | undefined,
   signal?: AbortSignal,
+  clientRequestId?: string,
 ): Promise<GenerationTokenUsage | null> {
   if (!responseId) {
     return null;
@@ -221,7 +257,7 @@ async function retrieveUsageFromResponseId(
   const response = await client.responses.retrieve(
     responseId,
     undefined,
-    signal ? { signal } : undefined,
+    buildRequestOptions({ provider, signal, clientRequestId }),
   );
   return normalizeGenerationUsage(response.usage);
 }
@@ -236,6 +272,7 @@ export async function streamCompletion({
   textVerbosity,
   maxOutputTokens,
   signal,
+  clientRequestId,
 }: StreamCompletionParams): Promise<StreamCompletionResult> {
   const client = createClient(provider, resolveApiKey(provider, apiKey));
   if (provider === "atlas") {
@@ -246,7 +283,7 @@ export async function streamCompletion({
         messages: buildMessages(systemPrompt, userPrompt),
         ...(maxOutputTokens ? { max_tokens: maxOutputTokens } : {}),
       },
-      signal ? { signal } : undefined,
+      buildRequestOptions({ provider, signal, clientRequestId }),
     );
 
     let usageSettled = false;
@@ -259,8 +296,7 @@ export async function streamCompletion({
       let finalUsage: GenerationTokenUsage | null = null;
       try {
         for await (const chunk of stream) {
-          finalUsage =
-            normalizeChatCompletionUsage(chunk.usage) ?? finalUsage;
+          finalUsage = normalizeChatCompletionUsage(chunk.usage) ?? finalUsage;
           const delta = chunk.choices[0]?.delta?.content;
           if (typeof delta === "string" && delta) {
             yield delta;
@@ -297,20 +333,19 @@ export async function streamCompletion({
         : {}),
       ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
     },
-    signal ? { signal } : undefined,
+    buildRequestOptions({ provider, signal, clientRequestId }),
   );
 
   let usageSettled = false;
   let resolveUsage!: (usage: GenerationTokenUsage | null) => void;
-  const usagePromise = new Promise<GenerationTokenUsage | null>(
-    (resolve) => {
-      resolveUsage = resolve;
-    },
-  );
+  const usagePromise = new Promise<GenerationTokenUsage | null>((resolve) => {
+    resolveUsage = resolve;
+  });
 
   async function* outputStream(): AsyncGenerator<string, void, void> {
     let responseId: string | undefined;
     let finalUsage: GenerationTokenUsage | null = null;
+    let completed = false;
 
     try {
       for await (const event of stream) {
@@ -327,6 +362,7 @@ export async function streamCompletion({
         }
 
         if (event.type === "response.completed") {
+          completed = true;
           finalUsage = normalizeGenerationUsage(event.response.usage);
           continue;
         }
@@ -345,9 +381,19 @@ export async function streamCompletion({
         }
       }
 
+      if (!completed) {
+        throw new Error("OpenAI stream ended before response.completed.");
+      }
+
       if (!finalUsage) {
         try {
-          finalUsage = await retrieveUsageFromResponseId(client, responseId, signal);
+          finalUsage = await retrieveUsageFromResponseId(
+            client,
+            provider,
+            responseId,
+            signal,
+            clientRequestId ? `${clientRequestId}:usage` : undefined,
+          );
         } catch {
           finalUsage = null;
         }
@@ -379,6 +425,8 @@ interface CountInputTokensParams {
   userPrompt: string;
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
+  signal?: AbortSignal;
+  clientRequestId?: string;
 }
 
 export async function countInputTokens({
@@ -388,21 +436,28 @@ export async function countInputTokens({
   userPrompt,
   apiKey,
   reasoningEffort,
+  signal,
+  clientRequestId,
 }: CountInputTokensParams): Promise<number> {
   if (provider === "atlas") {
-    throw new Error("Atlas Cloud does not expose exact input token counting in this integration.");
+    throw new Error(
+      "Atlas Cloud does not expose exact input token counting in this integration.",
+    );
   }
 
   const client = createClient(provider, resolveApiKey(provider, apiKey));
 
-  const response = await client.responses.inputTokens.count({
-    model,
-    input: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-  });
+  const response = await client.responses.inputTokens.count(
+    {
+      model,
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+    },
+    buildRequestOptions({ provider, signal, clientRequestId }),
+  );
 
   return response.input_tokens;
 }
@@ -419,6 +474,7 @@ export async function generateStructuredOutput<T>({
   textVerbosity,
   maxOutputTokens,
   signal,
+  clientRequestId,
 }: StructuredCompletionParams<T>): Promise<{
   output: T;
   rawText: string;
@@ -442,7 +498,7 @@ export async function generateStructuredOutput<T>({
         temperature: 0,
         ...(maxOutputTokens ? { max_tokens: maxOutputTokens } : {}),
       },
-      signal ? { signal } : undefined,
+      buildRequestOptions({ provider, signal, clientRequestId }),
     );
 
     const rawText = extractChatCompletionText(
@@ -473,7 +529,7 @@ export async function generateStructuredOutput<T>({
         ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
         ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
       },
-      signal ? { signal } : undefined,
+      buildRequestOptions({ provider, signal, clientRequestId }),
     );
 
     if (!response.output_parsed) {
@@ -491,7 +547,9 @@ export async function generateStructuredOutput<T>({
     };
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Structured output request failed.";
+      error instanceof Error
+        ? error.message
+        : "Structured output request failed.";
     if (provider === "openrouter") {
       throw new Error(
         `OpenRouter model does not support the required structured graph output: ${message}`,

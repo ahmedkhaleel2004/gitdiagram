@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("~/server/storage/distributed-lock", () => ({
+  withDistributedLock: vi.fn(
+    async ({ callback }: { callback: () => Promise<unknown> }) => callback(),
+  ),
+}));
+
 const { getJsonObject, listObjects, putJsonObject } = vi.hoisted(() => ({
   getJsonObject: vi.fn(),
   listObjects: vi.fn(),
@@ -105,11 +111,9 @@ describe("browse diagram storage", () => {
       page: "2",
     });
 
-    expect(starsResult.items.map((item) => `${item.username}/${item.repo}`)).toEqual([
-      "vercel/next.js",
-      "vercel/swr",
-      "acme/demo",
-    ]);
+    expect(
+      starsResult.items.map((item) => `${item.username}/${item.repo}`),
+    ).toEqual(["vercel/next.js", "vercel/swr", "acme/demo"]);
     expect(
       filteredResult.items.map((item) => `${item.username}/${item.repo}`),
     ).toEqual(["vercel/next.js", "vercel/swr"]);

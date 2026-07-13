@@ -3,7 +3,11 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { after } from "next/server";
 
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
-import { diagramGraphSchema, MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
+import {
+  diagramGraphSchema,
+  MAX_GRAPH_ATTEMPTS,
+  type DiagramGraph,
+} from "~/features/diagram/graph";
 import type { ArtifactVisibility } from "~/server/storage/types";
 import { revalidateBrowseIndexCache } from "~/app/browse/data";
 import {
@@ -35,8 +39,14 @@ import {
   GRAPH_REASONING_EFFORT,
   GRAPH_TEXT_VERBOSITY,
 } from "~/server/generate/generation-policy";
-import { extractTaggedSection, toTaggedMessage } from "~/server/generate/format";
-import { getGithubData } from "~/server/generate/github";
+import {
+  extractTaggedSection,
+  toTaggedMessage,
+} from "~/server/generate/format";
+import {
+  getGithubData,
+  REPOSITORY_TOO_LARGE_ERROR,
+} from "~/server/generate/github";
 import {
   buildFileTreeLookup,
   compileDiagramGraph,
@@ -49,9 +59,15 @@ import {
   getProviderLabel,
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
-import { generateStructuredOutput, streamCompletion } from "~/server/generate/openai";
+import {
+  generateStructuredOutput,
+  streamCompletion,
+} from "~/server/generate/openai";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
-import { SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT } from "~/server/generate/prompts";
+import {
+  SYSTEM_FIRST_PROMPT,
+  SYSTEM_GRAPH_PROMPT,
+} from "~/server/generate/prompts";
 import {
   getPublicDiagramStateCacheTag,
   getRepoPagePath,
@@ -73,7 +89,7 @@ import {
   createCostSummary,
   sumGenerationUsage,
 } from "~/server/generate/pricing";
-import { generateRequestSchema, sseMessage } from "~/server/generate/types";
+import { parseGenerateRequest, sseMessage } from "~/server/generate/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,24 +99,18 @@ const DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR =
   "GitDiagram's default OpenAI key is temporarily unavailable because its upstream API quota is exhausted. I'm a solo student engineer running this free and open source, so please try again later or use your own OpenAI API key.";
 const FREE_GENERATION_INPUT_TOKEN_LIMIT = 100_000;
 const HARD_GENERATION_INPUT_TOKEN_LIMIT = 195_000;
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Reserve enough of Vercel's 300s budget for quota reconciliation and a
+// contention-safe R2 write even when an upstream generation runs unusually long.
+const GENERATION_DEADLINE_MS = 220_000;
+const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 
 function createAbortError() {
   return new DOMException("Generation aborted.", "AbortError");
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException
-    ? error.name === "AbortError"
-    : error instanceof Error && error.name === "AbortError";
-}
-
 function throwIfAborted(signal: AbortSignal) {
   if (signal.aborted) {
-    throw createAbortError();
+    throw signal.reason instanceof Error ? signal.reason : createAbortError();
   }
 }
 
@@ -122,6 +132,13 @@ function normalizeGenerationError(params: {
   apiKey?: string;
   message: string;
 }): { message: string; errorCode: string } {
+  if (params.message === REPOSITORY_TOO_LARGE_ERROR) {
+    return {
+      message: params.message,
+      errorCode: "TOKEN_LIMIT_EXCEEDED",
+    };
+  }
+
   if (
     params.provider === "openai" &&
     !params.apiKey &&
@@ -140,30 +157,22 @@ function normalizeGenerationError(params: {
 }
 
 export async function POST(request: Request) {
-  let payload: unknown;
-  try {
-    payload = await request.json();
-  } catch {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: "Invalid request payload.",
-        error_code: "VALIDATION_ERROR",
-      }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  const parsed = generateRequestSchema.safeParse(payload);
-
+  const parsed = await parseGenerateRequest(request);
   if (!parsed.success) {
     return new Response(
       JSON.stringify({
         ok: false,
-        error: "Invalid request payload.",
-        error_code: "VALIDATION_ERROR",
+        error: parsed.error,
+        error_code: parsed.errorCode,
       }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
+      {
+        status: parsed.status,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      },
     );
   }
 
@@ -174,11 +183,36 @@ export async function POST(request: Request) {
     github_pat: githubPat,
   } = parsed.data;
 
+  const sessionId = randomUUID();
   const encoder = new TextEncoder();
   const generationAbortController = new AbortController();
+  const deadlineSignal = AbortSignal.timeout(GENERATION_DEADLINE_MS);
   const postResponseTasks: Array<() => Promise<void>> = [];
+  let abortCause: "client" | "deadline" | null = null;
+  let streamClosed = false;
+  let resolveGenerationDone!: () => void;
+  const generationDone = new Promise<void>((resolve) => {
+    resolveGenerationDone = resolve;
+  });
+
+  const abortGeneration = (cause: "client" | "deadline") => {
+    abortCause ??= cause;
+    if (!generationAbortController.signal.aborted) {
+      generationAbortController.abort(
+        cause === "deadline"
+          ? new DOMException("Generation deadline exceeded.", "TimeoutError")
+          : createAbortError(),
+      );
+    }
+  };
+  const handleRequestAbort = () => abortGeneration("client");
+  const handleDeadline = () => abortGeneration("deadline");
+
+  request.signal.addEventListener("abort", handleRequestAbort, { once: true });
+  deadlineSignal.addEventListener("abort", handleDeadline, { once: true });
 
   after(async () => {
+    await generationDone;
     for (const task of postResponseTasks) {
       await task();
     }
@@ -186,35 +220,62 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      let controllerClosed = false;
       let wasCancelled = false;
-      const abortGeneration = () => {
-        wasCancelled = true;
-        if (!generationAbortController.signal.aborted) {
-          generationAbortController.abort();
-        }
-      };
-
-      request.signal.addEventListener("abort", abortGeneration, { once: true });
 
       const closeStream = () => {
-        if (controllerClosed) {
+        if (streamClosed) {
           return;
         }
-        controllerClosed = true;
-        controller.close();
+        streamClosed = true;
+        try {
+          controller.close();
+        } catch {
+          // The consumer may already have cancelled the stream.
+        }
       };
 
-      const send = (payload: Record<string, unknown>) => {
-        if (controllerClosed || generationAbortController.signal.aborted) {
+      const send = (
+        payload: Record<string, unknown>,
+        options?: { allowAfterAbort?: boolean },
+      ) => {
+        if (
+          streamClosed ||
+          (generationAbortController.signal.aborted &&
+            !options?.allowAfterAbort)
+        ) {
           return;
         }
-        controller.enqueue(encoder.encode(sseMessage(payload)));
+        try {
+          controller.enqueue(encoder.encode(sseMessage(payload)));
+        } catch {
+          streamClosed = true;
+          wasCancelled = true;
+          abortGeneration("client");
+        }
       };
+
+      const sendComment = (comment: string) => {
+        if (streamClosed || generationAbortController.signal.aborted) {
+          return;
+        }
+        try {
+          controller.enqueue(encoder.encode(`: ${comment}\n\n`));
+        } catch {
+          streamClosed = true;
+          wasCancelled = true;
+          abortGeneration("client");
+        }
+      };
+
+      sendComment(`connected ${sessionId}`);
+      const heartbeat = setInterval(
+        () => sendComment("keep-alive"),
+        SSE_HEARTBEAT_INTERVAL_MS,
+      );
 
       const run = async () => {
         let audit = createGenerationSessionAudit({
-          sessionId: randomUUID(),
+          sessionId,
           provider: "unknown",
           model: "unknown",
         });
@@ -222,11 +283,36 @@ export async function POST(request: Request) {
         let quotaReservation: ComplimentaryQuotaReservation | null = null;
         const actualUsages: GenerationTokenUsage[] = [];
         let hasCompleteMeasuredUsage = true;
+        let modelRequestStarted = false;
+        let terminalPayload: Record<string, unknown> | null = null;
+        let terminalErrorCode: string | null = null;
+        let repositoryVerified = false;
+        let successfulDiagramState: {
+          stargazerCount: number | null;
+          explanation: string;
+          graph: DiagramGraph;
+          diagram: string;
+        } | null = null;
+        const invocationStartedAt = performance.now();
+        const stageTimingsMs: Record<string, number> = {};
         let storageVisibility: ArtifactVisibility = githubPat?.trim()
           ? "private"
           : "public";
 
+        const recordTiming = (stage: string, startedAt: number) => {
+          stageTimingsMs[stage] = Math.round(performance.now() - startedAt);
+        };
+
+        const queueTerminal = (payload: Record<string, unknown>) => {
+          terminalPayload = payload;
+          terminalErrorCode =
+            typeof payload.error_code === "string" ? payload.error_code : null;
+        };
+
         const persistTerminalAudit = async (nextAudit = audit) => {
+          if (!repositoryVerified) {
+            return;
+          }
           await persistTerminalSessionAudit({
             username,
             repo,
@@ -238,9 +324,25 @@ export async function POST(request: Request) {
 
         try {
           throwIfAborted(generationAbortController.signal);
+          send({
+            status: "started",
+            session_id: audit.sessionId,
+            message: "Fetching repository data...",
+          });
           const provider = getProvider();
           const providerLabel = getProviderLabel(provider);
           const model = getModel(provider);
+
+          console.info(
+            JSON.stringify({
+              event: "generate.stream.started",
+              session_id: audit.sessionId,
+              provider,
+              model,
+              used_own_ai_key: Boolean(apiKey),
+              used_private_github_token: Boolean(githubPat),
+            }),
+          );
 
           if (isComplimentaryGateEnabled() && !apiKey) {
             if (provider !== "openai") {
@@ -257,8 +359,7 @@ export async function POST(request: Request) {
                   validationError: error,
                 },
               );
-              await persistTerminalAudit();
-              send({
+              queueTerminal({
                 status: "error",
                 session_id: audit.sessionId,
                 error,
@@ -268,7 +369,6 @@ export async function POST(request: Request) {
                 cost_summary: audit.finalCost ?? audit.estimatedCost,
                 latest_session_audit: audit,
               });
-              closeStream();
               return;
             }
 
@@ -286,8 +386,7 @@ export async function POST(request: Request) {
                   validationError: error,
                 },
               );
-              await persistTerminalAudit();
-              send({
+              queueTerminal({
                 status: "error",
                 session_id: audit.sessionId,
                 error,
@@ -297,18 +396,21 @@ export async function POST(request: Request) {
                 cost_summary: audit.finalCost ?? audit.estimatedCost,
                 latest_session_audit: audit,
               });
-              closeStream();
               return;
             }
           }
 
+          const githubStartedAt = performance.now();
           const githubData = await getGithubData(
             username,
             repo,
             githubPat,
             generationAbortController.signal,
           );
+          repositoryVerified = true;
+          recordTiming("github", githubStartedAt);
           storageVisibility = githubData.isPrivate ? "private" : "public";
+          const estimateStartedAt = performance.now();
           estimate = await estimateGenerationCost({
             provider,
             model,
@@ -321,7 +423,10 @@ export async function POST(request: Request) {
               provider,
               apiKey,
             }),
+            signal: generationAbortController.signal,
+            clientRequestId: `${audit.sessionId}:estimate`,
           });
+          recordTiming("estimate", estimateStartedAt);
           const tokenCount = estimate.explanationInputTokens;
 
           audit = withStageUsage(
@@ -349,6 +454,48 @@ export async function POST(request: Request) {
           });
 
           throwIfAborted(generationAbortController.signal);
+          if (
+            tokenCount > FREE_GENERATION_INPUT_TOKEN_LIMIT &&
+            tokenCount < HARD_GENERATION_INPUT_TOKEN_LIMIT &&
+            !apiKey
+          ) {
+            const error = `File tree and README combined exceeds token limit (${FREE_GENERATION_INPUT_TOKEN_LIMIT.toLocaleString("en-US")}). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`;
+            audit = withFailure(audit, {
+              failureStage: "started",
+              validationError: error,
+            });
+            queueTerminal({
+              status: "error",
+              session_id: audit.sessionId,
+              error,
+              error_code: "API_KEY_REQUIRED",
+              validation_error: error,
+              failure_stage: "started",
+              cost_summary: audit.finalCost ?? audit.estimatedCost,
+              latest_session_audit: audit,
+            });
+            return;
+          }
+
+          if (tokenCount > HARD_GENERATION_INPUT_TOKEN_LIMIT) {
+            const error = REPOSITORY_TOO_LARGE_ERROR;
+            audit = withFailure(audit, {
+              failureStage: "started",
+              validationError: error,
+            });
+            queueTerminal({
+              status: "error",
+              session_id: audit.sessionId,
+              error,
+              error_code: "TOKEN_LIMIT_EXCEEDED",
+              validation_error: error,
+              failure_stage: "started",
+              cost_summary: audit.finalCost ?? audit.estimatedCost,
+              latest_session_audit: audit,
+            });
+            return;
+          }
+
           if (shouldApplyComplimentaryGate({ provider, model, apiKey })) {
             if (!modelMatchesComplimentaryFamily(model)) {
               const error = getComplimentaryModelMismatchMessage();
@@ -362,8 +509,7 @@ export async function POST(request: Request) {
                   validationError: error,
                 },
               );
-              await persistTerminalAudit();
-              send({
+              queueTerminal({
                 status: "error",
                 session_id: audit.sessionId,
                 error,
@@ -373,14 +519,14 @@ export async function POST(request: Request) {
                 cost_summary: audit.finalCost ?? audit.estimatedCost,
                 latest_session_audit: audit,
               });
-              closeStream();
               return;
             }
 
             const requestedTokens = buildComplimentaryAdmissionTokens({
               explanationInputTokens: estimate.explanationInputTokens,
               graphStaticInputTokens: estimate.graphStaticInputTokens,
-              graphRepairStaticInputTokens: estimate.graphRepairStaticInputTokens,
+              graphRepairStaticInputTokens:
+                estimate.graphRepairStaticInputTokens,
             });
             const reservation = await admitComplimentaryQuota({
               model,
@@ -388,7 +534,8 @@ export async function POST(request: Request) {
             });
 
             if (!reservation.admitted) {
-              const error = reservation.message || getComplimentaryDenialMessage();
+              const error =
+                reservation.message || getComplimentaryDenialMessage();
               audit = withFailure(
                 {
                   ...audit,
@@ -400,8 +547,7 @@ export async function POST(request: Request) {
                   validationError: error,
                 },
               );
-              await persistTerminalAudit();
-              send({
+              queueTerminal({
                 status: "error",
                 session_id: audit.sessionId,
                 error,
@@ -412,7 +558,6 @@ export async function POST(request: Request) {
                 cost_summary: audit.finalCost ?? audit.estimatedCost,
                 latest_session_audit: audit,
               });
-              closeStream();
               return;
             }
 
@@ -426,54 +571,6 @@ export async function POST(request: Request) {
             };
           }
 
-          if (
-            tokenCount > FREE_GENERATION_INPUT_TOKEN_LIMIT &&
-            tokenCount < HARD_GENERATION_INPUT_TOKEN_LIMIT &&
-            !apiKey
-          ) {
-            const error =
-              `File tree and README combined exceeds token limit (${FREE_GENERATION_INPUT_TOKEN_LIMIT.toLocaleString("en-US")}). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`;
-            audit = withFailure(audit, {
-              failureStage: "started",
-              validationError: error,
-            });
-            await persistTerminalAudit();
-            send({
-              status: "error",
-              session_id: audit.sessionId,
-              error,
-              error_code: "API_KEY_REQUIRED",
-              validation_error: error,
-              failure_stage: "started",
-              cost_summary: audit.finalCost ?? audit.estimatedCost,
-              latest_session_audit: audit,
-            });
-            closeStream();
-            return;
-          }
-
-          if (tokenCount > HARD_GENERATION_INPUT_TOKEN_LIMIT) {
-            const error =
-              "Repository is too large (>195k tokens) for analysis. Try a smaller repo.";
-            audit = withFailure(audit, {
-              failureStage: "started",
-              validationError: error,
-            });
-            await persistTerminalAudit();
-            send({
-              status: "error",
-              session_id: audit.sessionId,
-              error,
-              error_code: "TOKEN_LIMIT_EXCEEDED",
-              validation_error: error,
-              failure_stage: "started",
-              cost_summary: audit.finalCost ?? audit.estimatedCost,
-              latest_session_audit: audit,
-            });
-            closeStream();
-            return;
-          }
-
           audit = withTimelineEvent(
             audit,
             "explanation_sent",
@@ -484,10 +581,13 @@ export async function POST(request: Request) {
             session_id: audit.sessionId,
             message: `Sending explanation request to ${model}...`,
           });
-          await sleep(80);
           throwIfAborted(generationAbortController.signal);
 
-          audit = withTimelineEvent(audit, "explanation", "Analyzing repository structure...");
+          audit = withTimelineEvent(
+            audit,
+            "explanation",
+            "Analyzing repository structure...",
+          );
           send({
             status: "explanation",
             session_id: audit.sessionId,
@@ -495,6 +595,8 @@ export async function POST(request: Request) {
           });
 
           let explanationResponse = "";
+          modelRequestStarted = true;
+          const explanationStartedAt = performance.now();
           const explanationStream = await streamCompletion({
             provider,
             model,
@@ -508,12 +610,18 @@ export async function POST(request: Request) {
             textVerbosity: EXPLANATION_TEXT_VERBOSITY,
             maxOutputTokens: EXPLANATION_MAX_OUTPUT_TOKENS,
             signal: generationAbortController.signal,
+            clientRequestId: `${audit.sessionId}:explanation`,
           });
           for await (const chunk of explanationStream.stream) {
             throwIfAborted(generationAbortController.signal);
             explanationResponse += chunk;
-            send({ status: "explanation_chunk", session_id: audit.sessionId, chunk });
+            send({
+              status: "explanation_chunk",
+              session_id: audit.sessionId,
+              chunk,
+            });
           }
+          recordTiming("explanation", explanationStartedAt);
           let explanationUsage: GenerationTokenUsage | null = null;
           try {
             explanationUsage = await explanationStream.usagePromise;
@@ -537,9 +645,14 @@ export async function POST(request: Request) {
             hasCompleteMeasuredUsage = false;
           }
 
-          const explanation = extractTaggedSection(explanationResponse, "explanation");
+          const explanation = extractTaggedSection(
+            explanationResponse,
+            "explanation",
+          );
           if (!explanation.trim()) {
-            throw new Error("OpenAI explanation generation returned no usable output.");
+            throw new Error(
+              "OpenAI explanation generation returned no usable output.",
+            );
           }
           audit = withExplanation(audit, explanation);
 
@@ -570,7 +683,13 @@ export async function POST(request: Request) {
               graph_attempts: audit.graphAttempts,
             });
 
-            const { output: graph, rawText, usage } = await generateStructuredOutput({
+            modelRequestStarted = true;
+            const graphStartedAt = performance.now();
+            const {
+              output: graph,
+              rawText,
+              usage,
+            } = await generateStructuredOutput({
               provider,
               model,
               systemPrompt: SYSTEM_GRAPH_PROMPT,
@@ -591,7 +710,9 @@ export async function POST(request: Request) {
               textVerbosity: GRAPH_TEXT_VERBOSITY,
               maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
               signal: generationAbortController.signal,
+              clientRequestId: `${audit.sessionId}:graph:${attempt}`,
             });
+            recordTiming(`graph_attempt_${attempt}`, graphStartedAt);
 
             if (usage) {
               actualUsages.push(usage);
@@ -634,7 +755,9 @@ export async function POST(request: Request) {
             audit = withGraphAttempt(audit, attemptAudit);
 
             if (!graphValidation.valid) {
-              validationFeedback = formatGraphValidationFeedback(graphValidation.issues);
+              validationFeedback = formatGraphValidationFeedback(
+                graphValidation.issues,
+              );
               previousGraphRaw = rawText;
               audit = withTimelineEvent(
                 audit,
@@ -664,8 +787,7 @@ export async function POST(request: Request) {
               failureStage: "graph_validating",
               validationError: latestValidationError,
             });
-            await persistTerminalAudit();
-            send({
+            queueTerminal({
               status: "error",
               session_id: audit.sessionId,
               error:
@@ -676,11 +798,14 @@ export async function POST(request: Request) {
               cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
-            closeStream();
             return;
           }
 
-          audit = withTimelineEvent(audit, "diagram_compiling", "Compiling Mermaid diagram...");
+          audit = withTimelineEvent(
+            audit,
+            "diagram_compiling",
+            "Compiling Mermaid diagram...",
+          );
           send({
             status: "diagram_compiling",
             session_id: audit.sessionId,
@@ -707,16 +832,18 @@ export async function POST(request: Request) {
           });
 
           throwIfAborted(generationAbortController.signal);
+          const mermaidStartedAt = performance.now();
           const mermaidValidation = await validateMermaidSyntax(diagram);
+          recordTiming("mermaid_validation", mermaidStartedAt);
           if (!mermaidValidation.valid) {
             const compilerError =
-              mermaidValidation.message ?? "Compiled Mermaid failed validation.";
+              mermaidValidation.message ??
+              "Compiled Mermaid failed validation.";
             audit = withFailure(audit, {
               failureStage: "diagram_compiling",
               compilerError,
             });
-            await persistTerminalAudit();
-            send({
+            queueTerminal({
               status: "error",
               session_id: audit.sessionId,
               error: "Compiled Mermaid failed validation.",
@@ -726,7 +853,6 @@ export async function POST(request: Request) {
               cost_summary: audit.finalCost ?? audit.estimatedCost,
               latest_session_audit: audit,
             });
-            closeStream();
             return;
           }
 
@@ -740,45 +866,25 @@ export async function POST(request: Request) {
             : {
                 ...estimate.costSummary,
                 kind: "actual" as const,
-                note:
-                  "Some stage usage was unavailable, so the final cost remains approximate.",
+                note: "Some stage usage was unavailable, so the final cost remains approximate.",
               };
           throwIfAborted(generationAbortController.signal);
           audit = withFinalCost(audit, finalCost);
-          audit = withSuccess(withTimelineEvent(audit, "complete", "Diagram generation complete."));
-          await saveSuccessfulDiagramState({
-            username,
-            repo,
-            githubPat,
-            visibility: storageVisibility,
+          audit = withSuccess(
+            withTimelineEvent(
+              audit,
+              "complete",
+              "Diagram generation complete.",
+            ),
+          );
+          successfulDiagramState = {
             stargazerCount: githubData.stargazerCount,
             explanation,
             graph: validGraph,
             diagram,
-            audit,
-            usedOwnKey: Boolean(apiKey),
-          });
+          };
 
-          if (storageVisibility === "public") {
-            const lastSuccessfulAt = audit.updatedAt ?? new Date().toISOString();
-            postResponseTasks.push(async () => {
-              try {
-                revalidatePath(getRepoPagePath(username, repo));
-                revalidateTag(getPublicDiagramStateCacheTag(username, repo), "max");
-                await updatePublicBrowseIndexForSuccessfulDiagram({
-                  username,
-                  repo,
-                  lastSuccessfulAt,
-                  stargazerCount: githubData.stargazerCount,
-                });
-                revalidateBrowseIndexCache();
-              } catch (error) {
-                console.error("Failed to update browse index after completion:", error);
-              }
-            });
-          }
-
-          send({
+          queueTerminal({
             status: "complete",
             session_id: audit.sessionId,
             cost_summary: audit.finalCost ?? audit.estimatedCost,
@@ -790,84 +896,238 @@ export async function POST(request: Request) {
             generated_at: audit.updatedAt,
           });
         } catch (error) {
-          if (isAbortError(error)) {
+          if (
+            generationAbortController.signal.aborted &&
+            abortCause === "client"
+          ) {
             wasCancelled = true;
             return;
           }
           hasCompleteMeasuredUsage = false;
-          const rawMessage =
-            error instanceof Error ? error.message : "Streaming generation failed.";
-          const { message, errorCode } = normalizeGenerationError({
-            provider: audit.provider,
-            apiKey,
-            message: rawMessage,
-          });
-          const failedAudit = withFailure(audit, {
+          const deadlineExceeded = abortCause === "deadline";
+          const rawMessage = deadlineExceeded
+            ? "Generation timed out. Please retry."
+            : error instanceof Error
+              ? error.message
+              : "Streaming generation failed.";
+          const normalized = deadlineExceeded
+            ? { message: rawMessage, errorCode: "GENERATION_TIMEOUT" }
+            : normalizeGenerationError({
+                provider: audit.provider,
+                apiKey,
+                message: rawMessage,
+              });
+          audit = withFailure(audit, {
             failureStage: audit.stage || "started",
-            validationError: message,
+            validationError: normalized.message,
           });
-          try {
-            await persistTerminalAudit(failedAudit);
-          } catch {
-            // Best effort persistence.
-          }
-
-          send({
+          queueTerminal({
             status: "error",
-            session_id: failedAudit.sessionId,
-            error: message,
-            error_code: errorCode,
-            failure_stage: failedAudit.failureStage,
-            validation_error: failedAudit.validationError,
-            cost_summary: failedAudit.finalCost ?? failedAudit.estimatedCost,
-            latest_session_audit: failedAudit,
+            session_id: audit.sessionId,
+            error: normalized.message,
+            error_code: normalized.errorCode,
+            failure_stage: audit.failureStage,
+            validation_error: audit.validationError,
+            cost_summary: audit.finalCost ?? audit.estimatedCost,
+            latest_session_audit: audit,
           });
         } finally {
+          let terminalSent = false;
+          let persistenceWarning: string | undefined;
+          const sendTerminal = () => {
+            const finalTerminalPayload = terminalPayload as Record<
+              string,
+              unknown
+            > | null;
+            if (!finalTerminalPayload || wasCancelled) {
+              return;
+            }
+            send(
+              {
+                ...finalTerminalPayload,
+                cost_summary: audit.finalCost ?? audit.estimatedCost,
+                latest_session_audit: audit,
+                ...(persistenceWarning
+                  ? { persistence_warning: persistenceWarning }
+                  : {}),
+              },
+              { allowAfterAbort: abortCause === "deadline" },
+            );
+            terminalSent = true;
+          };
+
+          // A timeout must reach the client before best-effort cleanup consumes
+          // the remaining Vercel function budget.
+          if (abortCause === "deadline") {
+            sendTerminal();
+          }
+
           if (quotaReservation) {
             const measuredCommittedTokens = sumGenerationUsage(
               ...actualUsages,
             ).totalTokens;
-            const actualCommittedTokens = measuredCommittedTokens;
-
-            audit = {
-              ...audit,
-              quotaStatus: "finalized",
-              quotaBucket: quotaReservation.quotaBucket,
-              quotaDateUtc: quotaReservation.quotaDateUtc,
-              actualCommittedTokens,
-              quotaResetAt: quotaReservation.quotaResetAt,
-            };
+            const actualCommittedTokens =
+              hasCompleteMeasuredUsage && !wasCancelled
+                ? measuredCommittedTokens
+                : modelRequestStarted
+                  ? quotaReservation.reservedTokens
+                  : 0;
 
             try {
               await finalizeComplimentaryQuota({
                 reservation: quotaReservation,
                 committedTokens: actualCommittedTokens,
               });
-              if (!wasCancelled) {
-                await persistTerminalAudit();
-              }
-            } catch {
-              // Best effort quota finalization and audit persistence.
+              audit = {
+                ...audit,
+                quotaStatus: "finalized",
+                quotaBucket: quotaReservation.quotaBucket,
+                quotaDateUtc: quotaReservation.quotaDateUtc,
+                actualCommittedTokens,
+                quotaResetAt: quotaReservation.quotaResetAt,
+              };
+            } catch (quotaError) {
+              console.error(
+                JSON.stringify({
+                  event: "generate.quota.finalization_failed",
+                  session_id: audit.sessionId,
+                  error:
+                    quotaError instanceof Error
+                      ? quotaError.message
+                      : "Unknown error",
+                }),
+              );
             }
           }
+
+          if (repositoryVerified) {
+            const persistenceStartedAt = performance.now();
+            try {
+              if (successfulDiagramState && audit.status === "succeeded") {
+                const artifactWritten = await saveSuccessfulDiagramState({
+                  username,
+                  repo,
+                  githubPat,
+                  visibility: storageVisibility,
+                  stargazerCount: successfulDiagramState.stargazerCount,
+                  explanation: successfulDiagramState.explanation,
+                  graph: successfulDiagramState.graph,
+                  diagram: successfulDiagramState.diagram,
+                  audit,
+                  usedOwnKey: Boolean(apiKey),
+                });
+
+                if (storageVisibility === "public" && artifactWritten) {
+                  const lastSuccessfulAt =
+                    audit.updatedAt ?? new Date().toISOString();
+                  postResponseTasks.push(async () => {
+                    try {
+                      revalidatePath(getRepoPagePath(username, repo));
+                      revalidateTag(
+                        getPublicDiagramStateCacheTag(username, repo),
+                        "max",
+                      );
+                      await updatePublicBrowseIndexForSuccessfulDiagram({
+                        username,
+                        repo,
+                        lastSuccessfulAt,
+                        stargazerCount:
+                          successfulDiagramState?.stargazerCount ?? null,
+                      });
+                      revalidateBrowseIndexCache();
+                    } catch (error) {
+                      console.error(
+                        "Failed to update browse index after completion:",
+                        error,
+                      );
+                    }
+                  });
+                }
+              } else {
+                await persistTerminalAudit();
+              }
+            } catch (persistenceError) {
+              if (successfulDiagramState && audit.status === "succeeded") {
+                persistenceWarning =
+                  "The diagram was generated, but could not be cached. It may need to be regenerated after a refresh.";
+              }
+              console.error(
+                JSON.stringify({
+                  event:
+                    successfulDiagramState && audit.status === "succeeded"
+                      ? "generate.persistence.diagram_failed"
+                      : "generate.persistence.audit_failed",
+                  session_id: audit.sessionId,
+                  error:
+                    persistenceError instanceof Error
+                      ? persistenceError.message
+                      : "Unknown error",
+                }),
+              );
+            }
+            recordTiming("persistence", persistenceStartedAt);
+          }
+
+          if (!terminalSent) {
+            sendTerminal();
+          }
+
+          clearInterval(heartbeat);
+          request.signal.removeEventListener("abort", handleRequestAbort);
+          deadlineSignal.removeEventListener("abort", handleDeadline);
           closeStream();
+
+          const totalUsage = sumGenerationUsage(...actualUsages);
+          console.info(
+            JSON.stringify({
+              event: "generate.stream.finished",
+              session_id: audit.sessionId,
+              outcome: wasCancelled
+                ? "cancelled"
+                : audit.status === "succeeded"
+                  ? "succeeded"
+                  : "failed",
+              error_code: terminalErrorCode,
+              stage: audit.failureStage ?? audit.stage,
+              elapsed_ms: Math.round(performance.now() - invocationStartedAt),
+              stage_timings_ms: stageTimingsMs,
+              provider: audit.provider,
+              model: audit.model,
+              visibility: storageVisibility,
+              input_tokens: totalUsage.inputTokens,
+              output_tokens: totalUsage.outputTokens,
+              total_tokens: totalUsage.totalTokens,
+              quota_committed_tokens: audit.actualCommittedTokens ?? null,
+            }),
+          );
         }
       };
 
-      void run();
+      void run()
+        .catch((error: unknown) => {
+          console.error(
+            JSON.stringify({
+              event: "generate.stream.unhandled_failure",
+              session_id: sessionId,
+              error: error instanceof Error ? error.message : "Unknown error",
+            }),
+          );
+        })
+        .finally(resolveGenerationDone);
     },
     cancel() {
-      if (!generationAbortController.signal.aborted) {
-        generationAbortController.abort();
-      }
+      streamClosed = true;
+      abortGeneration("client");
     },
   });
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/event-stream",
+      "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+      "X-Content-Type-Options": "nosniff",
+      "X-Generation-Session-Id": sessionId,
     },
   });
 }

@@ -10,6 +10,11 @@ import {
 import { assertLiveStorageAllowedForTests, readRequiredEnv } from "./config";
 
 let client: S3Client | null = null;
+export const R2_REQUEST_TIMEOUT_MS = 10_000;
+
+function requestOptions() {
+  return { abortSignal: AbortSignal.timeout(R2_REQUEST_TIMEOUT_MS) };
+}
 
 function getClient(): S3Client {
   assertLiveStorageAllowedForTests("R2");
@@ -53,6 +58,7 @@ export async function getJsonObject<T>(
         Bucket: bucket,
         Key: key,
       }),
+      requestOptions(),
     );
 
     const body = await response.Body?.transformToString();
@@ -81,6 +87,7 @@ export async function putJsonObject(
       Body: JSON.stringify(payload),
       ContentType: "application/json",
     }),
+    requestOptions(),
   );
 }
 
@@ -90,6 +97,7 @@ export async function deleteObject(bucket: string, key: string): Promise<void> {
       Bucket: bucket,
       Key: key,
     }),
+    requestOptions(),
   );
 }
 
@@ -103,6 +111,7 @@ export async function objectExists(
         Bucket: bucket,
         Key: key,
       }),
+      requestOptions(),
     );
     return true;
   } catch (error) {
@@ -133,6 +142,7 @@ export async function listObjects(
         Prefix: prefix,
         ContinuationToken: continuationToken,
       }),
+      requestOptions(),
     );
 
     for (const entry of response.Contents ?? []) {

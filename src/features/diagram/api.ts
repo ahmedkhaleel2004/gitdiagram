@@ -11,36 +11,7 @@ interface StreamHandlers {
   ) => boolean | void | Promise<boolean | void>;
 }
 
-type GenerationBackendMode = "next" | "fastapi";
-
-function getGenerationBackendMode(): GenerationBackendMode {
-  const mode = process.env.NEXT_PUBLIC_GENERATION_BACKEND?.trim().toLowerCase();
-
-  if (mode === "next" || mode === "fastapi") {
-    return mode;
-  }
-
-  throw new Error(
-    "Missing NEXT_PUBLIC_GENERATION_BACKEND. Set it to 'next' or 'fastapi'.",
-  );
-}
-
-function getGenerateBasePath() {
-  const mode = getGenerationBackendMode();
-
-  if (mode === "next") {
-    return "/api/generate";
-  }
-
-  const apiBaseUrl = process.env.NEXT_PUBLIC_GENERATE_API_BASE_URL?.trim();
-  if (!apiBaseUrl) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_GENERATE_API_BASE_URL for fastapi generation mode.",
-    );
-  }
-
-  return apiBaseUrl.replace(/\/$/, "");
-}
+const GENERATE_BASE_PATH = "/api/generate";
 
 export async function getGenerationCost(
   username: string,
@@ -49,7 +20,7 @@ export async function getGenerationCost(
   apiKey?: string,
 ): Promise<DiagramCostResponse> {
   try {
-    const response = await fetch(`${getGenerateBasePath()}/cost`, {
+    const response = await fetch(`${GENERATE_BASE_PATH}/cost`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -96,7 +67,7 @@ export async function streamDiagramGeneration(
   params: StreamGenerationParams,
   handlers: StreamHandlers,
 ): Promise<void> {
-  const response = await fetch(`${getGenerateBasePath()}/stream`, {
+  const response = await fetch(`${GENERATE_BASE_PATH}/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -107,9 +78,16 @@ export async function streamDiagramGeneration(
       api_key: params.apiKey,
       github_pat: params.githubPat,
     }),
+    signal: params.signal,
   });
 
   if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error(
+        "Too many generation requests. Please wait and try again.",
+      );
+    }
+
     try {
       const data = (await response.json()) as DiagramStreamMessage;
       throw new Error(data.error ?? "Failed to start streaming");
@@ -128,26 +106,47 @@ export async function streamDiagramGeneration(
 
   try {
     let streamBuffer = "";
+    let receivedTerminalEvent = false;
+    const decoder = new TextDecoder();
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      streamBuffer += new TextDecoder().decode(value);
+      streamBuffer += decoder.decode(value, { stream: true });
       const { messages, remainder } = parseSSEStreamBuffer(streamBuffer);
       streamBuffer = remainder;
       for (const message of messages) {
+        receivedTerminalEvent =
+          receivedTerminalEvent ||
+          message.status === "complete" ||
+          message.status === "error" ||
+          Boolean(message.error);
         const shouldContinue = await handlers.onMessage(message);
         if (shouldContinue === false) {
+          await reader.cancel();
           return;
         }
       }
     }
 
+    streamBuffer += decoder.decode();
     const { messages } = parseSSEStreamBuffer(`${streamBuffer}\n\n`);
     for (const message of messages) {
+      receivedTerminalEvent =
+        receivedTerminalEvent ||
+        message.status === "complete" ||
+        message.status === "error" ||
+        Boolean(message.error);
       const shouldContinue = await handlers.onMessage(message);
       if (shouldContinue === false) {
+        await reader.cancel();
         return;
       }
+    }
+
+    if (!receivedTerminalEvent) {
+      throw new Error(
+        "Generation stream ended before completion. Please retry.",
+      );
     }
   } finally {
     reader.releaseLock();

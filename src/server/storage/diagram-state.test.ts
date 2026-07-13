@@ -51,6 +51,7 @@ const baseAudit = {
 describe("saveSuccessfulDiagramState", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    writeDiagramArtifact.mockResolvedValue(true);
   });
 
   it("persists the public artifact without updating the browse index inline", async () => {
@@ -113,5 +114,27 @@ describe("saveSuccessfulDiagramState", () => {
     });
 
     expect(upsertBrowseIndexEntry).not.toHaveBeenCalled();
+  });
+
+  it("does not clear a newer failure when an older success loses artifact ordering", async () => {
+    writeDiagramArtifact.mockResolvedValue(false);
+
+    await saveSuccessfulDiagramState({
+      username: "Acme",
+      repo: "Demo",
+      visibility: "public",
+      stargazerCount: 42,
+      explanation: "Stale explanation",
+      graph: {
+        groups: [],
+        nodes: [],
+        edges: [],
+      },
+      diagram: "flowchart TD\nStale-->Result",
+      audit: baseAudit,
+      usedOwnKey: false,
+    });
+
+    expect(clearFailureSummary).not.toHaveBeenCalled();
   });
 });

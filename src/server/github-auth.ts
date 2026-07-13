@@ -3,6 +3,7 @@ import { createSign } from "node:crypto";
 const GITHUB_API_VERSION = "2022-11-28";
 const GITHUB_APP_JWT_LIFETIME_SECONDS = 9 * 60;
 const GITHUB_APP_TOKEN_REFRESH_BUFFER_MS = 60_000;
+const GITHUB_APP_TOKEN_TIMEOUT_MS = 10_000;
 
 interface InstallationTokenResponse {
   token?: string;
@@ -14,12 +15,11 @@ export interface GitHubAuthSource {
   getToken: () => Promise<string>;
 }
 
-let cachedInstallationToken:
-  | {
-      token: string;
-      expiresAtMs: number;
-    }
-  | null = null;
+let cachedInstallationToken: {
+  token: string;
+  expiresAtMs: number;
+} | null = null;
+let installationTokenPromise: Promise<string> | null = null;
 
 function readTrimmedEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
@@ -61,22 +61,75 @@ function createGitHubAppJwt() {
 export function hasGitHubAppAuth() {
   return Boolean(
     readTrimmedEnv("GITHUB_PRIVATE_KEY") &&
-      (readTrimmedEnv("GITHUB_APP_ID") || readTrimmedEnv("GITHUB_CLIENT_ID")) &&
-      readTrimmedEnv("GITHUB_INSTALLATION_ID"),
+    (readTrimmedEnv("GITHUB_APP_ID") || readTrimmedEnv("GITHUB_CLIENT_ID")) &&
+    readTrimmedEnv("GITHUB_INSTALLATION_ID"),
   );
 }
 
 export function readGitHubPatPool() {
-  const tokenPool = process.env.GITHUB_PATS?.split(/[,\n]/u)
+  const tokenPool = (process.env.GITHUB_PATS ?? "")
+    .split(/[,\n]/u)
     .map((token) => token.trim())
     .filter(Boolean);
 
   const singleToken = readTrimmedEnv("GITHUB_PAT");
   if (singleToken) {
-    tokenPool?.push(singleToken);
+    tokenPool.push(singleToken);
   }
 
-  return Array.from(new Set(tokenPool ?? []));
+  return Array.from(new Set(tokenPool));
+}
+
+async function requestGitHubAppInstallationToken() {
+  const installationId = readTrimmedEnv("GITHUB_INSTALLATION_ID");
+  if (!installationId || !hasGitHubAppAuth()) {
+    throw new Error("Missing GitHub App installation auth configuration.");
+  }
+
+  const timeoutSignal = AbortSignal.timeout(GITHUB_APP_TOKEN_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://api.github.com/app/installations/${installationId}/access_tokens`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createGitHubAppJwt()}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        },
+        cache: "no-store",
+        signal: timeoutSignal,
+      },
+    );
+  } catch (error) {
+    if (timeoutSignal.aborted) {
+      throw new Error("GitHub App token request timed out. Please retry.");
+    }
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to create GitHub App installation token (${response.status}): ${await response.text()}`,
+    );
+  }
+
+  const payload = (await response.json()) as InstallationTokenResponse;
+  if (!payload.token) {
+    throw new Error(
+      "GitHub App installation token response did not include a token.",
+    );
+  }
+
+  cachedInstallationToken = {
+    token: payload.token,
+    expiresAtMs: payload.expires_at
+      ? Date.parse(payload.expires_at)
+      : Date.now() + 55 * 60_000,
+  };
+
+  return cachedInstallationToken.token;
 }
 
 export async function getGitHubAppInstallationToken() {
@@ -88,43 +141,12 @@ export async function getGitHubAppInstallationToken() {
     return cachedInstallationToken.token;
   }
 
-  const installationId = readTrimmedEnv("GITHUB_INSTALLATION_ID");
-  if (!installationId || !hasGitHubAppAuth()) {
-    throw new Error("Missing GitHub App installation auth configuration.");
-  }
-
-  const response = await fetch(
-    `https://api.github.com/app/installations/${installationId}/access_tokens`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${createGitHubAppJwt()}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": GITHUB_API_VERSION,
-      },
-      cache: "no-store",
+  installationTokenPromise ??= requestGitHubAppInstallationToken().finally(
+    () => {
+      installationTokenPromise = null;
     },
   );
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to create GitHub App installation token (${response.status}): ${await response.text()}`,
-    );
-  }
-
-  const payload = (await response.json()) as InstallationTokenResponse;
-  if (!payload.token) {
-    throw new Error("GitHub App installation token response did not include a token.");
-  }
-
-  cachedInstallationToken = {
-    token: payload.token,
-    expiresAtMs: payload.expires_at
-      ? Date.parse(payload.expires_at)
-      : Date.now() + 55 * 60_000,
-  };
-
-  return cachedInstallationToken.token;
+  return installationTokenPromise;
 }
 
 export function getGitHubAuthSources(): GitHubAuthSource[] {
@@ -157,7 +179,7 @@ export async function getGitHubApiHeaders(options?: {
     githubPat ||
     (allowGitHubAppAuth && hasGitHubAppAuth()
       ? await getGitHubAppInstallationToken()
-      : readGitHubPatPool()[0] ?? null);
+      : (readGitHubPatPool()[0] ?? null));
 
   if (!token) {
     return {

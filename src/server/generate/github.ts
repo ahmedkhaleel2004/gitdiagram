@@ -7,16 +7,18 @@ interface GitHubRepoResponse {
 }
 
 interface GitHubTreeItem {
-  path: string;
+  path?: unknown;
 }
 
 interface GitHubTreeResponse {
   tree?: GitHubTreeItem[];
+  truncated?: boolean;
 }
 
 interface GitHubReadmeResponse {
-  content?: string;
-  encoding?: string;
+  content?: unknown;
+  encoding?: unknown;
+  size?: unknown;
 }
 
 export interface GithubData {
@@ -26,6 +28,12 @@ export interface GithubData {
   isPrivate: boolean;
   stargazerCount: number | null;
 }
+
+export const REPOSITORY_TOO_LARGE_ERROR =
+  "Repository is too large (>195k tokens) for analysis. Try a smaller repo.";
+export const MAX_INCLUDED_FILE_TREE_CHARACTERS = 780_000;
+export const MAX_README_BYTES = 750_000;
+export const GITHUB_REQUEST_TIMEOUT_MS = 30_000;
 
 const EXCLUDED_PATTERNS = [
   "node_modules/",
@@ -68,11 +76,20 @@ async function fetchJson<T>(
   notFoundMessage: string,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(url, {
-    headers,
-    cache: "no-store",
-    signal,
-  });
+  const timeoutSignal = AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers,
+      cache: "no-store",
+      signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
+    });
+  } catch (error) {
+    if (timeoutSignal.aborted && !signal?.aborted) {
+      throw new Error("GitHub request timed out. Please retry.");
+    }
+    throw error;
+  }
 
   if (response.status === 404) {
     throw new Error(notFoundMessage);
@@ -126,9 +143,13 @@ async function getFileTree(
     signal,
   );
 
+  if (data.truncated === true) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
+  }
+
   const paths = (data.tree ?? [])
     .map((item) => item.path)
-    .filter((path): path is string => Boolean(path))
+    .filter((path): path is string => typeof path === "string")
     .filter(shouldIncludeFile);
 
   if (!paths.length) {
@@ -137,7 +158,12 @@ async function getFileTree(
     );
   }
 
-  return paths.join("\n");
+  const fileTree = paths.join("\n");
+  if (fileTree.length > MAX_INCLUDED_FILE_TREE_CHARACTERS) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
+  }
+
+  return fileTree;
 }
 
 async function getReadme(
@@ -153,15 +179,32 @@ async function getReadme(
     signal,
   );
 
-  if (!data.content) {
+  if (typeof data.size === "number" && data.size > MAX_README_BYTES) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
+  }
+
+  if (typeof data.content !== "string" || !data.content) {
     throw new Error("No README found for the specified repository.");
   }
 
-  if (data.encoding === "base64") {
-    return Buffer.from(data.content, "base64").toString("utf-8");
+  // GitHub's contents API returns base64 with line breaks. Bound the encoded
+  // payload too, so malformed metadata cannot bypass the decoded byte limit.
+  if (data.content.length > MAX_README_BYTES * 2) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
   }
 
-  return data.content;
+  let readme: string;
+  if (data.encoding === "base64") {
+    readme = Buffer.from(data.content, "base64").toString("utf-8");
+  } else {
+    readme = data.content;
+  }
+
+  if (Buffer.byteLength(readme, "utf-8") > MAX_README_BYTES) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
+  }
+
+  return readme;
 }
 
 export async function getGithubData(
@@ -171,21 +214,28 @@ export async function getGithubData(
   signal?: AbortSignal,
 ): Promise<GithubData> {
   const headers = await getGitHubApiHeaders({ githubPat });
+  const readmeResultPromise = getReadme(username, repo, headers, signal).then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
   const { defaultBranch, isPrivate, stargazerCount } = await getRepoMetadata(
     username,
     repo,
     headers,
     signal,
   );
-  const [fileTree, readme] = await Promise.all([
+  const [fileTree, readmeResult] = await Promise.all([
     getFileTree(username, repo, defaultBranch, headers, signal),
-    getReadme(username, repo, headers, signal),
+    readmeResultPromise,
   ]);
+  if (!readmeResult.ok) {
+    throw readmeResult.error;
+  }
 
   return {
     defaultBranch,
     fileTree,
-    readme,
+    readme: readmeResult.value,
     isPrivate,
     stargazerCount,
   };

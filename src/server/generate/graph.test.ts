@@ -35,6 +35,45 @@ describe("validateDiagramGraph", () => {
 });
 
 describe("compileDiagramGraph", () => {
+  it("escapes untrusted labels and URL-encodes repository paths", () => {
+    const diagram = compileDiagramGraph({
+      username: "acme",
+      repo: "demo",
+      branch: "feature/security",
+      graph: {
+        groups: [
+          {
+            id: "runtime",
+            label: '<img src=x onerror="alert(1)"> & runtime',
+            description: null,
+          },
+        ],
+        nodes: [
+          {
+            id: "api",
+            label: '<script>alert("x")</script>',
+            type: "HTTP & worker",
+            description: null,
+            groupId: "runtime",
+            path: 'src/a "quoted" file.ts',
+            shape: "box",
+          },
+        ],
+        edges: [],
+      },
+    });
+
+    expect(diagram).not.toContain("<script>");
+    expect(diagram).not.toContain("<img");
+    expect(diagram).toContain('&lt;script&gt;alert(\\"x\\")&lt;/script&gt;');
+    expect(diagram).toContain(
+      '&lt;img src=x onerror=\\"alert(1)\\"&gt; &amp; runtime',
+    );
+    expect(diagram).toContain(
+      'click node_api "https://github.com/acme/demo/blob/feature/security/src/a%20%22quoted%22%20file.ts"',
+    );
+  });
+
   it("builds deterministic Mermaid with click urls", async () => {
     const diagram = compileDiagramGraph({
       graph: {
@@ -76,13 +115,17 @@ describe("compileDiagramGraph", () => {
 
     expect(diagram).toContain("flowchart TD");
     expect(diagram).toContain('subgraph group_runtime["Runtime"]');
-    expect(diagram).toContain('click node_api "https://github.com/acme/demo/blob/main/src/api.ts"');
+    expect(diagram).toContain(
+      'click node_api "https://github.com/acme/demo/blob/main/src/api.ts"',
+    );
     expect(diagram).toContain('node_api -->|"dispatches"| node_worker');
     expect(diagram).toContain('node_api[("API<br/>[api.ts]")]');
     expect(diagram).not.toContain("(service)");
     expect(diagram).toContain('node_worker["Worker<br/>job runner"]');
     expect(diagram).toContain("classDef toneBlue");
-    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({ valid: true });
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
   });
 
   it("maps reserved graph ids to Mermaid-safe ids", async () => {
@@ -126,8 +169,12 @@ describe("compileDiagramGraph", () => {
 
     expect(diagram).toContain('subgraph group_style["Style"]');
     expect(diagram).toContain('node_class["Class<br/>[class.ts]"]');
-    expect(diagram).toContain('node_class --> node_end');
-    expect(diagram).toContain('click node_class "https://github.com/acme/demo/blob/main/src/class.ts"');
-    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({ valid: true });
+    expect(diagram).toContain("node_class --> node_end");
+    expect(diagram).toContain(
+      'click node_class "https://github.com/acme/demo/blob/main/src/class.ts"',
+    );
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
   });
 });

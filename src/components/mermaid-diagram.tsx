@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import DOMPurify from "dompurify";
 import mermaid from "mermaid";
 import elkLayouts from "@mermaid-js/layout-elk";
 import { useTheme } from "next-themes";
@@ -23,6 +24,10 @@ import {
   type ViewState,
 } from "~/components/mermaid-diagram-helpers";
 import { cn } from "~/lib/utils";
+import {
+  enforceSafeMermaidLinks,
+  sanitizeMermaidSourceForRender,
+} from "~/features/diagram/mermaid-security";
 
 export {
   getDefaultDiagramScale,
@@ -265,7 +270,8 @@ const MermaidChart = ({
     const baseConfig = {
       startOnLoad: false,
       suppressErrorRendering: true,
-      securityLevel: "loose" as const,
+      securityLevel: "antiscript" as const,
+      secure: ["securityLevel", "startOnLoad", "maxTextSize"],
       theme: "base" as const,
       htmlLabels: true,
       flowchart: {
@@ -391,13 +397,18 @@ const MermaidChart = ({
 
       try {
         const renderId = `gitdiagram-${Math.random().toString(36).slice(2)}`;
+        const safeChart = sanitizeMermaidSourceForRender(chart);
         const { svg, bindFunctions } = await mermaid.render(
           renderId,
-          chart,
+          safeChart,
           renderTarget,
         );
         mermaidElement.textContent = "";
-        mermaidElement.innerHTML = svg;
+        mermaidElement.innerHTML = DOMPurify.sanitize(svg, {
+          USE_PROFILES: { html: true, svg: true, svgFilters: true },
+          FORBID_TAGS: ["script"],
+        });
+        enforceSafeMermaidLinks(mermaidElement);
         bindFunctions?.(mermaidElement);
         applyInteractiveView();
         onRenderComplete?.();

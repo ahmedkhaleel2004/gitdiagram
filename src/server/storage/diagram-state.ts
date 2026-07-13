@@ -120,7 +120,7 @@ export async function saveSuccessfulDiagramState(params: {
 }) {
   const successfulAt = params.audit.updatedAt || new Date().toISOString();
 
-  await writeDiagramArtifact({
+  const artifactWritten = await writeDiagramArtifact({
     username: params.username,
     repo: params.repo,
     githubPat: params.githubPat,
@@ -135,12 +135,18 @@ export async function saveSuccessfulDiagramState(params: {
     lastSuccessfulAt: successfulAt,
   });
 
+  if (!artifactWritten) {
+    return false;
+  }
+
   await clearFailureSummary({
     username: params.username,
     repo: params.repo,
     githubPat: params.githubPat,
     visibility: params.visibility,
   });
+
+  return true;
 }
 
 export async function updatePublicBrowseIndexForSuccessfulDiagram(params: {
