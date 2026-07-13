@@ -48,6 +48,9 @@ next-env.d.ts
 # Playwright MCP local artifacts
 .playwright-mcp/
 
+# temporary files
+/tmp/
+
 __pycache__/
 venv
 backend/.venv
