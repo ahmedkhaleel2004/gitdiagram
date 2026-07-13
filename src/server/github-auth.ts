@@ -67,17 +67,18 @@ export function hasGitHubAppAuth() {
 }
 
 export function readGitHubPatPool() {
-  const tokenPool = process.env.GITHUB_PATS?.split(/[,\n]/u)
+  const tokenPool = (process.env.GITHUB_PATS?.split(/[,\n]/u) ?? [])
     .map((token) => token.trim())
     .filter(Boolean);
 
   const singleToken = readTrimmedEnv("GITHUB_PAT");
   if (singleToken) {
-    tokenPool?.push(singleToken);
+    tokenPool.push(singleToken);
   }
 
-  return Array.from(new Set(tokenPool ?? []));
+  return Array.from(new Set(tokenPool));
 }
+
 
 export async function getGitHubAppInstallationToken() {
   if (
