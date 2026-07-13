@@ -73,7 +73,7 @@ When you submit a GitHub repo URL, GitDiagram asks the GitHub API for the repo's
 
 That graph is validated against the actual file tree, retried with feedback if it contains bad paths or invalid connections, then compiled into Mermaid and validated again before it is shown. Any node tied to a real path becomes clickable back to GitHub, and the final explanation, graph, diagram, and terminal generation state are stored in Cloudflare R2 and Upstash Redis so the app can reopen an existing result or show where a run failed.
 
-One implementation detail worth knowing: the Next backend validates Mermaid in-process in [`src/server/generate/mermaid-validator.ts`](/Users/ahmedkhaleel/repos/gitdiagram/src/server/generate/mermaid-validator.ts), while the FastAPI backend invokes the thin Bun wrapper in [`backend/scripts/validate_mermaid.mjs`](/Users/ahmedkhaleel/repos/gitdiagram/backend/scripts/validate_mermaid.mjs) backed by [`backend/lib/mermaid-validator.ts`](/Users/ahmedkhaleel/repos/gitdiagram/backend/lib/mermaid-validator.ts). Both use the same Mermaid + DOMPurify bootstrap approach, so the Railway backend runtime remains intentionally mixed Python + Bun.
+One implementation detail worth knowing: the Next backend validates Mermaid in-process in [`src/server/generate/mermaid-validator.ts`](src/server/generate/mermaid-validator.ts), while the FastAPI backend invokes the thin Bun wrapper in [`backend/scripts/validate_mermaid.mjs`](backend/scripts/validate_mermaid.mjs) backed by [`backend/lib/mermaid-validator.ts`](backend/lib/mermaid-validator.ts). Both use the same Mermaid + DOMPurify bootstrap approach, so the Railway backend runtime remains intentionally mixed Python + Bun.
 
 ## 🔒 How to diagram private repositories
 
