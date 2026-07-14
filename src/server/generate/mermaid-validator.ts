@@ -1,5 +1,4 @@
-import { parseHTML } from "linkedom";
-import createDOMPurify from "dompurify";
+import { JSDOM } from "jsdom";
 import type mermaid from "mermaid";
 
 function normalizeParserMessage(message?: string): string {
@@ -40,36 +39,24 @@ const flowchartClickDirectivePattern =
   /^\s*click\s+[\w-]+\s+(?:(?:href\s+)?"[^"\n]*"|(?:call\s+)?[A-Za-z_$][\w$]*(?:\(\))?)(?:\s+"[^"\n]*")?(?:\s+_(?:blank|self|parent|top))?\s*$/;
 
 let initialized = false;
-let domPurifyPatched = false;
 let mermaidRuntime: typeof mermaid | null = null;
-let serverWindow: ReturnType<typeof parseHTML>["window"] | null = null;
+let serverDom: JSDOM | null = null;
 let validationQueue: Promise<void> = Promise.resolve();
 
-type ServerGlobalWithDom = typeof globalThis & {
+type ServerGlobalWithDom = {
   document?: unknown;
   window?: unknown;
 };
 
 function getServerWindow() {
-  if (serverWindow) {
-    return serverWindow;
+  if (serverDom) {
+    return serverDom.window;
   }
 
-  const { window } = parseHTML("<!doctype html><html><body></body></html>");
-  Object.defineProperty(window, "location", {
-    configurable: true,
-    value: {
-      host: "gitdiagram.local",
-      hostname: "gitdiagram.local",
-      href: "https://gitdiagram.local/",
-      pathname: "/",
-      port: "",
-      protocol: "https:",
-      search: "",
-    },
+  serverDom = new JSDOM("<!doctype html><html><body></body></html>", {
+    url: "https://gitdiagram.local/",
   });
-  serverWindow = window;
-  return serverWindow;
+  return serverDom.window;
 }
 
 function isLikelyServerDomWindow(value: unknown): boolean {
@@ -97,7 +84,7 @@ function isLikelyServerDomWindow(value: unknown): boolean {
 }
 
 function cleanStaleServerDomGlobals() {
-  const serverGlobal = globalThis as ServerGlobalWithDom;
+  const serverGlobal = globalThis as unknown as ServerGlobalWithDom;
   if (isLikelyServerDomWindow(serverGlobal.window)) {
     Reflect.deleteProperty(serverGlobal, "window");
   }
@@ -111,7 +98,7 @@ async function withServerDomGlobals<T>(callback: () => T | Promise<T>) {
   cleanStaleServerDomGlobals();
 
   const runtimeWindow = getServerWindow();
-  const serverGlobal = globalThis as ServerGlobalWithDom;
+  const serverGlobal = globalThis as unknown as ServerGlobalWithDom;
   const hadWindow = Object.prototype.hasOwnProperty.call(
     serverGlobal,
     "window",
@@ -143,19 +130,10 @@ async function withServerDomGlobals<T>(callback: () => T | Promise<T>) {
   }
 }
 
-async function ensureDomPurifyPatched() {
-  if (domPurifyPatched) {
-    return;
-  }
-
-  const purify = createDOMPurify(getServerWindow());
-  Object.assign(createDOMPurify, purify);
-  domPurifyPatched = true;
-}
-
 async function ensureMermaidInitialized() {
-  await ensureDomPurifyPatched();
-
+  // Mermaid imports DOMPurify, whose default export binds to `window` during
+  // module evaluation. Keep this import dynamic and run it only while the
+  // standards-complete JSDOM globals are installed.
   mermaidRuntime ??= (await import("mermaid")).default;
 
   if (!initialized) {

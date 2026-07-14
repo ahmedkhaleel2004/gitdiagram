@@ -69,7 +69,6 @@ import {
   generateStructuredOutput,
   streamCompletion,
 } from "~/server/generate/openai";
-import { validateMermaidSyntax } from "~/server/generate/mermaid";
 import {
   SYSTEM_FIRST_PROMPT,
   SYSTEM_GRAPH_PROMPT,
@@ -920,38 +919,11 @@ export async function POST(request: Request) {
           send({
             status: "diagram_compiling",
             session_id: audit.sessionId,
-            message: "Compiled Mermaid diagram. Validating syntax...",
+            message: "Compiled Mermaid diagram.",
             graph: validGraph,
             graph_attempts: audit.graphAttempts,
             diagram,
           });
-
-          throwIfAborted(generationAbortController.signal);
-          const mermaidStartedAt = performance.now();
-          const mermaidValidation = await validateMermaidSyntax(diagram, {
-            signal: generationAbortController.signal,
-          });
-          recordTiming("mermaid_validation", mermaidStartedAt);
-          if (!mermaidValidation.valid) {
-            const compilerError =
-              mermaidValidation.message ??
-              "Compiled Mermaid failed validation.";
-            audit = withFailure(audit, {
-              failureStage: "diagram_compiling",
-              compilerError,
-            });
-            queueTerminal({
-              status: "error",
-              session_id: audit.sessionId,
-              error: "Compiled Mermaid failed validation.",
-              error_code: "COMPILER_VALIDATION_FAILED",
-              failure_stage: "diagram_compiling",
-              validation_error: compilerError,
-              cost_summary: audit.finalCost ?? audit.estimatedCost,
-              latest_session_audit: audit,
-            });
-            return;
-          }
 
           const finalCost = hasCompleteMeasuredUsage
             ? createCostSummary({

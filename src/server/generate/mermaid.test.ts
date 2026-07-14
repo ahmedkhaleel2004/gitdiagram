@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import { parseHTML } from "linkedom";
+import { JSDOM } from "jsdom";
 
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
 
@@ -85,7 +85,7 @@ describe("validateMermaidSyntax", () => {
   });
 
   it("does not leak fake browser globals into the server runtime", async () => {
-    const serverGlobal = globalThis as typeof globalThis & {
+    const serverGlobal = globalThis as unknown as {
       document?: unknown;
       window?: unknown;
     };
@@ -124,7 +124,7 @@ describe("validateMermaidSyntax", () => {
   });
 
   it("cleans up stale fake browser globals from earlier validation runs", async () => {
-    const serverGlobal = globalThis as typeof globalThis & {
+    const serverGlobal = globalThis as unknown as {
       document?: unknown;
       window?: unknown;
     };
@@ -138,7 +138,9 @@ describe("validateMermaidSyntax", () => {
     );
     const previousWindow = serverGlobal.window;
     const previousDocument = serverGlobal.document;
-    const { window } = parseHTML("<!doctype html><html><body></body></html>");
+    const { window } = new JSDOM("<!doctype html><html><body></body></html>", {
+      url: "https://gitdiagram.local/",
+    });
 
     serverGlobal.window = window;
     serverGlobal.document = window.document;
@@ -169,7 +171,7 @@ describe("validateMermaidSyntax", () => {
   });
 
   it("restores existing browser globals after success and failure", async () => {
-    const serverGlobal = globalThis as typeof globalThis & {
+    const serverGlobal = globalThis as unknown as {
       document?: unknown;
       window?: unknown;
     };
@@ -183,13 +185,8 @@ describe("validateMermaidSyntax", () => {
     );
     const previousWindow = serverGlobal.window;
     const previousDocument = serverGlobal.document;
-    const { window } = parseHTML("<!doctype html><html><body></body></html>");
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: {
-        href: "https://existing.example/",
-        protocol: "https:",
-      },
+    const { window } = new JSDOM("<!doctype html><html><body></body></html>", {
+      url: "https://existing.example/",
     });
 
     serverGlobal.window = window;

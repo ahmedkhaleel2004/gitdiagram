@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
   stopCancellationPolling: vi.fn(),
   streamCompletion: vi.fn(),
   unregisterActiveGeneration: vi.fn(),
-  validateMermaid: vi.fn(),
   afterCallback: undefined as undefined | (() => Promise<void>),
   cancellationCallback: undefined as undefined | (() => void),
 }));
@@ -67,10 +66,6 @@ vi.mock("~/server/generate/openai", () => ({
   generateStructuredOutput: mocks.generateStructuredOutput,
   streamCompletion: mocks.streamCompletion,
 }));
-vi.mock("~/server/generate/mermaid", () => ({
-  validateMermaidSyntax: mocks.validateMermaid,
-}));
-
 import { POST } from "~/app/api/generate/stream/route";
 
 const estimateCostSummary = {
@@ -125,7 +120,6 @@ describe("POST /api/generate/stream", () => {
     mocks.persistAudit.mockResolvedValue(undefined);
     mocks.saveDiagram.mockResolvedValue(true);
     mocks.finalizeQuota.mockResolvedValue(undefined);
-    mocks.validateMermaid.mockResolvedValue({ valid: true });
     mocks.afterCallback = undefined;
     mocks.after.mockImplementation((callback: () => Promise<void>) => {
       mocks.afterCallback = callback;

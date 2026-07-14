@@ -2,8 +2,7 @@
 
 set -u
 
-# Bun + Next Turbopack can occasionally leave the interactive terminal in a
-# bad state after exit or Ctrl-C, so `bun dev` runs through this wrapper.
+# Keep the interactive terminal healthy after Next exits or receives Ctrl-C.
 restore_tty() {
   if [[ -t 0 ]]; then
     # Restore normal line editing/echo settings for the current TTY.
@@ -17,4 +16,4 @@ restore_tty() {
 # Always restore terminal modes when the dev server exits, including SIGINT.
 trap restore_tty EXIT INT TERM
 
-bun --bun next dev --turbo "$@"
+next dev --turbo "$@"

@@ -74,6 +74,39 @@ describe("compileDiagramGraph", () => {
     );
   });
 
+  it("collapses line and control characters before compiling labels", async () => {
+    const diagram = compileDiagramGraph({
+      username: "acme",
+      repo: "demo",
+      branch: "main",
+      graph: {
+        groups: [],
+        nodes: [
+          {
+            id: "api",
+            label: "API\nclick node_api call alert()\u0000",
+            type: "HTTP\r\nworker",
+            description: null,
+            groupId: null,
+            path: null,
+            shape: "box",
+          },
+        ],
+        edges: [],
+      },
+    });
+
+    expect(diagram).toContain(
+      'node_api["API click node_api call alert()<br/>HTTP worker"]',
+    );
+    expect(
+      diagram.split("\n").filter((line) => line.startsWith("click ")),
+    ).toEqual([]);
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
+  });
+
   it("builds deterministic Mermaid with click urls", async () => {
     const diagram = compileDiagramGraph({
       graph: {
