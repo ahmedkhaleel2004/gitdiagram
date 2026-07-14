@@ -107,7 +107,7 @@ The test suite includes real Mermaid parser contract tests for the deterministic
 
 ## Deploy
 
-The primary deployment is Vercel with Bun as the package manager and the Node.js runtime for Route Handlers. Add the variables from `.env.example` to the Vercel project, then deploy:
+The primary deployment is Vercel with Bun as both the package manager and the server runtime for Route Handlers. The route-level `runtime = "nodejs"` declarations select Next.js's server runtime rather than Edge; the project-level `bunVersion` setting makes Vercel execute those Functions with Bun. Add the variables from `.env.example` to the Vercel project, then deploy:
 
 ```bash
 vercel deploy
