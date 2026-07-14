@@ -3,7 +3,6 @@ import type {
   GenerationSessionAudit,
 } from "~/features/diagram/graph";
 import {
-  getStoredDiagramArtifact,
   getStoredDiagramState,
   toStoredSessionSummary,
   updateArtifactLatestSessionSummary,
@@ -120,7 +119,7 @@ export async function saveSuccessfulDiagramState(params: {
 }) {
   const successfulAt = params.audit.updatedAt || new Date().toISOString();
 
-  await writeDiagramArtifact({
+  const artifactWritten = await writeDiagramArtifact({
     username: params.username,
     repo: params.repo,
     githubPat: params.githubPat,
@@ -135,12 +134,18 @@ export async function saveSuccessfulDiagramState(params: {
     lastSuccessfulAt: successfulAt,
   });
 
+  if (!artifactWritten) {
+    return false;
+  }
+
   await clearFailureSummary({
     username: params.username,
     repo: params.repo,
     githubPat: params.githubPat,
     visibility: params.visibility,
   });
+
+  return true;
 }
 
 export async function updatePublicBrowseIndexForSuccessfulDiagram(params: {
@@ -154,57 +159,5 @@ export async function updatePublicBrowseIndexForSuccessfulDiagram(params: {
     repo: params.repo,
     lastSuccessfulAt: params.lastSuccessfulAt,
     stargazerCount: params.stargazerCount,
-  });
-}
-
-export async function recordLatestSessionRenderError(params: {
-  username: string;
-  repo: string;
-  githubPat?: string;
-  renderError: string;
-}) {
-  const current = await getDiagramStateRecord(
-    params.username,
-    params.repo,
-    params.githubPat,
-  );
-  const audit = current.latestSessionAudit;
-  if (!audit) {
-    return;
-  }
-
-  const visibility =
-    (
-      await getStoredDiagramArtifact({
-        username: params.username,
-        repo: params.repo,
-        githubPat: params.githubPat,
-      })
-    )?.location.visibility ?? inferVisibility(params);
-
-  const timestamp = new Date().toISOString();
-  const nextAudit: GenerationSessionAudit = {
-    ...audit,
-    status: "failed",
-    stage: "error",
-    failureStage: "browser_render",
-    renderError: params.renderError,
-    updatedAt: timestamp,
-    timeline: [
-      ...audit.timeline,
-      {
-        stage: "browser_render",
-        message: params.renderError,
-        createdAt: timestamp,
-      },
-    ],
-  };
-
-  await persistTerminalSessionAudit({
-    username: params.username,
-    repo: params.repo,
-    githubPat: params.githubPat,
-    visibility,
-    audit: nextAudit,
   });
 }

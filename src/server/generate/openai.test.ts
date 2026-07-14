@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 const openAiMocks = vi.hoisted(() => ({
+  clientOptions: vi.fn(),
   responsesCreate: vi.fn(),
   responsesParse: vi.fn(),
   responsesRetrieve: vi.fn(),
@@ -10,6 +11,10 @@ const openAiMocks = vi.hoisted(() => ({
 
 vi.mock("openai", () => ({
   default: class MockOpenAI {
+    constructor(options: unknown) {
+      openAiMocks.clientOptions(options);
+    }
+
     responses = {
       create: openAiMocks.responsesCreate,
       parse: openAiMocks.responsesParse,
@@ -61,6 +66,33 @@ beforeEach(() => {
 });
 
 describe("OpenAI Responses text verbosity", () => {
+  it("bounds costly requests and attaches a production correlation id", async () => {
+    openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
+    const signal = new AbortController().signal;
+
+    const result = await streamCompletion({
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      systemPrompt: "system",
+      userPrompt: "user",
+      apiKey: "sk-test",
+      signal,
+      clientRequestId: "session:explanation",
+    });
+
+    await consume(result.stream);
+    expect(openAiMocks.clientOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ maxRetries: 0, timeout: 150_000 }),
+    );
+    expect(openAiMocks.responsesCreate).toHaveBeenCalledWith(
+      expect.any(Object),
+      {
+        signal,
+        headers: { "X-Client-Request-Id": "session:explanation" },
+      },
+    );
+  });
+
   it("sends text.verbosity for an exact dated GPT-5.6 streaming model", async () => {
     openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
 
@@ -171,6 +203,25 @@ describe("OpenAI Responses incomplete streams", () => {
 
     await expect(consume(result.stream)).rejects.toThrow(
       "OpenAI response incomplete: max_output_tokens.",
+    );
+    await expect(result.usagePromise).resolves.toBeNull();
+  });
+
+  it("rejects a stream that ends without a terminal response event", async () => {
+    openAiMocks.responsesCreate.mockResolvedValue(
+      asAsyncEvents([{ type: "response.output_text.delta", delta: "partial" }]),
+    );
+
+    const result = await streamCompletion({
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      systemPrompt: "system",
+      userPrompt: "user",
+      apiKey: "sk-test",
+    });
+
+    await expect(consume(result.stream)).rejects.toThrow(
+      "OpenAI stream ended before response.completed.",
     );
     await expect(result.usagePromise).resolves.toBeNull();
   });

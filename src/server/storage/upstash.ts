@@ -3,6 +3,8 @@ import {
   readRequiredEnv,
 } from "~/server/storage/config";
 
+export const UPSTASH_REQUEST_TIMEOUT_MS = 5_000;
+
 function getBaseUrl() {
   return readRequiredEnv("UPSTASH_REDIS_REST_URL").replace(/\/$/, "");
 }
@@ -17,11 +19,21 @@ function getHeaders(): HeadersInit {
 async function execute<T>(path: string, body: unknown): Promise<T> {
   assertLiveStorageAllowedForTests("Upstash");
 
-  const response = await fetch(`${getBaseUrl()}${path}`, {
-    method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify(body),
-  });
+  const timeoutSignal = AbortSignal.timeout(UPSTASH_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${getBaseUrl()}${path}`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(body),
+      signal: timeoutSignal,
+    });
+  } catch (error) {
+    if (timeoutSignal.aborted) {
+      throw new Error("Upstash request timed out. Please retry.");
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     throw new Error(

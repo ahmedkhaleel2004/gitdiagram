@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { estimateGenerationCost } from "~/server/generate/cost-estimate";
@@ -7,27 +8,53 @@ import {
   isComplimentaryGateEnabled,
   modelMatchesComplimentaryFamily,
 } from "~/server/generate/complimentary-gate";
-import { getGithubData } from "~/server/generate/github";
+import {
+  getGithubData,
+  REPOSITORY_TOO_LARGE_ERROR,
+} from "~/server/generate/github";
 import {
   getModel,
   getProvider,
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
-import { generateRequestSchema } from "~/server/generate/types";
+import { parseGenerateRequest } from "~/server/generate/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 60;
+
+const COST_REQUEST_DEADLINE_MS = 55_000;
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  init: { status?: number; requestId: string },
+) {
+  return NextResponse.json(body, {
+    status: init.status,
+    headers: {
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "X-Generation-Request-Id": init.requestId,
+    },
+  });
+}
 
 export async function POST(request: Request) {
+  const requestId = randomUUID();
+  const deadlineSignal = AbortSignal.timeout(COST_REQUEST_DEADLINE_MS);
+  const signal = AbortSignal.any([request.signal, deadlineSignal]);
+
   try {
-    const parsed = generateRequestSchema.safeParse(await request.json());
+    const parsed = await parseGenerateRequest(request);
     if (!parsed.success) {
-      return NextResponse.json({
-        ok: false,
-        error: "Invalid request payload.",
-        error_code: "VALIDATION_ERROR",
-      });
+      return jsonResponse(
+        {
+          ok: false,
+          error: parsed.error,
+          error_code: parsed.errorCode,
+        },
+        { status: parsed.status, requestId },
+      );
     }
 
     const {
@@ -41,23 +68,29 @@ export async function POST(request: Request) {
 
     if (isComplimentaryGateEnabled() && !apiKey) {
       if (provider !== "openai") {
-        return NextResponse.json({
-          ok: false,
-          error: getComplimentaryProviderMismatchMessage(),
-          error_code: "COMPLIMENTARY_GATE_PROVIDER_MISMATCH",
-        });
+        return jsonResponse(
+          {
+            ok: false,
+            error: getComplimentaryProviderMismatchMessage(),
+            error_code: "COMPLIMENTARY_GATE_PROVIDER_MISMATCH",
+          },
+          { requestId },
+        );
       }
 
       if (!modelMatchesComplimentaryFamily(model)) {
-        return NextResponse.json({
-          ok: false,
-          error: getComplimentaryModelMismatchMessage(),
-          error_code: "COMPLIMENTARY_GATE_MODEL_MISMATCH",
-        });
+        return jsonResponse(
+          {
+            ok: false,
+            error: getComplimentaryModelMismatchMessage(),
+            error_code: "COMPLIMENTARY_GATE_MODEL_MISMATCH",
+          },
+          { requestId },
+        );
       }
     }
 
-    const githubData = await getGithubData(username, repo, githubPat);
+    const githubData = await getGithubData(username, repo, githubPat, signal);
     const estimate = await estimateGenerationCost({
       provider,
       model,
@@ -70,29 +103,57 @@ export async function POST(request: Request) {
         provider,
         apiKey,
       }),
+      signal,
+      clientRequestId: `${requestId}:estimate`,
     });
 
-    return NextResponse.json({
-      ok: true,
-      cost: estimate.costSummary.display,
-      cost_summary: estimate.costSummary,
-      model,
-      pricing_model: estimate.pricingModel,
-      estimated_input_tokens: estimate.estimatedInputTokens,
-      estimated_output_tokens: estimate.estimatedOutputTokens,
-      pricing: {
-        input_per_million_usd: estimate.pricing.inputPerMillionUsd,
-        output_per_million_usd: estimate.pricing.outputPerMillionUsd,
+    return jsonResponse(
+      {
+        ok: true,
+        cost: estimate.costSummary.display,
+        cost_summary: estimate.costSummary,
+        model,
+        pricing_model: estimate.pricingModel,
+        estimated_input_tokens: estimate.estimatedInputTokens,
+        estimated_output_tokens: estimate.estimatedOutputTokens,
+        pricing: {
+          input_per_million_usd: estimate.pricing.inputPerMillionUsd,
+          output_per_million_usd: estimate.pricing.outputPerMillionUsd,
+        },
       },
-    });
+      { requestId },
+    );
   } catch (error) {
-    return NextResponse.json({
-      ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to estimate generation cost.",
-      error_code: "COST_ESTIMATION_FAILED",
-    });
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to estimate generation cost.";
+    const timedOut = deadlineSignal.aborted;
+    const repositoryTooLarge = message === REPOSITORY_TOO_LARGE_ERROR;
+    const repositoryNotFound = message === "Repository not found.";
+
+    return jsonResponse(
+      {
+        ok: false,
+        error: timedOut ? "Cost estimation timed out. Please retry." : message,
+        error_code: timedOut
+          ? "GENERATION_TIMEOUT"
+          : repositoryTooLarge
+            ? "TOKEN_LIMIT_EXCEEDED"
+            : repositoryNotFound
+              ? "REPOSITORY_NOT_FOUND"
+              : "COST_ESTIMATION_FAILED",
+      },
+      {
+        status: timedOut
+          ? 504
+          : repositoryTooLarge
+            ? 413
+            : repositoryNotFound
+              ? 404
+              : 500,
+        requestId,
+      },
+    );
   }
 }

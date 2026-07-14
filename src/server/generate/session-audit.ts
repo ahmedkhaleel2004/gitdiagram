@@ -33,6 +33,57 @@ export function createGenerationSessionAudit(params: {
   };
 }
 
+/**
+ * Projects the internal audit onto the small, diagnostic summary that is safe
+ * to repeat in a terminal SSE event. The terminal event already carries the
+ * successful explanation, graph, and Mermaid source at the top level, so
+ * embedding them (and the successful graph attempt) in the audit multiplies
+ * the response size without giving the client any new information.
+ *
+ * Failed graph attempts remain useful when generation does not complete. Keep
+ * their raw model output and validation feedback, but drop the parsed graph
+ * because it is a second representation of the same output.
+ */
+export function toTerminalSessionAudit(
+  audit: GenerationSessionAudit,
+): GenerationSessionAudit {
+  const failedGraphAttempts: GenerationSessionAudit["graphAttempts"] = [];
+  if (audit.status === "failed") {
+    for (const attempt of audit.graphAttempts) {
+      if (attempt.status === "failed") {
+        failedGraphAttempts.push({ ...attempt, graph: null });
+      }
+    }
+  }
+
+  return {
+    sessionId: audit.sessionId,
+    status: audit.status,
+    stage: audit.stage,
+    provider: audit.provider,
+    model: audit.model,
+    quotaStatus: audit.quotaStatus,
+    quotaBucket: audit.quotaBucket,
+    quotaDateUtc: audit.quotaDateUtc,
+    actualCommittedTokens: audit.actualCommittedTokens,
+    quotaResetAt: audit.quotaResetAt,
+    estimatedCost: audit.estimatedCost,
+    finalCost: audit.finalCost,
+    // Successful terminals already carry the graph at the top level. Keep it
+    // for failures where compiler diagnostics otherwise lose their context.
+    graph: audit.status === "failed" ? audit.graph : null,
+    graphAttempts: failedGraphAttempts,
+    stageUsages: [],
+    validationError: audit.validationError,
+    failureStage: audit.failureStage,
+    compilerError: audit.compilerError,
+    renderError: audit.renderError,
+    timeline: [],
+    createdAt: audit.createdAt,
+    updatedAt: audit.updatedAt,
+  };
+}
+
 export function withTimelineEvent(
   audit: GenerationSessionAudit,
   stage: string,
@@ -144,7 +195,9 @@ export function withFailure(
   };
 }
 
-export function withSuccess(audit: GenerationSessionAudit): GenerationSessionAudit {
+export function withSuccess(
+  audit: GenerationSessionAudit,
+): GenerationSessionAudit {
   return {
     ...audit,
     status: "succeeded",

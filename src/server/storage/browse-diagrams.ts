@@ -1,5 +1,6 @@
 import { getJsonObject, putJsonObject } from "./r2";
 import { readRequiredEnv } from "./config";
+import { withDistributedLock } from "./distributed-lock";
 import {
   BROWSE_PAGE_SIZE,
   BROWSE_SORTS,
@@ -15,6 +16,7 @@ import type {
 } from "~/features/browse/catalog";
 
 const PUBLIC_BROWSE_INDEX_KEY = "public/v1/_meta/browse-index.json";
+const PUBLIC_BROWSE_INDEX_LOCK_KEY = "lock:v1:public-browse-index";
 
 export { BROWSE_PAGE_SIZE, BROWSE_SORTS, MIN_STAR_FILTER_VALUES };
 export type { BrowseIndexEntry, BrowsePageResult, BrowseQuery, BrowseSort };
@@ -136,9 +138,14 @@ async function writeBrowseIndex(
 export async function upsertBrowseIndexEntry(
   entry: BrowseIndexEntry,
 ): Promise<BrowseIndexEntry[]> {
-  const existingEntries = (await readStoredBrowseIndex()) ?? [];
-  existingEntries.push(entry);
-  return writeBrowseIndex(existingEntries);
+  return withDistributedLock({
+    key: PUBLIC_BROWSE_INDEX_LOCK_KEY,
+    callback: async () => {
+      const existingEntries = (await readStoredBrowseIndex()) ?? [];
+      existingEntries.push(entry);
+      return writeBrowseIndex(existingEntries);
+    },
+  });
 }
 
 export async function getBrowsePage(

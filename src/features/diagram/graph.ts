@@ -13,6 +13,25 @@ export const MAX_GRAPH_DESCRIPTION_LENGTH = 240;
 export const MAX_GRAPH_PATH_LENGTH = 512;
 export const MAX_GRAPH_ATTEMPTS = 3;
 
+export function normalizeDiagramText(value: string): string {
+  return value
+    .normalize("NFC")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function renderableDiagramTextSchema(maxLength: number) {
+  return z
+    .string()
+    .trim()
+    .min(1)
+    .max(maxLength)
+    .refine((value) => normalizeDiagramText(value).length > 0, {
+      message: "Must contain visible text.",
+    });
+}
+
 export const diagramNodeShapeSchema = z.enum([
   "box",
   "database",
@@ -25,38 +44,42 @@ export const diagramNodeShapeSchema = z.enum([
 export const diagramEdgeStyleSchema = z.enum(["solid", "dashed"]);
 
 export const diagramGroupSchema = z.object({
-  id: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
-  label: z.string().trim().min(1).max(MAX_GRAPH_LABEL_LENGTH),
-  description: z
+  id: z
     .string()
     .trim()
-    .max(MAX_GRAPH_DESCRIPTION_LENGTH)
-    .nullable(),
+    .regex(/^[a-z][a-z0-9_]*$/),
+  label: renderableDiagramTextSchema(MAX_GRAPH_LABEL_LENGTH),
+  description: z.string().trim().max(MAX_GRAPH_DESCRIPTION_LENGTH).nullable(),
 });
 
 export const diagramNodeSchema = z.object({
-  id: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
-  label: z.string().trim().min(1).max(MAX_GRAPH_LABEL_LENGTH),
-  type: z.string().trim().min(1).max(MAX_GRAPH_TYPE_LENGTH),
-  description: z
+  id: z
     .string()
     .trim()
-    .max(MAX_GRAPH_DESCRIPTION_LENGTH)
+    .regex(/^[a-z][a-z0-9_]*$/),
+  label: renderableDiagramTextSchema(MAX_GRAPH_LABEL_LENGTH),
+  type: renderableDiagramTextSchema(MAX_GRAPH_TYPE_LENGTH),
+  description: z.string().trim().max(MAX_GRAPH_DESCRIPTION_LENGTH).nullable(),
+  groupId: z
+    .string()
+    .trim()
+    .regex(/^[a-z][a-z0-9_]*$/)
     .nullable(),
-  groupId: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).nullable(),
   path: z.string().trim().min(1).max(MAX_GRAPH_PATH_LENGTH).nullable(),
   shape: diagramNodeShapeSchema.nullable(),
 });
 
 export const diagramEdgeSchema = z.object({
-  from: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
-  to: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
-  label: z.string().trim().min(1).max(MAX_GRAPH_LABEL_LENGTH).nullable(),
-  description: z
+  from: z
     .string()
     .trim()
-    .max(MAX_GRAPH_DESCRIPTION_LENGTH)
-    .nullable(),
+    .regex(/^[a-z][a-z0-9_]*$/),
+  to: z
+    .string()
+    .trim()
+    .regex(/^[a-z][a-z0-9_]*$/),
+  label: renderableDiagramTextSchema(MAX_GRAPH_LABEL_LENGTH).nullable(),
+  description: z.string().trim().max(MAX_GRAPH_DESCRIPTION_LENGTH).nullable(),
   style: diagramEdgeStyleSchema.nullable(),
 });
 

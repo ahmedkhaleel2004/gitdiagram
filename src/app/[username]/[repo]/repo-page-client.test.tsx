@@ -1,9 +1,17 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import RepoPageClient from "./repo-page-client";
 
+const { warningToast } = vi.hoisted(() => ({
+  warningToast: vi.fn(),
+}));
+
 const useDiagram = vi.fn();
+
+vi.mock("sonner", () => ({
+  toast: { warning: warningToast },
+}));
 
 vi.mock("~/hooks/useDiagram", () => ({
   useDiagram: (...args: unknown[]) => useDiagram(...args),
@@ -42,6 +50,10 @@ vi.mock("~/components/api-key-button", () => ({
 }));
 
 describe("RepoPageClient", () => {
+  beforeEach(() => {
+    warningToast.mockClear();
+  });
+
   it("renders the cached diagram before failure details", () => {
     useDiagram.mockReturnValue({
       diagram: "flowchart TD\nA-->B",
@@ -72,6 +84,36 @@ describe("RepoPageClient", () => {
 
     expect(diagram.compareDocumentPosition(audit)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("warns when a completed diagram could not be persisted", () => {
+    const persistenceWarning =
+      "The diagram was generated, but could not be cached.";
+    useDiagram.mockReturnValue({
+      diagram: "flowchart TD\nA-->B",
+      error: "",
+      loading: false,
+      lastGenerated: undefined,
+      showApiKeyDialog: false,
+      handleCopy: vi.fn(),
+      handleApiKeySubmit: vi.fn(),
+      handleCloseApiKeyDialog: vi.fn(),
+      handleOpenApiKeyDialog: vi.fn(),
+      handleExportImage: vi.fn(),
+      handleRegenerate: vi.fn(),
+      handleDiagramRenderError: vi.fn(),
+      state: {
+        status: "complete",
+        persistenceWarning,
+      },
+    });
+
+    render(<RepoPageClient username="Acme" repo="Demo" />);
+
+    expect(warningToast).toHaveBeenCalledWith(
+      "Diagram generated, but not saved",
+      expect.objectContaining({ description: persistenceWarning }),
     );
   });
 });

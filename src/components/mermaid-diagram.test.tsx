@@ -1,5 +1,19 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import MermaidChart, {
   getDefaultDiagramScale,
@@ -9,16 +23,19 @@ import MermaidChart, {
   normalizeWheelDelta,
 } from "~/components/mermaid-diagram";
 
-const { renderMock, resizeObserverObserveMock } = vi.hoisted(() => ({
-  renderMock: vi.fn().mockResolvedValue({
-    svg: "<svg viewBox='0 0 100 100'><rect width='100' height='100' /></svg>",
+const { initializeMock, renderMock, resizeObserverObserveMock } = vi.hoisted(
+  () => ({
+    initializeMock: vi.fn(),
+    renderMock: vi.fn().mockResolvedValue({
+      svg: "<svg viewBox='0 0 100 100'><rect width='100' height='100' /></svg>",
+    }),
+    resizeObserverObserveMock: vi.fn(),
   }),
-  resizeObserverObserveMock: vi.fn(),
-}));
+);
 
 vi.mock("mermaid", () => ({
   default: {
-    initialize: vi.fn(),
+    initialize: initializeMock,
     registerLayoutLoaders: vi.fn(),
     render: renderMock,
   },
@@ -68,6 +85,7 @@ describe("MermaidChart", () => {
   });
 
   beforeEach(() => {
+    initializeMock.mockClear();
     renderMock.mockClear();
     resizeObserverObserveMock.mockClear();
   });
@@ -78,7 +96,19 @@ describe("MermaidChart", () => {
     );
 
     expect(container.querySelector(".mermaid")).toBeInTheDocument();
-    expect(screen.queryByText(/Mermaid render failed:/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Mermaid render failed:/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses pure SVG labels so sanitization does not strip node text", async () => {
+    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />);
+
+    await waitFor(() => {
+      expect(initializeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ htmlLabels: false }),
+      );
+    });
   });
 
   it("keeps vertical touch scrolling enabled in read-only mode", () => {
@@ -161,8 +191,9 @@ describe("MermaidChart", () => {
       expect(screen.getByText("100%")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("region", { name: /interactive diagram viewer/i }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /interactive diagram viewer/i }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Zoom out")).toBeInTheDocument();
     expect(screen.getByLabelText("Zoom in")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /fit/i })).toBeInTheDocument();
@@ -204,7 +235,9 @@ describe("MermaidChart", () => {
     });
 
     await waitFor(() => {
-      expect((mermaid as HTMLDivElement).style.transform).not.toBe(initialTransform);
+      expect((mermaid as HTMLDivElement).style.transform).not.toBe(
+        initialTransform,
+      );
     });
   });
 

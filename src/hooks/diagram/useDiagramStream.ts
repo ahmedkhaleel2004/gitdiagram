@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { streamDiagramGeneration } from "~/features/diagram/api";
 import type {
@@ -30,6 +30,15 @@ export function useDiagramStream({
 }: UseDiagramStreamOptions) {
   const [state, setState] = useState<DiagramStreamState>(
     initialState ?? { status: "idle" },
+  );
+  const activeGenerationRef = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      activeGenerationRef.current?.abort();
+      activeGenerationRef.current = null;
+    },
+    [],
   );
 
   const handleStreamMessage = useCallback(
@@ -104,6 +113,7 @@ export function useDiagramStream({
             graph: data.graph,
             graphAttempts: data.graph_attempts,
             latestSessionAudit: data.latest_session_audit,
+            persistenceWarning: data.persistence_warning,
           });
           await onComplete({
             explanation,
@@ -136,6 +146,9 @@ export function useDiagramStream({
 
   const runGeneration = useCallback(
     async (githubPat?: string) => {
+      activeGenerationRef.current?.abort();
+      const abortController = new AbortController();
+      activeGenerationRef.current = abortController;
       setState({
         status: "started",
         message: "Starting generation process...",
@@ -145,17 +158,28 @@ export function useDiagramStream({
         explanation: "",
       };
 
-      await streamDiagramGeneration(
-        {
-          username,
-          repo,
-          apiKey: getStoredOpenAiKey(),
-          githubPat,
-        },
-        {
-          onMessage: (message) => handleStreamMessage(message, buffers),
-        },
-      );
+      try {
+        await streamDiagramGeneration(
+          {
+            username,
+            repo,
+            apiKey: getStoredOpenAiKey(),
+            githubPat,
+            signal: abortController.signal,
+          },
+          {
+            onMessage: (message) => handleStreamMessage(message, buffers),
+          },
+        );
+      } catch (error) {
+        if (!abortController.signal.aborted) {
+          throw error;
+        }
+      } finally {
+        if (activeGenerationRef.current === abortController) {
+          activeGenerationRef.current = null;
+        }
+      }
     },
     [handleStreamMessage, repo, username],
   );

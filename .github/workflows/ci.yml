@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  frontend:
+  app:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.0
@@ -21,30 +21,7 @@ jobs:
         run: bun run lint
       - name: Typecheck
         run: bun run typecheck
-      - name: Frontend tests
+      - name: Tests
         run: bun run test
       - name: Build
         run: bun run build
-
-  backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.0
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.11
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-      - name: Install backend JS dependencies
-        run: cd backend && bun ci
-      - name: Install uv
-        run: pip install uv==0.11.2
-      - name: Sync backend dependencies
-        run: cd backend && uv sync --frozen --no-install-project
-      - name: Import sanity
-        run: cd backend && uv run python -m compileall app
-      - name: Backend tests
-        run: cd backend && uv run pytest -q

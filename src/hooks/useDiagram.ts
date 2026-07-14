@@ -1,9 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-import {
-  getDiagramState,
-  persistDiagramRenderError,
-} from "~/app/_actions/cache";
+import { getDiagramState } from "~/features/diagram/api";
 import type {
   DiagramStateResponse,
   DiagramStreamState,
@@ -47,7 +44,9 @@ export function useDiagram(
   repo: string,
   initialState?: DiagramStateResponse | null,
 ) {
-  const [loading, setLoading] = useState<boolean>(!Boolean(initialState?.diagram));
+  const [loading, setLoading] = useState<boolean>(
+    !Boolean(initialState?.diagram),
+  );
   const [lastGenerated, setLastGenerated] = useState<Date | undefined>(
     initialState?.lastSuccessfulAt
       ? new Date(initialState.lastSuccessfulAt)
@@ -56,11 +55,7 @@ export function useDiagram(
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
 
   const applyCompletedDiagram = useCallback(
-    async ({
-      generatedAt,
-    }: {
-      generatedAt?: string;
-    }) => {
+    async ({ generatedAt }: { generatedAt?: string }) => {
       if (generatedAt) {
         setLastGenerated(new Date(generatedAt));
       }
@@ -122,7 +117,9 @@ export function useDiagram(
         explanation: stateRecord.explanation ?? prev.explanation,
         latestSessionAudit: latestAudit ?? prev.latestSessionAudit,
         costSummary:
-          latestAudit?.finalCost ?? latestAudit?.estimatedCost ?? prev.costSummary,
+          latestAudit?.finalCost ??
+          latestAudit?.estimatedCost ??
+          prev.costSummary,
         graph: stateRecord.graph ?? latestAudit?.graph ?? prev.graph,
         graphAttempts: latestAudit?.graphAttempts ?? prev.graphAttempts,
         failureStage: shouldExposeFailure
@@ -282,14 +279,7 @@ export function useDiagram(
   };
 
   const handleDiagramRenderError = useCallback(
-    async (renderMessage: string) => {
-      const githubPat = localStorage.getItem("github_pat");
-      await persistDiagramRenderError(
-        username,
-        repo,
-        renderMessage,
-        githubPat ?? undefined,
-      );
+    (renderMessage: string) => {
       setState((prev) => ({
         ...prev,
         status: "error",
@@ -298,7 +288,7 @@ export function useDiagram(
         validationError: renderMessage,
       }));
     },
-    [repo, setState, username],
+    [setState],
   );
 
   return {

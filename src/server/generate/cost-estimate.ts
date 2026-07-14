@@ -31,6 +31,8 @@ interface CountPromptInputTokensParams {
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
   preferExactInputTokenCount?: boolean;
+  signal?: AbortSignal;
+  clientRequestId?: string;
 }
 
 interface CountPromptInputTokensResult {
@@ -57,7 +59,11 @@ async function countPromptInputTokens({
   apiKey,
   reasoningEffort,
   preferExactInputTokenCount = true,
+  signal,
+  clientRequestId,
 }: CountPromptInputTokensParams): Promise<CountPromptInputTokensResult> {
+  signal?.throwIfAborted();
+
   if (!preferExactInputTokenCount || !supportsExactInputTokenCount(provider)) {
     return {
       inputTokens: estimateTokens(`${systemPrompt}\n${userPrompt}`),
@@ -73,6 +79,8 @@ async function countPromptInputTokens({
       userPrompt,
       apiKey,
       reasoningEffort,
+      signal,
+      clientRequestId,
     });
 
     return {
@@ -80,6 +88,11 @@ async function countPromptInputTokens({
       usedFallback: false,
     };
   } catch {
+    // Provider failures can safely fall back to the local estimate, but an
+    // aborted request must stop all parallel token-count calls immediately.
+    // Swallowing the abort here would let the cost route overrun its deadline.
+    signal?.throwIfAborted();
+
     return {
       inputTokens: estimateTokens(`${systemPrompt}\n${userPrompt}`),
       usedFallback: true,
@@ -96,6 +109,8 @@ export async function estimateGenerationCost(params: {
   repo: string;
   apiKey?: string;
   preferExactInputTokenCount?: boolean;
+  signal?: AbortSignal;
+  clientRequestId?: string;
 }): Promise<GenerationEstimateResult> {
   const explanationPrompt = toTaggedMessage({
     file_tree: params.fileTree,
@@ -121,6 +136,10 @@ export async function estimateGenerationCost(params: {
         apiKey: params.apiKey,
         reasoningEffort: EXPLANATION_REASONING_EFFORT,
         preferExactInputTokenCount: params.preferExactInputTokenCount,
+        signal: params.signal,
+        clientRequestId: params.clientRequestId
+          ? `${params.clientRequestId}:explanation`
+          : undefined,
       }),
       countPromptInputTokens({
         provider: params.provider,
@@ -130,6 +149,10 @@ export async function estimateGenerationCost(params: {
         apiKey: params.apiKey,
         reasoningEffort: GRAPH_REASONING_EFFORT,
         preferExactInputTokenCount: params.preferExactInputTokenCount,
+        signal: params.signal,
+        clientRequestId: params.clientRequestId
+          ? `${params.clientRequestId}:graph`
+          : undefined,
       }),
       countPromptInputTokens({
         provider: params.provider,
@@ -139,6 +162,10 @@ export async function estimateGenerationCost(params: {
         apiKey: params.apiKey,
         reasoningEffort: GRAPH_REASONING_EFFORT,
         preferExactInputTokenCount: params.preferExactInputTokenCount,
+        signal: params.signal,
+        clientRequestId: params.clientRequestId
+          ? `${params.clientRequestId}:graph-repair`
+          : undefined,
       }),
     ]);
 

@@ -26,34 +26,8 @@ updates:
         update-types:
           - "version-update:semver-major"
 
-  - package-ecosystem: "bun"
-    directory: "/backend"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "all-dependencies"
-    cooldown:
-      default-days: 3
-
-  - package-ecosystem: "uv"
-    directory: "/backend"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "all-dependencies"
-    cooldown:
-      default-days: 3
-    allow:
-      - dependency-type: "all"
-
   - package-ecosystem: "github-actions"
     directory: "/"
-    patterns:
-      - "*"
-    multi-ecosystem-group: "all-dependencies"
-    cooldown:
-      default-days: 3
-
-  - package-ecosystem: "docker"
-    directory: "/backend"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"

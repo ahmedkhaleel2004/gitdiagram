@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import MainCard from "~/components/main-card";
 import Loading from "~/components/loading";
@@ -57,6 +58,17 @@ export default function RepoPageClient({
   useEffect(() => {
     setDiagramRendered(false);
   }, [diagram, zoomingEnabled]);
+
+  useEffect(() => {
+    if (!state.persistenceWarning) {
+      return;
+    }
+
+    toast.warning("Diagram generated, but not saved", {
+      description: state.persistenceWarning,
+      duration: 8_000,
+    });
+  }, [state.persistenceWarning]);
 
   return (
     <div className="flex flex-col items-center p-4">

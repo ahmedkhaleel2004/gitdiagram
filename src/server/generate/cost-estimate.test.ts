@@ -66,4 +66,45 @@ describe("estimateGenerationCost", () => {
     expect(firstGraphCall?.userPrompt).not.toContain("<validation_feedback>");
     expect(repairGraphCall?.userPrompt).toContain("src/main.ts");
   });
+
+  it("falls back to a local estimate for a provider counting failure", async () => {
+    countInputTokens.mockRejectedValue(new Error("Provider unavailable"));
+
+    const result = await estimateGenerationCost({
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      fileTree: "src/main.ts",
+      readme: "# Demo",
+      username: "acme",
+      repo: "demo",
+    });
+
+    expect(result.costSummary.note).toContain(
+      "Some input tokens were approximated",
+    );
+  });
+
+  it("propagates an AbortSignal instead of converting it to a local estimate", async () => {
+    const controller = new AbortController();
+    const abortReason = new DOMException(
+      "Cost deadline exceeded",
+      "TimeoutError",
+    );
+    countInputTokens.mockImplementation(async () => {
+      controller.abort(abortReason);
+      throw new Error("Provider request aborted");
+    });
+
+    await expect(
+      estimateGenerationCost({
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        fileTree: "src/main.ts",
+        readme: "# Demo",
+        username: "acme",
+        repo: "demo",
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(abortReason);
+  });
 });

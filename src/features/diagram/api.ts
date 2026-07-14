@@ -1,6 +1,7 @@
 import { parseSSEStreamBuffer } from "~/features/diagram/sse";
 import type {
   DiagramCostResponse,
+  DiagramStateResponse,
   DiagramStreamMessage,
   StreamGenerationParams,
 } from "~/features/diagram/types";
@@ -11,35 +12,58 @@ interface StreamHandlers {
   ) => boolean | void | Promise<boolean | void>;
 }
 
-type GenerationBackendMode = "next" | "fastapi";
+const GENERATE_BASE_PATH = "/api/generate";
 
-function getGenerationBackendMode(): GenerationBackendMode {
-  const mode = process.env.NEXT_PUBLIC_GENERATION_BACKEND?.trim().toLowerCase();
+export async function getDiagramState(
+  username: string,
+  repo: string,
+  githubPat?: string,
+): Promise<DiagramStateResponse> {
+  const response = await fetch("/api/diagram-state", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      username,
+      repo,
+      github_pat: githubPat,
+    }),
+  });
 
-  if (mode === "next" || mode === "fastapi") {
-    return mode;
+  if (!response.ok) {
+    throw new Error("Diagram state is temporarily unavailable.");
   }
 
-  throw new Error(
-    "Missing NEXT_PUBLIC_GENERATION_BACKEND. Set it to 'next' or 'fastapi'.",
+  return (await response.json()) as DiagramStateResponse;
+}
+
+function isTerminalMessage(message: DiagramStreamMessage): boolean {
+  return (
+    message.status === "complete" ||
+    message.status === "error" ||
+    Boolean(message.error)
   );
 }
 
-function getGenerateBasePath() {
-  const mode = getGenerationBackendMode();
-
-  if (mode === "next") {
-    return "/api/generate";
-  }
-
-  const apiBaseUrl = process.env.NEXT_PUBLIC_GENERATE_API_BASE_URL?.trim();
-  if (!apiBaseUrl) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_GENERATE_API_BASE_URL for fastapi generation mode.",
-    );
-  }
-
-  return apiBaseUrl.replace(/\/$/, "");
+function sendGenerationCancellation(
+  sessionId: string,
+  cancelToken: string,
+): void {
+  void fetch(`${GENERATE_BASE_PATH}/cancel`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      session_id: sessionId,
+      cancel_token: cancelToken,
+    }),
+    keepalive: true,
+  }).catch(() => {
+    // The stream's own deadline remains the fallback if this best-effort
+    // cancellation notification cannot reach the server.
+  });
 }
 
 export async function getGenerationCost(
@@ -49,7 +73,7 @@ export async function getGenerationCost(
   apiKey?: string,
 ): Promise<DiagramCostResponse> {
   try {
-    const response = await fetch(`${getGenerateBasePath()}/cost`, {
+    const response = await fetch(`${GENERATE_BASE_PATH}/cost`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -96,60 +120,113 @@ export async function streamDiagramGeneration(
   params: StreamGenerationParams,
   handlers: StreamHandlers,
 ): Promise<void> {
-  const response = await fetch(`${getGenerateBasePath()}/stream`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      username: params.username,
-      repo: params.repo,
-      api_key: params.apiKey,
-      github_pat: params.githubPat,
-    }),
-  });
-
-  if (!response.ok) {
-    try {
-      const data = (await response.json()) as DiagramStreamMessage;
-      throw new Error(data.error ?? "Failed to start streaming");
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error("Failed to start streaming");
+  const sessionId = globalThis.crypto.randomUUID();
+  const cancelToken = globalThis.crypto.randomUUID();
+  let receivedTerminalEvent = false;
+  let cancellationSent = false;
+  const notifyCancellation = () => {
+    if (receivedTerminalEvent || cancellationSent) {
+      return;
     }
-  }
+    cancellationSent = true;
+    sendGenerationCancellation(sessionId, cancelToken);
+  };
 
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error("No reader available");
+  params.signal?.addEventListener("abort", notifyCancellation, { once: true });
+  if (params.signal?.aborted) {
+    notifyCancellation();
   }
 
   try {
-    let streamBuffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      streamBuffer += new TextDecoder().decode(value);
-      const { messages, remainder } = parseSSEStreamBuffer(streamBuffer);
-      streamBuffer = remainder;
-      for (const message of messages) {
-        const shouldContinue = await handlers.onMessage(message);
-        if (shouldContinue === false) {
-          return;
+    const response = await fetch(`${GENERATE_BASE_PATH}/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username: params.username,
+        repo: params.repo,
+        api_key: params.apiKey,
+        github_pat: params.githubPat,
+        session_id: sessionId,
+        cancel_token: cancelToken,
+      }),
+      signal: params.signal,
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error(
+          "Too many generation requests. Please wait and try again.",
+        );
+      }
+
+      try {
+        const data = (await response.json()) as DiagramStreamMessage;
+        throw new Error(data.error ?? "Failed to start streaming");
+      } catch (error) {
+        if (error instanceof Error) {
+          throw error;
         }
+        throw new Error("Failed to start streaming");
       }
     }
 
-    const { messages } = parseSSEStreamBuffer(`${streamBuffer}\n\n`);
-    for (const message of messages) {
-      const shouldContinue = await handlers.onMessage(message);
-      if (shouldContinue === false) {
-        return;
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("No reader available");
+    }
+
+    try {
+      let streamBuffer = "";
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        streamBuffer += decoder.decode(value, { stream: true });
+        const { messages, remainder } = parseSSEStreamBuffer(streamBuffer);
+        streamBuffer = remainder;
+        for (const message of messages) {
+          receivedTerminalEvent =
+            receivedTerminalEvent || isTerminalMessage(message);
+          const shouldContinue = await handlers.onMessage(message);
+          if (shouldContinue === false) {
+            if (!receivedTerminalEvent) {
+              notifyCancellation();
+            }
+            await reader.cancel();
+            return;
+          }
+        }
       }
+
+      streamBuffer += decoder.decode();
+      const { messages } = parseSSEStreamBuffer(`${streamBuffer}\n\n`);
+      for (const message of messages) {
+        receivedTerminalEvent =
+          receivedTerminalEvent || isTerminalMessage(message);
+        const shouldContinue = await handlers.onMessage(message);
+        if (shouldContinue === false) {
+          if (!receivedTerminalEvent) {
+            notifyCancellation();
+          }
+          await reader.cancel();
+          return;
+        }
+      }
+
+      if (!receivedTerminalEvent) {
+        throw new Error(
+          "Generation stream ended before completion. Please retry.",
+        );
+      }
+    } finally {
+      reader.releaseLock();
     }
   } finally {
-    reader.releaseLock();
+    if (!receivedTerminalEvent) {
+      notifyCancellation();
+    }
+    params.signal?.removeEventListener("abort", notifyCancellation);
   }
 }
