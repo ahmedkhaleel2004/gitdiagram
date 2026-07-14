@@ -7,6 +7,3 @@
 .ruff_cache/
 coverage/
 tmp/
-
-# The legacy Railway service is not part of the Vercel application.
-backend/

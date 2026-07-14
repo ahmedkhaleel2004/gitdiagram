@@ -2,7 +2,6 @@
 
 # dependencies
 /node_modules
-/backend/node_modules
 /.pnp
 .pnp.js
 
@@ -53,7 +52,6 @@ next-env.d.ts
 
 __pycache__/
 venv
-backend/.venv
 .venv
 
 # vscode

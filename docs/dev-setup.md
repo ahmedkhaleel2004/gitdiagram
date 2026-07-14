@@ -1,68 +1,29 @@
-# Local Development Setup
+# Local development setup
 
-This project supports two explicit generation backends:
+GitDiagram is one Next.js application. The UI and generation API run together; no second backend process is required.
 
-- FastAPI in `backend/` (recommended for production and Railway parity)
-- Next.js Route Handlers under `/api/generate/*`
+## Prerequisites
 
-## 1) Install tool versions
-
-Recommended versions:
-
-- Bun: `1.3.11`
-- Python: `3.14.x` (required for FastAPI backend work)
-- uv: `0.11.2` (required for FastAPI backend work)
-- Docker: latest stable
-
-Install/check:
+- Node.js `20.9.0` or newer, as required by Next.js 16
+- Bun `1.3.11` or a compatible `1.3.x`
 
 ```bash
+node --version
 bun --version
-python3 --version
-uv --version
-docker --version
 ```
 
-Expected:
-
-- Bun prints `1.3.11` (or a compatible `1.3.x`)
-- Python starts with `3.14`
-
-## 2) Install root JS dependencies
+## Install
 
 ```bash
 bun install
-```
-
-## 3) Install backend JS dependencies
-
-```bash
-cd backend
-bun install --frozen-lockfile
-cd ..
-```
-
-This installs the FastAPI backend's Mermaid validator dependencies from `backend/bun.lock`.
-
-## 4) Sync backend Python dependencies with uv
-
-```bash
-cd backend
-uv sync --no-install-project
-cd ..
-```
-
-This creates `backend/.venv` and installs pinned Python dependencies from `backend/uv.lock`.
-
-Mermaid validation uses the same Mermaid + DOMPurify bootstrap strategy across both generation backends. The `next` backend runs it in-process, and the FastAPI backend invokes `backend/scripts/validate_mermaid.mjs`, so the backend runtime depends on Bun being available in addition to Python.
-
-## 5) Configure environment variables
-
-```bash
 cp .env.example .env
 ```
 
-Then set at least:
+Use `bun ci` when you want an exact frozen-lockfile install, such as in CI.
+
+## Configure
+
+Set these storage and coordination variables in `.env`:
 
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
@@ -72,25 +33,45 @@ Then set at least:
 - `CACHE_KEY_SECRET`
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
-- `AI_PROVIDER`
-- `OPENAI_API_KEY` or `OPENROUTER_API_KEY`
 
-Optional:
+Choose one AI provider:
 
-- `OPENAI_MODEL` when `AI_PROVIDER=openai` (defaults to `gpt-5.6-terra`)
-- `OPENAI_COMPLIMENTARY_GATE_ENABLED` to hard-stop default-key usage at the configured complimentary small-model daily ceiling
-- `OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS` when the complimentary gate is enabled (defaults to `10000000`)
-- `OPENAI_COMPLIMENTARY_MODEL_FAMILY` when the complimentary gate is enabled (defaults to `gpt-5.6-terra`)
-- `OPENROUTER_MODEL` when `AI_PROVIDER=openrouter` (defaults to `openai/gpt-5.6-terra`)
-- `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME` for OpenRouter attribution headers
-- `GITHUB_PAT`
+- OpenAI: `AI_PROVIDER=openai` and `OPENAI_API_KEY`
+- OpenRouter: `AI_PROVIDER=openrouter` and `OPENROUTER_API_KEY`
+- Atlas Cloud: `AI_PROVIDER=atlas` and `ATLAS_API_KEY`
+
+Optional generation controls include:
+
+- `OPENAI_MODEL`
+- `OPENAI_COMPLIMENTARY_GATE_ENABLED`
+- `OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS`
+- `OPENAI_COMPLIMENTARY_MODEL_FAMILY`
+- `OPENROUTER_MODEL`
+- `OPENROUTER_SITE_URL`
+- `OPENROUTER_APP_NAME`
+- `ATLAS_MODEL`
+- `ATLAS_BASE_URL`
+
+Optional GitHub authentication:
+
+- `GITHUB_PAT` for one token
+- `GITHUB_PATS` for a comma- or newline-separated token pool
+- `GITHUB_APP_ID` or `GITHUB_CLIENT_ID`, plus `GITHUB_PRIVATE_KEY` and `GITHUB_INSTALLATION_ID`, for GitHub App authentication
+
+Optional browser analytics:
+
 - `NEXT_PUBLIC_POSTHOG_KEY`
-- `NEXT_PUBLIC_GENERATION_BACKEND`
-- `NEXT_PUBLIC_GENERATE_API_BASE_URL` when `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
 
-Example OpenRouter local config:
+The default OpenAI configuration is:
 
-```bash
+```dotenv
+AI_PROVIDER=openai
+OPENAI_MODEL=gpt-5.6-terra
+```
+
+An OpenRouter example:
+
+```dotenv
 AI_PROVIDER=openrouter
 OPENROUTER_API_KEY=...
 OPENROUTER_MODEL=openai/gpt-5.6-terra
@@ -98,65 +79,39 @@ OPENROUTER_SITE_URL=http://localhost:3000
 OPENROUTER_APP_NAME=GitDiagram
 ```
 
-## 6) Start local services
-
-Simplest local mode:
+## Run
 
 ```bash
 bun run dev
 ```
 
-with:
+The application is available at [http://localhost:3000](http://localhost:3000). Next.js Route Handlers under `/api/generate/*` run in the same process.
 
-- `NEXT_PUBLIC_GENERATION_BACKEND=next`
-
-Production-parity mode:
+For a production-mode local check:
 
 ```bash
-bun run dev
+bun run build
+bun run start
 ```
 
-Start FastAPI backend (recommended for production parity):
+## Verify
 
 ```bash
-docker-compose up --build -d
-docker-compose logs -f api
-```
-
-or
-
-```bash
-bun run dev:backend
-```
-
-The checked-in `docker-compose.yml` preserves the container's `.venv` and `node_modules`, so the production-parity container does not depend on host-installed backend dependencies after `docker-compose up --build`.
-
-If the FastAPI backend is running locally at `http://localhost:8000`, set:
-
-- `NEXT_PUBLIC_GENERATION_BACKEND=fastapi`
-- `NEXT_PUBLIC_GENERATE_API_BASE_URL=http://localhost:8000/generate`
-
-If you want to use the Next.js Route Handlers instead, set:
-
-- `NEXT_PUBLIC_GENERATION_BACKEND=next`
-
-## 7) Verification commands
-
-Run all baseline checks:
-
-```bash
-bun run check
+bun run lint
+bun run typecheck
 bun run test
 bun run build
 ```
 
-FastAPI backend checks:
+The test suite includes real Mermaid parser contract tests for the deterministic graph compiler, API route tests, cancellation and quota tests, storage concurrency tests, and browser-rendering safety tests.
+
+## Deploy
+
+The repository is configured for Vercel with Bun as the package manager and the Node.js runtime for Route Handlers. Add the variables from `.env.example` to the Vercel project, then deploy:
 
 ```bash
-cd backend
-uv run pytest -q
-uv run python -m compileall app
-cd ..
+vercel deploy
+vercel deploy --prod
 ```
 
-If all pass, your local environment is ready.
+Local `.env` files and tooling artifacts are excluded by `.vercelignore`.

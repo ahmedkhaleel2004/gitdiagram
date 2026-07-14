@@ -14,11 +14,7 @@
     "checkJs": true,
     "ignoreDeprecations": "6.0",
     /* Bundled projects */
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "ES2022"
-    ],
+    "lib": ["dom", "dom.iterable", "ES2022"],
     "noEmit": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -29,15 +25,11 @@
       }
     ],
     "incremental": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
-      "~/*": [
-        "./src/*"
-      ]
+      "~/*": ["./src/*"]
     }
   },
   "include": [
@@ -49,12 +41,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "backend/**/*",
-    "backend/venv",
-    "backend/.venv",
-    "backend/__pycache__",
-    "**/__pycache__"
-  ]
+  "exclude": ["node_modules", "**/__pycache__"]
 }
