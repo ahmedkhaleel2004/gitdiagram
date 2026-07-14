@@ -1,73 +1,60 @@
-# Vercel and Railway failover
+# Offline Railway recovery
 
-GitDiagram has one application implementation and two deployment targets:
+GitDiagram has one application implementation and one live deployment target:
 
-- **Primary:** Vercel serves `gitdiagram.com`.
-- **Standby:** Railway runs the same Next.js application from the same commit at
-  `standby.gitdiagram.com`.
-- **Stable standby API:** `api.gitdiagram.com` points at the same Railway
-  service.
+- **Live production:** Vercel serves the frontend and every backend Route Handler at `gitdiagram.com`.
+- **Offline recovery option:** `Dockerfile` and `railway.json` can package the same application for Railway if Vercel must be replaced later.
 
-The Railway target is not the deleted Python backend. It contains the same Route Handlers, graph schema, deterministic Mermaid compiler, cancellation protocol, quota logic, and persistence code as Vercel.
+There is no deployed Railway service, connected Railway source, Railway domain, or Railway DNS record. Railway is not receiving traffic and is not part of the normal request path.
 
-## Why this stays simple
+## What is retained
 
-- R2 owns diagram artifacts.
-- Upstash owns quota, cancellation, and lock state.
-- Neither deployment relies on a local filesystem or process-local coordination.
-- Browser and API traffic stay on one origin during a full-site cutover.
-- Railway App Sleeping stops compute charges after an idle period and wakes on the next request.
+The repository keeps a production-only Docker path that:
 
-## Verify the standby
+- builds the existing Next.js application with `output: "standalone"`;
+- runs the generated server as a non-root user;
+- respects the platform-provided `PORT`;
+- exposes the same UI, Route Handlers, graph compiler, quota logic, cancellation protocol, and persistence code as Vercel;
+- uses `/api/healthz` as its deployment health check.
 
-The Railway service has App Sleeping enabled. Wake and verify it with the stable
-domain:
+This is not the old Python/FastAPI backend. No Python service or second API implementation is required.
 
-```bash
-curl --fail-with-body https://api.gitdiagram.com/api/healthz
-curl --fail-with-body \
-  --request POST https://api.gitdiagram.com/api/generate/cost \
-  --header "Content-Type: application/json" \
-  --data '{"username":"octocat","repo":"Hello-World"}'
-```
+## Recreate Railway only when needed
 
-A wake from sleep can make the first health request slower. Wait for a successful health response before routing production traffic.
+Do not run these commands during normal operation. In a real recovery:
 
-The Railway-provided domain
-`gitdiagram-api-production.up.railway.app` remains available as a last-resort
-route if the `gitdiagram.com` DNS zone itself has a problem.
+1. Check out the exact production commit and pass the local quality gate.
+2. Link this directory to an empty Railway project with `railway link`, or create a new one with `railway init --name gitdiagram`.
+3. Create an unconnected service:
 
-## Cut over to Railway
+   ```bash
+   railway add --service gitdiagram-api
+   ```
 
-1. Confirm Railway is running the same Git commit as production.
-2. Wake it with `/api/healthz` and run a cost request plus one small streamed generation.
-3. Open `https://standby.gitdiagram.com` for an immediate independent full-app
-   fallback, or route `gitdiagram.com` to the prepared Railway custom-domain
-   target for a transparent public cutover.
-4. Confirm the homepage, a persisted diagram, generation, cancellation, and R2 persistence.
-5. Leave the Vercel deployment intact until the incident is resolved.
+4. Add the required variables from `.env.example`. Supply secret values through stdin so they do not enter shell history:
 
-Because the whole app moves together, no browser CORS toggle or public backend selector is needed.
+   ```bash
+   railway variable set VARIABLE_NAME --stdin --service gitdiagram-api
+   ```
+
+5. Upload and deploy the current checkout:
+
+   ```bash
+   railway up --service gitdiagram-api
+   ```
+
+   `railway up` does not connect the service to GitHub and does not create a public domain by itself.
+
+6. Add a temporary Railway domain, then verify health, cost estimation, a small streamed generation, cancellation, and persisted diagram state.
+7. Only after those checks pass, make an explicit routing decision. Keep Vercel intact until the incident is resolved.
+
+Because the whole Next.js application moves together, recovery does not need a browser CORS toggle, a public backend selector, or a data migration. R2 owns diagram artifacts and Upstash owns shared quota, cancellation, lock, and failure state.
 
 ## Return to Vercel
 
-1. Confirm `https://gitdiagram.com/api/healthz` on the intended Vercel deployment or its deployment URL.
-2. Route `gitdiagram.com` back to Vercel.
-3. Run the same health, cost, generation, cancellation, and persistence checks.
-4. Leave Railway in App Sleeping mode as the standby.
+1. Verify `https://gitdiagram.com/api/healthz` and a small production generation.
+2. Restore `gitdiagram.com` to the intended Vercel deployment if routing changed.
+3. Remove the temporary Railway domains and delete the Railway service.
+4. Confirm the Railway project has no services and the DNS zone has no Railway records.
 
-## Deploy both targets
-
-Vercel:
-
-```bash
-vercel deploy --prod
-```
-
-Railway normally follows `main` through its connected GitHub source. A manual deployment is also available:
-
-```bash
-railway service redeploy --service gitdiagram-api --environment production
-```
-
-The checked-in `railway.json` fixes the Dockerfile, health check, and restart policy. The service-level App Sleeping flag is managed by Railway because it is an infrastructure setting rather than application code.
+The checked-in recovery files remain available for the next incident without keeping Railway compute, deployments, or public endpoints alive.
