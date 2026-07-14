@@ -3,7 +3,10 @@ import type {
   DiagramGraphEdge,
   DiagramGraphNode,
 } from "~/features/diagram/graph";
-import { diagramGraphSchema } from "~/features/diagram/graph";
+import {
+  diagramGraphSchema,
+  normalizeDiagramText,
+} from "~/features/diagram/graph";
 
 export interface GraphValidationIssue {
   path: string;
@@ -136,10 +139,7 @@ export function formatGraphValidationFeedback(
 }
 
 function escapeMermaidText(value: string): string {
-  return value
-    .normalize("NFC")
-    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/gu, " ")
-    .replace(/\s+/gu, " ")
+  const escaped = normalizeDiagramText(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -153,6 +153,8 @@ function escapeMermaidText(value: string): string {
     .replace(/\(/g, "&#40;")
     .replace(/\)/g, "&#41;")
     .trim();
+
+  return escaped || "Unnamed";
 }
 
 const genericNodeTypes = new Set([

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFileTreeLookup,
   compileDiagramGraph,
+  parseDiagramGraph,
   validateDiagramGraph,
 } from "~/server/generate/graph";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
@@ -31,6 +32,44 @@ describe("validateDiagramGraph", () => {
 
     expect(result.valid).toBe(false);
     expect(result.issues[0]?.path).toBe("nodes.0.path");
+  });
+
+  it("rejects graph text that becomes empty after safety normalization", () => {
+    const result = parseDiagramGraph(
+      JSON.stringify({
+        groups: [{ id: "runtime", label: "\u0000\u001f", description: null }],
+        nodes: [
+          {
+            id: "api",
+            label: "\u2028",
+            type: "\u0000",
+            description: null,
+            groupId: "runtime",
+            path: null,
+            shape: "box",
+          },
+        ],
+        edges: [
+          {
+            from: "api",
+            to: "api",
+            label: "\u2029",
+            description: null,
+            style: "solid",
+          },
+        ],
+      }),
+    );
+
+    expect(result.graph).toBeNull();
+    expect(result.issues.map((issue) => issue.path)).toEqual(
+      expect.arrayContaining([
+        "groups.0.label",
+        "nodes.0.label",
+        "nodes.0.type",
+        "edges.0.label",
+      ]),
+    );
   });
 });
 
@@ -109,6 +148,44 @@ describe("compileDiagramGraph", () => {
     });
   });
 
+  it("uses a parseable fallback if invalid empty text bypasses the schema", async () => {
+    const diagram = compileDiagramGraph({
+      username: "acme",
+      repo: "demo",
+      branch: "main",
+      graph: {
+        groups: [{ id: "runtime", label: "\u0000", description: null }],
+        nodes: [
+          {
+            id: "api",
+            label: "\u001f",
+            type: "\u0000",
+            description: null,
+            groupId: "runtime",
+            path: null,
+            shape: "box",
+          },
+        ],
+        edges: [
+          {
+            from: "api",
+            to: "api",
+            label: "\u2029",
+            description: null,
+            style: "solid",
+          },
+        ],
+      },
+    });
+
+    expect(diagram).toContain('subgraph group_runtime["Unnamed"]');
+    expect(diagram).toContain('node_api["Unnamed<br/>Unnamed"]');
+    expect(diagram).toContain('node_api -->|"Unnamed"| node_api');
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
+  });
+
   it("parses adversarial text across every supported node shape", async () => {
     const shapes = [
       "box",
@@ -136,8 +213,7 @@ describe("compileDiagramGraph", () => {
           groups: [
             {
               id: `group_${index}`,
-              label:
-                adversarialLabels[(index + 2) % adversarialLabels.length]!,
+              label: adversarialLabels[(index + 2) % adversarialLabels.length]!,
               description: null,
             },
           ],
