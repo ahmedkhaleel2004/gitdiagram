@@ -25,7 +25,7 @@ You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 ## Stack
 
 - **Application:** Next.js 16 App Router, React 19, TypeScript, Tailwind CSS, and Radix UI
-- **Generation API:** same-origin Next.js Route Handlers running on Vercel's Node.js runtime
+- **Generation API:** same-origin Next.js Route Handlers running on Vercel's Bun runtime
 - **Storage:** Cloudflare R2 for diagram artifacts
 - **Coordination:** Upstash Redis for quota accounting, cancellation, locks, and short-lived failure state
 - **AI:** OpenAI, OpenRouter, or Atlas Cloud through `AI_PROVIDER`

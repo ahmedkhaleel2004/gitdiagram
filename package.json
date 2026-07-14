@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "next build",
+    "build": "bun run --bun next build",
     "check": "bun run lint && bun run typecheck",
     "dev": "./scripts/dev-turbo.sh",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",

@@ -16,4 +16,4 @@ restore_tty() {
 # Always restore terminal modes when the dev server exits, including SIGINT.
 trap restore_tty EXIT INT TERM
 
-next dev --turbo "$@"
+bun run --bun next dev --turbo "$@"
