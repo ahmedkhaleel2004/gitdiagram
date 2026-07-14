@@ -65,9 +65,11 @@ describe("compileDiagramGraph", () => {
 
     expect(diagram).not.toContain("<script>");
     expect(diagram).not.toContain("<img");
-    expect(diagram).toContain('&lt;script&gt;alert(\\"x\\")&lt;/script&gt;');
     expect(diagram).toContain(
-      '&lt;img src=x onerror=\\"alert(1)\\"&gt; &amp; runtime',
+      "&lt;script&gt;alert&#40;&quot;x&quot;&#41;&lt;/script&gt;",
+    );
+    expect(diagram).toContain(
+      "&lt;img src=x onerror=&quot;alert&#40;1&#41;&quot;&gt; &amp; runtime",
     );
     expect(diagram).toContain(
       'click node_api "https://github.com/acme/demo/blob/feature/security/src/a%20%22quoted%22%20file.ts"',
@@ -97,7 +99,7 @@ describe("compileDiagramGraph", () => {
     });
 
     expect(diagram).toContain(
-      'node_api["API click node_api call alert()<br/>HTTP worker"]',
+      'node_api["API click node_api call alert&#40;&#41;<br/>HTTP worker"]',
     );
     expect(
       diagram.split("\n").filter((line) => line.startsWith("click ")),
@@ -105,6 +107,76 @@ describe("compileDiagramGraph", () => {
     await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
       valid: true,
     });
+  });
+
+  it("parses adversarial text across every supported node shape", async () => {
+    const shapes = [
+      "box",
+      "database",
+      "queue",
+      "document",
+      "circle",
+      "hexagon",
+    ] as const;
+    const adversarialLabels = [
+      'quote " slash \\',
+      '\\\\"quoted after slashes"',
+      "pipes | brackets []{}()",
+      "comment %%{init: bad}%%",
+      "unicode 🧭 café 漢字",
+      "line\nbreak\tand\u0000control",
+    ];
+
+    for (const [index, shape] of shapes.entries()) {
+      const diagram = compileDiagramGraph({
+        username: "acme",
+        repo: "demo",
+        branch: "main",
+        graph: {
+          groups: [
+            {
+              id: `group_${index}`,
+              label:
+                adversarialLabels[(index + 2) % adversarialLabels.length]!,
+              description: null,
+            },
+          ],
+          nodes: [
+            {
+              id: `node_${index}`,
+              label: adversarialLabels[index]!,
+              type: 'type " with \\ slash',
+              description: null,
+              groupId: `group_${index}`,
+              path: null,
+              shape,
+            },
+            {
+              id: `target_${index}`,
+              label: "Target",
+              type: "component",
+              description: null,
+              groupId: null,
+              path: null,
+              shape: "box",
+            },
+          ],
+          edges: [
+            {
+              from: `node_${index}`,
+              to: `target_${index}`,
+              label: adversarialLabels[(index + 1) % adversarialLabels.length]!,
+              description: null,
+              style: index % 2 === 0 ? "solid" : "dashed",
+            },
+          ],
+        },
+      });
+
+      await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+        valid: true,
+      });
+    }
   });
 
   it("builds deterministic Mermaid with click urls", async () => {
