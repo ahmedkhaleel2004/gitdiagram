@@ -18,6 +18,7 @@ import {
 import {
   admitComplimentaryQuota,
   buildComplimentaryAdmissionTokens,
+  buildComplimentaryStageTokenBound,
   finalizeComplimentaryQuota,
   getComplimentaryDenialMessage,
   getComplimentaryModelMismatchMessage,
@@ -31,6 +32,11 @@ import {
   estimateGenerationCost,
   type GenerationEstimateResult,
 } from "~/server/generate/cost-estimate";
+import {
+  registerActiveGeneration,
+  startGenerationCancellationPolling,
+  unregisterActiveGeneration,
+} from "~/server/generate/cancellation";
 import {
   EXPLANATION_MAX_OUTPUT_TOKENS,
   EXPLANATION_REASONING_EFFORT,
@@ -74,6 +80,7 @@ import {
 } from "~/server/storage/repo-page-cache";
 import {
   createGenerationSessionAudit,
+  toTerminalSessionAudit,
   withCompiledDiagram,
   withEstimatedCost,
   withExplanation,
@@ -181,13 +188,78 @@ export async function POST(request: Request) {
     repo,
     api_key: apiKey,
     github_pat: githubPat,
+    session_id: requestedSessionId,
+    cancel_token: requestedCancelToken,
   } = parsed.data;
 
-  const sessionId = randomUUID();
+  const sessionId = requestedSessionId ?? randomUUID();
+  let cancellationRegistered = false;
+  if (requestedSessionId && requestedCancelToken) {
+    try {
+      cancellationRegistered = await registerActiveGeneration(
+        sessionId,
+        requestedCancelToken,
+      );
+    } catch {
+      console.error(
+        JSON.stringify({
+          event: "generate.cancellation.registration_failed",
+          session_id: sessionId,
+          error: "Cancellation registration is temporarily unavailable.",
+        }),
+      );
+      return Response.json(
+        {
+          ok: false,
+          error: "Generation is temporarily unavailable. Please retry.",
+          error_code: "CANCELLATION_UNAVAILABLE",
+        },
+        {
+          status: 503,
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+          },
+        },
+      );
+    }
+
+    if (!cancellationRegistered) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Generation session already exists. Please retry.",
+          error_code: "SESSION_CONFLICT",
+        },
+        {
+          status: 409,
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+          },
+        },
+      );
+    }
+  }
   const encoder = new TextEncoder();
   const generationAbortController = new AbortController();
   const deadlineSignal = AbortSignal.timeout(GENERATION_DEADLINE_MS);
   const postResponseTasks: Array<() => Promise<void>> = [];
+  if (cancellationRegistered && requestedCancelToken) {
+    postResponseTasks.push(async () => {
+      try {
+        await unregisterActiveGeneration(sessionId, requestedCancelToken);
+      } catch {
+        console.warn(
+          JSON.stringify({
+            event: "generate.cancellation.cleanup_failed",
+            session_id: sessionId,
+            error: "Active cancellation registration cleanup failed.",
+          }),
+        );
+      }
+    });
+  }
   let abortCause: "client" | "deadline" | null = null;
   let streamClosed = false;
   let resolveGenerationDone!: () => void;
@@ -207,6 +279,12 @@ export async function POST(request: Request) {
   };
   const handleRequestAbort = () => abortGeneration("client");
   const handleDeadline = () => abortGeneration("deadline");
+  const stopCancellationPolling = cancellationRegistered
+    ? startGenerationCancellationPolling({
+        sessionId,
+        onCancelled: () => abortGeneration("client"),
+      })
+    : () => undefined;
 
   request.signal.addEventListener("abort", handleRequestAbort, { once: true });
   deadlineSignal.addEventListener("abort", handleDeadline, { once: true });
@@ -283,7 +361,8 @@ export async function POST(request: Request) {
         let quotaReservation: ComplimentaryQuotaReservation | null = null;
         const actualUsages: GenerationTokenUsage[] = [];
         let hasCompleteMeasuredUsage = true;
-        let modelRequestStarted = false;
+        let completedUnmeasuredTokenBound = 0;
+        let pendingModelRequestTokenBound = 0;
         let terminalPayload: Record<string, unknown> | null = null;
         let terminalErrorCode: string | null = null;
         let repositoryVerified = false;
@@ -595,7 +674,12 @@ export async function POST(request: Request) {
           });
 
           let explanationResponse = "";
-          modelRequestStarted = true;
+          pendingModelRequestTokenBound = buildComplimentaryStageTokenBound(
+            estimate,
+            {
+              stage: "explanation",
+            },
+          );
           const explanationStartedAt = performance.now();
           const explanationStream = await streamCompletion({
             provider,
@@ -630,6 +714,7 @@ export async function POST(request: Request) {
           }
           if (explanationUsage) {
             actualUsages.push(explanationUsage);
+            pendingModelRequestTokenBound = 0;
             audit = withStageUsage(audit, {
               stage: "explanation",
               model,
@@ -643,6 +728,8 @@ export async function POST(request: Request) {
             });
           } else {
             hasCompleteMeasuredUsage = false;
+            completedUnmeasuredTokenBound += pendingModelRequestTokenBound;
+            pendingModelRequestTokenBound = 0;
           }
 
           const explanation = extractTaggedSection(
@@ -683,7 +770,13 @@ export async function POST(request: Request) {
               graph_attempts: audit.graphAttempts,
             });
 
-            modelRequestStarted = true;
+            pendingModelRequestTokenBound = buildComplimentaryStageTokenBound(
+              estimate,
+              {
+                stage: "graph",
+                attempt,
+              },
+            );
             const graphStartedAt = performance.now();
             const {
               output: graph,
@@ -716,6 +809,7 @@ export async function POST(request: Request) {
 
             if (usage) {
               actualUsages.push(usage);
+              pendingModelRequestTokenBound = 0;
               audit = withStageUsage(audit, {
                 stage: "graph_attempt",
                 attempt,
@@ -730,6 +824,8 @@ export async function POST(request: Request) {
               });
             } else {
               hasCompleteMeasuredUsage = false;
+              completedUnmeasuredTokenBound += pendingModelRequestTokenBound;
+              pendingModelRequestTokenBound = 0;
             }
 
             send({
@@ -747,8 +843,7 @@ export async function POST(request: Request) {
                 ? undefined
                 : formatGraphValidationFeedback(graphValidation.issues),
               status: (graphValidation.valid ? "succeeded" : "failed") as
-                | "failed"
-                | "succeeded",
+                "failed" | "succeeded",
               createdAt: new Date().toISOString(),
             };
 
@@ -833,7 +928,9 @@ export async function POST(request: Request) {
 
           throwIfAborted(generationAbortController.signal);
           const mermaidStartedAt = performance.now();
-          const mermaidValidation = await validateMermaidSyntax(diagram);
+          const mermaidValidation = await validateMermaidSyntax(diagram, {
+            signal: generationAbortController.signal,
+          });
           recordTiming("mermaid_validation", mermaidStartedAt);
           if (!mermaidValidation.valid) {
             const compilerError =
@@ -891,8 +988,6 @@ export async function POST(request: Request) {
             diagram,
             explanation,
             graph: validGraph,
-            graph_attempts: audit.graphAttempts,
-            latest_session_audit: audit,
             generated_at: audit.updatedAt,
           });
         } catch (error) {
@@ -946,7 +1041,7 @@ export async function POST(request: Request) {
               {
                 ...finalTerminalPayload,
                 cost_summary: audit.finalCost ?? audit.estimatedCost,
-                latest_session_audit: audit,
+                latest_session_audit: toTerminalSessionAudit(audit),
                 ...(persistenceWarning
                   ? { persistence_warning: persistenceWarning }
                   : {}),
@@ -969,9 +1064,12 @@ export async function POST(request: Request) {
             const actualCommittedTokens =
               hasCompleteMeasuredUsage && !wasCancelled
                 ? measuredCommittedTokens
-                : modelRequestStarted
-                  ? quotaReservation.reservedTokens
-                  : 0;
+                : Math.min(
+                    quotaReservation.reservedTokens,
+                    measuredCommittedTokens +
+                      completedUnmeasuredTokenBound +
+                      pendingModelRequestTokenBound,
+                  );
 
             try {
               await finalizeComplimentaryQuota({
@@ -1073,6 +1171,7 @@ export async function POST(request: Request) {
           }
 
           clearInterval(heartbeat);
+          stopCancellationPolling();
           request.signal.removeEventListener("abort", handleRequestAbort);
           deadlineSignal.removeEventListener("abort", handleDeadline);
           closeStream();

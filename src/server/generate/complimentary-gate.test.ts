@@ -13,6 +13,7 @@ vi.mock("~/server/storage/quota-store", () => ({
 import {
   admitComplimentaryQuota,
   buildComplimentaryAdmissionTokens,
+  buildComplimentaryStageTokenBound,
   finalizeComplimentaryQuota,
   modelMatchesComplimentaryFamily,
   shouldApplyComplimentaryGate,
@@ -67,13 +68,28 @@ describe("complimentary gate", () => {
   });
 
   it("uses repair-static input only for graph retry admission estimates", () => {
+    const estimate = {
+      explanationInputTokens: 100,
+      graphStaticInputTokens: 200,
+      graphRepairStaticInputTokens: 300,
+    };
+
+    expect(buildComplimentaryAdmissionTokens(estimate)).toBe(58_900);
     expect(
-      buildComplimentaryAdmissionTokens({
-        explanationInputTokens: 100,
-        graphStaticInputTokens: 200,
-        graphRepairStaticInputTokens: 300,
+      buildComplimentaryStageTokenBound(estimate, { stage: "explanation" }),
+    ).toBe(6_100);
+    expect(
+      buildComplimentaryStageTokenBound(estimate, {
+        stage: "graph",
+        attempt: 1,
       }),
-    ).toBe(58_900);
+    ).toBe(12_200);
+    expect(
+      buildComplimentaryStageTokenBound(estimate, {
+        stage: "graph",
+        attempt: 2,
+      }),
+    ).toBe(20_300);
   });
 
   it("returns a denial payload with the next UTC reset time", async () => {

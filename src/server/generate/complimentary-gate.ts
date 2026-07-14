@@ -33,6 +33,9 @@ export interface ComplimentaryAdmissionEstimate {
   graphRepairStaticInputTokens: number;
 }
 
+export type ComplimentaryGenerationStage =
+  { stage: "explanation" } | { stage: "graph"; attempt: number };
+
 function readEnvFlag(name: string): boolean {
   const value = process.env[name]?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
@@ -122,23 +125,52 @@ export function getComplimentaryQuotaBucket(_model?: string): string {
 export function buildComplimentaryAdmissionTokens(
   estimate: ComplimentaryAdmissionEstimate,
 ): number {
-  const explanationStageTokens =
-    estimate.explanationInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS;
-  const firstGraphAttemptTokens =
-    estimate.graphStaticInputTokens +
-    EXPLANATION_MAX_OUTPUT_TOKENS +
-    GRAPH_MAX_OUTPUT_TOKENS;
-  const retryGraphAttemptTokens =
-    estimate.graphRepairStaticInputTokens +
-    EXPLANATION_MAX_OUTPUT_TOKENS +
-    GRAPH_MAX_OUTPUT_TOKENS +
-    RETRY_INPUT_BUFFER_TOKENS +
-    GRAPH_MAX_OUTPUT_TOKENS;
+  const explanationStageTokens = buildComplimentaryStageTokenBound(estimate, {
+    stage: "explanation",
+  });
+  const firstGraphAttemptTokens = buildComplimentaryStageTokenBound(estimate, {
+    stage: "graph",
+    attempt: 1,
+  });
+  const retryGraphAttemptTokens = buildComplimentaryStageTokenBound(estimate, {
+    stage: "graph",
+    attempt: 2,
+  });
 
   return (
     explanationStageTokens +
     firstGraphAttemptTokens +
     retryGraphAttemptTokens * Math.max(MAX_GRAPH_ATTEMPTS - 1, 0)
+  );
+}
+
+/**
+ * Returns the conservative token bound for the one provider request that is
+ * currently in flight. This lets interrupted generations commit the current
+ * stage without charging every graph retry that never ran.
+ */
+export function buildComplimentaryStageTokenBound(
+  estimate: ComplimentaryAdmissionEstimate,
+  stage: ComplimentaryGenerationStage,
+): number {
+  if (stage.stage === "explanation") {
+    return estimate.explanationInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS;
+  }
+
+  if (stage.attempt <= 1) {
+    return (
+      estimate.graphStaticInputTokens +
+      EXPLANATION_MAX_OUTPUT_TOKENS +
+      GRAPH_MAX_OUTPUT_TOKENS
+    );
+  }
+
+  return (
+    estimate.graphRepairStaticInputTokens +
+    EXPLANATION_MAX_OUTPUT_TOKENS +
+    GRAPH_MAX_OUTPUT_TOKENS +
+    RETRY_INPUT_BUFFER_TOKENS +
+    GRAPH_MAX_OUTPUT_TOKENS
   );
 }
 

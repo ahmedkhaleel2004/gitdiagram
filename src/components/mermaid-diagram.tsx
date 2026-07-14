@@ -273,7 +273,9 @@ const MermaidChart = ({
       securityLevel: "antiscript" as const,
       secure: ["securityLevel", "startOnLoad", "maxTextSize"],
       theme: "base" as const,
-      htmlLabels: true,
+      // Pure SVG labels survive strict sanitization without relying on
+      // foreignObject HTML, which is both harder to secure and less portable.
+      htmlLabels: false,
       flowchart: {
         defaultRenderer: "elk" as const,
         curve: "linear" as const,

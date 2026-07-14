@@ -1,8 +1,44 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, reject, resolve };
+}
+
+async function expectRejectionWithin(
+  promise: Promise<unknown>,
+  expectedName: string,
+  timeoutMs = 500,
+) {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const settlement = promise.then(
+    () => ({ status: "resolved" as const }),
+    (error: unknown) => ({ error, status: "rejected" as const }),
+  );
+  const deadline = new Promise<{ status: "deadline" }>((resolve) => {
+    timeout = setTimeout(() => resolve({ status: "deadline" }), timeoutMs);
+  });
+
+  try {
+    const result = await Promise.race([settlement, deadline]);
+    expect(result.status).toBe("rejected");
+    if (result.status === "rejected") {
+      expect(result.error).toMatchObject({ name: expectedName });
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 describe("validateMermaidSyntax", () => {
   it("accepts valid Mermaid flowchart syntax", async () => {
@@ -32,7 +68,9 @@ describe("validateMermaidSyntax", () => {
         : "flowchart TD\nA-=>B",
     );
 
-    const results = await Promise.all(diagrams.map(validateMermaidSyntax));
+    const results = await Promise.all(
+      diagrams.map((diagram) => validateMermaidSyntax(diagram)),
+    );
 
     expect(results.filter((result) => result.valid)).toHaveLength(10);
     expect(results.filter((result) => !result.valid)).toHaveLength(10);
@@ -177,6 +215,108 @@ describe("validateMermaidSyntax", () => {
       } else {
         Reflect.deleteProperty(serverGlobal, "document");
       }
+    }
+  });
+
+  it("rejects promptly when cancelled while waiting for the DOM queue", async () => {
+    await validateMermaidSyntax("flowchart TD\nA-->B");
+    const runtime = (await import("mermaid")).default;
+    const parser = vi.spyOn(runtime, "parse");
+    const activeParse =
+      createDeferred<Awaited<ReturnType<typeof runtime.parse>>>();
+    parser.mockImplementationOnce(() => activeParse.promise);
+    const activeValidation = validateMermaidSyntax("flowchart TD\nA-->B", {
+      timeoutMs: 1_000,
+    });
+
+    try {
+      await vi.waitFor(() => expect(parser).toHaveBeenCalledTimes(1));
+
+      const controller = new AbortController();
+      const queuedValidation = validateMermaidSyntax("flowchart TD\nC-->D", {
+        signal: controller.signal,
+        timeoutMs: 1_000,
+      });
+      const rejection = expectRejectionWithin(queuedValidation, "AbortError");
+      controller.abort();
+
+      await rejection;
+
+      activeParse.resolve({ config: {}, diagramType: "flowchart-v2" });
+      await expect(activeValidation).resolves.toEqual({ valid: true });
+      await expect(
+        validateMermaidSyntax("flowchart TD\nE-->F", { timeoutMs: 1_000 }),
+      ).resolves.toEqual({ valid: true });
+
+      // The cancelled queued request never entered Mermaid.parse. The third
+      // validation proves the queue continued after skipping it.
+      expect(parser).toHaveBeenCalledTimes(2);
+    } finally {
+      activeParse.resolve({ config: {}, diagramType: "flowchart-v2" });
+      await activeValidation.catch(() => undefined);
+      parser.mockRestore();
+    }
+  });
+
+  it("rejects promptly on cancellation while Mermaid is still parsing", async () => {
+    await validateMermaidSyntax("flowchart TD\nA-->B");
+    const runtime = (await import("mermaid")).default;
+    const parser = vi.spyOn(runtime, "parse");
+    const activeParse =
+      createDeferred<Awaited<ReturnType<typeof runtime.parse>>>();
+    parser.mockImplementationOnce(() => activeParse.promise);
+    const controller = new AbortController();
+    const validation = validateMermaidSyntax("flowchart TD\nA-->B", {
+      signal: controller.signal,
+      timeoutMs: 1_000,
+    });
+
+    try {
+      const rejection = expectRejectionWithin(validation, "AbortError");
+      await vi.waitFor(() => expect(parser).toHaveBeenCalledTimes(1));
+      controller.abort();
+
+      await rejection;
+
+      // Mermaid has no parser cancellation API. Its late failure remains
+      // observed, releases the queue, and does not become an unhandled promise.
+      activeParse.reject(new Error("late parser failure"));
+      await expect(
+        validateMermaidSyntax("flowchart TD\nC-->D", { timeoutMs: 1_000 }),
+      ).resolves.toEqual({ valid: true });
+      expect(parser).toHaveBeenCalledTimes(2);
+    } finally {
+      activeParse.resolve({ config: {}, diagramType: "flowchart-v2" });
+      await validation.catch(() => undefined);
+      parser.mockRestore();
+    }
+  });
+
+  it("times out promptly while Mermaid is still parsing", async () => {
+    await validateMermaidSyntax("flowchart TD\nA-->B");
+    const runtime = (await import("mermaid")).default;
+    const parser = vi.spyOn(runtime, "parse");
+    const activeParse =
+      createDeferred<Awaited<ReturnType<typeof runtime.parse>>>();
+    parser.mockImplementationOnce(() => activeParse.promise);
+    const validation = validateMermaidSyntax("flowchart TD\nA-->B", {
+      timeoutMs: 20,
+    });
+
+    try {
+      const rejection = expectRejectionWithin(validation, "TimeoutError");
+      await vi.waitFor(() => expect(parser).toHaveBeenCalledTimes(1));
+      await rejection;
+
+      activeParse.resolve({ config: {}, diagramType: "flowchart-v2" });
+      await expect(
+        validateMermaidSyntax("flowchart TD\nC-->D", { timeoutMs: 1_000 }),
+      ).resolves.toEqual({ valid: true });
+      expect(parser).toHaveBeenCalledTimes(2);
+    } finally {
+      activeParse.resolve({ config: {}, diagramType: "flowchart-v2" });
+      await validation.catch(() => undefined);
+      parser.mockRestore();
     }
   });
 });

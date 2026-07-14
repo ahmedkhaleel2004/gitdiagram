@@ -33,6 +33,45 @@ describe("parseGenerateRequest", () => {
     });
   });
 
+  it("accepts only paired RFC-compliant session and cancellation IDs", async () => {
+    const sessionId = "550e8400-e29b-41d4-a716-446655440000";
+    const cancelToken = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+    await expect(
+      parseGenerateRequest(
+        jsonRequest({
+          username: "openai",
+          repo: "openai-node",
+          session_id: sessionId,
+          cancel_token: cancelToken,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { session_id: sessionId, cancel_token: cancelToken },
+    });
+
+    await expect(
+      parseGenerateRequest(
+        jsonRequest({
+          username: "openai",
+          repo: "openai-node",
+          session_id: "predictable-session",
+          cancel_token: cancelToken,
+        }),
+      ),
+    ).resolves.toMatchObject({ success: false, status: 400 });
+
+    await expect(
+      parseGenerateRequest(
+        jsonRequest({
+          username: "openai",
+          repo: "openai-node",
+          session_id: sessionId,
+        }),
+      ),
+    ).resolves.toMatchObject({ success: false, status: 400 });
+  });
+
   it("rejects malformed repository coordinates and unknown fields", async () => {
     await expect(
       parseGenerateRequest(

@@ -2,26 +2,37 @@ import { z } from "zod";
 
 export const MAX_GENERATION_REQUEST_BYTES = 16 * 1024;
 
-const githubUsernameSchema = z
+export const githubUsernameSchema = z
   .string()
   .trim()
   .min(1)
   .max(39)
   .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u);
-const githubRepoSchema = z
+export const githubRepoSchema = z
   .string()
   .trim()
   .min(1)
   .max(100)
   .regex(/^[A-Za-z0-9._-]+$/u);
-const credentialSchema = z.string().trim().min(1).max(2_048);
+export const credentialSchema = z.string().trim().min(1).max(2_048);
 
-export const generateRequestSchema = z.strictObject({
-  username: githubUsernameSchema,
-  repo: githubRepoSchema,
-  api_key: credentialSchema.optional(),
-  github_pat: credentialSchema.optional(),
-});
+export const generationSessionIdSchema = z.uuid();
+export const generationCancelTokenSchema = z.uuid();
+
+export const generateRequestSchema = z
+  .strictObject({
+    username: githubUsernameSchema,
+    repo: githubRepoSchema,
+    api_key: credentialSchema.optional(),
+    github_pat: credentialSchema.optional(),
+    session_id: generationSessionIdSchema.optional(),
+    cancel_token: generationCancelTokenSchema.optional(),
+  })
+  .refine(
+    ({ cancel_token: cancelToken, session_id: sessionId }) =>
+      Boolean(cancelToken) === Boolean(sessionId),
+    { message: "session_id and cancel_token must be provided together." },
+  );
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>;
 

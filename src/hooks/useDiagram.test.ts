@@ -7,14 +7,12 @@ import { useDiagram } from "~/hooks/useDiagram";
 
 const {
   getDiagramState,
-  persistDiagramRenderError,
   storeOpenAiKey,
   useDiagramExport,
   runGeneration,
   setStreamState,
 } = vi.hoisted(() => ({
   getDiagramState: vi.fn(),
-  persistDiagramRenderError: vi.fn(),
   storeOpenAiKey: vi.fn(),
   useDiagramExport: vi.fn(),
   runGeneration: vi.fn(),
@@ -37,9 +35,8 @@ type StreamOptions = {
 
 let streamOptions: StreamOptions | undefined;
 
-vi.mock("~/app/_actions/cache", () => ({
+vi.mock("~/features/diagram/api", () => ({
   getDiagramState,
-  persistDiagramRenderError,
 }));
 
 vi.mock("~/hooks/diagram/useDiagramStream", () => ({
@@ -114,7 +111,6 @@ describe("useDiagram", () => {
       latestSessionAudit: null,
       lastSuccessfulAt: null,
     });
-    persistDiagramRenderError.mockResolvedValue(undefined);
     useDiagramExport.mockReturnValue({
       handleCopy: vi.fn(),
       handleExportImage: vi.fn(),
@@ -241,21 +237,12 @@ describe("useDiagram", () => {
     expect(result.current.error).toContain("API key");
   });
 
-  it("records browser render failures without re-entering LLM repair", async () => {
+  it("surfaces browser render failures without mutating shared state", async () => {
     const { result } = renderHook(() => useDiagram("acme", "demo"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    await result.current.handleDiagramRenderError("Parse error on line 3");
-
-    await waitFor(() =>
-      expect(persistDiagramRenderError).toHaveBeenCalledWith(
-        "acme",
-        "demo",
-        "Parse error on line 3",
-        undefined,
-      ),
-    );
+    result.current.handleDiagramRenderError("Parse error on line 3");
     await waitFor(() =>
       expect(result.current.error).toContain("Diagram render failed"),
     );
