@@ -43,7 +43,9 @@ function getExternalRequestOrigin(request: Request): string | null {
 
 /**
  * Enforces browser same-origin requests while accounting for trusted platform
- * proxies that terminate TLS before forwarding to the Node.js server.
+ * proxies that terminate TLS before forwarding to the Node.js server. The
+ * ingress must overwrite the forwarded headers; this is a browser CSRF guard,
+ * not authentication for a directly exposed Node.js port.
  */
 export function isSameOriginRequest(request: Request): boolean {
   const origin = request.headers.get("origin");

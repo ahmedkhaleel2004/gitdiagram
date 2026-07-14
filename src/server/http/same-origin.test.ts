@@ -50,9 +50,47 @@ describe("isSameOriginRequest", () => {
       isSameOriginRequest(
         request("http://0.0.0.0:8080/api/diagram-state", {
           origin: "https://attacker.example",
-          "sec-fetch-site": "cross-site",
+          "sec-fetch-site": "same-origin",
           "x-forwarded-host": "standby.gitdiagram.com",
           "x-forwarded-proto": "https",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a forwarded host that does not match the origin", () => {
+    expect(
+      isSameOriginRequest(
+        request("http://0.0.0.0:8080/api/diagram-state", {
+          origin: "https://standby.gitdiagram.com",
+          "sec-fetch-site": "same-origin",
+          "x-forwarded-host": "attacker.example",
+          "x-forwarded-proto": "https",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a forwarded protocol that does not match the origin", () => {
+    expect(
+      isSameOriginRequest(
+        request("http://0.0.0.0:8080/api/diagram-state", {
+          origin: "https://standby.gitdiagram.com",
+          "sec-fetch-site": "same-origin",
+          "x-forwarded-host": "standby.gitdiagram.com",
+          "x-forwarded-proto": "http",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("fails closed when an internal HTTP request omits forwarded protocol", () => {
+    expect(
+      isSameOriginRequest(
+        request("http://0.0.0.0:8080/api/diagram-state", {
+          origin: "https://standby.gitdiagram.com",
+          "sec-fetch-site": "same-origin",
+          "x-forwarded-host": "standby.gitdiagram.com",
         }),
       ),
     ).toBe(false);

@@ -14,8 +14,12 @@ import { POST } from "~/app/api/generate/cancel/route";
 const sessionId = "550e8400-e29b-41d4-a716-446655440000";
 const cancelToken = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
 
-function request(body: unknown, headers: HeadersInit = {}): Request {
-  return new Request("https://gitdiagram.com/api/generate/cancel", {
+function request(
+  body: unknown,
+  headers: HeadersInit = {},
+  url = "https://gitdiagram.com/api/generate/cancel",
+): Request {
+  return new Request(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -50,6 +54,23 @@ describe("POST /api/generate/cancel", () => {
         args: [cancelToken, 600],
       }),
     );
+  });
+
+  it("accepts the public origin behind Railway's trusted proxy", async () => {
+    const response = await POST(
+      request(
+        { session_id: sessionId, cancel_token: cancelToken },
+        {
+          Origin: "https://api.gitdiagram.com",
+          "X-Forwarded-Host": "api.gitdiagram.com",
+          "X-Forwarded-Proto": "https",
+        },
+        "http://0.0.0.0:8080/api/generate/cancel",
+      ),
+    );
+
+    expect(response.status).toBe(204);
+    expect(mocks.upstashEval).toHaveBeenCalledOnce();
   });
 
   it("rejects cross-origin, malformed, and non-strict payloads", async () => {

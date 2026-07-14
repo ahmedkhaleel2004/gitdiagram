@@ -11,8 +11,12 @@ vi.mock("~/server/storage/diagram-state", () => ({
 
 import { POST } from "~/app/api/diagram-state/route";
 
-function request(body: unknown, headers: HeadersInit = {}): Request {
-  return new Request("https://gitdiagram.com/api/diagram-state", {
+function request(
+  body: unknown,
+  headers: HeadersInit = {},
+  url = "https://gitdiagram.com/api/diagram-state",
+): Request {
+  return new Request(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -50,6 +54,35 @@ describe("POST /api/diagram-state", () => {
     expect(mocks.getDiagramStateRecord).toHaveBeenCalledWith(
       "openai",
       "openai-node",
+      undefined,
+    );
+  });
+
+  it("accepts the public origin behind Railway's trusted proxy", async () => {
+    mocks.getDiagramStateRecord.mockResolvedValue({
+      diagram: null,
+      explanation: null,
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: null,
+    });
+
+    const response = await POST(
+      request(
+        { username: "octocat", repo: "Hello-World" },
+        {
+          Origin: "https://standby.gitdiagram.com",
+          "X-Forwarded-Host": "standby.gitdiagram.com",
+          "X-Forwarded-Proto": "https",
+        },
+        "http://0.0.0.0:8080/api/diagram-state",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.getDiagramStateRecord).toHaveBeenCalledWith(
+      "octocat",
+      "Hello-World",
       undefined,
     );
   });
