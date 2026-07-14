@@ -58,7 +58,7 @@ describe("POST /api/diagram-state", () => {
     );
   });
 
-  it("accepts the public origin behind Railway's trusted proxy", async () => {
+  it("accepts the public origin behind a trusted reverse proxy", async () => {
     mocks.getDiagramStateRecord.mockResolvedValue({
       diagram: null,
       explanation: null,
@@ -71,8 +71,8 @@ describe("POST /api/diagram-state", () => {
       request(
         { username: "octocat", repo: "Hello-World" },
         {
-          Origin: "https://standby.gitdiagram.com",
-          "X-Forwarded-Host": "standby.gitdiagram.com",
+          Origin: "https://self-hosted.example.test",
+          "X-Forwarded-Host": "self-hosted.example.test",
           "X-Forwarded-Proto": "https",
         },
         "http://0.0.0.0:8080/api/diagram-state",
