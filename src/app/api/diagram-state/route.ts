@@ -6,6 +6,7 @@ import {
   githubRepoSchema,
   githubUsernameSchema,
 } from "~/server/generate/types";
+import { isSameOriginRequest } from "~/server/http/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,16 +29,6 @@ function jsonError(error: string, status: number): Response {
     { ok: false, error },
     { status, headers: RESPONSE_HEADERS },
   );
-}
-
-function isSameOriginRequest(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin || origin !== new URL(request.url).origin) {
-    return false;
-  }
-
-  const fetchSite = request.headers.get("sec-fetch-site");
-  return !fetchSite || fetchSite === "same-origin";
 }
 
 export async function POST(request: Request): Promise<Response> {

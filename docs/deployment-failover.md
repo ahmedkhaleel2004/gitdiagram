@@ -3,7 +3,10 @@
 GitDiagram has one application implementation and two deployment targets:
 
 - **Primary:** Vercel serves `gitdiagram.com`.
-- **Standby:** Railway runs the same Next.js application from the same commit.
+- **Standby:** Railway runs the same Next.js application from the same commit at
+  `standby.gitdiagram.com`.
+- **Stable standby API:** `api.gitdiagram.com` points at the same Railway
+  service.
 
 The Railway target is not the deleted Python backend. It contains the same Route Handlers, graph schema, deterministic Mermaid compiler, cancellation protocol, quota logic, and persistence code as Vercel.
 
@@ -17,23 +20,30 @@ The Railway target is not the deleted Python backend. It contains the same Route
 
 ## Verify the standby
 
-Set the production variables from `.env.example` on the Railway service, then verify:
+The Railway service has App Sleeping enabled. Wake and verify it with the stable
+domain:
 
 ```bash
-curl --fail-with-body https://<railway-domain>/api/healthz
+curl --fail-with-body https://api.gitdiagram.com/api/healthz
 curl --fail-with-body \
-  --request POST https://<railway-domain>/api/generate/cost \
+  --request POST https://api.gitdiagram.com/api/generate/cost \
   --header "Content-Type: application/json" \
   --data '{"username":"octocat","repo":"Hello-World"}'
 ```
 
 A wake from sleep can make the first health request slower. Wait for a successful health response before routing production traffic.
 
+The Railway-provided domain
+`gitdiagram-api-production.up.railway.app` remains available as a last-resort
+route if the `gitdiagram.com` DNS zone itself has a problem.
+
 ## Cut over to Railway
 
 1. Confirm Railway is running the same Git commit as production.
 2. Wake it with `/api/healthz` and run a cost request plus one small streamed generation.
-3. Route `gitdiagram.com` to the Railway custom-domain target.
+3. Open `https://standby.gitdiagram.com` for an immediate independent full-app
+   fallback, or route `gitdiagram.com` to the prepared Railway custom-domain
+   target for a transparent public cutover.
 4. Confirm the homepage, a persisted diagram, generation, cancellation, and R2 persistence.
 5. Leave the Vercel deployment intact until the incident is resolved.
 
@@ -57,7 +67,7 @@ vercel deploy --prod
 Railway normally follows `main` through its connected GitHub source. A manual deployment is also available:
 
 ```bash
-railway up --service gitdiagram-api --environment production
+railway service redeploy --service gitdiagram-api --environment production
 ```
 
 The checked-in `railway.json` fixes the Dockerfile, health check, and restart policy. The service-level App Sleeping flag is managed by Railway because it is an infrastructure setting rather than application code.
