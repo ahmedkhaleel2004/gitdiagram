@@ -116,4 +116,4 @@ vercel deploy --prod
 
 Local `.env` files and tooling artifacts are excluded by `.vercelignore`.
 
-The same source also deploys to Railway through `Dockerfile` and `railway.json`. It uses Next.js standalone output only for that container build, listens on Railway's injected `PORT`, runs as a non-root user, and checks `/api/healthz` before promotion. See [deployment-failover.md](deployment-failover.md) for standby and cutover operations.
+The same source can be redeployed to Railway later through `Dockerfile` and `railway.json`. Those files are an offline recovery recipe, not a live standby. The container uses Next.js standalone output, listens on Railway's injected `PORT`, runs as a non-root user, and checks `/api/healthz` before promotion. See [deployment-failover.md](deployment-failover.md) for the recovery procedure.
