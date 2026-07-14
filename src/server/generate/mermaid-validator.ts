@@ -1,4 +1,5 @@
 import { parseHTML } from "linkedom";
+import createDOMPurify from "dompurify";
 import type mermaid from "mermaid";
 
 function normalizeParserMessage(message?: string): string {
@@ -147,9 +148,8 @@ async function ensureDomPurifyPatched() {
     return;
   }
 
-  const DOMPurify = (await import("dompurify")).default;
-  const purify = DOMPurify(getServerWindow());
-  Object.assign(DOMPurify, purify);
+  const purify = createDOMPurify(getServerWindow());
+  Object.assign(createDOMPurify, purify);
   domPurifyPatched = true;
 }
 
