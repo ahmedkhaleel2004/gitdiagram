@@ -1,0 +1,12 @@
+# Local secrets and environment overrides must never enter a deployment bundle.
+.env*
+
+# Local tooling artifacts.
+.claude/
+.playwright-mcp/
+.ruff_cache/
+coverage/
+tmp/
+
+# The legacy Railway service is not part of the Vercel application.
+backend/
