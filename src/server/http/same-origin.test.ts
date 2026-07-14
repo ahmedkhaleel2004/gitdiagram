@@ -24,9 +24,9 @@ describe("isSameOriginRequest", () => {
       isSameOriginRequest(
         request("http://0.0.0.0:8080/api/diagram-state", {
           host: "0.0.0.0:8080",
-          origin: "https://standby.gitdiagram.com",
+          origin: "https://self-hosted.example.test",
           "sec-fetch-site": "same-origin",
-          "x-forwarded-host": "standby.gitdiagram.com",
+          "x-forwarded-host": "self-hosted.example.test",
           "x-forwarded-proto": "https",
         }),
       ),
@@ -37,8 +37,8 @@ describe("isSameOriginRequest", () => {
     expect(
       isSameOriginRequest(
         request("http://0.0.0.0:8080/api/generate/cancel", {
-          origin: "https://api.gitdiagram.com",
-          "x-forwarded-host": "api.gitdiagram.com, internal.local:8080",
+          origin: "https://self-hosted.example.test",
+          "x-forwarded-host": "self-hosted.example.test, internal.local:8080",
           "x-forwarded-proto": "https, http",
         }),
       ),
@@ -51,7 +51,7 @@ describe("isSameOriginRequest", () => {
         request("http://0.0.0.0:8080/api/diagram-state", {
           origin: "https://attacker.example",
           "sec-fetch-site": "same-origin",
-          "x-forwarded-host": "standby.gitdiagram.com",
+          "x-forwarded-host": "self-hosted.example.test",
           "x-forwarded-proto": "https",
         }),
       ),
@@ -62,7 +62,7 @@ describe("isSameOriginRequest", () => {
     expect(
       isSameOriginRequest(
         request("http://0.0.0.0:8080/api/diagram-state", {
-          origin: "https://standby.gitdiagram.com",
+          origin: "https://self-hosted.example.test",
           "sec-fetch-site": "same-origin",
           "x-forwarded-host": "attacker.example",
           "x-forwarded-proto": "https",
@@ -75,9 +75,9 @@ describe("isSameOriginRequest", () => {
     expect(
       isSameOriginRequest(
         request("http://0.0.0.0:8080/api/diagram-state", {
-          origin: "https://standby.gitdiagram.com",
+          origin: "https://self-hosted.example.test",
           "sec-fetch-site": "same-origin",
-          "x-forwarded-host": "standby.gitdiagram.com",
+          "x-forwarded-host": "self-hosted.example.test",
           "x-forwarded-proto": "http",
         }),
       ),
@@ -88,9 +88,9 @@ describe("isSameOriginRequest", () => {
     expect(
       isSameOriginRequest(
         request("http://0.0.0.0:8080/api/diagram-state", {
-          origin: "https://standby.gitdiagram.com",
+          origin: "https://self-hosted.example.test",
           "sec-fetch-site": "same-origin",
-          "x-forwarded-host": "standby.gitdiagram.com",
+          "x-forwarded-host": "self-hosted.example.test",
         }),
       ),
     ).toBe(false);

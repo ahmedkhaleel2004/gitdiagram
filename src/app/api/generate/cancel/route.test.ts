@@ -56,13 +56,13 @@ describe("POST /api/generate/cancel", () => {
     );
   });
 
-  it("accepts the public origin behind Railway's trusted proxy", async () => {
+  it("accepts the public origin behind a trusted reverse proxy", async () => {
     const response = await POST(
       request(
         { session_id: sessionId, cancel_token: cancelToken },
         {
-          Origin: "https://api.gitdiagram.com",
-          "X-Forwarded-Host": "api.gitdiagram.com",
+          Origin: "https://self-hosted.example.test",
+          "X-Forwarded-Host": "self-hosted.example.test",
           "X-Forwarded-Proto": "https",
         },
         "http://0.0.0.0:8080/api/generate/cancel",
