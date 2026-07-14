@@ -7,3 +7,8 @@
 .ruff_cache/
 coverage/
 tmp/
+
+# Alternate Railway deployment assets are not part of a Vercel bundle.
+.dockerignore
+Dockerfile
+railway.json

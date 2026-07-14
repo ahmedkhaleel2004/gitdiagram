@@ -1,0 +1,14 @@
+.git
+.github
+.next
+.vercel
+.claude
+.playwright-mcp
+.env*
+node_modules
+coverage
+tmp
+docs
+*.md
+**/*.test.ts
+**/*.test.tsx

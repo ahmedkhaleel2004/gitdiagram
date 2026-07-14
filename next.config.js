@@ -1,6 +1,7 @@
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: false,
+  ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
   transpilePackages: ["@aws-sdk/client-s3"],
   async rewrites() {
     return [

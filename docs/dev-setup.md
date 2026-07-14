@@ -107,7 +107,7 @@ The test suite includes real Mermaid parser contract tests for the deterministic
 
 ## Deploy
 
-The repository is configured for Vercel with Bun as the package manager and the Node.js runtime for Route Handlers. Add the variables from `.env.example` to the Vercel project, then deploy:
+The primary deployment is Vercel with Bun as the package manager and the Node.js runtime for Route Handlers. Add the variables from `.env.example` to the Vercel project, then deploy:
 
 ```bash
 vercel deploy
@@ -115,3 +115,5 @@ vercel deploy --prod
 ```
 
 Local `.env` files and tooling artifacts are excluded by `.vercelignore`.
+
+The same source also deploys to Railway through `Dockerfile` and `railway.json`. It uses Next.js standalone output only for that container build, listens on Railway's injected `PORT`, runs as a non-root user, and checks `/api/healthz` before promotion. See [deployment-failover.md](deployment-failover.md) for standby and cutover operations.

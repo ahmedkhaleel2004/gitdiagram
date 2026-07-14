@@ -30,9 +30,9 @@ You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 - **Coordination:** Upstash Redis for quota accounting, cancellation, locks, and short-lived failure state
 - **AI:** OpenAI, OpenRouter, or Atlas Cloud through `AI_PROVIDER`
 - **Analytics:** PostHog
-- **Deployment:** one Vercel project
+- **Deployment:** Vercel primary plus a sleeping Railway standby built from the same application
 
-There is no separate FastAPI, Railway, Postgres, or Neon runtime.
+There is no separate FastAPI implementation, Postgres database, or Neon runtime.
 
 ## Production architecture
 
@@ -45,6 +45,8 @@ Vercel serves both the UI and the generation endpoints:
 - `/api/healthz` provides a lightweight deployment health check.
 
 Long-running generation uses a 300-second Vercel function budget with a shorter application deadline so quota reconciliation and persistence still have time to finish. Requests use explicit upstream deadlines, retries, structured logs, heartbeats, and distributed cancellation rather than process-local state.
+
+The same Next.js application also builds into a minimal, non-root standalone Docker image for Railway. That service sleeps when idle and provides a warmable disaster-recovery target without maintaining a second backend implementation. Both targets use the same R2 and Upstash state, so cutover is a routing decision rather than a data migration. See [docs/deployment-failover.md](docs/deployment-failover.md).
 
 ## How generation works
 
