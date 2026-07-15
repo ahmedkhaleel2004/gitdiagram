@@ -190,9 +190,9 @@ export default function Loading({
                 </p>
                 <div className="mt-3 flex items-center gap-3 text-xs font-medium text-purple-700 dark:text-[hsl(var(--neo-link-hover))]">
                   <span className="inline-flex gap-1">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-purple-500 [animation-delay:-0.3s] dark:bg-[hsl(var(--neo-button-hover))]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-purple-500 [animation-delay:-0.15s] dark:bg-[hsl(var(--neo-button-hover))]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-purple-500 dark:bg-[hsl(var(--neo-button-hover))]" />
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-purple-500 [animation-delay:-0.24s] [animation-duration:1.2s] dark:bg-[hsl(var(--neo-button-hover))]" />
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-purple-500 [animation-delay:-0.12s] [animation-duration:1.2s] dark:bg-[hsl(var(--neo-button-hover))]" />
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-purple-500 [animation-duration:1.2s] dark:bg-[hsl(var(--neo-button-hover))]" />
                   </span>
                   <span>{graphPlanningSeconds}s in this step</span>
                 </div>

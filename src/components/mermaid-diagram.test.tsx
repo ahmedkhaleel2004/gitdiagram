@@ -111,6 +111,27 @@ describe("MermaidChart", () => {
     });
   });
 
+  it("only gives clickable diagram nodes hover feedback", async () => {
+    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />);
+
+    await waitFor(() => {
+      expect(initializeMock).toHaveBeenCalled();
+    });
+
+    const config = initializeMock.mock.calls.at(-1)?.[0] as
+      | { themeCSS?: string }
+      | undefined;
+
+    expect(config?.themeCSS).toContain(".clickable:hover > *");
+    expect(config?.themeCSS).not.toContain(".node:hover");
+    expect(config?.themeCSS).toContain("scale: 1.05");
+    expect(config?.themeCSS).toContain("transition: scale 160ms");
+    expect(config?.themeCSS).toContain("transform-origin: center");
+    expect(config?.themeCSS).toContain(".clickable");
+    expect(config?.themeCSS).toContain("cursor: pointer");
+    expect(config?.themeCSS).toContain("prefers-reduced-motion: reduce");
+  });
+
   it("keeps vertical touch scrolling enabled in read-only mode", () => {
     const { container } = render(
       <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />,

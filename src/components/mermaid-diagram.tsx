@@ -303,15 +303,28 @@ const MermaidChart = ({
             tertiaryColor: "#f7f7f7",
           },
       themeCSS: `
-        .clickable {
-          transition: transform 0.2s ease;
+        .clickable > * {
+          scale: 1;
+          transform-box: fill-box;
+          transform-origin: center;
+          transition: scale 160ms cubic-bezier(0.23, 1, 0.32, 1);
         }
-        .clickable:hover {
-          transform: scale(1.05);
+        .clickable {
           cursor: pointer;
         }
-        .clickable:hover > * {
-          filter: brightness(0.85);
+        @media (hover: hover) and (pointer: fine) {
+          .clickable:hover > * {
+            scale: 1.05;
+            filter: brightness(0.85);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .clickable > * {
+            transition: none;
+          }
+          .clickable:hover > * {
+            scale: 1;
+          }
         }
       `,
     };

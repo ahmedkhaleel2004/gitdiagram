@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
 import { ThemeProvider } from "next-themes";
+import { TooltipProvider } from "~/components/ui/tooltip";
 
 const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 
@@ -54,12 +55,14 @@ export function CSPostHogProvider({ children }: { children: React.ReactNode }) {
       enableSystem={false}
       storageKey="gitdiagram-theme"
     >
-      <PostHogProvider client={posthog}>
-        <Suspense fallback={null}>
-          <PostHogPageviewTracker />
-        </Suspense>
-        {children}
-      </PostHogProvider>
+      <TooltipProvider delayDuration={500} skipDelayDuration={300}>
+        <PostHogProvider client={posthog}>
+          <Suspense fallback={null}>
+            <PostHogPageviewTracker />
+          </Suspense>
+          {children}
+        </PostHogProvider>
+      </TooltipProvider>
     </ThemeProvider>
   );
 }

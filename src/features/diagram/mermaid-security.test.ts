@@ -13,6 +13,7 @@ describe("sanitizeMermaidSourceForRender", () => {
       "}%%",
       "flowchart TD",
       'click node_safe "https://github.com/acme/demo/blob/main/src/a.ts"',
+      'click CORE "https://github.com/FastAPI/FastAPI/blob/master/fastapi/applications.py"',
       "click node_bad call alert()",
       'click node_bad "javascript:alert(1)"',
     ].join("\n");
@@ -21,6 +22,7 @@ describe("sanitizeMermaidSourceForRender", () => {
       [
         "flowchart TD",
         'click node_safe "https://github.com/acme/demo/blob/main/src/a.ts"',
+        'click CORE "https://github.com/FastAPI/FastAPI/blob/master/fastapi/applications.py"',
       ].join("\n"),
     );
   });

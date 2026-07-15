@@ -9,7 +9,7 @@ import { Sparkles } from "lucide-react";
 import React from "react";
 import { exampleRepos, isExampleRepo } from "~/lib/exampleRepos";
 import { ExportDropdown } from "./export-dropdown";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
 import { SponsorSlot } from "~/components/sponsor-slot";
@@ -100,7 +100,11 @@ export default function MainCard({
           </Button>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error ? (
+          <p className="status-message text-sm text-red-600" role="alert">
+            {error}
+          </p>
+        ) : null}
 
         {/* Dropdowns Container */}
         {!isHome && (
@@ -119,7 +123,7 @@ export default function MainCard({
                           ? "Regeneration is disabled for example repositories."
                           : undefined
                       }
-                      className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] dark:text-black ${
+                      className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-[background-color,transform] duration-150 ease-[var(--ease-out)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:active:opacity-80 sm:max-w-[250px] dark:text-black ${
                         isExampleRepoSelected
                           ? "cursor-not-allowed bg-purple-200 opacity-70 dark:bg-[#251b3a] dark:text-[hsl(var(--foreground))]"
                           : "bg-purple-300 hover:bg-purple-400 dark:border-[#2d1d4e] dark:bg-[hsl(var(--neo-subtle-muted))] dark:hover:bg-[hsl(var(--neo-subtle))]"
@@ -142,18 +146,21 @@ export default function MainCard({
                           e.preventDefault();
                           handleDropdownToggle("export");
                         }}
-                        className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-colors sm:max-w-[250px] dark:text-black ${
+                        aria-expanded={activeDropdown === "export"}
+                        className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-[background-color,transform] duration-150 ease-[var(--ease-out)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:active:opacity-80 sm:max-w-[250px] dark:text-black ${
                           activeDropdown === "export"
                             ? "bg-purple-400 dark:border-[#2d1d4e] dark:bg-[hsl(var(--neo-button))]"
                             : "bg-purple-300 hover:bg-purple-400 dark:border-[#2d1d4e] dark:bg-[hsl(var(--neo-subtle-muted))] dark:hover:bg-[hsl(var(--neo-button-hover))]"
                         }`}
                       >
                         <span>Export Diagram</span>
-                        {activeDropdown === "export" ? (
-                          <ChevronUp size={20} />
-                        ) : (
-                          <ChevronDown size={20} />
-                        )}
+                        <ChevronDown
+                          size={20}
+                          aria-hidden="true"
+                          className={`transition-transform duration-150 ease-[var(--ease-in-out)] motion-reduce:rotate-0 ${
+                            activeDropdown === "export" ? "rotate-180" : ""
+                          }`}
+                        />
                       </button>
                     </div>
                   )}
@@ -175,22 +182,16 @@ export default function MainCard({
                 </div>
 
                 {/* Dropdown Content */}
-                <div
-                  className={`transition-all duration-200 ${
-                    activeDropdown
-                      ? "pointer-events-auto max-h-[500px] opacity-100"
-                      : "pointer-events-none max-h-0 opacity-0"
-                  }`}
-                >
-                  {activeDropdown === "export" && (
+                {activeDropdown === "export" ? (
+                  <div className="export-panel">
                     <ExportDropdown
                       onCopy={onCopy!}
                       lastGenerated={lastGenerated}
                       actualCost={actualCost}
                       onExportImage={onExportImage!}
                     />
-                  )}
-                </div>
+                  </div>
+                ) : null}
               </>
             )}
           </div>
@@ -209,7 +210,7 @@ export default function MainCard({
                     key={name}
                     type="button"
                     variant="outline"
-                    className="border-2 border-black bg-purple-400 text-sm text-black transition-transform hover:-translate-y-0.5 hover:transform hover:bg-purple-300 sm:text-base dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]"
+                    className="border-2 border-black bg-purple-400 text-sm text-black hover:bg-purple-300 sm:text-base dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]"
                     onClick={(e) => handleExampleClick(path, e)}
                   >
                     {name}

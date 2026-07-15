@@ -1,5 +1,5 @@
 const safeGitHubClickDirective =
-  /^\s*click\s+node_[a-z][a-z0-9_]*\s+"https:\/\/github\.com\/[^"\s]+"\s*$/u;
+  /^\s*click\s+[a-z_][a-z0-9_-]*\s+"https:\/\/github\.com\/[^"\s]+"\s*$/iu;
 
 export function sanitizeMermaidSourceForRender(source: string): string {
   const lines: string[] = [];
