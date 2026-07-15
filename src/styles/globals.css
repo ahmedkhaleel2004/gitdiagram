@@ -39,6 +39,9 @@
     --neo-dot-active: 271 81% 55%;
     --neo-dot-inactive: 271 46% 78%;
     --neo-input-bg: 270 92% 89%;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   }
   .dark {
     --background: 264 22% 9%;
@@ -126,13 +129,8 @@
     color: #000 !important;
     box-shadow: 4px 4px 0 0 #000 !important;
     transition:
-      transform 0.2s ease,
-      background-color 0.2s ease;
-  }
-
-  .neo-button:hover:not(:disabled) {
-    background: hsl(var(--neo-button-hover)) !important;
-    transform: translate(-2px, -2px);
+      transform 160ms var(--ease-out),
+      background-color 160ms ease;
   }
 
   .neo-button-muted {
@@ -141,13 +139,8 @@
     color: #000 !important;
     box-shadow: 4px 4px 0 0 #000 !important;
     transition:
-      transform 0.2s ease,
-      background-color 0.2s ease;
-  }
-
-  .neo-button-muted:hover:not(:disabled) {
-    background: hsl(var(--neo-subtle)) !important;
-    transform: translate(-2px, -2px);
+      transform 160ms var(--ease-out),
+      background-color 160ms ease;
   }
 
   .browse-muted-button {
@@ -156,13 +149,12 @@
     color: #000 !important;
     box-shadow: 4px 4px 0 0 #000 !important;
     transition:
-      transform 0.2s ease,
-      background-color 0.2s ease;
+      transform 160ms var(--ease-out),
+      background-color 160ms ease;
   }
 
-  .browse-muted-button:hover:not(:disabled) {
-    background: hsl(var(--neo-panel)) !important;
-    transform: translate(-2px, -2px);
+  .neo-lift {
+    transition: transform 160ms var(--ease-out);
   }
 
   .neo-input {
@@ -184,11 +176,7 @@
 
   .neo-link {
     color: hsl(var(--neo-link));
-    transition: color 0.2s ease;
-  }
-
-  .neo-link:hover {
-    color: hsl(var(--neo-link-hover));
+    transition: color 160ms ease;
   }
 
   .dark .neo-panel,
@@ -211,8 +199,213 @@
     color: hsl(var(--foreground)) !important;
   }
 
-  .dark .browse-muted-button:hover:not(:disabled) {
-    background: hsl(var(--neo-panel)) !important;
+  @media (hover: hover) and (pointer: fine) {
+    .neo-button:hover:not(:disabled) {
+      background: hsl(var(--neo-button-hover)) !important;
+      transform: translate(-2px, -2px);
+    }
+
+    .neo-button-muted:hover:not(:disabled) {
+      background: hsl(var(--neo-subtle)) !important;
+      transform: translate(-2px, -2px);
+    }
+
+    .browse-muted-button:hover:not(:disabled) {
+      background: hsl(var(--neo-panel)) !important;
+      transform: translate(-2px, -2px);
+    }
+
+    .neo-link:hover {
+      color: hsl(var(--neo-link-hover));
+    }
+
+    .dark .browse-muted-button:hover:not(:disabled) {
+      background: hsl(var(--neo-panel)) !important;
+    }
+
+    .neo-lift:hover {
+      transform: translateY(-2px);
+    }
+  }
+
+  .neo-button:active:not(:disabled),
+  .neo-button-muted:active:not(:disabled),
+  .browse-muted-button:active:not(:disabled) {
+    transform: translate(1px, 1px) scale(0.97);
+    transition-duration: 120ms;
+  }
+
+  .neo-lift:active {
+    transform: translateY(1px) scale(0.97);
+  }
+
+  .mobile-menu-layer {
+    pointer-events: none;
+    visibility: hidden;
+    transition: visibility 0s linear 140ms;
+  }
+
+  .mobile-menu-layer[data-state="open"] {
+    pointer-events: auto;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .mobile-menu-overlay {
+    opacity: 0;
+    transition: opacity 140ms var(--ease-out);
+  }
+
+  .mobile-menu-layer[data-state="open"] .mobile-menu-overlay {
+    opacity: 1;
+    transition-duration: 180ms;
+  }
+
+  .mobile-menu-panel {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+    transform-origin: top right;
+    transition:
+      opacity 140ms var(--ease-out),
+      transform 140ms var(--ease-out);
+  }
+
+  .mobile-menu-layer[data-state="open"] .mobile-menu-panel {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition-duration: 200ms;
+  }
+
+  .tooltip-content {
+    opacity: 0;
+    transform: scale(0.97);
+    transform-origin: var(--radix-tooltip-content-transform-origin);
+    transition:
+      opacity 100ms var(--ease-out),
+      transform 100ms var(--ease-out);
+  }
+
+  .tooltip-content[data-state="delayed-open"],
+  .tooltip-content[data-state="instant-open"] {
+    opacity: 1;
+    transform: scale(1);
+    transition-duration: 150ms;
+  }
+
+  .tooltip-content[data-state="instant-open"] {
+    transition-duration: 0ms;
+  }
+
+  .dialog-overlay[data-state="open"] {
+    animation: dialog-fade-in 180ms var(--ease-out) both;
+  }
+
+  .dialog-overlay[data-state="closed"] {
+    animation: dialog-fade-out 140ms var(--ease-out) both;
+  }
+
+  .dialog-content[data-state="open"] {
+    animation: dialog-content-in 220ms var(--ease-out) both;
+  }
+
+  .dialog-content[data-state="closed"] {
+    animation: dialog-content-out 160ms var(--ease-out) both;
+  }
+
+  .export-panel {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition:
+      opacity 180ms var(--ease-out),
+      transform 180ms var(--ease-out);
+  }
+
+  .status-message {
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      opacity 180ms var(--ease-out),
+      transform 180ms var(--ease-out);
+  }
+
+  .copy-button-content {
+    display: grid;
+    min-width: 12.75rem;
+  }
+
+  .copy-button-state {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition:
+      opacity 160ms var(--ease-out),
+      transform 160ms var(--ease-out),
+      filter 160ms var(--ease-out);
+  }
+
+  .copy-button-state[data-active="false"] {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translateY(2px);
+  }
+}
+
+@keyframes dialog-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-content-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes dialog-content-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@starting-style {
+  .tooltip-content[data-state="delayed-open"] {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+
+  .export-panel {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+
+  .status-message {
+    opacity: 0;
+    transform: translateY(-4px);
   }
 }
 
@@ -224,7 +417,58 @@
   cursor: pointer !important;
 }
 
-.star-reminder-toast [data-button]:hover,
-.star-reminder-toast button:hover {
-  background: hsl(var(--neo-button-hover)) !important;
+@media (hover: hover) and (pointer: fine) {
+  .star-reminder-toast [data-button]:hover,
+  .star-reminder-toast button:hover {
+    background: hsl(var(--neo-button-hover)) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-button,
+  .neo-button-muted,
+  .browse-muted-button {
+    transition-property: background-color, color, opacity;
+  }
+
+  .neo-lift {
+    transition-property: opacity;
+  }
+
+  .neo-button:active:not(:disabled),
+  .neo-button-muted:active:not(:disabled),
+  .browse-muted-button:active:not(:disabled) {
+    opacity: 0.82;
+    transform: none;
+  }
+
+  .neo-lift:hover,
+  .neo-lift:active {
+    opacity: 0.82;
+    transform: none;
+  }
+
+  .dialog-content[data-state="open"] {
+    animation: dialog-fade-in 180ms var(--ease-out) both;
+  }
+
+  .dialog-content[data-state="closed"] {
+    animation: dialog-fade-out 120ms var(--ease-out) both;
+  }
+
+  .mobile-menu-panel,
+  .mobile-menu-layer[data-state="open"] .mobile-menu-panel {
+    transform: none;
+  }
+
+  .tooltip-content,
+  .tooltip-content[data-state="delayed-open"],
+  .tooltip-content[data-state="instant-open"],
+  .export-panel,
+  .status-message,
+  .copy-button-state,
+  .copy-button-state[data-active="false"] {
+    filter: none;
+    transform: none;
+  }
 }

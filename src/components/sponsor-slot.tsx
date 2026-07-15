@@ -102,7 +102,7 @@ export function SponsorSlot({ surface, className }: SponsorSlotProps) {
       {...linkProps(sponsor.href)}
       aria-label={copy.label}
       className={cn(
-        "group flex items-center gap-3 rounded-md border-[2px] border-black bg-[hsl(var(--neo-input-bg))] px-3 py-2 text-left shadow-[3px_3px_0_0_#000] transition-transform hover:-translate-y-0.5 dark:bg-[hsl(var(--neo-panel-muted))]",
+        "neo-lift group flex items-center gap-3 rounded-md border-[2px] border-black bg-[hsl(var(--neo-input-bg))] px-3 py-2 text-left shadow-[3px_3px_0_0_#000] dark:bg-[hsl(var(--neo-panel-muted))]",
         surface === "diagram" &&
           "w-full border-[3px] bg-[hsl(var(--neo-panel))] p-3 shadow-[4px_4px_0_0_#000] dark:bg-[hsl(var(--neo-panel))]",
         className,
@@ -165,7 +165,7 @@ export function SponsorCatalogRow() {
               </span>
             </span>
           </span>
-          <p className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-md border-[2px] border-black bg-[hsl(var(--neo-button))] px-4 py-2 text-sm font-black text-black shadow-[3px_3px_0_0_#000] transition-transform group-hover:-translate-y-0.5">
+          <p className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-md border-[2px] border-black bg-[hsl(var(--neo-button))] px-4 py-2 text-sm font-black text-black shadow-[3px_3px_0_0_#000]">
             {sponsor.cta}
             <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
           </p>
