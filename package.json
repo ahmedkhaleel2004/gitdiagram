@@ -7,7 +7,6 @@
     "build": "bun run --bun next build",
     "check": "bun run lint && bun run typecheck",
     "dev": "./scripts/dev-turbo.sh",
-    "examples:migrate": "bun scripts/migrate-example-diagrams.ts",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
     "preview": "next build && next start",
