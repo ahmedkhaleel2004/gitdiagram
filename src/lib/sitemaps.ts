@@ -1,5 +1,5 @@
 export const SITEMAP_PAGE_SIZE = 45_000;
-const STATIC_SITEMAP_ROUTE_COUNT = 2;
+const STATIC_SITEMAP_ROUTE_COUNT = 3;
 
 export function getSitemapCount(repoRouteCount: number) {
   const totalRouteCount = repoRouteCount + STATIC_SITEMAP_ROUTE_COUNT;
@@ -7,5 +7,8 @@ export function getSitemapCount(repoRouteCount: number) {
 }
 
 export function getSitemapUrls(siteUrl: string, sitemapCount: number) {
-  return Array.from({ length: sitemapCount }, (_, id) => `${siteUrl}/sitemap/${id}.xml`);
+  return Array.from(
+    { length: sitemapCount },
+    (_, id) => `${siteUrl}/sitemap/${id}.xml`,
+  );
 }

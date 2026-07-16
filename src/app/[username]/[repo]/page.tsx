@@ -74,6 +74,7 @@ export default async function Repo({ params }: RepoPageProps) {
       username={username}
       repo={repo}
       initialState={initialState?.diagram ? initialState : null}
+      initialStateIsAuthoritative={Boolean(initialState?.diagram)}
     />
   );
 }

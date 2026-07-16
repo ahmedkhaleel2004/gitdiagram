@@ -101,6 +101,7 @@ export interface GraphAttemptAudit {
   rawOutput: string;
   graph: DiagramGraph | null;
   validationFeedback?: string;
+  validationCategories?: string[];
   status: "failed" | "succeeded";
   createdAt: string;
 }

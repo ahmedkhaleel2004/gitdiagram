@@ -9,8 +9,33 @@ import {
 
 const browsePageCache = new Map<string, BrowsePageResult | null>();
 const browsePagePromises = new Map<string, Promise<BrowsePageResult | null>>();
+const MAX_CACHED_BROWSE_PAGES = 100;
 
-function getBrowsePageUrl(query: BrowseQuery) {
+function getCachedBrowsePage(url: string) {
+  if (!browsePageCache.has(url)) {
+    return undefined;
+  }
+
+  const cachedPage = browsePageCache.get(url) ?? null;
+  browsePageCache.delete(url);
+  browsePageCache.set(url, cachedPage);
+  return cachedPage;
+}
+
+function cacheBrowsePage(url: string, page: BrowsePageResult | null) {
+  browsePageCache.delete(url);
+  browsePageCache.set(url, page);
+
+  while (browsePageCache.size > MAX_CACHED_BROWSE_PAGES) {
+    const oldestUrl = browsePageCache.keys().next().value;
+    if (oldestUrl === undefined) {
+      break;
+    }
+    browsePageCache.delete(oldestUrl);
+  }
+}
+
+export function getBrowsePageUrl(query: BrowseQuery) {
   const normalizedQuery = normalizeBrowseQuery(query);
   const params = buildBrowseSearchParams({
     q: normalizedQuery.q,
@@ -24,11 +49,9 @@ function getBrowsePageUrl(query: BrowseQuery) {
 
 async function fetchBrowsePage(
   query: BrowseQuery,
-  signal?: AbortSignal,
 ): Promise<BrowsePageResult | null> {
   const response = await fetch(getBrowsePageUrl(query), {
     credentials: "same-origin",
-    signal,
   });
 
   if (response.status === 404) {
@@ -42,36 +65,65 @@ async function fetchBrowsePage(
   return (await response.json()) as BrowsePageResult;
 }
 
+function waitForBrowsePage<T>(promise: Promise<T>, signal?: AbortSignal) {
+  if (!signal) {
+    return promise;
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(
+      new DOMException("The request was aborted.", "AbortError"),
+    );
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const handleAbort = () => {
+      reject(new DOMException("The request was aborted.", "AbortError"));
+    };
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", handleAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", handleAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 export async function loadBrowsePage(
   query: BrowseQuery,
   signal?: AbortSignal,
 ): Promise<BrowsePageResult | null> {
   const url = getBrowsePageUrl(query);
-  const cachedPage = browsePageCache.get(url);
+  const cachedPage = getCachedBrowsePage(url);
   if (cachedPage !== undefined) {
     return cachedPage;
   }
 
-  if (!signal && browsePagePromises.has(url)) {
-    return browsePagePromises.get(url)!;
+  const pendingPage = browsePagePromises.get(url);
+  if (pendingPage) {
+    return waitForBrowsePage(pendingPage, signal);
   }
 
-  const promise = fetchBrowsePage(query, signal)
+  const promise = fetchBrowsePage(query)
     .then((result) => {
-      browsePageCache.set(url, result);
+      cacheBrowsePage(url, result);
       return result;
     })
     .finally(() => {
-      if (!signal) {
+      if (browsePagePromises.get(url) === promise) {
         browsePagePromises.delete(url);
       }
     });
 
-  if (!signal) {
-    browsePagePromises.set(url, promise);
-  }
+  browsePagePromises.set(url, promise);
 
-  return promise;
+  return waitForBrowsePage(promise, signal);
 }
 
 export function clearBrowsePageCacheForTest() {

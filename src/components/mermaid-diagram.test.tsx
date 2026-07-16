@@ -119,8 +119,7 @@ describe("MermaidChart", () => {
     });
 
     const config = initializeMock.mock.calls.at(-1)?.[0] as
-      | { themeCSS?: string }
-      | undefined;
+      { themeCSS?: string } | undefined;
 
     expect(config?.themeCSS).toContain(".clickable:hover > *");
     expect(config?.themeCSS).not.toContain(".node:hover");
@@ -218,9 +217,41 @@ describe("MermaidChart", () => {
     expect(screen.getByLabelText("Zoom out")).toBeInTheDocument();
     expect(screen.getByLabelText("Zoom in")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /fit/i })).toBeInTheDocument();
-    expect(resizeObserverObserveMock).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(resizeObserverObserveMock).toHaveBeenCalled();
+    });
     expect(container.querySelector(".select-none")).toBeInTheDocument();
     expect(container.querySelector(".touch-none")).toBeInTheDocument();
+  });
+
+  it("does not recompile the chart when interactive zoom is toggled", async () => {
+    const onRenderComplete = vi.fn();
+    const { rerender } = render(
+      <MermaidChart
+        chart="flowchart TD\nA-->B"
+        zoomingEnabled={false}
+        onRenderComplete={onRenderComplete}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(renderMock).toHaveBeenCalledTimes(1);
+      expect(onRenderComplete).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <MermaidChart
+        chart="flowchart TD\nA-->B"
+        zoomingEnabled
+        onRenderComplete={onRenderComplete}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Zoom in")).toBeEnabled();
+    });
+    expect(renderMock).toHaveBeenCalledTimes(1);
+    expect(onRenderComplete).toHaveBeenCalledTimes(1);
   });
 
   it("pans the diagram after zooming in", async () => {

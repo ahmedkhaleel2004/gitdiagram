@@ -11,6 +11,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BrowseCatalog } from "~/components/browse-catalog";
+import { clearDiagramPreviewCacheForTest } from "~/components/browse-catalog-shared";
 import type {
   BrowseIndexEntry,
   BrowsePageResult,
@@ -137,6 +138,7 @@ describe("BrowseCatalog", () => {
   afterEach(() => {
     cleanup();
     clearBrowsePageCacheForTest();
+    clearDiagramPreviewCacheForTest();
     getEntriesByTypeSpy?.mockRestore();
     fetchSpy?.mockRestore();
     previewFetches = 0;
@@ -191,6 +193,46 @@ describe("BrowseCatalog", () => {
     expect(screen.queryByText("Updating results...")).not.toBeInTheDocument();
   });
 
+  it("renders server-provided results without a hydration fetch", async () => {
+    const initialResult = createBrowseResult([createEntry("next.js")]);
+    mockFetch(() => initialResult);
+
+    render(<BrowseCatalog initialQuery={{}} initialResult={initialResult} />);
+
+    expect(screen.getByText("vercel/next.js")).toBeInTheDocument();
+    await flushPromises();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("debounces rapid search input into one catalog request", async () => {
+    const initialResult = createBrowseResult([createEntry("next.js")]);
+    const acmeResult = createBrowseResult([
+      createEntry("demo", { username: "acme" }),
+    ]);
+    mockFetch(() => acmeResult);
+    vi.useFakeTimers();
+
+    render(<BrowseCatalog initialQuery={{}} initialResult={initialResult} />);
+
+    const searchbox = screen.getByRole("searchbox");
+    fireEvent.change(searchbox, { target: { value: "a" } });
+    fireEvent.change(searchbox, { target: { value: "ac" } });
+    fireEvent.change(searchbox, { target: { value: "acme" } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(149);
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await flushPromises();
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(screen.getByText("acme/demo")).toBeInTheDocument();
+  });
+
   it("shows the updating indicator only after search results stay pending for five seconds", async () => {
     const slowResult = createDeferred<BrowsePageResult | null>();
 
@@ -213,6 +255,9 @@ describe("BrowseCatalog", () => {
       target: { value: "slow" },
     });
 
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4999);
     });

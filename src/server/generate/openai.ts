@@ -115,10 +115,7 @@ function buildMessages(systemPrompt: string, userPrompt: string) {
 
 function extractChatCompletionText(
   content:
-    | string
-    | Array<{ type?: string; text?: string | null }>
-    | null
-    | undefined,
+    string | Array<{ type?: string; text?: string | null }> | null | undefined,
 ): string {
   if (typeof content === "string") {
     return content;
@@ -141,6 +138,8 @@ function normalizeChatCompletionUsage(
         prompt_tokens?: number;
         completion_tokens?: number;
         total_tokens?: number;
+        prompt_tokens_details?: { cached_tokens?: number } | null;
+        completion_tokens_details?: { reasoning_tokens?: number } | null;
       }
     | null
     | undefined,
@@ -152,11 +151,15 @@ function normalizeChatCompletionUsage(
   const inputTokens = usage.prompt_tokens ?? 0;
   const outputTokens = usage.completion_tokens ?? 0;
   const totalTokens = usage.total_tokens ?? inputTokens + outputTokens;
+  const cachedInputTokens = usage.prompt_tokens_details?.cached_tokens;
+  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens;
 
   return {
     inputTokens,
     outputTokens,
     totalTokens,
+    ...(typeof cachedInputTokens === "number" ? { cachedInputTokens } : {}),
+    ...(typeof reasoningTokens === "number" ? { reasoningTokens } : {}),
   };
 }
 

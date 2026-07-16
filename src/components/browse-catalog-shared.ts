@@ -53,7 +53,36 @@ export const HOVER_PREVIEW_HEIGHT_PX = 336;
 export const HOVER_PREVIEW_CURSOR_OFFSET_PX = 18;
 export const HOVER_PREVIEW_OPEN_DELAY_MS = 0;
 
-export const diagramPreviewCache = new Map<string, string>();
+const MAX_CACHED_DIAGRAM_PREVIEWS = 60;
+const diagramPreviewCache = new Map<string, string>();
+
+export function getCachedDiagramPreview(key: string) {
+  const diagram = diagramPreviewCache.get(key);
+  if (diagram === undefined) {
+    return undefined;
+  }
+
+  diagramPreviewCache.delete(key);
+  diagramPreviewCache.set(key, diagram);
+  return diagram;
+}
+
+export function cacheDiagramPreview(key: string, diagram: string) {
+  diagramPreviewCache.delete(key);
+  diagramPreviewCache.set(key, diagram);
+
+  while (diagramPreviewCache.size > MAX_CACHED_DIAGRAM_PREVIEWS) {
+    const oldestKey = diagramPreviewCache.keys().next().value;
+    if (oldestKey === undefined) {
+      break;
+    }
+    diagramPreviewCache.delete(oldestKey);
+  }
+}
+
+export function clearDiagramPreviewCacheForTest() {
+  diagramPreviewCache.clear();
+}
 
 export function formatStarCount(stargazerCount: number | null) {
   return stargazerCount === null

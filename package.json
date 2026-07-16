@@ -12,11 +12,13 @@
     "preview": "next build && next start",
     "start": "next start",
     "quota:today": "bun scripts/complimentary-quota-today.mjs",
+    "browse:migrate-index": "bun scripts/migrate-browse-index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache"
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
+    "perf:budget": "node scripts/check-performance-budgets.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1086.0",
@@ -37,7 +39,6 @@
     "posthog-js": "^1.399.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-icons": "^5.7.0",
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",

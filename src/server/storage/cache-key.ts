@@ -19,7 +19,14 @@ export interface StorageLocation {
   statusKey: string;
 }
 
-export function getPublicLocation(username: string, repo: string): StorageLocation {
+export function getPublicPreviewKey(username: string, repo: string): string {
+  return `public/v1/${normalizeSegment(username)}/${normalizeSegment(repo)}.preview.json`;
+}
+
+export function getPublicLocation(
+  username: string,
+  repo: string,
+): StorageLocation {
   const normalizedUsername = normalizeSegment(username);
   const normalizedRepo = normalizeSegment(repo);
 

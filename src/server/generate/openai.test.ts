@@ -226,3 +226,39 @@ describe("OpenAI Responses incomplete streams", () => {
     await expect(result.usagePromise).resolves.toBeNull();
   });
 });
+
+describe("provider usage details", () => {
+  it("retains cached-input and reasoning-token details from chat-compatible providers", async () => {
+    openAiMocks.chatCompletionsCreate.mockResolvedValue(
+      asAsyncEvents([
+        {
+          choices: [{ delta: { content: "done" } }],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 20,
+            total_tokens: 120,
+            prompt_tokens_details: { cached_tokens: 80 },
+            completion_tokens_details: { reasoning_tokens: 10 },
+          },
+        },
+      ]),
+    );
+
+    const result = await streamCompletion({
+      provider: "atlas",
+      model: "deepseek-v3-0324",
+      systemPrompt: "system",
+      userPrompt: "user",
+      apiKey: "atlas-test",
+    });
+
+    await expect(consume(result.stream)).resolves.toEqual(["done"]);
+    await expect(result.usagePromise).resolves.toMatchObject({
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 120,
+      cachedInputTokens: 80,
+      reasoningTokens: 10,
+    });
+  });
+});

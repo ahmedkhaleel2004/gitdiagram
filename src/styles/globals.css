@@ -112,6 +112,15 @@
 }
 
 @layer components {
+  .loading-ellipsis {
+    display: inline-block;
+    width: 1ch;
+    overflow: hidden;
+    vertical-align: bottom;
+    white-space: nowrap;
+    animation: loading-ellipsis 1.35s steps(3, end) infinite;
+  }
+
   .neo-panel {
     border: 3px solid #000 !important;
     background: linear-gradient(
@@ -349,6 +358,25 @@
     opacity: 0;
     filter: blur(2px);
     transform: translateY(2px);
+  }
+}
+
+@keyframes loading-ellipsis {
+  0% {
+    width: 1ch;
+  }
+  66% {
+    width: 3ch;
+  }
+  100% {
+    width: 3ch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-ellipsis {
+    width: 3ch;
+    animation: none;
   }
 }
 

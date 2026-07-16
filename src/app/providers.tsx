@@ -2,35 +2,17 @@
 
 import { Suspense, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import posthog from "posthog-js";
-import { PostHogProvider } from "posthog-js/react";
 import { ThemeProvider } from "next-themes";
-import { TooltipProvider } from "~/components/ui/tooltip";
 
-const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-
-if (typeof window !== "undefined") {
-  // Only initialize PostHog if the environment variables are available
-  if (posthogKey) {
-    posthog.init(posthogKey, {
-      // Use a non-default first-party path to reduce adblock filter hits.
-      api_host: "/phx9a",
-      ui_host: "https://us.posthog.com",
-      autocapture: false,
-      capture_pageview: false,
-      capture_pageleave: false,
-      disable_session_recording: true,
-      person_profiles: "identified_only",
-    });
-  }
-}
+import { WebVitals } from "~/components/web-vitals";
+import { captureAnalyticsEvent } from "~/lib/analytics-client";
 
 function PostHogPageviewTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (!posthogKey || typeof window === "undefined") {
+    if (typeof window === "undefined") {
       return;
     }
 
@@ -39,7 +21,7 @@ function PostHogPageviewTracker() {
       queryString ? `?${queryString}` : ""
     }`;
 
-    posthog.capture("$pageview", {
+    captureAnalyticsEvent("$pageview", {
       $current_url: currentUrl,
     });
   }, [pathname, searchParams]);
@@ -55,14 +37,11 @@ export function CSPostHogProvider({ children }: { children: React.ReactNode }) {
       enableSystem={false}
       storageKey="gitdiagram-theme"
     >
-      <TooltipProvider delayDuration={500} skipDelayDuration={300}>
-        <PostHogProvider client={posthog}>
-          <Suspense fallback={null}>
-            <PostHogPageviewTracker />
-          </Suspense>
-          {children}
-        </PostHogProvider>
-      </TooltipProvider>
+      <Suspense fallback={null}>
+        <PostHogPageviewTracker />
+      </Suspense>
+      <WebVitals />
+      {children}
     </ThemeProvider>
   );
 }

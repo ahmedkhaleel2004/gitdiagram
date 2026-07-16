@@ -160,4 +160,92 @@ describe("getGithubData repository input bounds", () => {
     expect(timeoutSpy).toHaveBeenCalledTimes(3);
     expect(timeoutSpy).toHaveBeenCalledWith(GITHUB_REQUEST_TIMEOUT_MS);
   });
+
+  it("revalidates cached public trees with ETag and reuses a 304 body", async () => {
+    let treeRequests = 0;
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/repos/acme/demo")) {
+          return jsonResponse({
+            default_branch: "main",
+            private: false,
+            stargazers_count: 42,
+          });
+        }
+        if (url.includes("/git/trees/main?recursive=1")) {
+          treeRequests += 1;
+          const headers = new Headers(init?.headers);
+          if (treeRequests === 2) {
+            expect(headers.get("if-none-match")).toBe('"tree-v1"');
+            return new Response(null, { status: 304 });
+          }
+          return new Response(
+            JSON.stringify({
+              truncated: false,
+              tree: [{ path: "src/cached.ts" }],
+            }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+                ETag: '"tree-v1"',
+              },
+            },
+          );
+        }
+        if (url.endsWith("/repos/acme/demo/readme")) {
+          return jsonResponse({
+            size: 6,
+            content: Buffer.from("# Demo").toString("base64"),
+            encoding: "base64",
+          });
+        }
+        throw new Error(`Unexpected GitHub URL: ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
+      fileTree: "src/cached.ts",
+    });
+    await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
+      fileTree: "src/cached.ts",
+    });
+    expect(treeRequests).toBe(2);
+  });
+
+  it("never stores or conditionally reuses private repository trees", async () => {
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/repos/acme/demo")) {
+          return jsonResponse({ default_branch: "main", private: true });
+        }
+        if (url.includes("/git/trees/main?recursive=1")) {
+          expect(new Headers(init?.headers).has("if-none-match")).toBe(false);
+          return new Response(
+            JSON.stringify({
+              truncated: false,
+              tree: [{ path: "src/private.ts" }],
+            }),
+            { status: 200, headers: { ETag: '"private-tree"' } },
+          );
+        }
+        if (url.endsWith("/repos/acme/demo/readme")) {
+          return jsonResponse({
+            size: 9,
+            content: Buffer.from("# Private").toString("base64"),
+            encoding: "base64",
+          });
+        }
+        throw new Error(`Unexpected GitHub URL: ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getGithubData("acme", "demo");
+    await getGithubData("acme", "demo");
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
 });

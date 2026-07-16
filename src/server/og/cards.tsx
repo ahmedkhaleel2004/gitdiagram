@@ -7,7 +7,12 @@ export const socialImageSize = {
   height: 630,
 } as const;
 
-export const socialImageContentType = "image/png";
+const SOCIAL_IMAGE_CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
+  "CDN-Cache-Control": "public, max-age=1800, stale-while-revalidate=86400",
+  "Vercel-CDN-Cache-Control":
+    "public, max-age=1800, stale-while-revalidate=86400",
+} as const;
 
 type RepoCardData = {
   username: string;
@@ -29,22 +34,38 @@ const colors = {
   sky: "#38bdf8",
 } as const;
 
-const geistSansDir = path.join(
-  process.cwd(),
-  "node_modules",
-  "geist",
-  "dist",
-  "fonts",
-  "geist-sans",
-);
-
 const geistFontsPromise = Promise.all([
-  readFile(path.join(geistSansDir, "Geist-Regular.ttf")),
-  readFile(path.join(geistSansDir, "Geist-Medium.ttf")),
-  readFile(path.join(geistSansDir, "Geist-Bold.ttf")),
+  readFile(
+    path.join(
+      process.cwd(),
+      "node_modules/geist/dist/fonts/geist-sans/Geist-Regular.ttf",
+    ),
+  ),
+  readFile(
+    path.join(
+      process.cwd(),
+      "node_modules/geist/dist/fonts/geist-sans/Geist-Medium.ttf",
+    ),
+  ),
+  readFile(
+    path.join(
+      process.cwd(),
+      "node_modules/geist/dist/fonts/geist-sans/Geist-Bold.ttf",
+    ),
+  ),
 ]).then(([regular, medium, bold]) => [
-  { name: "Geist", data: regular, weight: 400 as const, style: "normal" as const },
-  { name: "Geist", data: medium, weight: 500 as const, style: "normal" as const },
+  {
+    name: "Geist",
+    data: regular,
+    weight: 400 as const,
+    style: "normal" as const,
+  },
+  {
+    name: "Geist",
+    data: medium,
+    weight: 500 as const,
+    style: "normal" as const,
+  },
   { name: "Geist", data: bold, weight: 700 as const, style: "normal" as const },
 ]);
 
@@ -88,13 +109,7 @@ function fitRepoSize(repo: string) {
   return 88;
 }
 
-function MetaItem({
-  value,
-  label,
-}: {
-  value: string;
-  label: string;
-}) {
+function MetaItem({ value, label }: { value: string; label: string }) {
   return (
     <div
       style={{
@@ -156,7 +171,11 @@ function RepoCard(data: RepoCardData) {
     {
       label: "Visibility",
       value:
-        data.isPrivate === null ? "Unknown" : data.isPrivate ? "Private" : "Public",
+        data.isPrivate === null
+          ? "Unknown"
+          : data.isPrivate
+            ? "Private"
+            : "Public",
     },
   ];
 
@@ -230,15 +249,15 @@ function RepoCard(data: RepoCardData) {
             }}
           >
             <div
-            style={{
-              display: "flex",
-              fontSize: fitOwnerSize(data.username),
-              fontWeight: 400,
-              lineHeight: 0.98,
-              letterSpacing: "-0.06em",
-              color: colors.foreground,
-            }}
-          >
+              style={{
+                display: "flex",
+                fontSize: fitOwnerSize(data.username),
+                fontWeight: 400,
+                lineHeight: 0.98,
+                letterSpacing: "-0.06em",
+                color: colors.foreground,
+              }}
+            >
               {data.username}/
             </div>
             <div
@@ -275,7 +294,11 @@ function RepoCard(data: RepoCardData) {
             }}
           >
             {metadata.map((item) => (
-              <MetaItem key={item.label} value={item.value} label={item.label} />
+              <MetaItem
+                key={item.label}
+                value={item.value}
+                label={item.label}
+              />
             ))}
           </div>
         </div>
@@ -290,5 +313,6 @@ export async function createRepoSocialImage(data: RepoCardData) {
   return new ImageResponse(<RepoCard {...data} />, {
     ...socialImageSize,
     fonts,
+    headers: SOCIAL_IMAGE_CACHE_HEADERS,
   });
 }

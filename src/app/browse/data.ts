@@ -1,52 +1,79 @@
 import { revalidateTag, unstable_cache } from "next/cache";
 
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
-import { getBrowsePageFromEntries, toRepoKey } from "~/features/browse/catalog";
-import type { BrowsePageResult, BrowseQuery } from "~/features/browse/catalog";
-import { getPublicDiagramPreview } from "~/server/storage/artifact-store";
-import { readBrowseIndex } from "~/server/storage/browse-diagrams";
+import {
+  BROWSE_PAGE_SIZE,
+  getBrowsePageFromRecentIndex,
+  getBrowsePageFromPreparedIndex,
+  normalizeBrowseQuery,
+  prepareBrowseIndex,
+  type PreparedBrowseIndex,
+} from "~/features/browse/catalog";
+import type {
+  BrowsePageResult,
+  BrowseQuery,
+  RecentBrowseIndex,
+} from "~/features/browse/catalog";
+import {
+  readBrowseIndex,
+  readRecentBrowseIndex,
+  RECENT_BROWSE_INDEX_SIZE,
+} from "~/server/storage/browse-diagrams";
 
 const BROWSE_CACHE_REVALIDATE_SECONDS = 5 * 60;
 const BROWSE_INDEX_CACHE_TAG = "browse-index";
-const DEFAULT_BROWSE_PREVIEWS_CACHE_TAG = "browse-default-previews";
+const readRecentBrowseIndexFromDataCache = unstable_cache(
+  readRecentBrowseIndex,
+  ["browse-recent-index-v1"],
+  {
+    revalidate: BROWSE_CACHE_REVALIDATE_SECONDS,
+    tags: [BROWSE_INDEX_CACHE_TAG],
+  },
+);
 
 let cachedBrowseIndex: {
   entries: BrowseIndexEntry[] | null;
   expiresAt: number;
+  preparedIndex: PreparedBrowseIndex | null;
 } | null = null;
 let inFlightBrowseIndexRead: Promise<BrowseIndexEntry[] | null> | null = null;
+let cachedRecentBrowseIndex: {
+  index: RecentBrowseIndex | null;
+  expiresAt: number;
+} | null = null;
+let inFlightRecentBrowseIndexRead: Promise<RecentBrowseIndex | null> | null =
+  null;
+let browseIndexCacheGeneration = 0;
 
-const getDefaultBrowsePreviewDiagramsFromCache = unstable_cache(
-  async (): Promise<Record<string, string>> => {
-    const entries = await readBrowseIndex();
-    if (!entries) {
-      return {};
-    }
+async function getCachedRecentBrowseIndex(): Promise<RecentBrowseIndex | null> {
+  const now = Date.now();
+  if (cachedRecentBrowseIndex && cachedRecentBrowseIndex.expiresAt > now) {
+    return cachedRecentBrowseIndex.index;
+  }
+  if (inFlightRecentBrowseIndexRead) {
+    return inFlightRecentBrowseIndexRead;
+  }
 
-    const previewItems = getBrowsePageFromEntries(entries, {}).items;
-    const previews = await Promise.all(
-      previewItems.map(async (entry) => {
-        const preview = await getPublicDiagramPreview({
-          username: entry.username,
-          repo: entry.repo,
-        });
+  const readGeneration = browseIndexCacheGeneration;
+  const readPromise = readRecentBrowseIndexFromDataCache()
+    .then((index) => {
+      if (readGeneration === browseIndexCacheGeneration) {
+        cachedRecentBrowseIndex = {
+          index,
+          expiresAt: Date.now() + BROWSE_CACHE_REVALIDATE_SECONDS * 1000,
+        };
+      }
+      return index;
+    })
+    .finally(() => {
+      if (inFlightRecentBrowseIndexRead === readPromise) {
+        inFlightRecentBrowseIndexRead = null;
+      }
+    });
 
-        return preview?.diagram ? [toRepoKey(entry), preview.diagram] : null;
-      }),
-    );
-
-    return Object.fromEntries(
-      previews.filter(
-        (preview): preview is [string, string] => preview !== null,
-      ),
-    );
-  },
-  [DEFAULT_BROWSE_PREVIEWS_CACHE_TAG],
-  {
-    revalidate: BROWSE_CACHE_REVALIDATE_SECONDS,
-    tags: [BROWSE_INDEX_CACHE_TAG, DEFAULT_BROWSE_PREVIEWS_CACHE_TAG],
-  },
-);
+  inFlightRecentBrowseIndexRead = readPromise;
+  return readPromise;
+}
 
 export async function getCachedBrowseIndex(): Promise<
   BrowseIndexEntry[] | null
@@ -61,37 +88,69 @@ export async function getCachedBrowseIndex(): Promise<
     return inFlightBrowseIndexRead;
   }
 
-  inFlightBrowseIndexRead = readBrowseIndex()
+  const readGeneration = browseIndexCacheGeneration;
+  const readPromise = readBrowseIndex()
     .then((entries) => {
-      cachedBrowseIndex = {
-        entries,
-        expiresAt: now + BROWSE_CACHE_REVALIDATE_SECONDS * 1000,
-      };
+      if (readGeneration === browseIndexCacheGeneration) {
+        cachedBrowseIndex = {
+          entries,
+          expiresAt: Date.now() + BROWSE_CACHE_REVALIDATE_SECONDS * 1000,
+          preparedIndex: entries
+            ? prepareBrowseIndex(entries, "recent_desc")
+            : null,
+        };
+      }
       return entries;
     })
     .finally(() => {
-      inFlightBrowseIndexRead = null;
+      if (inFlightBrowseIndexRead === readPromise) {
+        inFlightBrowseIndexRead = null;
+      }
     });
 
-  return inFlightBrowseIndexRead;
+  inFlightBrowseIndexRead = readPromise;
+  return readPromise;
 }
 
 export async function getCachedBrowsePage(
   query: BrowseQuery,
 ): Promise<BrowsePageResult | null> {
-  const entries = await getCachedBrowseIndex();
-  return entries ? getBrowsePageFromEntries(entries, query) : null;
-}
+  const normalizedQuery = normalizeBrowseQuery(query);
+  const requestedStart = (normalizedQuery.page - 1) * BROWSE_PAGE_SIZE;
+  if (
+    !normalizedQuery.q &&
+    normalizedQuery.sort === "recent_desc" &&
+    normalizedQuery.minStars === 0 &&
+    requestedStart < RECENT_BROWSE_INDEX_SIZE
+  ) {
+    const recentIndex = await getCachedRecentBrowseIndex();
+    if (recentIndex) {
+      const recentPage = getBrowsePageFromRecentIndex(recentIndex, query);
+      if (recentPage) {
+        return recentPage;
+      }
+    }
+  }
 
-export async function getCachedDefaultBrowsePreviewDiagrams(): Promise<
-  Record<string, string>
-> {
-  return getDefaultBrowsePreviewDiagramsFromCache();
+  const entries = await getCachedBrowseIndex();
+  if (!entries) {
+    return null;
+  }
+
+  const preparedIndex =
+    cachedBrowseIndex?.entries === entries
+      ? cachedBrowseIndex.preparedIndex
+      : prepareBrowseIndex(entries, "recent_desc");
+  return preparedIndex
+    ? getBrowsePageFromPreparedIndex(preparedIndex, query)
+    : null;
 }
 
 export function revalidateBrowseIndexCache() {
+  browseIndexCacheGeneration += 1;
   cachedBrowseIndex = null;
   inFlightBrowseIndexRead = null;
+  cachedRecentBrowseIndex = null;
+  inFlightRecentBrowseIndexRead = null;
   revalidateTag(BROWSE_INDEX_CACHE_TAG, "max");
-  revalidateTag(DEFAULT_BROWSE_PREVIEWS_CACHE_TAG, "max");
 }

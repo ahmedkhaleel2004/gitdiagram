@@ -11,7 +11,8 @@ import {
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
 import { preloadBrowseDiagramPreviewChart } from "~/components/browse-diagram-preview";
 import {
-  diagramPreviewCache,
+  cacheDiagramPreview,
+  getCachedDiagramPreview,
   getHoverPreviewPosition,
   HOVER_PREVIEW_MEDIA_QUERY,
   HOVER_PREVIEW_OPEN_DELAY_MS,
@@ -92,7 +93,7 @@ export function useBrowseHoverPreview({
     }
 
     for (const [key, diagram] of Object.entries(initialPreviewDiagrams)) {
-      diagramPreviewCache.set(key, diagram);
+      cacheDiagramPreview(key, diagram);
     }
   }, [initialPreviewDiagrams]);
 
@@ -173,14 +174,16 @@ export function useBrowseHoverPreview({
   const loadHoverPreview = useCallback(
     async ({
       key,
+      lastSuccessfulAt,
       repo,
       username,
     }: {
       key: string;
+      lastSuccessfulAt: string;
       repo: string;
       username: string;
     }) => {
-      const cachedDiagram = diagramPreviewCache.get(key);
+      const cachedDiagram = getCachedDiagramPreview(key);
       if (cachedDiagram) {
         startTransition(() => {
           setHoverPreviewDiagram(cachedDiagram);
@@ -197,7 +200,7 @@ export function useBrowseHoverPreview({
 
       try {
         const response = await fetch(
-          `/api/diagram-preview?username=${encodeURIComponent(username)}&repo=${encodeURIComponent(repo)}`,
+          `/api/diagram-preview?username=${encodeURIComponent(username)}&repo=${encodeURIComponent(repo)}&lastSuccessfulAt=${encodeURIComponent(lastSuccessfulAt)}`,
           {
             method: "GET",
             signal: controller.signal,
@@ -214,7 +217,7 @@ export function useBrowseHoverPreview({
           throw new Error("Preview diagram missing.");
         }
 
-        diagramPreviewCache.set(key, diagram);
+        cacheDiagramPreview(key, diagram);
         if (activeHoverPreviewKeyRef.current !== key) {
           return;
         }
@@ -249,7 +252,8 @@ export function useBrowseHoverPreview({
 
       preloadBrowseDiagramPreviewChart();
       clearHoverIntentTimeout();
-      const key = `${item.username}/${item.repo}`;
+      const repoLabel = `${item.username}/${item.repo}`;
+      const key = `${repoLabel}@${item.lastSuccessfulAt}`;
       hoverIntentTimeoutRef.current = window.setTimeout(() => {
         activeHoverPreviewKeyRef.current = key;
         const initialPosition = getHoverPreviewPosition(
@@ -259,11 +263,12 @@ export function useBrowseHoverPreview({
         hoverPreviewPositionRef.current = initialPosition;
         setHoverPreview({
           key,
-          repoLabel: key,
+          repoLabel,
           ...initialPosition,
         });
 
-        const cachedDiagram = diagramPreviewCache.get(key);
+        const cachedDiagram =
+          getCachedDiagramPreview(key) ?? getCachedDiagramPreview(repoLabel);
         if (cachedDiagram) {
           setHoverPreviewDiagram(cachedDiagram);
           setHoverPreviewStatus("ready");
@@ -274,6 +279,7 @@ export function useBrowseHoverPreview({
         setHoverPreviewStatus("loading");
         void loadHoverPreview({
           key,
+          lastSuccessfulAt: item.lastSuccessfulAt,
           repo: item.repo,
           username: item.username,
         });
@@ -288,7 +294,7 @@ export function useBrowseHoverPreview({
         return;
       }
 
-      const key = `${item.username}/${item.repo}`;
+      const key = `${item.username}/${item.repo}@${item.lastSuccessfulAt}`;
       if (activeHoverPreviewKeyRef.current !== key) {
         return;
       }

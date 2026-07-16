@@ -34,6 +34,31 @@ export const REPOSITORY_TOO_LARGE_ERROR =
 export const MAX_INCLUDED_FILE_TREE_CHARACTERS = 780_000;
 export const MAX_README_BYTES = 750_000;
 export const GITHUB_REQUEST_TIMEOUT_MS = 30_000;
+const MAX_PUBLIC_TREE_CACHE_ENTRIES = 8;
+const MAX_PUBLIC_TREE_CACHE_CHARACTERS = 4_000_000;
+
+interface PublicTreeCacheEntry {
+  etag: string;
+  fileTree: string;
+  characters: number;
+}
+
+type JsonFetchResult<T> =
+  { notModified: true } | { notModified: false; value: T; etag: string | null };
+
+// Fluid instances can reuse unchanged public trees without retaining private
+// repository data. Every reuse is revalidated with GitHub, so repository
+// changes remain visible immediately while 304 responses avoid the largest
+// response body and JSON parse in the ingestion path.
+const publicTreeCache = new Map<string, PublicTreeCacheEntry>();
+let publicTreeCacheCharacters = 0;
+
+function deletePublicTreeCacheEntry(key: string): void {
+  const entry = publicTreeCache.get(key);
+  if (entry && publicTreeCache.delete(key)) {
+    publicTreeCacheCharacters -= entry.characters;
+  }
+}
 
 const EXCLUDED_PATTERNS = [
   "node_modules/",
@@ -70,17 +95,22 @@ function shouldIncludeFile(path: string): boolean {
   return !EXCLUDED_PATTERNS.some((pattern) => lowerPath.includes(pattern));
 }
 
-async function fetchJson<T>(
+async function fetchJsonResult<T>(
   url: string,
   headers: HeadersInit,
   notFoundMessage: string,
   signal?: AbortSignal,
-): Promise<T> {
+  ifNoneMatch?: string,
+): Promise<JsonFetchResult<T>> {
   const timeoutSignal = AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS);
+  const requestHeaders = new Headers(headers);
+  if (ifNoneMatch) {
+    requestHeaders.set("If-None-Match", ifNoneMatch);
+  }
   let response: Response;
   try {
     response = await fetch(url, {
-      headers,
+      headers: requestHeaders,
       cache: "no-store",
       signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
     });
@@ -89,6 +119,10 @@ async function fetchJson<T>(
       throw new Error("GitHub request timed out. Please retry.");
     }
     throw error;
+  }
+
+  if (response.status === 304 && ifNoneMatch) {
+    return { notModified: true };
   }
 
   if (response.status === 404) {
@@ -101,7 +135,29 @@ async function fetchJson<T>(
     );
   }
 
-  return (await response.json()) as T;
+  return {
+    notModified: false,
+    value: (await response.json()) as T,
+    etag: response.headers.get("etag"),
+  };
+}
+
+async function fetchJson<T>(
+  url: string,
+  headers: HeadersInit,
+  notFoundMessage: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const result = await fetchJsonResult<T>(
+    url,
+    headers,
+    notFoundMessage,
+    signal,
+  );
+  if (result.notModified) {
+    throw new Error("GitHub returned an unexpected not-modified response.");
+  }
+  return result.value;
 }
 
 async function getRepoMetadata(
@@ -134,23 +190,42 @@ async function getFileTree(
   repo: string,
   branch: string,
   headers: HeadersInit,
+  usePublicConditionalCache: boolean,
   signal?: AbortSignal,
 ): Promise<string> {
-  const data = await fetchJson<GitHubTreeResponse>(
-    `https://api.github.com/repos/${username}/${repo}/git/trees/${branch}?recursive=1`,
+  const url = `https://api.github.com/repos/${username}/${repo}/git/trees/${branch}?recursive=1`;
+  const cached = usePublicConditionalCache
+    ? publicTreeCache.get(url)
+    : undefined;
+  if (cached) {
+    publicTreeCache.delete(url);
+    publicTreeCache.set(url, cached);
+  }
+  const result = await fetchJsonResult<GitHubTreeResponse>(
+    url,
     headers,
     "Could not fetch repository file tree.",
     signal,
+    cached?.etag,
   );
+  if (result.notModified && cached) {
+    return cached.fileTree;
+  }
+  if (result.notModified) {
+    throw new Error("GitHub returned an unexpected not-modified response.");
+  }
+  const data = result.value;
 
   if (data.truncated === true) {
     throw new Error(REPOSITORY_TOO_LARGE_ERROR);
   }
 
-  const paths = (data.tree ?? [])
-    .map((item) => item.path)
-    .filter((path): path is string => typeof path === "string")
-    .filter(shouldIncludeFile);
+  const paths: string[] = [];
+  for (const item of data.tree ?? []) {
+    if (typeof item.path === "string" && shouldIncludeFile(item.path)) {
+      paths.push(item.path);
+    }
+  }
 
   if (!paths.length) {
     throw new Error(
@@ -161,6 +236,29 @@ async function getFileTree(
   const fileTree = paths.join("\n");
   if (fileTree.length > MAX_INCLUDED_FILE_TREE_CHARACTERS) {
     throw new Error(REPOSITORY_TOO_LARGE_ERROR);
+  }
+
+  if (usePublicConditionalCache) {
+    deletePublicTreeCacheEntry(url);
+    if (result.etag) {
+      while (
+        publicTreeCache.size >= MAX_PUBLIC_TREE_CACHE_ENTRIES ||
+        publicTreeCacheCharacters + fileTree.length >
+          MAX_PUBLIC_TREE_CACHE_CHARACTERS
+      ) {
+        const oldestKey = publicTreeCache.keys().next().value;
+        if (typeof oldestKey !== "string") {
+          break;
+        }
+        deletePublicTreeCacheEntry(oldestKey);
+      }
+      publicTreeCache.set(url, {
+        etag: result.etag,
+        fileTree,
+        characters: fileTree.length,
+      });
+      publicTreeCacheCharacters += fileTree.length;
+    }
   }
 
   return fileTree;
@@ -225,7 +323,14 @@ export async function getGithubData(
     signal,
   );
   const [fileTree, readmeResult] = await Promise.all([
-    getFileTree(username, repo, defaultBranch, headers, signal),
+    getFileTree(
+      username,
+      repo,
+      defaultBranch,
+      headers,
+      !githubPat?.trim() && !isPrivate,
+      signal,
+    ),
     readmeResultPromise,
   ]);
   if (!readmeResult.ok) {

@@ -9,8 +9,10 @@ import {
   type DiagramGraph,
 } from "~/features/diagram/graph";
 import type { ArtifactVisibility } from "~/server/storage/types";
+import { writePublicDiagramPreview } from "~/server/storage/artifact-store";
 import { revalidateBrowseIndexCache } from "~/app/browse/data";
 import {
+  clearSuccessfulDiagramFailureSummary,
   persistTerminalSessionAudit,
   saveSuccessfulDiagramState,
   updatePublicBrowseIndexForSuccessfulDiagram,
@@ -57,6 +59,7 @@ import {
   buildFileTreeLookup,
   compileDiagramGraph,
   formatGraphValidationFeedback,
+  type GraphValidationCategory,
   validateDiagramGraph,
 } from "~/server/generate/graph";
 import {
@@ -91,6 +94,10 @@ import {
   withSuccess,
   withTimelineEvent,
 } from "~/server/generate/session-audit";
+import {
+  canWriteStreamMessage,
+  coalesceTextChunks,
+} from "~/server/generate/stream-buffer";
 import {
   createCostSummary,
   sumGenerationUsage,
@@ -261,6 +268,7 @@ export async function POST(request: Request) {
   }
   let abortCause: "client" | "deadline" | null = null;
   let streamClosed = false;
+  let notifyStreamPull = () => undefined;
   let resolveGenerationDone!: () => void;
   const generationDone = new Promise<void>((resolve) => {
     resolveGenerationDone = resolve;
@@ -275,6 +283,10 @@ export async function POST(request: Request) {
           : createAbortError(),
       );
     }
+    // Release any writer waiting on downstream backpressure. Normal writes
+    // will observe the aborted signal and stop; a bounded terminal timeout
+    // event may still be enqueued so a connected reader gets the final state.
+    notifyStreamPull();
   };
   const handleRequestAbort = () => abortGeneration("client");
   const handleDeadline = () => abortGeneration("deadline");
@@ -290,16 +302,52 @@ export async function POST(request: Request) {
 
   after(async () => {
     await generationDone;
-    for (const task of postResponseTasks) {
-      await task();
+    if (!postResponseTasks.length) {
+      return;
     }
+    const postResponseStartedAt = performance.now();
+    const results = await Promise.allSettled(
+      postResponseTasks.map((task) => task()),
+    );
+    console.info(
+      JSON.stringify({
+        event: "generate.post_response.finished",
+        session_id: sessionId,
+        task_count: results.length,
+        rejected_task_count: results.filter(
+          (result) => result.status === "rejected",
+        ).length,
+        elapsed_ms: Math.round(performance.now() - postResponseStartedAt),
+      }),
+    );
   });
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let wasCancelled = false;
+      const pullWaiters = new Set<() => void>();
+      let writeTail: Promise<void> = Promise.resolve();
 
-      const closeStream = () => {
+      notifyStreamPull = () => {
+        for (const resolve of pullWaiters) {
+          resolve();
+        }
+        pullWaiters.clear();
+      };
+
+      const waitForCapacity = async () => {
+        while (
+          !streamClosed &&
+          !generationAbortController.signal.aborted &&
+          controller.desiredSize !== null &&
+          controller.desiredSize <= 0
+        ) {
+          await new Promise<void>((resolve) => pullWaiters.add(resolve));
+        }
+      };
+
+      const closeStream = async () => {
+        await writeTail;
         if (streamClosed) {
           return;
         }
@@ -311,42 +359,70 @@ export async function POST(request: Request) {
         }
       };
 
+      const queueWrite = (
+        message: string,
+        options?: { allowDeadlineTerminal?: boolean },
+      ): Promise<boolean> => {
+        const write = writeTail.then(async () => {
+          const canWrite = () =>
+            canWriteStreamMessage({
+              abortCause,
+              aborted: generationAbortController.signal.aborted,
+              allowDeadlineTerminal: Boolean(options?.allowDeadlineTerminal),
+              streamClosed,
+            });
+
+          if (!canWrite()) {
+            return false;
+          }
+
+          await waitForCapacity();
+          if (!canWrite()) {
+            return false;
+          }
+
+          try {
+            controller.enqueue(encoder.encode(message));
+            return true;
+          } catch {
+            streamClosed = true;
+            wasCancelled = true;
+            notifyStreamPull();
+            abortGeneration("client");
+            return false;
+          }
+        });
+        writeTail = write.then(() => undefined);
+        return write;
+      };
+
       const send = (
         payload: Record<string, unknown>,
-        options?: { allowAfterAbort?: boolean },
-      ) => {
+        options?: { allowDeadlineTerminal?: boolean },
+      ): Promise<boolean> => {
         if (
-          streamClosed ||
-          (generationAbortController.signal.aborted &&
-            !options?.allowAfterAbort)
+          !canWriteStreamMessage({
+            abortCause,
+            aborted: generationAbortController.signal.aborted,
+            allowDeadlineTerminal: Boolean(options?.allowDeadlineTerminal),
+            streamClosed,
+          })
         ) {
-          return;
+          return Promise.resolve(false);
         }
-        try {
-          controller.enqueue(encoder.encode(sseMessage(payload)));
-        } catch {
-          streamClosed = true;
-          wasCancelled = true;
-          abortGeneration("client");
-        }
+        return queueWrite(sseMessage(payload), options);
       };
 
-      const sendComment = (comment: string) => {
+      const sendComment = (comment: string): Promise<boolean> => {
         if (streamClosed || generationAbortController.signal.aborted) {
-          return;
+          return Promise.resolve(false);
         }
-        try {
-          controller.enqueue(encoder.encode(`: ${comment}\n\n`));
-        } catch {
-          streamClosed = true;
-          wasCancelled = true;
-          abortGeneration("client");
-        }
+        return queueWrite(`: ${comment}\n\n`);
       };
 
-      sendComment(`connected ${sessionId}`);
+      void sendComment(`connected ${sessionId}`);
       const heartbeat = setInterval(
-        () => sendComment("keep-alive"),
+        () => void sendComment("keep-alive"),
         SSE_HEARTBEAT_INTERVAL_MS,
       );
 
@@ -373,6 +449,9 @@ export async function POST(request: Request) {
         } | null = null;
         const invocationStartedAt = performance.now();
         const stageTimingsMs: Record<string, number> = {};
+        const graphValidationCategoryCounts: Partial<
+          Record<GraphValidationCategory, number>
+        > = {};
         let storageVisibility: ArtifactVisibility = githubPat?.trim()
           ? "private"
           : "public";
@@ -680,6 +759,7 @@ export async function POST(request: Request) {
             },
           );
           const explanationStartedAt = performance.now();
+          let recordedFirstExplanationChunk = false;
           const explanationStream = await streamCompletion({
             provider,
             model,
@@ -695,10 +775,16 @@ export async function POST(request: Request) {
             signal: generationAbortController.signal,
             clientRequestId: `${audit.sessionId}:explanation`,
           });
-          for await (const chunk of explanationStream.stream) {
+          for await (const chunk of coalesceTextChunks(
+            explanationStream.stream,
+          )) {
             throwIfAborted(generationAbortController.signal);
+            if (!recordedFirstExplanationChunk) {
+              recordTiming("explanation_first_chunk", explanationStartedAt);
+              recordedFirstExplanationChunk = true;
+            }
             explanationResponse += chunk;
-            send({
+            await send({
               status: "explanation_chunk",
               session_id: audit.sessionId,
               chunk,
@@ -833,7 +919,19 @@ export async function POST(request: Request) {
               graph,
             });
 
+            const graphValidationStartedAt = performance.now();
             const graphValidation = validateDiagramGraph(graph, fileTreeLookup);
+            recordTiming(
+              `graph_validation_${attempt}`,
+              graphValidationStartedAt,
+            );
+            const validationCategories = [
+              ...new Set(graphValidation.issues.map((issue) => issue.category)),
+            ];
+            for (const category of validationCategories) {
+              graphValidationCategoryCounts[category] =
+                (graphValidationCategoryCounts[category] ?? 0) + 1;
+            }
             const attemptAudit = {
               attempt,
               rawOutput: rawText,
@@ -841,6 +939,9 @@ export async function POST(request: Request) {
               validationFeedback: graphValidation.valid
                 ? undefined
                 : formatGraphValidationFeedback(graphValidation.issues),
+              validationCategories: graphValidation.valid
+                ? undefined
+                : validationCategories,
               status: (graphValidation.valid ? "succeeded" : "failed") as
                 "failed" | "succeeded",
               createdAt: new Date().toISOString(),
@@ -909,12 +1010,14 @@ export async function POST(request: Request) {
           });
 
           throwIfAborted(generationAbortController.signal);
+          const diagramCompileStartedAt = performance.now();
           const diagram = compileDiagramGraph({
             graph: validGraph,
             username,
             repo,
             branch: githubData.defaultBranch,
           });
+          recordTiming("diagram_compile", diagramCompileStartedAt);
           audit = withCompiledDiagram(audit, diagram);
           send({
             status: "diagram_compiling",
@@ -1001,7 +1104,8 @@ export async function POST(request: Request) {
         } finally {
           let terminalSent = false;
           let persistenceWarning: string | undefined;
-          const sendTerminal = () => {
+          const sendTerminal = async () => {
+            clearInterval(heartbeat);
             const finalTerminalPayload = terminalPayload as Record<
               string,
               unknown
@@ -1009,7 +1113,7 @@ export async function POST(request: Request) {
             if (!finalTerminalPayload || wasCancelled) {
               return;
             }
-            send(
+            terminalSent = await send(
               {
                 ...finalTerminalPayload,
                 cost_summary: audit.finalCost ?? audit.estimatedCost,
@@ -1018,18 +1122,20 @@ export async function POST(request: Request) {
                   ? { persistence_warning: persistenceWarning }
                   : {}),
               },
-              { allowAfterAbort: abortCause === "deadline" },
+              // Eligibility is checked again after backpressure clears because
+              // a deadline can fire while this terminal is already queued.
+              { allowDeadlineTerminal: true },
             );
-            terminalSent = true;
           };
 
           // A timeout must reach the client before best-effort cleanup consumes
           // the remaining Vercel function budget.
           if (abortCause === "deadline") {
-            sendTerminal();
+            await sendTerminal();
           }
 
           if (quotaReservation) {
+            const quotaFinalizationStartedAt = performance.now();
             const measuredCommittedTokens = sumGenerationUsage(
               ...actualUsages,
             ).totalTokens;
@@ -1067,6 +1173,8 @@ export async function POST(request: Request) {
                       : "Unknown error",
                 }),
               );
+            } finally {
+              recordTiming("quota_finalization", quotaFinalizationStartedAt);
             }
           }
 
@@ -1074,6 +1182,7 @@ export async function POST(request: Request) {
             const persistenceStartedAt = performance.now();
             try {
               if (successfulDiagramState && audit.status === "succeeded") {
+                const artifactPersistenceStartedAt = performance.now();
                 const artifactWritten = await saveSuccessfulDiagramState({
                   username,
                   repo,
@@ -1086,10 +1195,61 @@ export async function POST(request: Request) {
                   audit,
                   usedOwnKey: Boolean(apiKey),
                 });
+                recordTiming(
+                  "artifact_persistence",
+                  artifactPersistenceStartedAt,
+                );
+
+                if (artifactWritten) {
+                  postResponseTasks.push(async () => {
+                    try {
+                      await clearSuccessfulDiagramFailureSummary({
+                        username,
+                        repo,
+                        githubPat,
+                        visibility: storageVisibility,
+                      });
+                    } catch (error) {
+                      console.error(
+                        JSON.stringify({
+                          event:
+                            "generate.persistence.failure_summary_cleanup_failed",
+                          session_id: audit.sessionId,
+                          error:
+                            error instanceof Error
+                              ? error.message
+                              : "Unknown error",
+                        }),
+                      );
+                    }
+                  });
+                }
 
                 if (storageVisibility === "public" && artifactWritten) {
                   const lastSuccessfulAt =
                     audit.updatedAt ?? new Date().toISOString();
+                  const publicDiagram = successfulDiagramState.diagram;
+                  postResponseTasks.push(async () => {
+                    try {
+                      await writePublicDiagramPreview({
+                        username,
+                        repo,
+                        diagram: publicDiagram,
+                        lastSuccessfulAt,
+                      });
+                    } catch (error) {
+                      console.warn(
+                        JSON.stringify({
+                          event: "generate.persistence.preview_write_failed",
+                          session_id: audit.sessionId,
+                          error:
+                            error instanceof Error
+                              ? error.message
+                              : "Unknown error",
+                        }),
+                      );
+                    }
+                  });
                   postResponseTasks.push(async () => {
                     try {
                       revalidatePath(getRepoPagePath(username, repo));
@@ -1114,7 +1274,9 @@ export async function POST(request: Request) {
                   });
                 }
               } else {
+                const auditPersistenceStartedAt = performance.now();
                 await persistTerminalAudit();
+                recordTiming("audit_persistence", auditPersistenceStartedAt);
               }
             } catch (persistenceError) {
               if (successfulDiagramState && audit.status === "succeeded") {
@@ -1139,14 +1301,14 @@ export async function POST(request: Request) {
           }
 
           if (!terminalSent) {
-            sendTerminal();
+            await sendTerminal();
           }
 
           clearInterval(heartbeat);
           stopCancellationPolling();
           request.signal.removeEventListener("abort", handleRequestAbort);
           deadlineSignal.removeEventListener("abort", handleDeadline);
-          closeStream();
+          await closeStream();
 
           const totalUsage = sumGenerationUsage(...actualUsages);
           console.info(
@@ -1168,6 +1330,9 @@ export async function POST(request: Request) {
               input_tokens: totalUsage.inputTokens,
               output_tokens: totalUsage.outputTokens,
               total_tokens: totalUsage.totalTokens,
+              cached_input_tokens: totalUsage.cachedInputTokens ?? 0,
+              reasoning_tokens: totalUsage.reasoningTokens ?? 0,
+              graph_validation_categories: graphValidationCategoryCounts,
               quota_committed_tokens: audit.actualCommittedTokens ?? null,
             }),
           );
@@ -1186,8 +1351,12 @@ export async function POST(request: Request) {
         })
         .finally(resolveGenerationDone);
     },
+    pull() {
+      notifyStreamPull();
+    },
     cancel() {
       streamClosed = true;
+      notifyStreamPull();
       abortGeneration("client");
     },
   });

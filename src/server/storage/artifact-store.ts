@@ -4,6 +4,7 @@ import type { DiagramStateResponse } from "~/features/diagram/types";
 import type { GenerationSessionAudit } from "~/features/diagram/graph";
 import {
   getPrivateLocation,
+  getPublicPreviewKey,
   getReadLocations,
   getPublicLocation,
   type StorageLocation,
@@ -17,6 +18,7 @@ import { withDistributedLock } from "~/server/storage/distributed-lock";
 import type {
   ArtifactVisibility,
   DiagramArtifact,
+  PublicDiagramPreview,
 } from "~/server/storage/types";
 
 // Artifact replacement performs a serialized R2 read and write. Keep the
@@ -41,7 +43,10 @@ export function toStoredSessionSummary(
     quotaResetAt: audit.quotaResetAt,
     estimatedCost: audit.estimatedCost,
     finalCost: audit.finalCost,
-    graph: audit.graph,
+    // Successful artifacts already carry the canonical graph at the top level.
+    // Keep failed-session context, but avoid serializing the same successful
+    // graph twice. Older version-1 artifacts with both copies remain readable.
+    graph: audit.status === "failed" ? audit.graph : null,
     graphAttempts: audit.status === "failed" ? audit.graphAttempts : [],
     stageUsages: [],
     validationError: audit.validationError,
@@ -138,13 +143,31 @@ export async function getStoredDiagramState(params: {
 export async function getPublicDiagramPreview(params: {
   username: string;
   repo: string;
+  expectedLastSuccessfulAt?: string;
 }): Promise<{
   diagram: string;
   lastSuccessfulAt: string;
+  source: "artifact" | "sidecar";
 } | null> {
-  const artifact = await getArtifactForLocation(
-    getPublicLocation(params.username, params.repo),
-  );
+  const location = getPublicLocation(params.username, params.repo);
+  if (params.expectedLastSuccessfulAt) {
+    const preview = await getJsonObject<PublicDiagramPreview>(
+      location.bucket,
+      getPublicPreviewKey(params.username, params.repo),
+    );
+    if (
+      preview?.diagram &&
+      preview.lastSuccessfulAt === params.expectedLastSuccessfulAt
+    ) {
+      return {
+        diagram: preview.diagram,
+        lastSuccessfulAt: preview.lastSuccessfulAt,
+        source: "sidecar",
+      };
+    }
+  }
+
+  const artifact = await getArtifactForLocation(location);
   if (!artifact?.diagram) {
     return null;
   }
@@ -152,7 +175,46 @@ export async function getPublicDiagramPreview(params: {
   return {
     diagram: artifact.diagram,
     lastSuccessfulAt: artifact.lastSuccessfulAt,
+    source: "artifact",
   };
+}
+
+export async function writePublicDiagramPreview(params: {
+  username: string;
+  repo: string;
+  diagram: string;
+  lastSuccessfulAt: string;
+}): Promise<boolean> {
+  const location = getPublicLocation(params.username, params.repo);
+
+  return withDistributedLock({
+    key: getArtifactLockKey(location),
+    ttlMs: ARTIFACT_LOCK_TTL_MS,
+    waitMs: ARTIFACT_LOCK_WAIT_MS,
+    callback: async () => {
+      const artifact = await getArtifactForLocation(location);
+      if (
+        !artifact ||
+        artifact.lastSuccessfulAt !== params.lastSuccessfulAt ||
+        artifact.diagram !== params.diagram
+      ) {
+        return false;
+      }
+
+      await putJsonObject(
+        location.bucket,
+        getPublicPreviewKey(params.username, params.repo),
+        {
+          version: 1,
+          username: params.username.trim().toLowerCase(),
+          repo: params.repo.trim().toLowerCase(),
+          diagram: params.diagram,
+          lastSuccessfulAt: params.lastSuccessfulAt,
+        } satisfies PublicDiagramPreview,
+      );
+      return true;
+    },
+  });
 }
 
 export async function writeDiagramArtifact(params: {

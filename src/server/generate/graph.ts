@@ -9,17 +9,32 @@ import {
 } from "~/features/diagram/graph";
 
 export interface GraphValidationIssue {
+  category: GraphValidationCategory;
   path: string;
   message: string;
 }
+
+export type GraphValidationCategory =
+  | "schema_validation"
+  | "invalid_json"
+  | "duplicate_group_id"
+  | "duplicate_node_id"
+  | "unknown_group_id"
+  | "missing_repository_path"
+  | "unknown_edge_source"
+  | "unknown_edge_target";
 
 export interface GraphValidationResult {
   valid: boolean;
   issues: GraphValidationIssue[];
 }
 
-function buildIssue(path: string, message: string): GraphValidationIssue {
-  return { path, message };
+function buildIssue(
+  category: GraphValidationCategory,
+  path: string,
+  message: string,
+): GraphValidationIssue {
+  return { category, path, message };
 }
 
 export function buildFileTreeLookup(fileTree: string): Set<string> {
@@ -42,7 +57,11 @@ export function parseDiagramGraph(rawOutput: string): {
       return {
         graph: null,
         issues: result.error.issues.map((issue) =>
-          buildIssue(issue.path.join(".") || "graph", issue.message),
+          buildIssue(
+            "schema_validation",
+            issue.path.join(".") || "graph",
+            issue.message,
+          ),
         ),
       };
     }
@@ -56,6 +75,7 @@ export function parseDiagramGraph(rawOutput: string): {
       graph: null,
       issues: [
         buildIssue(
+          "invalid_json",
           "graph",
           error instanceof Error
             ? error.message
@@ -77,7 +97,11 @@ export function validateDiagramGraph(
   graph.groups.forEach((group, index) => {
     if (groupIds.has(group.id)) {
       issues.push(
-        buildIssue(`groups.${index}.id`, `Duplicate group id "${group.id}".`),
+        buildIssue(
+          "duplicate_group_id",
+          `groups.${index}.id`,
+          `Duplicate group id "${group.id}".`,
+        ),
       );
     }
     groupIds.add(group.id);
@@ -86,7 +110,11 @@ export function validateDiagramGraph(
   graph.nodes.forEach((node, index) => {
     if (nodeIds.has(node.id)) {
       issues.push(
-        buildIssue(`nodes.${index}.id`, `Duplicate node id "${node.id}".`),
+        buildIssue(
+          "duplicate_node_id",
+          `nodes.${index}.id`,
+          `Duplicate node id "${node.id}".`,
+        ),
       );
     }
     nodeIds.add(node.id);
@@ -94,6 +122,7 @@ export function validateDiagramGraph(
     if (node.groupId && !groupIds.has(node.groupId)) {
       issues.push(
         buildIssue(
+          "unknown_group_id",
           `nodes.${index}.groupId`,
           `Unknown group id "${node.groupId}" for node "${node.id}".`,
         ),
@@ -103,6 +132,7 @@ export function validateDiagramGraph(
     if (node.path && !fileTreeLookup.has(node.path)) {
       issues.push(
         buildIssue(
+          "missing_repository_path",
           `nodes.${index}.path`,
           `Path "${node.path}" does not exist in the repository file tree.`,
         ),
@@ -114,6 +144,7 @@ export function validateDiagramGraph(
     if (!nodeIds.has(edge.from)) {
       issues.push(
         buildIssue(
+          "unknown_edge_source",
           `edges.${index}.from`,
           `Unknown source node id "${edge.from}".`,
         ),
@@ -121,7 +152,11 @@ export function validateDiagramGraph(
     }
     if (!nodeIds.has(edge.to)) {
       issues.push(
-        buildIssue(`edges.${index}.to`, `Unknown target node id "${edge.to}".`),
+        buildIssue(
+          "unknown_edge_target",
+          `edges.${index}.to`,
+          `Unknown target node id "${edge.to}".`,
+        ),
       );
     }
   });

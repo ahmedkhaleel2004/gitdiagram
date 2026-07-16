@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, ShieldCheck, Sparkles } from "lucide-react";
-import { FaGithub } from "react-icons/fa";
+import { GitHubIcon } from "~/components/icons/github-icon";
 import { SponsorEmailActions } from "./sponsor-email-actions";
 
 export const metadata: Metadata = {
@@ -121,7 +121,7 @@ export default function SponsorPage() {
               href="https://github.com/ahmedkhaleel2004/gitdiagram"
               className="browse-muted-button inline-flex min-h-[48px] w-fit items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold"
             >
-              <FaGithub className="h-4 w-4" aria-hidden="true" />
+              <GitHubIcon className="h-4 w-4" aria-hidden="true" />
               View the project
               <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
             </Link>

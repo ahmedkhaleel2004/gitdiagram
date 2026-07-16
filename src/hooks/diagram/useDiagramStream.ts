@@ -32,11 +32,54 @@ export function useDiagramStream({
     initialState ?? { status: "idle" },
   );
   const activeGenerationRef = useRef<AbortController | null>(null);
+  const explanationFrameRef = useRef<number | null>(null);
+  const pendingExplanationRef = useRef<{
+    explanation: string;
+    message: DiagramStreamMessage;
+  } | null>(null);
+
+  const flushPendingExplanation = useCallback(() => {
+    if (explanationFrameRef.current !== null) {
+      cancelAnimationFrame(explanationFrameRef.current);
+      explanationFrameRef.current = null;
+    }
+
+    const pending = pendingExplanationRef.current;
+    pendingExplanationRef.current = null;
+    if (!pending) return;
+
+    setState((prev) => ({
+      ...prev,
+      status: "explanation_chunk",
+      sessionId: pending.message.session_id ?? prev.sessionId,
+      costSummary: pending.message.cost_summary ?? prev.costSummary,
+      quotaResetAt: pending.message.quota_reset_at ?? prev.quotaResetAt,
+      explanation: pending.explanation,
+    }));
+  }, []);
+
+  const scheduleExplanationUpdate = useCallback(
+    (explanation: string, message: DiagramStreamMessage) => {
+      pendingExplanationRef.current = { explanation, message };
+      if (explanationFrameRef.current !== null) return;
+
+      explanationFrameRef.current = requestAnimationFrame(() => {
+        explanationFrameRef.current = null;
+        flushPendingExplanation();
+      });
+    },
+    [flushPendingExplanation],
+  );
 
   useEffect(
     () => () => {
       activeGenerationRef.current?.abort();
       activeGenerationRef.current = null;
+      if (explanationFrameRef.current !== null) {
+        cancelAnimationFrame(explanationFrameRef.current);
+      }
+      explanationFrameRef.current = null;
+      pendingExplanationRef.current = null;
     },
     [],
   );
@@ -49,6 +92,7 @@ export function useDiagramStream({
       },
     ) => {
       if (data.error) {
+        flushPendingExplanation();
         setState({
           status: "error",
           sessionId: data.session_id,
@@ -73,6 +117,7 @@ export function useDiagramStream({
         case "graph_retry":
         case "graph_validating":
         case "diagram_compiling":
+          flushPendingExplanation();
           setState((prev) => ({
             ...prev,
             status: data.status,
@@ -90,17 +135,11 @@ export function useDiagramStream({
         case "explanation_chunk":
           if (data.chunk) {
             buffers.explanation += data.chunk;
-            setState((prev) => ({
-              ...prev,
-              status: "explanation_chunk",
-              sessionId: data.session_id ?? prev.sessionId,
-              costSummary: data.cost_summary ?? prev.costSummary,
-              quotaResetAt: data.quota_reset_at ?? prev.quotaResetAt,
-              explanation: buffers.explanation,
-            }));
+            scheduleExplanationUpdate(buffers.explanation, data);
           }
           break;
         case "complete": {
+          flushPendingExplanation();
           const explanation = data.explanation ?? buffers.explanation;
           const diagram = data.diagram ?? "";
           setState({
@@ -125,6 +164,7 @@ export function useDiagramStream({
           return false;
         }
         case "error":
+          flushPendingExplanation();
           setState({
             status: "error",
             sessionId: data.session_id,
@@ -141,12 +181,17 @@ export function useDiagramStream({
 
       return true;
     },
-    [onComplete, onError],
+    [flushPendingExplanation, onComplete, onError, scheduleExplanationUpdate],
   );
 
   const runGeneration = useCallback(
     async (githubPat?: string) => {
       activeGenerationRef.current?.abort();
+      if (explanationFrameRef.current !== null) {
+        cancelAnimationFrame(explanationFrameRef.current);
+        explanationFrameRef.current = null;
+      }
+      pendingExplanationRef.current = null;
       const abortController = new AbortController();
       activeGenerationRef.current = abortController;
       setState({

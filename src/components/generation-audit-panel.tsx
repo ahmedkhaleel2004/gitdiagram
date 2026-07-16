@@ -8,6 +8,25 @@ interface GenerationAuditPanelProps {
   error?: string;
 }
 
+function renderCostSummary(
+  label: string,
+  costSummary: GenerationCostSummary | null | undefined,
+) {
+  if (!costSummary) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
+      <p className="font-medium">{label}</p>
+      <p className="mt-1">{costSummary.display}</p>
+      <pre className="mt-2 overflow-x-auto text-xs whitespace-pre-wrap">
+        {JSON.stringify(costSummary, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
 export function GenerationAuditPanel({
   audit,
   error,
@@ -17,25 +36,6 @@ export function GenerationAuditPanel({
   }
   const diagnosticMessage =
     audit?.validationError ?? audit?.compilerError ?? audit?.renderError;
-
-  const renderCostSummary = (
-    label: string,
-    costSummary: GenerationCostSummary | null | undefined,
-  ) => {
-    if (!costSummary) {
-      return null;
-    }
-
-    return (
-      <div className="mt-3 rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
-        <p className="font-medium">{label}</p>
-        <p className="mt-1">{costSummary.display}</p>
-        <pre className="mt-2 overflow-x-auto text-xs whitespace-pre-wrap">
-          {JSON.stringify(costSummary, null, 2)}
-        </pre>
-      </div>
-    );
-  };
 
   return (
     <div className="w-full max-w-5xl rounded-xl border border-neutral-300 bg-white/80 p-4 text-sm text-neutral-800 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60 dark:text-neutral-100">
