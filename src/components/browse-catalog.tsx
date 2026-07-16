@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   normalizeBrowseQuery,
@@ -11,7 +11,10 @@ import type {
   BrowseQuery,
   BrowseSort,
 } from "~/features/browse/catalog";
-import { loadBrowsePage } from "~/features/browse/index-client";
+import {
+  getBrowsePageUrl,
+  loadBrowsePage,
+} from "~/features/browse/index-client";
 import { BrowseCatalogControls } from "~/components/browse-catalog-controls";
 import { BrowseCatalogLoadingState } from "~/components/browse-catalog-loading-state";
 import { BrowseCatalogResults } from "~/components/browse-catalog-results";
@@ -30,6 +33,7 @@ interface BrowseCatalogProps {
 }
 
 const SLOW_RESULTS_INDICATOR_DELAY_MS = 5000;
+const SEARCH_DEBOUNCE_MS = 150;
 
 export function BrowseCatalog({
   initialResult,
@@ -40,17 +44,22 @@ export function BrowseCatalog({
   const [result, setResult] = useState<BrowsePageResult | null>(
     initialResult ?? null,
   );
-  const [isQueryReady, setIsQueryReady] = useState(Boolean(initialResult));
+  const [isQueryReady, setIsQueryReady] = useState(false);
   const [isLoaded, setIsLoaded] = useState(Boolean(initialResult));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showSlowResultsIndicator, setShowSlowResultsIndicator] =
     useState(false);
   const [searchInput, setSearchInput] = useState(normalizedInitialQuery.q);
+  const [debouncedQuery, setDebouncedQuery] = useState(
+    normalizedInitialQuery.q,
+  );
   const [sort, setSort] = useState<BrowseSort>(normalizedInitialQuery.sort);
   const [minStars, setMinStars] = useState(normalizedInitialQuery.minStars);
   const [page, setPage] = useState(normalizedInitialQuery.page);
-  const deferredQuery = useDeferredValue(searchInput);
   const activeRequestId = useRef(0);
+  const loadedQueryKeyRef = useRef<string | null>(
+    initialResult ? getBrowsePageUrl(initialQuery) : null,
+  );
   const {
     closeHoverPreview,
     desktopHoverEnabled,
@@ -98,16 +107,30 @@ export function BrowseCatalog({
   }, []);
 
   useEffect(() => {
+    if (!isQueryReady) {
+      return;
+    }
+
     persistBrowseState({
       page,
       q: searchInput.trim(),
       sort,
       minStars,
     });
-  }, [minStars, page, searchInput, sort]);
+  }, [isQueryReady, minStars, page, searchInput, sort]);
 
   useEffect(() => {
-    if (!isQueryReady) {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(searchInput);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (!isQueryReady || searchInput !== debouncedQuery) {
       return;
     }
 
@@ -116,10 +139,18 @@ export function BrowseCatalog({
     const abortController = new AbortController();
     const query = {
       page,
-      q: deferredQuery,
+      q: debouncedQuery,
       sort,
       minStars,
     };
+    const queryKey = getBrowsePageUrl(query);
+
+    if (loadedQueryKeyRef.current === queryKey) {
+      setIsLoaded(true);
+      setLoadError(null);
+      setShowSlowResultsIndicator(false);
+      return;
+    }
 
     setIsLoaded(false);
     setLoadError(null);
@@ -138,6 +169,7 @@ export function BrowseCatalog({
         }
 
         window.clearTimeout(slowIndicatorTimeoutId);
+        loadedQueryKeyRef.current = queryKey;
         setResult(loadedResult);
         setIsLoaded(true);
         setShowSlowResultsIndicator(false);
@@ -164,7 +196,7 @@ export function BrowseCatalog({
       window.clearTimeout(slowIndicatorTimeoutId);
       abortController.abort();
     };
-  }, [deferredQuery, isQueryReady, minStars, page, sort]);
+  }, [debouncedQuery, isQueryReady, minStars, page, searchInput, sort]);
 
   useEffect(() => {
     const handlePopState = () => {

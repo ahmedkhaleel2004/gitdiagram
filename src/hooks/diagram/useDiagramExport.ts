@@ -11,7 +11,9 @@ export function useDiagramExport(diagram: string) {
     const svgElement = document.querySelector(".mermaid svg");
     if (!(svgElement instanceof SVGSVGElement)) return;
 
-    exportMermaidSvgAsPng(svgElement);
+    void exportMermaidSvgAsPng(svgElement).catch((error: unknown) => {
+      console.error("Diagram PNG export failed:", error);
+    });
   }, []);
 
   return {

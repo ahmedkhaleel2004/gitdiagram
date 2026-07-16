@@ -10,11 +10,14 @@ function toValidDate(value: string): Date | null {
 }
 
 function getLatestBrowseUpdate(entries: BrowseIndexEntry[] | null): Date {
-  return (
-    entries
-      ?.map((entry) => toValidDate(entry.lastSuccessfulAt))
-      .find((date): date is Date => date !== null) ?? new Date()
-  );
+  for (const entry of entries ?? []) {
+    const date = toValidDate(entry.lastSuccessfulAt);
+    if (date) {
+      return date;
+    }
+  }
+
+  return new Date();
 }
 
 function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
@@ -54,8 +57,9 @@ export default async function sitemap(props: {
   const sitemapId = Number.isFinite(id) && id >= 0 ? id : 0;
   const browseEntries = await getCachedBrowseIndex().catch(() => null);
   const latestBrowseUpdate = getLatestBrowseUpdate(browseEntries);
+  const staticRoutes = getStaticRoutes(latestBrowseUpdate);
 
-  const staticRouteCount = getStaticRoutes(latestBrowseUpdate).length;
+  const staticRouteCount = staticRoutes.length;
   const repoOffset = Math.max(
     0,
     sitemapId * SITEMAP_PAGE_SIZE - staticRouteCount,
@@ -70,7 +74,5 @@ export default async function sitemap(props: {
       priority: 0.5,
     })) ?? [];
 
-  return sitemapId === 0
-    ? [...getStaticRoutes(latestBrowseUpdate), ...repoRoutes]
-    : repoRoutes;
+  return sitemapId === 0 ? [...staticRoutes, ...repoRoutes] : repoRoutes;
 }

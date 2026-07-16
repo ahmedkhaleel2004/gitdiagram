@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   after: vi.fn(),
   admitQuota: vi.fn(),
   buildStageTokenBound: vi.fn(),
+  clearFailureSummary: vi.fn(),
   estimateCost: vi.fn(),
   finalizeQuota: vi.fn(),
   generateStructuredOutput: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   stopCancellationPolling: vi.fn(),
   streamCompletion: vi.fn(),
   unregisterActiveGeneration: vi.fn(),
+  writePublicPreview: vi.fn(),
   afterCallback: undefined as undefined | (() => Promise<void>),
   cancellationCallback: undefined as undefined | (() => void),
 }));
@@ -26,7 +28,11 @@ vi.mock("next/cache", () => ({
   revalidateTag: vi.fn(),
 }));
 vi.mock("~/app/browse/data", () => ({ revalidateBrowseIndexCache: vi.fn() }));
+vi.mock("~/server/storage/artifact-store", () => ({
+  writePublicDiagramPreview: mocks.writePublicPreview,
+}));
 vi.mock("~/server/storage/diagram-state", () => ({
+  clearSuccessfulDiagramFailureSummary: mocks.clearFailureSummary,
   persistTerminalSessionAudit: mocks.persistAudit,
   saveSuccessfulDiagramState: mocks.saveDiagram,
   updatePublicBrowseIndexForSuccessfulDiagram: vi.fn(),
@@ -118,6 +124,7 @@ describe("POST /api/generate/stream", () => {
       stargazerCount: 10,
     });
     mocks.persistAudit.mockResolvedValue(undefined);
+    mocks.clearFailureSummary.mockResolvedValue(undefined);
     mocks.saveDiagram.mockResolvedValue(true);
     mocks.finalizeQuota.mockResolvedValue(undefined);
     mocks.afterCallback = undefined;
@@ -143,6 +150,7 @@ describe("POST /api/generate/stream", () => {
     );
     mocks.registerActiveGeneration.mockResolvedValue(true);
     mocks.unregisterActiveGeneration.mockResolvedValue(undefined);
+    mocks.writePublicPreview.mockResolvedValue(true);
     mocks.cancellationCallback = undefined;
     mocks.startCancellationPolling.mockImplementation(
       ({ onCancelled }: { onCancelled: () => void }) => {
@@ -365,6 +373,8 @@ describe("POST /api/generate/stream", () => {
       inputTokens: 80,
       outputTokens: 20,
       totalTokens: 100,
+      cachedInputTokens: 40,
+      reasoningTokens: 10,
     };
     mocks.streamCompletion.mockResolvedValue({
       stream: (async function* () {
@@ -417,5 +427,152 @@ describe("POST /api/generate/stream", () => {
     });
     expect(terminalAudit).not.toHaveProperty("explanation");
     expect(terminalAudit).not.toHaveProperty("compiledDiagram");
+    expect(console.info).toHaveBeenCalledWith(
+      expect.stringContaining('"cached_input_tokens":80'),
+    );
+    expect(console.info).toHaveBeenCalledWith(
+      expect.stringContaining('"reasoning_tokens":20'),
+    );
+    expect(mocks.clearFailureSummary).not.toHaveBeenCalled();
+    await mocks.afterCallback?.();
+    expect(mocks.clearFailureSummary).toHaveBeenCalledWith({
+      username: "openai",
+      repo: "openai-node",
+      githubPat: undefined,
+      visibility: "public",
+    });
+    expect(mocks.writePublicPreview).toHaveBeenCalledWith({
+      username: "openai",
+      repo: "openai-node",
+      diagram: expect.stringContaining("flowchart TD"),
+      lastSuccessfulAt: expect.any(String),
+    });
+  });
+
+  it("coalesces explanation deltas without changing their bytes or order", async () => {
+    mockEstimate(100);
+    mocks.admitQuota.mockResolvedValue({
+      admitted: true,
+      reservation: {
+        quotaBucket: "daily",
+        quotaDateUtc: "2026-07-13",
+        quotaResetAt: "2026-07-14T00:00:00.000Z",
+        reservedTokens: 10_000,
+      },
+    });
+    const usage = { inputTokens: 80, outputTokens: 20, totalTokens: 100 };
+    const sourceChunks = [
+      "<explanation>",
+      "Hello",
+      " ",
+      "streaming",
+      " world.",
+      "</explanation>",
+    ];
+    mocks.streamCompletion.mockResolvedValue({
+      stream: (async function* () {
+        yield* sourceChunks;
+      })(),
+      usagePromise: Promise.resolve(usage),
+    });
+    const graph = {
+      groups: [],
+      nodes: [
+        {
+          id: "entrypoint",
+          label: "Entry point",
+          type: "TypeScript module",
+          description: null,
+          groupId: null,
+          path: "src/index.ts",
+          shape: "box",
+        },
+      ],
+      edges: [],
+    };
+    mocks.generateStructuredOutput.mockResolvedValue({
+      output: graph,
+      rawText: JSON.stringify(graph),
+      usage,
+    });
+
+    const response = await POST(request());
+    const events = readSseEvents(await response.text());
+    const explanationChunks = events
+      .filter((event) => event.status === "explanation_chunk")
+      .map((event) => event.chunk as string);
+
+    expect(explanationChunks.join("")).toBe(sourceChunks.join(""));
+    expect(explanationChunks.length).toBeLessThan(sourceChunks.length);
+    expect(events.at(-1)).toMatchObject({
+      status: "complete",
+      explanation: "Hello streaming world.",
+    });
+  });
+
+  it("logs sanitized validation categories for successful retry sessions", async () => {
+    mockEstimate(100);
+    mocks.admitQuota.mockResolvedValue({
+      admitted: true,
+      reservation: {
+        quotaBucket: "daily",
+        quotaDateUtc: "2026-07-13",
+        quotaResetAt: "2026-07-14T00:00:00.000Z",
+        reservedTokens: 50_000,
+      },
+    });
+    const usage = { inputTokens: 80, outputTokens: 20, totalTokens: 100 };
+    mocks.streamCompletion.mockResolvedValue({
+      stream: (async function* () {
+        yield "<explanation>Retry diagnostics.</explanation>";
+      })(),
+      usagePromise: Promise.resolve(usage),
+    });
+    const invalidGraph = {
+      groups: [],
+      nodes: [
+        {
+          id: "entrypoint",
+          label: "Entry point",
+          type: "TypeScript module",
+          description: null,
+          groupId: null,
+          path: "src/private-name.ts",
+          shape: "box",
+        },
+      ],
+      edges: [],
+    };
+    const validGraph = {
+      ...invalidGraph,
+      nodes: [{ ...invalidGraph.nodes[0], path: "src/index.ts" }],
+    };
+    mocks.generateStructuredOutput
+      .mockResolvedValueOnce({
+        output: invalidGraph,
+        rawText: JSON.stringify(invalidGraph),
+        usage,
+      })
+      .mockResolvedValueOnce({
+        output: validGraph,
+        rawText: JSON.stringify(validGraph),
+        usage,
+      });
+
+    const response = await POST(request());
+    await response.text();
+    const finishLog = vi
+      .mocked(console.info)
+      .mock.calls.map(([value]) => String(value))
+      .find((value) => value.includes('"event":"generate.stream.finished"'));
+    const finishEvent = JSON.parse(finishLog ?? "{}") as Record<
+      string,
+      unknown
+    >;
+
+    expect(finishEvent.graph_validation_categories).toEqual({
+      missing_repository_path: 1,
+    });
+    expect(finishLog).not.toContain("private-name");
   });
 });

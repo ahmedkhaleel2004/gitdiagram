@@ -32,6 +32,46 @@ describe("validateDiagramGraph", () => {
 
     expect(result.valid).toBe(false);
     expect(result.issues[0]?.path).toBe("nodes.0.path");
+    expect(result.issues[0]?.category).toBe("missing_repository_path");
+  });
+
+  it("classifies structural failures without logging repository data", () => {
+    const result = validateDiagramGraph(
+      {
+        groups: [
+          { id: "runtime", label: "Runtime", description: null },
+          { id: "runtime", label: "Duplicate", description: null },
+        ],
+        nodes: [
+          {
+            id: "api",
+            label: "API",
+            type: "service",
+            description: null,
+            groupId: "missing",
+            path: null,
+            shape: null,
+          },
+        ],
+        edges: [
+          {
+            from: "missing_source",
+            to: "missing_target",
+            label: null,
+            description: null,
+            style: null,
+          },
+        ],
+      },
+      new Set(),
+    );
+
+    expect(result.issues.map((issue) => issue.category)).toEqual([
+      "duplicate_group_id",
+      "unknown_group_id",
+      "unknown_edge_source",
+      "unknown_edge_target",
+    ]);
   });
 
   it("rejects graph text that becomes empty after safety normalization", () => {

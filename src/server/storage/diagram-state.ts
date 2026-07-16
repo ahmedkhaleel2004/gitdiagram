@@ -138,14 +138,16 @@ export async function saveSuccessfulDiagramState(params: {
     return false;
   }
 
-  await clearFailureSummary({
-    username: params.username,
-    repo: params.repo,
-    githubPat: params.githubPat,
-    visibility: params.visibility,
-  });
-
   return true;
+}
+
+export async function clearSuccessfulDiagramFailureSummary(params: {
+  username: string;
+  repo: string;
+  githubPat?: string;
+  visibility: ArtifactVisibility;
+}): Promise<void> {
+  await clearFailureSummary(params);
 }
 
 export async function updatePublicBrowseIndexForSuccessfulDiagram(params: {

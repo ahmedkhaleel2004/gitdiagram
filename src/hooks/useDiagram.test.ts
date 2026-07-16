@@ -212,6 +212,63 @@ describe("useDiagram", () => {
     );
   });
 
+  it("does not download authoritative public initial state twice", async () => {
+    const { result } = renderHook(() =>
+      useDiagram(
+        "acme",
+        "demo",
+        {
+          diagram: "flowchart TD\nA-->B",
+          explanation: "server diagram",
+          graph: null,
+          latestSessionAudit: null,
+          lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+        },
+        true,
+      ),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.diagram).toContain("A-->B");
+    expect(getDiagramState).not.toHaveBeenCalled();
+    expect(runGeneration).not.toHaveBeenCalled();
+  });
+
+  it("still checks private state when a PAT exists", async () => {
+    localStorage.setItem("github_pat", "private-token");
+    getDiagramState.mockResolvedValueOnce({
+      diagram: "flowchart TD\nA-->PRIVATE",
+      explanation: "private diagram",
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+    });
+
+    const { result } = renderHook(() =>
+      useDiagram(
+        "acme",
+        "demo",
+        {
+          diagram: "flowchart TD\nA-->PUBLIC",
+          explanation: "public diagram",
+          graph: null,
+          latestSessionAudit: null,
+          lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+        },
+        true,
+      ),
+    );
+
+    await waitFor(() => expect(result.current.diagram).toContain("PRIVATE"));
+
+    expect(getDiagramState).toHaveBeenCalledWith(
+      "acme",
+      "demo",
+      "private-token",
+    );
+  });
+
   it("shows an over-limit error from the current regenerate attempt", async () => {
     runGeneration.mockImplementationOnce(async () => {
       streamOptions?.onError(

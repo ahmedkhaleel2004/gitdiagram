@@ -43,6 +43,7 @@ export function useDiagram(
   username: string,
   repo: string,
   initialState?: DiagramStateResponse | null,
+  initialStateIsAuthoritative = false,
 ) {
   const [loading, setLoading] = useState<boolean>(
     !Boolean(initialState?.diagram),
@@ -236,11 +237,22 @@ export function useDiagram(
 
   useEffect(() => {
     if (initialState?.diagram) {
+      // Public server state is read through a tag-invalidated cache. Avoid
+      // downloading that same artifact again unless a PAT means the user may
+      // have a distinct private artifact for this repository.
+      if (initialStateIsAuthoritative && !localStorage.getItem("github_pat")) {
+        return;
+      }
       void refreshStoredDiagram();
       return;
     }
     void getDiagram();
-  }, [getDiagram, initialState?.diagram, refreshStoredDiagram]);
+  }, [
+    getDiagram,
+    initialState?.diagram,
+    initialStateIsAuthoritative,
+    refreshStoredDiagram,
+  ]);
 
   const diagram = state.diagram ?? "";
   const error = state.error ?? "";

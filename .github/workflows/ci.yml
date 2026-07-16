@@ -25,3 +25,5 @@ jobs:
         run: bun run test
       - name: Build
         run: bun run build
+      - name: Performance budgets
+        run: bun run perf:budget

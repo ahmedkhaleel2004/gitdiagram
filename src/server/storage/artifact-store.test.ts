@@ -21,7 +21,12 @@ vi.mock("~/server/storage/distributed-lock", () => ({
   withDistributedLock: storageMocks.withDistributedLock,
 }));
 
-import { writeDiagramArtifact } from "~/server/storage/artifact-store";
+import {
+  getPublicDiagramPreview,
+  toStoredSessionSummary,
+  writeDiagramArtifact,
+  writePublicDiagramPreview,
+} from "~/server/storage/artifact-store";
 
 const graph = {
   groups: [],
@@ -179,6 +184,129 @@ describe("writeDiagramArtifact", () => {
         ttlMs: 45_000,
         waitMs: 30_000,
       }),
+    );
+  });
+});
+
+describe("toStoredSessionSummary", () => {
+  it("does not duplicate a successful artifact graph in its audit summary", () => {
+    const audit = createAudit({
+      sessionId: "session-success",
+      createdAt: "2026-07-13T12:00:00.000Z",
+      updatedAt: "2026-07-13T12:05:00.000Z",
+    });
+
+    expect(toStoredSessionSummary(audit).graph).toBeNull();
+  });
+
+  it("keeps graph context for backward-compatible failure diagnostics", () => {
+    const audit = {
+      ...createAudit({
+        sessionId: "session-failure",
+        createdAt: "2026-07-13T12:00:00.000Z",
+        updatedAt: "2026-07-13T12:05:00.000Z",
+      }),
+      status: "failed" as const,
+      failureStage: "diagram_compiling",
+    };
+
+    expect(toStoredSessionSummary(audit).graph).toEqual(graph);
+  });
+});
+
+describe("public diagram previews", () => {
+  beforeEach(() => {
+    process.env.R2_PUBLIC_BUCKET = "test-public-bucket";
+    vi.clearAllMocks();
+    storageMocks.withDistributedLock.mockImplementation(async ({ callback }) =>
+      callback(),
+    );
+  });
+
+  it("reads the small sidecar when it matches the requested diagram version", async () => {
+    storageMocks.getJsonObject.mockResolvedValue({
+      version: 1,
+      username: "acme",
+      repo: "demo",
+      diagram: "flowchart TD",
+      lastSuccessfulAt: "2026-07-13T12:05:00.000Z",
+    });
+
+    await expect(
+      getPublicDiagramPreview({
+        username: "acme",
+        repo: "demo",
+        expectedLastSuccessfulAt: "2026-07-13T12:05:00.000Z",
+      }),
+    ).resolves.toEqual({
+      diagram: "flowchart TD",
+      lastSuccessfulAt: "2026-07-13T12:05:00.000Z",
+      source: "sidecar",
+    });
+    expect(storageMocks.getJsonObject).toHaveBeenCalledOnce();
+    expect(storageMocks.getJsonObject).toHaveBeenCalledWith(
+      "test-public-bucket",
+      "public/v1/acme/demo.preview.json",
+    );
+  });
+
+  it("falls back to the canonical artifact when a sidecar is stale", async () => {
+    const artifact = createArtifact({
+      sessionId: "session-new",
+      createdAt: "2026-07-13T12:00:00.000Z",
+      updatedAt: "2026-07-13T12:05:00.000Z",
+      diagram: "new diagram",
+    });
+    storageMocks.getJsonObject
+      .mockResolvedValueOnce({
+        version: 1,
+        username: "acme",
+        repo: "demo",
+        diagram: "old diagram",
+        lastSuccessfulAt: "2026-07-12T12:05:00.000Z",
+      })
+      .mockResolvedValueOnce(artifact);
+
+    await expect(
+      getPublicDiagramPreview({
+        username: "acme",
+        repo: "demo",
+        expectedLastSuccessfulAt: artifact.lastSuccessfulAt,
+      }),
+    ).resolves.toEqual({
+      diagram: artifact.diagram,
+      lastSuccessfulAt: artifact.lastSuccessfulAt,
+      source: "artifact",
+    });
+  });
+
+  it("writes a sidecar only while the matching artifact is still canonical", async () => {
+    const artifact = createArtifact({
+      sessionId: "session-current",
+      createdAt: "2026-07-13T12:00:00.000Z",
+      updatedAt: "2026-07-13T12:05:00.000Z",
+      diagram: "current diagram",
+    });
+    storageMocks.getJsonObject.mockResolvedValue(artifact);
+
+    await expect(
+      writePublicDiagramPreview({
+        username: "Acme",
+        repo: "Demo",
+        diagram: artifact.diagram,
+        lastSuccessfulAt: artifact.lastSuccessfulAt,
+      }),
+    ).resolves.toBe(true);
+    expect(storageMocks.putJsonObject).toHaveBeenCalledWith(
+      "test-public-bucket",
+      "public/v1/acme/demo.preview.json",
+      {
+        version: 1,
+        username: "acme",
+        repo: "demo",
+        diagram: artifact.diagram,
+        lastSuccessfulAt: artifact.lastSuccessfulAt,
+      },
     );
   });
 });

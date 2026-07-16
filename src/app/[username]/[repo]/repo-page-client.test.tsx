@@ -10,6 +10,7 @@ const { warningToast } = vi.hoisted(() => ({
 const useDiagram = vi.fn();
 
 vi.mock("sonner", () => ({
+  Toaster: () => null,
   toast: { warning: warningToast },
 }));
 
@@ -54,7 +55,7 @@ describe("RepoPageClient", () => {
     warningToast.mockClear();
   });
 
-  it("renders the cached diagram before failure details", () => {
+  it("renders the cached diagram before failure details", async () => {
     useDiagram.mockReturnValue({
       diagram: "flowchart TD\nA-->B",
       error: "Latest regeneration failed.",
@@ -79,7 +80,7 @@ describe("RepoPageClient", () => {
 
     render(<RepoPageClient username="Acme" repo="Demo" />);
 
-    const diagram = screen.getByTestId("diagram");
+    const diagram = await screen.findByTestId("diagram");
     const audit = screen.getByTestId("audit");
 
     expect(diagram.compareDocumentPosition(audit)).toBe(

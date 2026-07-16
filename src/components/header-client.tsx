@@ -1,19 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, use, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
-import { FaGithub } from "react-icons/fa";
 
+import { GitHubIcon } from "~/components/icons/github-icon";
 import { storeOpenAiKey } from "~/lib/openai-key";
 
-import { ApiKeyDialog } from "./api-key-dialog";
-import { PrivateReposDialog } from "./private-repos-dialog";
 import { ThemeToggle } from "./theme-toggle";
 
+const loadApiKeyDialog = () =>
+  import("./api-key-dialog").then((module) => module.ApiKeyDialog);
+const loadPrivateReposDialog = () =>
+  import("./private-repos-dialog").then((module) => module.PrivateReposDialog);
+
+const ApiKeyDialog = dynamic(loadApiKeyDialog, { ssr: false });
+const PrivateReposDialog = dynamic(loadPrivateReposDialog, { ssr: false });
+
 interface HeaderClientProps {
-  starCount: number | null;
+  starCount: Promise<number | null>;
 }
 
 const compactNumberFormatter = new Intl.NumberFormat("en", {
@@ -23,6 +30,34 @@ const compactNumberFormatter = new Intl.NumberFormat("en", {
 
 function formatStarCount(count: number) {
   return compactNumberFormatter.format(count).toLowerCase();
+}
+
+function MobileStarCount({ starCount }: HeaderClientProps) {
+  const count = use(starCount);
+  return count !== null ? formatStarCount(count) : "GitHub";
+}
+
+function DesktopStarCount({ starCount }: HeaderClientProps) {
+  const count = use(starCount);
+  if (count === null) return null;
+
+  return (
+    <span className="flex items-center gap-1">
+      <span className="text-amber-400 dark:text-[hsl(var(--neo-link))]">★</span>
+      {formatStarCount(count)}
+    </span>
+  );
+}
+
+function MobileMenuStarCount({ starCount }: HeaderClientProps) {
+  const count = use(starCount);
+  if (count === null) return null;
+
+  return (
+    <span className="text-xs tracking-[0.12em] text-[hsl(var(--neo-soft-text))] uppercase dark:text-neutral-300">
+      {formatStarCount(count)}
+    </span>
+  );
 }
 
 export function HeaderClient({ starCount }: HeaderClientProps) {
@@ -64,17 +99,20 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
               href={githubRepoUrl}
               className="browse-muted-button inline-flex min-h-[42px] items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold"
             >
-              <FaGithub className="h-4 w-4" />
+              <GitHubIcon className="h-4 w-4" />
               <span className="flex items-center gap-1">
                 <span className="text-amber-400 dark:text-[hsl(var(--neo-link))]">
                   ★
                 </span>
-                {starCount !== null ? formatStarCount(starCount) : "GitHub"}
+                <Suspense fallback="GitHub">
+                  <MobileStarCount starCount={starCount} />
+                </Suspense>
               </span>
             </Link>
           ) : !isBrowsePage ? (
             <Link
               href="/browse"
+              prefetch={false}
               className="browse-muted-button inline-flex min-h-[42px] items-center rounded-md px-3 py-2 text-sm font-semibold"
             >
               Browse
@@ -104,6 +142,8 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
           </Link>
           <button
             type="button"
+            onFocus={() => void loadApiKeyDialog()}
+            onPointerEnter={() => void loadApiKeyDialog()}
             onClick={() => setIsApiKeyDialogOpen(true)}
             className="text-sm font-medium text-black transition-colors duration-150 hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
           >
@@ -116,6 +156,8 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
           </button>
           <button
             type="button"
+            onFocus={() => void loadPrivateReposDialog()}
+            onPointerEnter={() => void loadPrivateReposDialog()}
             onClick={() => setIsPrivateReposDialogOpen(true)}
             className="text-sm font-medium text-black transition-colors duration-150 hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
           >
@@ -127,16 +169,11 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
             href={githubRepoUrl}
             className="flex items-center gap-1 text-sm font-medium text-black transition-colors duration-150 hover:text-purple-600 sm:gap-2 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
           >
-            <FaGithub className="h-5 w-5" />
+            <GitHubIcon className="h-5 w-5" />
             <span className="hidden sm:inline">GitHub</span>
-            {starCount !== null ? (
-              <span className="flex items-center gap-1">
-                <span className="text-amber-400 dark:text-[hsl(var(--neo-link))]">
-                  ★
-                </span>
-                {formatStarCount(starCount)}
-              </span>
-            ) : null}
+            <Suspense fallback={null}>
+              <DesktopStarCount starCount={starCount} />
+            </Suspense>
           </Link>
         </nav>
 
@@ -162,6 +199,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
                 {!isBrowsePage ? (
                   <Link
                     href="/browse"
+                    prefetch={false}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className="browse-muted-button inline-flex min-h-[48px] items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
                   >
@@ -170,6 +208,8 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
                 ) : null}
                 <button
                   type="button"
+                  onFocus={() => void loadApiKeyDialog()}
+                  onPointerEnter={() => void loadApiKeyDialog()}
                   onClick={() => {
                     setIsApiKeyDialogOpen(true);
                     setIsMobileMenuOpen(false);
@@ -180,6 +220,8 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
                 </button>
                 <button
                   type="button"
+                  onFocus={() => void loadPrivateReposDialog()}
+                  onPointerEnter={() => void loadPrivateReposDialog()}
                   onClick={() => {
                     setIsPrivateReposDialogOpen(true);
                     setIsMobileMenuOpen(false);
@@ -198,30 +240,32 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
                   className="browse-muted-button inline-flex min-h-[48px] items-center justify-between gap-3 rounded-md px-4 py-3 text-sm font-semibold"
                 >
                   <span className="flex items-center gap-2">
-                    <FaGithub className="h-5 w-5" />
+                    <GitHubIcon className="h-5 w-5" />
                     GitHub Repo
                   </span>
-                  {starCount !== null ? (
-                    <span className="text-xs tracking-[0.12em] text-[hsl(var(--neo-soft-text))] uppercase dark:text-neutral-300">
-                      {formatStarCount(starCount)}
-                    </span>
-                  ) : null}
+                  <Suspense fallback={null}>
+                    <MobileMenuStarCount starCount={starCount} />
+                  </Suspense>
                 </Link>
               </nav>
             </div>
           </div>
         </div>
 
-        <PrivateReposDialog
-          isOpen={isPrivateReposDialogOpen}
-          onClose={() => setIsPrivateReposDialogOpen(false)}
-          onSubmit={handlePrivateReposSubmit}
-        />
-        <ApiKeyDialog
-          isOpen={isApiKeyDialogOpen}
-          onClose={() => setIsApiKeyDialogOpen(false)}
-          onSubmit={handleApiKeySubmit}
-        />
+        {isPrivateReposDialogOpen ? (
+          <PrivateReposDialog
+            isOpen
+            onClose={() => setIsPrivateReposDialogOpen(false)}
+            onSubmit={handlePrivateReposSubmit}
+          />
+        ) : null}
+        {isApiKeyDialogOpen ? (
+          <ApiKeyDialog
+            isOpen
+            onClose={() => setIsApiKeyDialogOpen(false)}
+            onSubmit={handleApiKeySubmit}
+          />
+        ) : null}
       </div>
     </header>
   );

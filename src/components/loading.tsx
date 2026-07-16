@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { GenerationCostSummary } from "~/features/diagram/cost";
 import type { GraphAttemptAudit, DiagramGraph } from "~/features/diagram/graph";
@@ -54,6 +54,58 @@ function isGraphPlanningStatus(status: DiagramStreamStatus): boolean {
   );
 }
 
+function LoadingHeaderMessage({
+  message,
+  status,
+}: {
+  message?: string;
+  status: DiagramStreamStatus;
+}) {
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+  const isActive =
+    status !== "idle" && status !== "complete" && status !== "error";
+
+  useEffect(() => {
+    if (message) return;
+
+    const interval = setInterval(() => {
+      setCurrentMessageIndex((prevIndex) => (prevIndex + 1) % messages.length);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [message]);
+
+  const baseMessage = message ?? messages[currentMessageIndex] ?? "";
+  const normalizedMessage = isActive
+    ? baseMessage.replace(/\.*\s*$/, "")
+    : baseMessage;
+
+  return (
+    <>
+      {normalizedMessage}
+      {isActive ? (
+        <span aria-hidden="true" className="loading-ellipsis">
+          ...
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+function GraphPlanningTimer() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSeconds((currentSeconds) => currentSeconds + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return <span>{seconds}s in this step</span>;
+}
+
 export default function Loading({
   status = "idle",
   message,
@@ -64,48 +116,7 @@ export default function Loading({
   diagram,
   costSummary,
 }: LoadingProps) {
-  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
-  const [graphPlanningSeconds, setGraphPlanningSeconds] = useState(0);
-  const [animatedDots, setAnimatedDots] = useState(".");
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentMessageIndex((prevIndex) => (prevIndex + 1) % messages.length);
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (status === "idle" || status === "complete" || status === "error") {
-      setAnimatedDots(".");
-      return;
-    }
-
-    const dotStates = [".", "..", "..."];
-    let dotIndex = 0;
-    const interval = setInterval(() => {
-      dotIndex = (dotIndex + 1) % dotStates.length;
-      setAnimatedDots(dotStates[dotIndex] ?? ".");
-    }, 450);
-
-    return () => clearInterval(interval);
-  }, [status]);
-
-  useEffect(() => {
-    if (!isGraphPlanningStatus(status) || graph) {
-      setGraphPlanningSeconds(0);
-      return;
-    }
-
-    setGraphPlanningSeconds(0);
-    const interval = setInterval(() => {
-      setGraphPlanningSeconds((seconds) => seconds + 1);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [graph, status]);
 
   useEffect(() => {
     const scrollContainer = scrollRef.current;
@@ -113,9 +124,11 @@ export default function Loading({
       return;
     }
 
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       scrollContainer.scrollTop = scrollContainer.scrollHeight;
     });
+
+    return () => cancelAnimationFrame(frame);
   }, [
     status,
     message,
@@ -130,11 +143,15 @@ export default function Loading({
   const graphAttemptNumber = Math.min((graphAttempts?.length ?? 0) + 1, 3);
   const showGraphPlanningCard = isGraphPlanningStatus(status) && !graph;
   const showGraphAttemptBadge = graphAttemptNumber > 1;
-  const baseHeaderMessage = message ?? messages[currentMessageIndex] ?? "";
-  const headerMessage =
-    status === "idle" || status === "complete" || status === "error"
-      ? baseHeaderMessage
-      : `${baseHeaderMessage.replace(/\.*\s*$/, "")}${animatedDots}`;
+  const serializedGraph = useMemo(
+    () => (graph ? JSON.stringify(graph, null, 2) : null),
+    [graph],
+  );
+  const serializedGraphAttempts = useMemo(
+    () =>
+      graphAttempts?.length ? JSON.stringify(graphAttempts, null, 2) : null,
+    [graphAttempts],
+  );
   const costLabel =
     costSummary?.kind === "actual" ? "Actual cost" : "Estimated cost";
 
@@ -148,7 +165,7 @@ export default function Loading({
         <div className="sticky top-0 z-20 border-b border-purple-100 bg-purple-100/95 px-6 py-3 backdrop-blur-sm dark:border-[#2d1d4e] dark:bg-[#1e1832]/95">
           <div className="flex items-center justify-between gap-4">
             <div className="text-sm font-medium text-purple-500 dark:text-[hsl(var(--neo-button-hover))]">
-              {headerMessage}
+              <LoadingHeaderMessage message={message} status={status} />
             </div>
             <div className="flex shrink-0 items-center gap-3 text-xs font-medium text-purple-500 dark:text-[hsl(var(--foreground))]">
               {costSummary && (
@@ -194,7 +211,7 @@ export default function Loading({
                     <span className="h-2 w-2 animate-pulse rounded-full bg-purple-500 [animation-delay:-0.12s] [animation-duration:1.2s] dark:bg-[hsl(var(--neo-button-hover))]" />
                     <span className="h-2 w-2 animate-pulse rounded-full bg-purple-500 [animation-duration:1.2s] dark:bg-[hsl(var(--neo-button-hover))]" />
                   </span>
-                  <span>{graphPlanningSeconds}s in this step</span>
+                  <GraphPlanningTimer />
                 </div>
                 <pre className="mt-4 overflow-x-auto rounded-md bg-purple-50/90 p-3 text-xs leading-relaxed text-purple-950 dark:bg-[#181126] dark:text-[hsl(var(--foreground))]">
                   {`{
@@ -211,7 +228,7 @@ export default function Loading({
                   Graph JSON
                 </p>
                 <pre className="mt-2 overflow-x-auto leading-relaxed whitespace-pre-wrap">
-                  {JSON.stringify(graph, null, 2)}
+                  {serializedGraph}
                 </pre>
               </div>
             )}
@@ -221,7 +238,7 @@ export default function Loading({
                   Graph attempts
                 </p>
                 <pre className="mt-2 overflow-x-auto leading-relaxed whitespace-pre-wrap">
-                  {JSON.stringify(graphAttempts, null, 2)}
+                  {serializedGraphAttempts}
                 </pre>
               </div>
             ) : null}

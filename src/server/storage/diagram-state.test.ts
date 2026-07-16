@@ -26,6 +26,7 @@ vi.mock("~/server/storage/browse-diagrams", () => ({
 }));
 
 import {
+  clearSuccessfulDiagramFailureSummary,
   saveSuccessfulDiagramState,
   updatePublicBrowseIndexForSuccessfulDiagram,
 } from "~/server/storage/diagram-state";
@@ -136,5 +137,21 @@ describe("saveSuccessfulDiagramState", () => {
     });
 
     expect(clearFailureSummary).not.toHaveBeenCalled();
+  });
+
+  it("clears a stale failure only when post-response cleanup runs", async () => {
+    await expect(
+      clearSuccessfulDiagramFailureSummary({
+        username: "Acme",
+        repo: "Demo",
+        visibility: "public",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(clearFailureSummary).toHaveBeenCalledWith({
+      username: "Acme",
+      repo: "Demo",
+      visibility: "public",
+    });
   });
 });

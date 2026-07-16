@@ -6,21 +6,24 @@ vi.mock("~/server/storage/distributed-lock", () => ({
   ),
 }));
 
-const { getJsonObject, listObjects, putJsonObject } = vi.hoisted(() => ({
-  getJsonObject: vi.fn(),
-  listObjects: vi.fn(),
-  putJsonObject: vi.fn(),
-}));
+const { getGzipJsonObject, getJsonObject, putGzipJsonObject } = vi.hoisted(
+  () => ({
+    getGzipJsonObject: vi.fn(),
+    getJsonObject: vi.fn(),
+    putGzipJsonObject: vi.fn(),
+  }),
+);
 
 vi.mock("~/server/storage/r2", () => ({
+  getGzipJsonObject,
   getJsonObject,
-  listObjects,
-  putJsonObject,
+  putGzipJsonObject,
 }));
 
 import {
   BrowseIndexNotFoundError,
   getBrowsePage,
+  migrateBrowseIndexToCompressedV2,
   upsertBrowseIndexEntry,
 } from "~/server/storage/browse-diagrams";
 
@@ -28,6 +31,7 @@ describe("browse diagram storage", () => {
   beforeEach(() => {
     process.env.R2_PUBLIC_BUCKET = "test-public-bucket";
     vi.clearAllMocks();
+    getGzipJsonObject.mockResolvedValue(null);
   });
 
   it("upserts a new repo and preserves browse metadata", async () => {
@@ -65,14 +69,136 @@ describe("browse diagram storage", () => {
         stargazerCount: 5,
       },
     ]);
-    expect(putJsonObject).toHaveBeenCalledWith(
+    expect(putGzipJsonObject).toHaveBeenCalledWith(
       "test-public-bucket",
-      "public/v1/_meta/browse-index.json",
+      "public/v2/_meta/browse-index.json.gz",
       expect.objectContaining({
-        version: 1,
+        version: 2,
         entries,
       }),
     );
+  });
+
+  it("prefers the compressed manifest without reading the legacy object", async () => {
+    getGzipJsonObject.mockResolvedValue({
+      version: 1,
+      updatedAt: "2026-03-29T12:00:00.000Z",
+      entries: [
+        {
+          username: "Vercel",
+          repo: "Next.js",
+          lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+          stargazerCount: 130000,
+        },
+      ],
+    });
+
+    const result = await getBrowsePage({});
+
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({ username: "vercel", repo: "next.js" }),
+    );
+    expect(getJsonObject).not.toHaveBeenCalled();
+  });
+
+  it("does not rewrite the manifest for a stale repository update", async () => {
+    getGzipJsonObject.mockResolvedValue({
+      version: 1,
+      updatedAt: "2026-03-29T12:00:00.000Z",
+      entries: [
+        {
+          username: "acme",
+          repo: "demo",
+          lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+          stargazerCount: 42,
+        },
+      ],
+    });
+
+    const entries = await upsertBrowseIndexEntry({
+      username: "acme",
+      repo: "demo",
+      lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+      stargazerCount: 99,
+    });
+
+    expect(entries[0]?.stargazerCount).toBe(42);
+    expect(putGzipJsonObject).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the legacy manifest during the storage migration", async () => {
+    getJsonObject.mockResolvedValue({
+      version: 1,
+      updatedAt: "2026-03-29T12:00:00.000Z",
+      entries: [
+        {
+          username: "acme",
+          repo: "demo",
+          lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+          stargazerCount: 42,
+        },
+      ],
+    });
+
+    const result = await getBrowsePage({});
+
+    expect(result.items).toHaveLength(1);
+    expect(getJsonObject).toHaveBeenCalledWith(
+      "test-public-bucket",
+      "public/v1/_meta/browse-index.json",
+    );
+  });
+
+  it("seeds the compressed manifest under the browse-index lock", async () => {
+    getJsonObject.mockResolvedValue({
+      version: 1,
+      updatedAt: "2026-03-29T12:00:00.000Z",
+      entries: [
+        {
+          username: "Acme",
+          repo: "Demo",
+          lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+          stargazerCount: 42,
+        },
+      ],
+    });
+
+    await expect(migrateBrowseIndexToCompressedV2()).resolves.toBe(1);
+    expect(putGzipJsonObject).toHaveBeenCalledWith(
+      "test-public-bucket",
+      "public/v2/_meta/browse-index.json.gz",
+      expect.objectContaining({
+        version: 2,
+        entries: [expect.objectContaining({ username: "acme", repo: "demo" })],
+      }),
+    );
+  });
+
+  it("does not rewrite an already-canonical compressed manifest", async () => {
+    const entries = [
+      {
+        username: "acme",
+        repo: "demo",
+        lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+        stargazerCount: 42,
+      },
+    ];
+    getGzipJsonObject
+      .mockResolvedValueOnce({
+        version: 2,
+        updatedAt: "2026-03-29T12:00:00.000Z",
+        entries,
+      })
+      .mockResolvedValueOnce({
+        version: 1,
+        updatedAt: "2026-03-29T12:00:00.000Z",
+        total: 1,
+        entries,
+      });
+
+    await expect(migrateBrowseIndexToCompressedV2()).resolves.toBe(1);
+    expect(getJsonObject).not.toHaveBeenCalled();
+    expect(putGzipJsonObject).not.toHaveBeenCalled();
   });
 
   it("supports recent and star sorting, search, filtering, and pagination", async () => {

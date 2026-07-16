@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import DOMPurify from "dompurify";
 import mermaid from "mermaid";
 import elkLayouts from "@mermaid-js/layout-elk";
@@ -74,11 +80,15 @@ const MermaidChart = ({
   } | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const viewStateRef = useRef<ViewState | null>(null);
+  const viewStateFrameRef = useRef<number | null>(null);
   const userInteractedRef = useRef(false);
   const reportedRenderErrorRef = useRef<string | null>(null);
+  const completedRenderVersionRef = useRef(0);
   const [isPanZoomReady, setIsPanZoomReady] = useState(false);
   const [viewState, setViewState] = useState<ViewState | null>(null);
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
+  const [renderVersion, setRenderVersion] = useState(0);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const fitPadding = zoomingEnabled
@@ -86,6 +96,32 @@ const MermaidChart = ({
     : fitToContainer
       ? PREVIEW_FIT_PADDING
       : 0;
+
+  const reportRenderError = useEffectEvent((message: string) => {
+    onRenderError?.(message);
+  });
+  const reportRenderComplete = useEffectEvent(() => {
+    onRenderComplete?.();
+  });
+
+  const commitViewState = useCallback((nextView: ViewState | null) => {
+    viewStateRef.current = nextView;
+    if (viewStateFrameRef.current !== null) {
+      cancelAnimationFrame(viewStateFrameRef.current);
+      viewStateFrameRef.current = null;
+    }
+    setViewState(nextView);
+  }, []);
+
+  const scheduleViewState = useCallback((nextView: ViewState) => {
+    viewStateRef.current = nextView;
+    if (viewStateFrameRef.current !== null) return;
+
+    viewStateFrameRef.current = requestAnimationFrame(() => {
+      viewStateFrameRef.current = null;
+      setViewState(viewStateRef.current);
+    });
+  }, []);
 
   const fitDiagram = useCallback(() => {
     const containerElement = containerRef.current;
@@ -103,7 +139,7 @@ const MermaidChart = ({
     const scale = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
 
     userInteractedRef.current = false;
-    setViewState({
+    commitViewState({
       fitScale: scale,
       height,
       scale,
@@ -111,7 +147,7 @@ const MermaidChart = ({
       x: insetX + (availableWidth - width * scale) / 2,
       y: insetY + (availableHeight - height * scale) / 2,
     });
-  }, [fitPadding]);
+  }, [commitViewState, fitPadding]);
 
   const scaleDiagramForReading = useCallback(() => {
     const containerElement = containerRef.current;
@@ -133,7 +169,7 @@ const MermaidChart = ({
 
   const zoomAroundPoint = useCallback(
     (scaleFactor: number, clientX: number, clientY: number) => {
-      const currentView = viewState;
+      const currentView = viewStateRef.current;
       const containerElement = containerRef.current;
       if (!currentView || !(containerElement instanceof HTMLDivElement)) return;
 
@@ -159,19 +195,19 @@ const MermaidChart = ({
       });
 
       userInteractedRef.current = true;
-      setViewState({
+      scheduleViewState({
         ...currentView,
         scale: nextScale,
         x: clamped.x,
         y: clamped.y,
       });
     },
-    [viewState],
+    [scheduleViewState],
   );
 
   const panBy = useCallback(
     (deltaX: number, deltaY: number) => {
-      const currentView = viewState;
+      const currentView = viewStateRef.current;
       const containerElement = containerRef.current;
       if (!currentView || !(containerElement instanceof HTMLDivElement)) return;
 
@@ -187,13 +223,13 @@ const MermaidChart = ({
       });
 
       userInteractedRef.current = true;
-      setViewState({
+      scheduleViewState({
         ...currentView,
         x: clamped.x,
         y: clamped.y,
       });
     },
-    [viewState],
+    [scheduleViewState],
   );
 
   const pinchTo = useCallback(
@@ -238,10 +274,10 @@ const MermaidChart = ({
         y: clamped.y,
       };
       userInteractedRef.current = true;
-      setViewState(nextView);
+      scheduleViewState(nextView);
       return nextView;
     },
-    [],
+    [scheduleViewState],
   );
 
   const stepZoom = useCallback(
@@ -260,6 +296,7 @@ const MermaidChart = ({
   );
 
   useEffect(() => {
+    let cancelled = false;
     ensureDomNodesSerializeSafely();
 
     if (!elkLayoutRegistered) {
@@ -341,64 +378,13 @@ const MermaidChart = ({
 
       setRenderMessage(null);
       setIsPanZoomReady(false);
-      setViewState(null);
+      commitViewState(null);
       activePointersRef.current.clear();
       pinchStateRef.current = null;
       userInteractedRef.current = false;
       dragStateRef.current = null;
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
-
-      const applyInteractiveView = () => {
-        const svgElement = containerRef.current?.querySelector(".mermaid svg");
-        if (!(svgElement instanceof SVGSVGElement)) return;
-
-        svgElement.style.maxWidth = "none";
-
-        if (!zoomingEnabled) {
-          const { height, width } = getSvgDimensions(svgElement);
-          svgElement.style.width = `${width}px`;
-          svgElement.style.height = `${height}px`;
-
-          if (fitToContainer) {
-            fitDiagram();
-          } else {
-            scaleDiagramForReading();
-          }
-
-          if (typeof ResizeObserver !== "undefined" && containerRef.current) {
-            resizeObserverRef.current = new ResizeObserver(() => {
-              if (fitToContainer) {
-                fitDiagram();
-                return;
-              }
-
-              scaleDiagramForReading();
-            });
-
-            resizeObserverRef.current.observe(containerRef.current);
-          }
-
-          setIsPanZoomReady(true);
-          return;
-        }
-
-        const { height, width } = getSvgDimensions(svgElement);
-        svgElement.style.width = `${width}px`;
-        svgElement.style.height = `${height}px`;
-        fitDiagram();
-        setIsPanZoomReady(true);
-
-        if (typeof ResizeObserver !== "undefined" && containerRef.current) {
-          resizeObserverRef.current = new ResizeObserver(() => {
-            if (!userInteractedRef.current) {
-              fitDiagram();
-            }
-          });
-
-          resizeObserverRef.current.observe(containerRef.current);
-        }
-      };
 
       initializeMermaid();
       mermaidElement.removeAttribute("data-processed");
@@ -418,6 +404,7 @@ const MermaidChart = ({
           safeChart,
           renderTarget,
         );
+        if (cancelled) return;
         mermaidElement.textContent = "";
         mermaidElement.innerHTML = DOMPurify.sanitize(svg, {
           USE_PROFILES: { html: true, svg: true, svgFilters: true },
@@ -425,10 +412,10 @@ const MermaidChart = ({
         });
         enforceSafeMermaidLinks(mermaidElement);
         bindFunctions?.(mermaidElement);
-        applyInteractiveView();
-        onRenderComplete?.();
+        setRenderVersion((currentVersion) => currentVersion + 1);
         return;
       } catch (error) {
+        if (cancelled) return;
         console.error("Mermaid render failed:", error);
         const message =
           error instanceof Error
@@ -438,7 +425,7 @@ const MermaidChart = ({
         const reportKey = `${chart}::${message}`;
         if (reportedRenderErrorRef.current !== reportKey) {
           reportedRenderErrorRef.current = reportKey;
-          onRenderError?.(message);
+          reportRenderError(message);
         }
       } finally {
         renderTarget.remove();
@@ -448,20 +435,96 @@ const MermaidChart = ({
     void renderDiagram();
 
     return () => {
+      cancelled = true;
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
+    };
+  }, [backgroundColor, chart, commitViewState, isDark]);
+
+  useEffect(() => {
+    if (renderVersion === 0) return;
+
+    const containerElement = containerRef.current;
+    const svgElement = containerElement?.querySelector(".mermaid svg");
+    if (!(containerElement instanceof HTMLDivElement)) return;
+    if (!(svgElement instanceof SVGSVGElement)) return;
+
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
+    activePointersRef.current.clear();
+    pinchStateRef.current = null;
+    dragStateRef.current = null;
+    userInteractedRef.current = false;
+    commitViewState(null);
+
+    svgElement.style.maxWidth = "none";
+    const { height, width } = getSvgDimensions(svgElement);
+    svgElement.style.width = `${width}px`;
+    svgElement.style.height = `${height}px`;
+
+    if (zoomingEnabled || fitToContainer) {
+      fitDiagram();
+    } else {
+      scaleDiagramForReading();
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserverRef.current = new ResizeObserver(() => {
+        if (zoomingEnabled && userInteractedRef.current) return;
+        if (zoomingEnabled || fitToContainer) {
+          fitDiagram();
+        } else {
+          scaleDiagramForReading();
+        }
+      });
+      resizeObserverRef.current.observe(containerElement);
+    }
+
+    setIsPanZoomReady(true);
+    if (completedRenderVersionRef.current !== renderVersion) {
+      completedRenderVersionRef.current = renderVersion;
+      reportRenderComplete();
+    }
+
+    return () => {
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
     };
   }, [
-    backgroundColor,
-    chart,
-    fitToContainer,
+    commitViewState,
     fitDiagram,
+    fitToContainer,
+    renderVersion,
     scaleDiagramForReading,
     zoomingEnabled,
-    isDark,
-    onRenderError,
-    onRenderComplete,
   ]);
+
+  useEffect(
+    () => () => {
+      if (viewStateFrameRef.current !== null) {
+        cancelAnimationFrame(viewStateFrameRef.current);
+      }
+    },
+    [],
+  );
+
+  const handleWheelEvent = useEffectEvent((event: WheelEvent) => {
+    if (!viewStateRef.current) return;
+    if (event.deltaX === 0 && event.deltaY === 0) return;
+
+    event.preventDefault();
+
+    if (!isLikelyTrackpadGesture(event)) {
+      zoomAroundPoint(
+        getWheelZoomScaleFactor(event),
+        event.clientX,
+        event.clientY,
+      );
+      return;
+    }
+
+    panBy(-event.deltaX, -event.deltaY);
+  });
 
   useEffect(() => {
     if (!zoomingEnabled) return;
@@ -470,21 +533,7 @@ const MermaidChart = ({
     if (!interactionLayer) return;
 
     const handleWheel = (event: WheelEvent) => {
-      if (!viewState) return;
-      if (event.deltaX === 0 && event.deltaY === 0) return;
-
-      event.preventDefault();
-
-      if (!isLikelyTrackpadGesture(event)) {
-        zoomAroundPoint(
-          getWheelZoomScaleFactor(event),
-          event.clientX,
-          event.clientY,
-        );
-        return;
-      }
-
-      panBy(-event.deltaX, -event.deltaY);
+      handleWheelEvent(event);
     };
 
     interactionLayer.addEventListener("wheel", handleWheel, {
@@ -494,7 +543,7 @@ const MermaidChart = ({
     return () => {
       interactionLayer.removeEventListener("wheel", handleWheel);
     };
-  }, [panBy, viewState, zoomAroundPoint, zoomingEnabled]);
+  }, [zoomingEnabled]);
 
   const formattedZoom = `${Math.round(
     ((viewState?.scale ?? 1) / (viewState?.fitScale ?? 1)) * 100,
@@ -563,7 +612,8 @@ const MermaidChart = ({
           });
           event.currentTarget.setPointerCapture(event.pointerId);
 
-          if (activePointersRef.current.size >= 2 && viewState) {
+          const currentView = viewStateRef.current;
+          if (activePointersRef.current.size >= 2 && currentView) {
             const pointerPair = getTrackedPointerPair(
               activePointersRef.current,
             );
@@ -575,7 +625,7 @@ const MermaidChart = ({
                 firstPointer,
                 secondPointer,
               ),
-              startView: viewState,
+              startView: currentView,
               startX: midpoint.x,
               startY: midpoint.y,
             };
@@ -676,7 +726,6 @@ const MermaidChart = ({
           />
         )}
         <div
-          key={`${chart}-${zoomingEnabled}-${resolvedTheme ?? "light"}`}
           style={
             viewState && (zoomingEnabled || fitToContainer)
               ? {
