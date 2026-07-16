@@ -19,7 +19,7 @@ export const credentialSchema = z.string().trim().min(1).max(2_048);
 export const generationSessionIdSchema = z.uuid();
 export const generationCancelTokenSchema = z.uuid();
 
-export const generateRequestSchema = z
+const generateRequestSchema = z
   .strictObject({
     username: githubUsernameSchema,
     repo: githubRepoSchema,
@@ -34,7 +34,7 @@ export const generateRequestSchema = z
     { message: "session_id and cancel_token must be provided together." },
   );
 
-export type GenerateRequest = z.infer<typeof generateRequestSchema>;
+type GenerateRequest = z.infer<typeof generateRequestSchema>;
 
 export type GenerateRequestParseResult =
   | { success: true; data: GenerateRequest }

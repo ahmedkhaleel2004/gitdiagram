@@ -1,6 +1,5 @@
 import { parseSSEStreamBuffer } from "~/features/diagram/sse";
 import type {
-  DiagramCostResponse,
   DiagramStateResponse,
   DiagramStreamMessage,
   StreamGenerationParams,
@@ -64,56 +63,6 @@ function sendGenerationCancellation(
     // The stream's own deadline remains the fallback if this best-effort
     // cancellation notification cannot reach the server.
   });
-}
-
-export async function getGenerationCost(
-  username: string,
-  repo: string,
-  githubPat?: string,
-  apiKey?: string,
-): Promise<DiagramCostResponse> {
-  try {
-    const response = await fetch(`${GENERATE_BASE_PATH}/cost`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username,
-        repo,
-        api_key: apiKey,
-        github_pat: githubPat,
-      }),
-    });
-
-    if (response.status === 429) {
-      return { error: "Rate limit exceeded. Please try again later." };
-    }
-
-    if (!response.ok) {
-      try {
-        const data = (await response.json()) as DiagramCostResponse;
-        return {
-          error: data.error ?? "Failed to get cost estimate.",
-          error_code: data.error_code,
-          ok: data.ok,
-        };
-      } catch {
-        return { error: "Failed to get cost estimate." };
-      }
-    }
-
-    const data = (await response.json()) as DiagramCostResponse;
-    return {
-      cost: data.cost,
-      cost_summary: data.cost_summary,
-      error: data.error,
-      error_code: data.error_code,
-      ok: data.ok,
-    };
-  } catch {
-    return { error: "Failed to get cost estimate." };
-  }
 }
 
 export async function streamDiagramGeneration(

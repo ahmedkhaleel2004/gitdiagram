@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { Key } from "lucide-react";
 import { toast } from "sonner";
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import MainCard from "~/components/main-card";
@@ -9,9 +10,9 @@ import Loading from "~/components/loading";
 import { GenerationAuditPanel } from "~/components/generation-audit-panel";
 import { useDiagram } from "~/hooks/useDiagram";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
-import { ApiKeyButton } from "~/components/api-key-button";
 import { useStarReminder } from "~/hooks/useStarReminder";
 import { SponsorSlot } from "~/components/sponsor-slot";
+import { Button } from "~/components/ui/button";
 import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 
@@ -156,7 +157,13 @@ export default function RepoPageClient({
                   {(error?.includes("API key") ||
                     state.error?.includes("API key")) && (
                     <div className="mt-8 flex flex-col items-center gap-2">
-                      <ApiKeyButton onClick={handleOpenApiKeyDialog} />
+                      <Button
+                        onClick={handleOpenApiKeyDialog}
+                        className="neo-button px-4 py-2"
+                      >
+                        <Key className="mr-2 h-5 w-5" />
+                        Use Your AI Key
+                      </Button>
                     </div>
                   )}
                 </div>

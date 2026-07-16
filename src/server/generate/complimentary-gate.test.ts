@@ -33,20 +33,17 @@ describe("complimentary gate", () => {
     expect(
       shouldApplyComplimentaryGate({
         provider: "openai",
-        model: "gpt-5.6-terra",
       }),
     ).toBe(true);
     expect(
       shouldApplyComplimentaryGate({
         provider: "openai",
-        model: "gpt-5.6-terra",
         apiKey: "sk-user",
       }),
     ).toBe(false);
     expect(
       shouldApplyComplimentaryGate({
         provider: "openrouter",
-        model: "openai/gpt-5.4",
       }),
     ).toBe(false);
   });

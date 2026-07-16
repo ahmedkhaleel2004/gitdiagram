@@ -9,7 +9,6 @@ import {
 } from "react";
 
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
-import { preloadBrowseDiagramPreviewChart } from "~/components/browse-diagram-preview";
 import {
   cacheDiagramPreview,
   getCachedDiagramPreview,
@@ -19,6 +18,10 @@ import {
   type HoverPreviewState,
   type HoverPreviewStatus,
 } from "~/components/browse-catalog-shared";
+
+function preloadBrowseDiagramPreviewChart() {
+  void import("~/components/mermaid-diagram");
+}
 
 interface UseBrowseHoverPreviewParams {
   initialPreviewDiagrams?: Record<string, string>;
@@ -262,7 +265,6 @@ export function useBrowseHoverPreview({
         );
         hoverPreviewPositionRef.current = initialPosition;
         setHoverPreview({
-          key,
           repoLabel,
           ...initialPosition,
         });

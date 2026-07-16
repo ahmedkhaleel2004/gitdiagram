@@ -57,22 +57,6 @@ export interface DiagramStreamMessage {
   persistence_warning?: string;
 }
 
-export interface DiagramCostResponse {
-  cost?: string;
-  cost_summary?: GenerationCostSummary;
-  model?: string;
-  pricing_model?: string;
-  estimated_input_tokens?: number;
-  estimated_output_tokens?: number;
-  pricing?: {
-    input_per_million_usd: number;
-    output_per_million_usd: number;
-  };
-  error?: string;
-  error_code?: string;
-  ok?: boolean;
-}
-
 export interface StreamGenerationParams {
   username: string;
   repo: string;

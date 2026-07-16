@@ -15,10 +15,6 @@ const MermaidChart = dynamic(loadMermaidChart, {
   ),
 });
 
-export function preloadBrowseDiagramPreviewChart() {
-  void loadMermaidChart();
-}
-
 interface BrowseDiagramPreviewProps {
   chart: string | null;
   repoLabel: string;

@@ -74,17 +74,17 @@ export function getComplimentaryDailyLimitTokens(): number {
   );
 }
 
-export function getComplimentaryModelFamily(): string {
+function getComplimentaryModelFamily(): string {
   return normalizeModelFamily(
     readEnvString("OPENAI_COMPLIMENTARY_MODEL_FAMILY", DEFAULT_MODEL_FAMILY),
   );
 }
 
-export function getComplimentaryQuotaDateUtc(now = new Date()): string {
+function getComplimentaryQuotaDateUtc(now = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
 
-export function getComplimentaryQuotaResetAt(now = new Date()): string {
+function getComplimentaryQuotaResetAt(now = new Date()): string {
   return new Date(
     Date.UTC(
       now.getUTCFullYear(),
@@ -100,7 +100,6 @@ export function getComplimentaryQuotaResetAt(now = new Date()): string {
 
 export function shouldApplyComplimentaryGate(params: {
   provider: AIProvider;
-  model: string;
   apiKey?: string;
 }): boolean {
   if (!isComplimentaryGateEnabled()) {
@@ -118,7 +117,7 @@ export function modelMatchesComplimentaryFamily(model: string): boolean {
   return normalizeModelFamily(model) === getComplimentaryModelFamily();
 }
 
-export function getComplimentaryQuotaBucket(_model?: string): string {
+export function getComplimentaryQuotaBucket(): string {
   return COMPLIMENTARY_QUOTA_BUCKET;
 }
 
@@ -196,7 +195,7 @@ export async function admitComplimentaryQuota(params: {
   const now = params.now ?? new Date();
   const quotaDateUtc = getComplimentaryQuotaDateUtc(now);
   const quotaResetAt = getComplimentaryQuotaResetAt(now);
-  const quotaBucket = getComplimentaryQuotaBucket(params.model);
+  const quotaBucket = getComplimentaryQuotaBucket();
   const result = await checkQuotaInUpstash({
     quotaDateUtc,
     quotaBucket,

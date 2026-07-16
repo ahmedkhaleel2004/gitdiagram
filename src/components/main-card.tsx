@@ -1,15 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card } from "~/components/ui/card";
+import { ChevronDown, Sparkles } from "lucide-react";
 import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
-import { Sparkles } from "lucide-react";
-import React from "react";
 import { exampleRepos, isExampleRepo } from "~/lib/exampleRepos";
 import { ExportDropdown } from "./export-dropdown";
-import { ChevronDown } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
 import { SponsorSlot } from "~/components/sponsor-slot";
@@ -82,7 +79,7 @@ export default function MainCard({
   };
 
   return (
-    <Card className="neo-panel relative w-full max-w-3xl !bg-[hsl(var(--neo-panel))] p-4 sm:p-8">
+    <div className="neo-panel relative w-full max-w-3xl rounded-lg !bg-[hsl(var(--neo-panel))] p-4 sm:p-8">
       <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <Input
@@ -106,13 +103,10 @@ export default function MainCard({
           </p>
         ) : null}
 
-        {/* Dropdowns Container */}
         {!isHome && (
           <div className="space-y-4">
-            {/* Only show buttons and dropdowns when not loading */}
             {!loading && (
               <>
-                {/* Buttons Container */}
                 <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-4">
                   {onRegenerate && (
                     <button
@@ -181,7 +175,6 @@ export default function MainCard({
                   )}
                 </div>
 
-                {/* Dropdown Content */}
                 {activeDropdown === "export" ? (
                   <div className="export-panel">
                     <ExportDropdown
@@ -197,7 +190,6 @@ export default function MainCard({
           </div>
         )}
 
-        {/* Example Repositories */}
         {isHome && (
           <div className="space-y-4">
             <div className="space-y-3">
@@ -223,7 +215,6 @@ export default function MainCard({
         )}
       </form>
 
-      {/* Decorative Sparkle */}
       <div className="absolute -bottom-8 -left-12 hidden sm:block">
         <Sparkles
           className="h-20 w-20 fill-sky-400 text-black dark:fill-[hsl(var(--neo-button))] dark:text-[hsl(var(--background))]"
@@ -231,6 +222,6 @@ export default function MainCard({
           style={{ transform: "rotate(-15deg)" }}
         />
       </div>
-    </Card>
+    </div>
   );
 }

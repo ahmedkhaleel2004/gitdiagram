@@ -23,12 +23,15 @@ export async function getRepoSocialMetadata(
   repo: string,
 ): Promise<RepoSocialMetadata> {
   try {
-    const response = await fetch(`https://api.github.com/repos/${username}/${repo}`, {
-      headers: await getGitHubApiHeaders(),
-      next: {
-        revalidate: REVALIDATE_SECONDS,
+    const response = await fetch(
+      `https://api.github.com/repos/${username}/${repo}`,
+      {
+        headers: await getGitHubApiHeaders(),
+        next: {
+          revalidate: REVALIDATE_SECONDS,
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       throw new Error(`GitHub request failed (${response.status})`);
@@ -42,7 +45,9 @@ export async function getRepoSocialMetadata(
       isPrivate: typeof data.private === "boolean" ? data.private : null,
       language: typeof data.language === "string" ? data.language : null,
       stargazerCount:
-        typeof data.stargazers_count === "number" ? data.stargazers_count : null,
+        typeof data.stargazers_count === "number"
+          ? data.stargazers_count
+          : null,
     };
   } catch (error) {
     console.error("Failed to fetch repo social metadata:", error);

@@ -107,7 +107,7 @@ function GraphPlanningTimer() {
 }
 
 export default function Loading({
-  status = "idle",
+  status,
   message,
   explanation,
   graph,

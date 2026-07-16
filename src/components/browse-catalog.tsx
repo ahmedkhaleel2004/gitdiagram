@@ -271,7 +271,7 @@ export function BrowseCatalog({
     );
   };
 
-  if (loadError) {
+  if (loadError || (isLoaded && result === null)) {
     return (
       <div className="neo-panel p-8">
         <p className="text-sm font-semibold tracking-[0.2em] text-black/70 uppercase dark:text-[hsl(var(--foreground))]">
@@ -279,28 +279,14 @@ export function BrowseCatalog({
         </p>
         <h2 className="mt-3 text-3xl font-bold">Browse index unavailable</h2>
         <p className="mt-4 max-w-3xl text-base text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-          {loadError}
+          {loadError ??
+            "This page reads only the hosted browse index. The index is currently unavailable in storage."}
         </p>
       </div>
     );
   }
 
-  if (isLoaded && result === null) {
-    return (
-      <div className="neo-panel p-8">
-        <p className="text-sm font-semibold tracking-[0.2em] text-black/70 uppercase dark:text-[hsl(var(--foreground))]">
-          Browse
-        </p>
-        <h2 className="mt-3 text-3xl font-bold">Browse index unavailable</h2>
-        <p className="mt-4 max-w-3xl text-base text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-          This page reads only the hosted browse index. The index is currently
-          unavailable in storage.
-        </p>
-      </div>
-    );
-  }
-
-  if ((!isLoaded && result === null) || result === null) {
+  if (result === null) {
     return (
       <BrowseCatalogLoadingState
         minStars={minStars}

@@ -10,11 +10,6 @@ interface InstallationTokenResponse {
   expires_at?: string;
 }
 
-export interface GitHubAuthSource {
-  label: string;
-  getToken: () => Promise<string>;
-}
-
 let cachedInstallationToken: {
   token: string;
   expiresAtMs: number;
@@ -58,7 +53,7 @@ function createGitHubAppJwt() {
   return `${header}.${payload}.${signature}`;
 }
 
-export function hasGitHubAppAuth() {
+function hasGitHubAppAuth() {
   return Boolean(
     readTrimmedEnv("GITHUB_PRIVATE_KEY") &&
     (readTrimmedEnv("GITHUB_APP_ID") || readTrimmedEnv("GITHUB_CLIENT_ID")) &&
@@ -132,7 +127,7 @@ async function requestGitHubAppInstallationToken() {
   return cachedInstallationToken.token;
 }
 
-export async function getGitHubAppInstallationToken() {
+async function getGitHubAppInstallationToken() {
   if (
     cachedInstallationToken &&
     cachedInstallationToken.expiresAtMs - Date.now() >
@@ -147,26 +142,6 @@ export async function getGitHubAppInstallationToken() {
     },
   );
   return installationTokenPromise;
-}
-
-export function getGitHubAuthSources(): GitHubAuthSource[] {
-  const sources: GitHubAuthSource[] = [];
-
-  if (hasGitHubAppAuth()) {
-    sources.push({
-      label: "github-app",
-      getToken: getGitHubAppInstallationToken,
-    });
-  }
-
-  for (const token of readGitHubPatPool()) {
-    sources.push({
-      label: "github-pat",
-      getToken: async () => token,
-    });
-  }
-
-  return sources;
 }
 
 export async function getGitHubApiHeaders(options?: {

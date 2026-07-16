@@ -2,7 +2,7 @@ import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
 export const GENERATION_CANCELLATION_TTL_SECONDS = 10 * 60;
 export const GENERATION_ACTIVE_TTL_SECONDS = 6 * 60;
-export const GENERATION_CANCELLATION_POLL_INTERVAL_MS = 1_000;
+const GENERATION_CANCELLATION_POLL_INTERVAL_MS = 1_000;
 
 const MARK_CANCELLED_SCRIPT = `
 if redis.call("GET", KEYS[1]) ~= ARGV[1] then
