@@ -26,6 +26,10 @@ function getEnvApiKey(provider: AIProvider): string | undefined {
     return process.env.OPENROUTER_API_KEY?.trim();
   }
 
+  if (provider === "requesty") {
+    return process.env.REQUESTY_API_KEY?.trim();
+  }
+
   return process.env.OPENAI_API_KEY?.trim();
 }
 
@@ -45,12 +49,40 @@ function getOpenRouterHeaders(): Record<string, string> {
   return headers;
 }
 
+function getRequestyHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const siteUrl = process.env.REQUESTY_SITE_URL?.trim();
+  const appName = process.env.REQUESTY_APP_NAME?.trim() || "GitDiagram";
+
+  if (siteUrl) {
+    headers["HTTP-Referer"] = siteUrl;
+  }
+
+  if (appName) {
+    headers["X-Title"] = appName;
+  }
+
+  return headers;
+}
+
 function createClient(provider: AIProvider, apiKey: string): OpenAI {
   if (provider === "openrouter") {
     return new OpenAI({
       apiKey,
       baseURL: "https://openrouter.ai/api/v1",
       defaultHeaders: getOpenRouterHeaders(),
+      maxRetries: AI_MAX_RETRIES,
+      timeout: AI_REQUEST_TIMEOUT_MS,
+    });
+  }
+
+  if (provider === "requesty") {
+    return new OpenAI({
+      apiKey,
+      baseURL:
+        process.env.REQUESTY_BASE_URL?.trim() ||
+        "https://router.requesty.ai/v1",
+      defaultHeaders: getRequestyHeaders(),
       maxRetries: AI_MAX_RETRIES,
       timeout: AI_REQUEST_TIMEOUT_MS,
     });
@@ -87,7 +119,11 @@ function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
   const apiKey = overrideApiKey?.trim() || getEnvApiKey(provider);
   if (!apiKey) {
     const envVarName =
-      provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
+      provider === "openrouter"
+        ? "OPENROUTER_API_KEY"
+        : provider === "requesty"
+          ? "REQUESTY_API_KEY"
+          : "OPENAI_API_KEY";
     throw new Error(
       `Missing ${getProviderLabel(provider)} API key. Set ${envVarName} or provide api_key in request.`,
     );
@@ -442,13 +478,16 @@ export async function generateStructuredOutput<T>({
       usage: normalizeGenerationUsage(response.usage, response.service_tier),
     };
   } catch (error) {
-    if (provider === "openrouter" && isStructuredOutputRejection(error)) {
+    if (
+      (provider === "openrouter" || provider === "requesty") &&
+      isStructuredOutputRejection(error)
+    ) {
       const message =
         error instanceof Error
           ? error.message
           : "Structured output request failed.";
       throw new UpstreamProviderError(
-        `OpenRouter model does not support the required structured graph output: ${message}`,
+        `${getProviderLabel(provider)} model does not support the required structured graph output: ${message}`,
         { cause: error },
       );
     }
