@@ -36,10 +36,13 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("~/components/browse-diagram-preview", () => ({
-  preloadBrowseDiagramPreviewChart: vi.fn(),
   BrowseDiagramPreview: ({ repoLabel }: { repoLabel: string }) => (
     <div data-testid="mermaid-preview">{repoLabel}</div>
   ),
+}));
+
+vi.mock("~/components/mermaid-diagram", () => ({
+  default: () => null,
 }));
 
 function createBrowseResult(

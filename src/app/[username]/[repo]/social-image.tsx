@@ -9,7 +9,7 @@ export async function renderRepoSocialImage({ params }: RepoImageProps) {
   const { username, repo } = await params;
   const metadata = await getRepoSocialMetadata(username, repo);
 
-  return await createRepoSocialImage({
+  return createRepoSocialImage({
     username,
     repo,
     defaultBranch: metadata.defaultBranch,

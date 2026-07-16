@@ -4,28 +4,16 @@
   :root {
     --background: 269 100% 95%;
     --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 3.9%;
     --primary: 0 0% 9%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
     --muted-foreground: 0 0% 45.1%;
     --accent: 0 0% 96.1%;
     --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
     --border: 0 0% 89.8%;
     --input: 0 0% 89.8%;
     --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
     --radius: 0.5rem;
     --neo-panel: 270 100% 92%;
     --neo-panel-muted: 270 95% 88%;
@@ -36,38 +24,23 @@
     --neo-link: 271 81% 55%;
     --neo-link-hover: 271 70% 48%;
     --neo-soft-text: 220 13% 30%;
-    --neo-dot-active: 271 81% 55%;
-    --neo-dot-inactive: 271 46% 78%;
     --neo-input-bg: 270 92% 89%;
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
     --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   }
   .dark {
     --background: 264 22% 9%;
     --foreground: 270 25% 93%;
-    --card: 264 20% 13%;
-    --card-foreground: 270 25% 93%;
     --popover: 264 20% 13%;
     --popover-foreground: 270 25% 93%;
     --primary: 270 25% 93%;
     --primary-foreground: 264 22% 9%;
-    --secondary: 264 18% 18%;
-    --secondary-foreground: 270 25% 93%;
-    --muted: 264 18% 18%;
     --muted-foreground: 270 15% 65%;
     --accent: 264 20% 22%;
     --accent-foreground: 270 25% 93%;
-    --destructive: 0 62.8% 40%;
-    --destructive-foreground: 0 0% 98%;
     --border: 264 28% 22%;
     --input: 264 22% 17%;
     --ring: 270 85% 68%;
-    --chart-1: 270 85% 68%;
-    --chart-2: 280 75% 72%;
-    --chart-3: 260 70% 60%;
-    --chart-4: 290 65% 65%;
-    --chart-5: 250 80% 70%;
     --neo-panel: 264 20% 13%;
     --neo-panel-muted: 264 18% 17%;
     --neo-button: 270 85% 68%;
@@ -77,8 +50,6 @@
     --neo-link: 280 80% 72%;
     --neo-link-hover: 275 90% 80%;
     --neo-soft-text: 270 18% 72%;
-    --neo-dot-active: 270 85% 68%;
-    --neo-dot-inactive: 264 20% 32%;
     --neo-input-bg: 264 24% 11%;
   }
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, ShieldCheck, Sparkles } from "lucide-react";
+import { GITHUB_REPO_URL } from "~/lib/site";
 import { GitHubIcon } from "~/components/icons/github-icon";
 import { SponsorEmailActions } from "./sponsor-email-actions";
 
@@ -118,7 +119,7 @@ export default function SponsorPage() {
               mailto={SPONSOR_EMAIL}
             />
             <Link
-              href="https://github.com/ahmedkhaleel2004/gitdiagram"
+              href={GITHUB_REPO_URL}
               className="browse-muted-button inline-flex min-h-[48px] w-fit items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold"
             >
               <GitHubIcon className="h-4 w-4" aria-hidden="true" />

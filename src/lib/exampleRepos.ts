@@ -14,9 +14,11 @@ function normalizePathSegment(value: string) {
   }
 }
 
+const exampleRepoPaths = new Set(
+  Object.values(exampleRepos).map(normalizePathSegment),
+);
+
 export function isExampleRepo(username: string, repo: string) {
   const currentPath = `/${normalizePathSegment(username)}/${normalizePathSegment(repo)}`;
-  return Object.values(exampleRepos).some(
-    (path) => normalizePathSegment(path) === currentPath,
-  );
+  return exampleRepoPaths.has(currentPath);
 }

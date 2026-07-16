@@ -7,7 +7,7 @@ Atlas Cloud is a first-class provider in GitDiagram's Vercel-native generation r
 ## Implementation
 
 - Provider and model selection: `src/server/generate/model-config.ts`
-- Validated model catalog: `src/server/generate/atlas-models.ts`
+- Default model: `src/server/generate/atlas-models.ts`
 - Streaming and structured requests: `src/server/generate/openai.ts`
 - Pricing lookup: `src/server/generate/pricing.ts`
 - Environment template: `.env.example`

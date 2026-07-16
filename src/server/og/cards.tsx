@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ImageResponse } from "next/og";
 
-export const socialImageSize = {
+const socialImageSize = {
   width: 1200,
   height: 630,
 } as const;

@@ -8,6 +8,7 @@ import { Menu, X } from "lucide-react";
 
 import { GitHubIcon } from "~/components/icons/github-icon";
 import { storeOpenAiKey } from "~/lib/openai-key";
+import { GITHUB_REPO_URL } from "~/lib/site";
 
 import { ThemeToggle } from "./theme-toggle";
 
@@ -66,7 +67,6 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
     useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const githubRepoUrl = "https://github.com/ahmedkhaleel2004/gitdiagram";
   const isBrowsePage = pathname === "/browse";
   const showMobileGithubButton = pathname === "/" || isBrowsePage;
 
@@ -96,7 +96,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
         <div className="flex items-center gap-2 sm:hidden">
           {showMobileGithubButton ? (
             <Link
-              href={githubRepoUrl}
+              href={GITHUB_REPO_URL}
               className="browse-muted-button inline-flex min-h-[42px] items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold"
             >
               <GitHubIcon className="h-4 w-4" />
@@ -147,12 +147,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
             onClick={() => setIsApiKeyDialogOpen(true)}
             className="text-sm font-medium text-black transition-colors duration-150 hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
           >
-            <span className="flex items-center sm:hidden">
-              <span>API Key</span>
-            </span>
-            <span className="hidden items-center gap-1 sm:flex">
-              <span>API Key</span>
-            </span>
+            API Key
           </button>
           <button
             type="button"
@@ -161,12 +156,11 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
             onClick={() => setIsPrivateReposDialogOpen(true)}
             className="text-sm font-medium text-black transition-colors duration-150 hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
           >
-            <span className="sm:hidden">Private Repos</span>
-            <span className="hidden sm:inline">Private Repos</span>
+            Private Repos
           </button>
           <ThemeToggle />
           <Link
-            href={githubRepoUrl}
+            href={GITHUB_REPO_URL}
             className="flex items-center gap-1 text-sm font-medium text-black transition-colors duration-150 hover:text-purple-600 sm:gap-2 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
           >
             <GitHubIcon className="h-5 w-5" />
@@ -235,7 +229,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
                   className="browse-muted-button inline-flex min-h-[48px] items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
                 />
                 <Link
-                  href={githubRepoUrl}
+                  href={GITHUB_REPO_URL}
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="browse-muted-button inline-flex min-h-[48px] items-center justify-between gap-3 rounded-md px-4 py-3 text-sm font-semibold"
                 >

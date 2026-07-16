@@ -35,14 +35,6 @@ import {
   sanitizeMermaidSourceForRender,
 } from "~/features/diagram/mermaid-security";
 
-export {
-  getDefaultDiagramScale,
-  getPinchScaleFactor,
-  getWheelZoomScaleFactor,
-  isLikelyTrackpadGesture,
-  normalizeWheelDelta,
-} from "~/components/mermaid-diagram-helpers";
-
 interface MermaidChartProps {
   chart: string;
   zoomingEnabled?: boolean;

@@ -1,19 +1,12 @@
 import { getGzipJsonObject, getJsonObject, putGzipJsonObject } from "./r2";
 import { readRequiredEnv } from "./config";
 import { withDistributedLock } from "./distributed-lock";
-import {
-  BROWSE_PAGE_SIZE,
-  BROWSE_SORTS,
-  getBrowsePageFromEntries,
-  MIN_STAR_FILTER_VALUES,
-  toRepoKey,
-} from "~/features/browse/catalog";
+import { getBrowsePageFromEntries, toRepoKey } from "~/features/browse/catalog";
 import type {
   BrowseIndexEntry,
   BrowsePageResult,
   BrowseQuery,
   RecentBrowseIndex,
-  BrowseSort,
 } from "~/features/browse/catalog";
 
 const LEGACY_PUBLIC_BROWSE_INDEX_KEY = "public/v1/_meta/browse-index.json";
@@ -22,8 +15,7 @@ const PUBLIC_RECENT_BROWSE_INDEX_KEY = "public/v2/_meta/browse-recent.json.gz";
 const PUBLIC_BROWSE_INDEX_LOCK_KEY = "lock:v1:public-browse-index";
 export const RECENT_BROWSE_INDEX_SIZE = 2_000;
 
-export { BROWSE_PAGE_SIZE, BROWSE_SORTS, MIN_STAR_FILTER_VALUES };
-export type { BrowseIndexEntry, BrowsePageResult, BrowseQuery, BrowseSort };
+export type { BrowseIndexEntry, BrowsePageResult, BrowseQuery };
 
 interface BrowseIndexPayload {
   version: 1 | 2;

@@ -3,10 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
-import {
-  clearStoredOpenAiKey,
-  getStoredOpenAiKey,
-} from "~/lib/openai-key";
+import { clearStoredOpenAiKey, getStoredOpenAiKey } from "~/lib/openai-key";
+import { GITHUB_REPO_URL } from "~/lib/site";
 
 import { Button } from "./ui/button";
 import {
@@ -63,8 +61,8 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
         >
           <div className="text-sm">
             GitDiagram offers infinite free diagram generations! You can also
-            provide your own OpenAI API key to generate diagrams at your own cost.
-            The key is stored locally in your browser.
+            provide your own OpenAI API key to generate diagrams at your own
+            cost. The key is stored locally in your browser.
             <br />
             <br />
             <span className="font-medium">Get your OpenAI API key </span>
@@ -80,15 +78,12 @@ export function ApiKeyDialog({ isOpen, onClose, onSubmit }: ApiKeyDialogProps) {
             <summary className="neo-link cursor-pointer font-medium">
               Data storage disclaimer
             </summary>
-            <div className="animate-accordion-down mt-2 space-y-2 overflow-hidden pl-2">
+            <div className="mt-2 space-y-2 overflow-hidden pl-2">
               <p>
                 Your API key will be stored locally in your browser and used
                 only for generating diagrams. You can also self-host this app by
                 following the instructions in the{" "}
-                <Link
-                  href="https://github.com/ahmedkhaleel2004/gitdiagram"
-                  className="neo-link"
-                >
+                <Link href={GITHUB_REPO_URL} className="neo-link">
                   README
                 </Link>
                 .

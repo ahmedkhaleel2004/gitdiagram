@@ -653,32 +653,7 @@ export async function POST(request: Request) {
             return;
           }
 
-          if (shouldApplyComplimentaryGate({ provider, model, apiKey })) {
-            if (!modelMatchesComplimentaryFamily(model)) {
-              const error = getComplimentaryModelMismatchMessage();
-              audit = withFailure(
-                {
-                  ...audit,
-                  quotaStatus: "denied",
-                },
-                {
-                  failureStage: "started",
-                  validationError: error,
-                },
-              );
-              queueTerminal({
-                status: "error",
-                session_id: audit.sessionId,
-                error,
-                error_code: "COMPLIMENTARY_GATE_MODEL_MISMATCH",
-                failure_stage: "started",
-                validation_error: error,
-                cost_summary: audit.finalCost ?? audit.estimatedCost,
-                latest_session_audit: audit,
-              });
-              return;
-            }
-
+          if (shouldApplyComplimentaryGate({ provider, apiKey })) {
             const requestedTokens = buildComplimentaryAdmissionTokens({
               explanationInputTokens: estimate.explanationInputTokens,
               graphStaticInputTokens: estimate.graphStaticInputTokens,

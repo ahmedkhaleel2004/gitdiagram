@@ -1,10 +1,21 @@
 "use client";
 
 import type { BrowseSort } from "~/features/browse/catalog";
-import {
-  minStarOptions,
-  sortOptions,
-} from "~/components/browse-catalog-shared";
+
+const sortOptions: Array<{ value: BrowseSort; label: string }> = [
+  { value: "recent_desc", label: "Most Recent" },
+  { value: "recent_asc", label: "Oldest First" },
+  { value: "stars_desc", label: "Most Stars" },
+  { value: "stars_asc", label: "Fewest Stars" },
+  { value: "name_asc", label: "Name (A-Z)" },
+];
+
+const minStarOptions = [
+  { value: 0, label: "Any Stars" },
+  { value: 10, label: "10+" },
+  { value: 100, label: "100+" },
+  { value: 1000, label: "1,000+" },
+];
 
 export interface BrowseCatalogControlsProps {
   minStars: number;

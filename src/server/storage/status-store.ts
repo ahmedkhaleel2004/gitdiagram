@@ -29,7 +29,10 @@ function toDiagramStateResponse(
 async function getSummaryForLocation(
   location: StorageLocation,
 ): Promise<StoredFailureSummary | null> {
-  const result = await upstashCommand<string | null>(["GET", location.statusKey]);
+  const result = await upstashCommand<string | null>([
+    "GET",
+    location.statusKey,
+  ]);
   if (!result) {
     return null;
   }

@@ -4,13 +4,13 @@ import type {
   GenerationStageUsage,
 } from "~/features/diagram/cost";
 
-export const MAX_GRAPH_GROUPS = 10;
-export const MAX_GRAPH_NODES = 34;
-export const MAX_GRAPH_EDGES = 48;
-export const MAX_GRAPH_LABEL_LENGTH = 72;
-export const MAX_GRAPH_TYPE_LENGTH = 72;
-export const MAX_GRAPH_DESCRIPTION_LENGTH = 240;
-export const MAX_GRAPH_PATH_LENGTH = 512;
+const MAX_GRAPH_GROUPS = 10;
+const MAX_GRAPH_NODES = 34;
+const MAX_GRAPH_EDGES = 48;
+const MAX_GRAPH_LABEL_LENGTH = 72;
+const MAX_GRAPH_TYPE_LENGTH = 72;
+const MAX_GRAPH_DESCRIPTION_LENGTH = 240;
+const MAX_GRAPH_PATH_LENGTH = 512;
 export const MAX_GRAPH_ATTEMPTS = 3;
 
 export function normalizeDiagramText(value: string): string {
@@ -32,7 +32,7 @@ function renderableDiagramTextSchema(maxLength: number) {
     });
 }
 
-export const diagramNodeShapeSchema = z.enum([
+const diagramNodeShapeSchema = z.enum([
   "box",
   "database",
   "queue",
@@ -41,9 +41,9 @@ export const diagramNodeShapeSchema = z.enum([
   "hexagon",
 ]);
 
-export const diagramEdgeStyleSchema = z.enum(["solid", "dashed"]);
+const diagramEdgeStyleSchema = z.enum(["solid", "dashed"]);
 
-export const diagramGroupSchema = z.object({
+const diagramGroupSchema = z.object({
   id: z
     .string()
     .trim()
@@ -52,7 +52,7 @@ export const diagramGroupSchema = z.object({
   description: z.string().trim().max(MAX_GRAPH_DESCRIPTION_LENGTH).nullable(),
 });
 
-export const diagramNodeSchema = z.object({
+const diagramNodeSchema = z.object({
   id: z
     .string()
     .trim()
@@ -69,7 +69,7 @@ export const diagramNodeSchema = z.object({
   shape: diagramNodeShapeSchema.nullable(),
 });
 
-export const diagramEdgeSchema = z.object({
+const diagramEdgeSchema = z.object({
   from: z
     .string()
     .trim()
@@ -89,9 +89,6 @@ export const diagramGraphSchema = z.object({
   edges: z.array(diagramEdgeSchema).max(MAX_GRAPH_EDGES),
 });
 
-export type DiagramNodeShape = z.infer<typeof diagramNodeShapeSchema>;
-export type DiagramEdgeStyle = z.infer<typeof diagramEdgeStyleSchema>;
-export type DiagramGraphGroup = z.infer<typeof diagramGroupSchema>;
 export type DiagramGraphNode = z.infer<typeof diagramNodeSchema>;
 export type DiagramGraphEdge = z.infer<typeof diagramEdgeSchema>;
 export type DiagramGraph = z.infer<typeof diagramGraphSchema>;
@@ -106,13 +103,13 @@ export interface GraphAttemptAudit {
   createdAt: string;
 }
 
-export interface GenerationTimelineEvent {
+interface GenerationTimelineEvent {
   stage: string;
   message?: string;
   createdAt: string;
 }
 
-export type DiagramSessionStatus = "idle" | "running" | "succeeded" | "failed";
+type DiagramSessionStatus = "idle" | "running" | "succeeded" | "failed";
 
 export interface GenerationSessionAudit {
   sessionId: string;

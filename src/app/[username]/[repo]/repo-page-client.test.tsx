@@ -46,10 +46,6 @@ vi.mock("~/components/api-key-dialog", () => ({
   ApiKeyDialog: () => <div data-testid="api-key-dialog" />,
 }));
 
-vi.mock("~/components/api-key-button", () => ({
-  ApiKeyButton: () => <button type="button">Use API Key</button>,
-}));
-
 describe("RepoPageClient", () => {
   beforeEach(() => {
     warningToast.mockClear();

@@ -11,11 +11,11 @@ import {
 import { normalizeGenerationUsage } from "~/server/generate/pricing";
 
 export type ReasoningEffort = "low" | "medium" | "high";
-export type TextVerbosity = "low" | "medium" | "high";
+type TextVerbosity = "low" | "medium" | "high";
 
 const DEFAULT_ATLAS_BASE_URL = "https://api.atlascloud.ai/v1";
-export const AI_REQUEST_TIMEOUT_MS = 150_000;
-export const AI_MAX_RETRIES = 0;
+const AI_REQUEST_TIMEOUT_MS = 150_000;
+const AI_MAX_RETRIES = 0;
 
 function getEnvApiKey(provider: AIProvider): string | undefined {
   if (provider === "atlas") {

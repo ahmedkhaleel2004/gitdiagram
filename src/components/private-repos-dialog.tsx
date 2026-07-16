@@ -11,6 +11,7 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { GITHUB_REPO_URL } from "~/lib/site";
 
 interface PrivateReposDialogProps {
   isOpen: boolean;
@@ -75,15 +76,12 @@ export function PrivateReposDialog({
             <summary className="neo-link cursor-pointer font-medium">
               Data storage disclaimer
             </summary>
-            <div className="animate-accordion-down mt-2 space-y-2 overflow-hidden pl-2">
+            <div className="mt-2 space-y-2 overflow-hidden pl-2">
               <p>
                 Successful private-repository diagrams are stored in the
                 configured private artifact bucket for this deployment. You can
                 also self-host this app by following the instructions in the{" "}
-                <Link
-                  href="https://github.com/ahmedkhaleel2004/gitdiagram"
-                  className="neo-link"
-                >
+                <Link href={GITHUB_REPO_URL} className="neo-link">
                   README
                 </Link>
                 .

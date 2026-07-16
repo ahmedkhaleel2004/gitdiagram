@@ -4,49 +4,15 @@ import {
   getComplimentaryQuotaBucket,
 } from "../src/server/generate/complimentary-gate";
 import { buildQuotaKey } from "../src/server/storage/quota-store";
+import { upstashCommand } from "../src/server/storage/upstash";
 
 config({ path: ".env" });
-
-function readEnv(name) {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
-}
-
-async function fetchUpstashResult(body) {
-  const baseUrl = readEnv("UPSTASH_REDIS_REST_URL");
-  const token = readEnv("UPSTASH_REDIS_REST_TOKEN");
-  if (!baseUrl || !token) {
-    throw new Error("Missing Upstash Redis REST configuration in .env");
-  }
-
-  const response = await fetch(baseUrl.replace(/\/$/, ""), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Upstash request failed (${response.status}): ${await response.text()}`,
-    );
-  }
-
-  const payload = await response.json();
-  if (payload.error) {
-    throw new Error(`Upstash command failed: ${payload.error}`);
-  }
-
-  return payload.result;
-}
 
 const tokenLimit = getComplimentaryDailyLimitTokens();
 const quotaDateUtc = new Date().toISOString().slice(0, 10);
 const quotaBucket = getComplimentaryQuotaBucket();
 
-const result = await fetchUpstashResult([
+const result = await upstashCommand([
   "HMGET",
   buildQuotaKey(quotaDateUtc, quotaBucket),
   "used_tokens",

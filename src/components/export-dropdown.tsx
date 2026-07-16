@@ -1,6 +1,11 @@
 import { CopyButton } from "./copy-button";
-import { Image } from "lucide-react";
-import { ActionButton } from "./action-button";
+import { Image as ImageIcon } from "lucide-react";
+import { Button } from "~/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 
 interface ExportDropdownProps {
   onCopy: () => void;
@@ -18,12 +23,23 @@ export function ExportDropdown({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-        <ActionButton
-          onClick={onExportImage}
-          icon={Image}
-          tooltipText="Download diagram as high-quality PNG"
-          text="Download PNG"
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={(event) => {
+                event.preventDefault();
+                onExportImage();
+              }}
+              className="neo-button p-4 px-4 text-base sm:p-6 sm:px-6 sm:text-lg"
+            >
+              <ImageIcon className="h-6 w-6" />
+              <span className="text-sm">Download PNG</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Download diagram as high-quality PNG</p>
+          </TooltipContent>
+        </Tooltip>
         <CopyButton onClick={onCopy} />
       </div>
 

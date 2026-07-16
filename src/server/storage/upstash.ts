@@ -3,7 +3,7 @@ import {
   readRequiredEnv,
 } from "~/server/storage/config";
 
-export const UPSTASH_REQUEST_TIMEOUT_MS = 5_000;
+const UPSTASH_REQUEST_TIMEOUT_MS = 5_000;
 
 function getBaseUrl() {
   return readRequiredEnv("UPSTASH_REDIS_REST_URL").replace(/\/$/, "");

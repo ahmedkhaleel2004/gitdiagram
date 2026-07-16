@@ -20,7 +20,7 @@ function normalizeParserMessage(message?: string): string {
   return message;
 }
 
-export interface MermaidValidationResult {
+interface MermaidValidationResult {
   valid: boolean;
   message?: string;
   line?: number;
@@ -340,23 +340,4 @@ export async function validateMermaidSyntax(
   } finally {
     deadline.dispose();
   }
-}
-
-export function formatValidationFeedback(
-  result: MermaidValidationResult,
-): string {
-  if (result.valid) {
-    return "No syntax errors found.";
-  }
-
-  const details = [
-    `message: ${result.message ?? "unknown parse error"}`,
-    typeof result.line === "number" ? `line: ${result.line}` : undefined,
-    result.token ? `token: ${result.token}` : undefined,
-    result.expected?.length
-      ? `expected: ${result.expected.join(", ")}`
-      : undefined,
-  ].filter(Boolean);
-
-  return details.join("\n");
 }

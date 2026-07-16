@@ -15,13 +15,14 @@ import {
   vi,
 } from "vitest";
 
-import MermaidChart, {
+import MermaidChart from "~/components/mermaid-diagram";
+import {
   getDefaultDiagramScale,
   getPinchScaleFactor,
   getWheelZoomScaleFactor,
   isLikelyTrackpadGesture,
   normalizeWheelDelta,
-} from "~/components/mermaid-diagram";
+} from "~/components/mermaid-diagram-helpers";
 
 const { initializeMock, renderMock, resizeObserverObserveMock } = vi.hoisted(
   () => ({

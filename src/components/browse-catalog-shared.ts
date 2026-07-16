@@ -4,7 +4,7 @@ import {
 } from "~/features/browse/catalog";
 import type { BrowseQuery, BrowseSort } from "~/features/browse/catalog";
 
-export interface BrowseCatalogFilterState {
+interface BrowseCatalogFilterState {
   page: number;
   q: string;
   sort: BrowseSort;
@@ -14,7 +14,6 @@ export interface BrowseCatalogFilterState {
 export type HoverPreviewStatus = "idle" | "loading" | "ready" | "error";
 
 export interface HoverPreviewState {
-  key: string;
   repoLabel: string;
   top: number;
   left: number;
@@ -26,31 +25,12 @@ const generatedAtFormatter = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
-export const sortOptions: Array<{ value: BrowseSort; label: string }> = [
-  { value: "recent_desc", label: "Most Recent" },
-  { value: "recent_asc", label: "Oldest First" },
-  { value: "stars_desc", label: "Most Stars" },
-  { value: "stars_asc", label: "Fewest Stars" },
-  { value: "name_asc", label: "Name (A-Z)" },
-];
-
-export const minStarOptions = [
-  { value: 0, label: "Any Stars" },
-  { value: 10, label: "10+" },
-  { value: 100, label: "100+" },
-  { value: 1000, label: "1,000+" },
-];
-
-export const browseSkeletonRows = Array.from(
-  { length: 6 },
-  (_, index) => index,
-);
-export const BROWSE_SESSION_STORAGE_KEY = "gitdiagram:browse-query";
+const BROWSE_SESSION_STORAGE_KEY = "gitdiagram:browse-query";
 export const HOVER_PREVIEW_MEDIA_QUERY =
   "(min-width: 1024px) and (hover: hover) and (pointer: fine)";
 export const HOVER_PREVIEW_WIDTH_PX = 360;
-export const HOVER_PREVIEW_HEIGHT_PX = 336;
-export const HOVER_PREVIEW_CURSOR_OFFSET_PX = 18;
+const HOVER_PREVIEW_HEIGHT_PX = 336;
+const HOVER_PREVIEW_CURSOR_OFFSET_PX = 18;
 export const HOVER_PREVIEW_OPEN_DELAY_MS = 0;
 
 const MAX_CACHED_DIAGRAM_PREVIEWS = 60;

@@ -1,6 +1,6 @@
 export const BROWSE_PAGE_SIZE = 20;
-export const MIN_STAR_FILTER_VALUES = [0, 10, 100, 1000] as const;
-export const BROWSE_SORTS = [
+const MIN_STAR_FILTER_VALUES = [0, 10, 100, 1000] as const;
+const BROWSE_SORTS = [
   "recent_desc",
   "recent_asc",
   "stars_desc",
@@ -86,15 +86,13 @@ function compareNullableStars(
   return direction === "asc" ? left - right : right - left;
 }
 
-export function parseBrowseSort(sort: string | null | undefined): BrowseSort {
+function parseBrowseSort(sort: string | null | undefined): BrowseSort {
   return BROWSE_SORTS.includes(sort as BrowseSort)
     ? (sort as BrowseSort)
     : "recent_desc";
 }
 
-export function parseMinStars(
-  minStars: string | number | null | undefined,
-): number {
+function parseMinStars(minStars: string | number | null | undefined): number {
   const numericValue =
     typeof minStars === "number"
       ? minStars
@@ -107,9 +105,7 @@ export function parseMinStars(
     : 0;
 }
 
-export function parsePageNumber(
-  page: string | number | null | undefined,
-): number {
+function parsePageNumber(page: string | number | null | undefined): number {
   const numericPage =
     typeof page === "number" ? page : Number.parseInt(page ?? "1", 10);
 
