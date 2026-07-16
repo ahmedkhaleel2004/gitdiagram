@@ -1,10 +1,11 @@
-export type AIProvider = "openai" | "openrouter" | "meta";
+export type AIProvider = "openai" | "openrouter" | "meta" | "requesty";
 export type GenerationServiceTier = "default" | "priority";
 
 const DEFAULT_PROVIDER: AIProvider = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-6-luna";
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-terra";
 const DEFAULT_META_MODEL = "muse-ember-1.0";
+const DEFAULT_REQUESTY_MODEL = "openai/gpt-5.6-terra";
 // Muse Ember draws a diagram in about half GPT-6 Luna's time with arrows a
 // blind judge found as well supported (experiments/diagram-ember).
 const MUSE_EMBER_MODEL_PATTERN = /^muse-ember(?:-\d+(?:\.\d+)?)?$/i;
@@ -23,6 +24,9 @@ function normalizeProvider(value?: string): AIProvider {
   }
   if (normalized === "meta") {
     return "meta";
+  }
+  if (normalized === "requesty") {
+    return "requesty";
   }
   return DEFAULT_PROVIDER;
 }
@@ -43,6 +47,7 @@ export function getGenerationProvider(params: { apiKey?: string }): AIProvider {
 
 export function getProviderLabel(provider: AIProvider): string {
   if (provider === "meta") return "Meta";
+  if (provider === "requesty") return "Requesty";
   return provider === "openrouter" ? "OpenRouter" : "OpenAI";
 }
 
@@ -111,6 +116,9 @@ export function getModel(provider = getProvider()): string {
   }
   if (provider === "meta") {
     return readEnvValue("META_MODEL") ?? DEFAULT_META_MODEL;
+  }
+  if (provider === "requesty") {
+    return readEnvValue("REQUESTY_MODEL") ?? DEFAULT_REQUESTY_MODEL;
   }
 
   return readEnvValue("OPENAI_MODEL") ?? DEFAULT_OPENAI_MODEL;
