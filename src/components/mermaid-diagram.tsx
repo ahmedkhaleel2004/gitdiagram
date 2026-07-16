@@ -563,7 +563,7 @@ const MermaidChart = ({
           "relative h-full",
           zoomingEnabled
             ? "touch-none"
-            : "touch-pan-y touch-pinch-zoom",
+            : "touch-pan-x touch-pan-y touch-pinch-zoom",
           (zoomingEnabled || fitToContainer) && "overflow-hidden",
           zoomingEnabled &&
             "rounded-xl border border-black/12 bg-white/30 select-none dark:border-white/12 dark:bg-white/[0.03] [&_*]:select-none",

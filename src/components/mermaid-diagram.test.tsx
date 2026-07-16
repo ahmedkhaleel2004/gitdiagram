@@ -132,7 +132,7 @@ describe("MermaidChart", () => {
     expect(config?.themeCSS).toContain("prefers-reduced-motion: reduce");
   });
 
-  it("allows vertical scrolling and native pinch zoom in read-only mode", () => {
+  it("allows two-axis panning and native pinch zoom in read-only mode", () => {
     const { container } = render(
       <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />,
     );
@@ -140,6 +140,7 @@ describe("MermaidChart", () => {
     const interactionLayer = container.querySelector(".touch-pan-y");
 
     expect(interactionLayer).toBeInTheDocument();
+    expect(interactionLayer).toHaveClass("touch-pan-x");
     expect(interactionLayer).toHaveClass("touch-pinch-zoom");
     expect(container.querySelector(".touch-none")).not.toBeInTheDocument();
   });
