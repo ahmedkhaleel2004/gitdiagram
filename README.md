@@ -20,7 +20,7 @@ You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 - **Streaming generation:** see the explanation arrive while the graph is planned.
 - **Private repositories:** provide a GitHub token locally in the browser; private artifacts use a separate protected storage namespace.
 - **Export:** copy Mermaid source or download the rendered diagram as PNG.
-- **Provider choice:** OpenAI by default, with OpenRouter and Atlas Cloud available for self-hosted deployments.
+- **Provider choice:** OpenAI by default, with OpenRouter, Requesty, and Atlas Cloud available for self-hosted deployments.
 
 ## Stack
 
@@ -28,7 +28,7 @@ You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 - **Generation API:** same-origin Next.js Route Handlers running on Vercel's Bun runtime
 - **Storage:** Cloudflare R2 for diagram artifacts
 - **Coordination:** Upstash Redis for quota accounting, cancellation, locks, and short-lived failure state
-- **AI:** OpenAI, OpenRouter, or Atlas Cloud through `AI_PROVIDER`
+- **AI:** OpenAI, OpenRouter, Requesty, or Atlas Cloud through `AI_PROVIDER`
 - **Analytics:** PostHog
 - **Deployment:** Vercel is the only live runtime; an offline Railway/Docker recipe is retained for disaster recovery
 
