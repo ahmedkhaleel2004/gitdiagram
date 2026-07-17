@@ -1,8 +1,8 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useSyncExternalStore } from "react";
 
+import { useHydrated } from "~/hooks/use-hydrated";
 import { cn } from "~/lib/utils";
 
 interface ThemeToggleProps {
@@ -10,15 +10,9 @@ interface ThemeToggleProps {
   onToggle?: () => void;
 }
 
-const subscribeToHydration = () => () => undefined;
-
 export function ThemeToggle({ className, onToggle }: ThemeToggleProps) {
   const { resolvedTheme, setTheme } = useTheme();
-  const mounted = useSyncExternalStore(
-    subscribeToHydration,
-    () => true,
-    () => false,
-  );
+  const mounted = useHydrated();
   const baseClassName =
     "text-sm font-medium text-black transition-colors duration-150 hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]";
 

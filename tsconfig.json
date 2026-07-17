@@ -41,5 +41,11 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "**/__pycache__"]
+  "exclude": [
+    "node_modules",
+    ".agents",
+    ".claude",
+    ".playwright-mcp",
+    "**/__pycache__"
+  ]
 }
