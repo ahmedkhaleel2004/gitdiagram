@@ -17,6 +17,12 @@ export type RepoSocialMetadata = {
 };
 
 const REVALIDATE_SECONDS = 60 * 30;
+const EMPTY_REPO_SOCIAL_METADATA: RepoSocialMetadata = {
+  defaultBranch: null,
+  isPrivate: null,
+  language: null,
+  stargazerCount: null,
+};
 
 export async function getRepoSocialMetadata(
   username: string,
@@ -24,7 +30,7 @@ export async function getRepoSocialMetadata(
 ): Promise<RepoSocialMetadata> {
   try {
     const response = await fetch(
-      `https://api.github.com/repos/${username}/${repo}`,
+      `https://api.github.com/repos/${encodeURIComponent(username)}/${encodeURIComponent(repo)}`,
       {
         headers: await getGitHubApiHeaders(),
         next: {
@@ -34,7 +40,15 @@ export async function getRepoSocialMetadata(
     );
 
     if (!response.ok) {
-      throw new Error(`GitHub request failed (${response.status})`);
+      if (response.status !== 404) {
+        console.warn(
+          JSON.stringify({
+            event: "og.repo_metadata.fetch_failed",
+            status: response.status,
+          }),
+        );
+      }
+      return EMPTY_REPO_SOCIAL_METADATA;
     }
 
     const data = (await response.json()) as RepoMetadataResponse;
@@ -50,13 +64,13 @@ export async function getRepoSocialMetadata(
           : null,
     };
   } catch (error) {
-    console.error("Failed to fetch repo social metadata:", error);
+    console.warn(
+      JSON.stringify({
+        event: "og.repo_metadata.fetch_failed",
+        error: error instanceof Error ? error.message : "Unknown error",
+      }),
+    );
 
-    return {
-      defaultBranch: null,
-      isPrivate: null,
-      language: null,
-      stargazerCount: null,
-    };
+    return EMPTY_REPO_SOCIAL_METADATA;
   }
 }

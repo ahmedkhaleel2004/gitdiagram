@@ -24,6 +24,20 @@ const generatedAtFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const utcMonthNames = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
 
 const BROWSE_SESSION_STORAGE_KEY = "gitdiagram:browse-query";
 export const HOVER_PREVIEW_MEDIA_QUERY =
@@ -71,7 +85,23 @@ export function formatStarCount(stargazerCount: number | null) {
 }
 
 export function formatGeneratedAt(value: string) {
-  return generatedAtFormatter.format(new Date(value));
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? generatedAtFormatter.format(date)
+    : "Unknown";
+}
+
+export function formatGeneratedAtUtc(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "Unknown";
+  }
+
+  const hour = date.getUTCHours();
+  const hour12 = hour % 12 || 12;
+  const minute = date.getUTCMinutes().toString().padStart(2, "0");
+
+  return `${utcMonthNames[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}, ${hour12}:${minute} ${hour < 12 ? "AM" : "PM"} UTC`;
 }
 
 export function formatStarSummary(stargazerCount: number | null) {

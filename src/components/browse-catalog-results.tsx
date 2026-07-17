@@ -11,6 +11,7 @@ import type {
 import { BrowseDiagramPreview } from "~/components/browse-diagram-preview";
 import {
   formatGeneratedAt,
+  formatGeneratedAtUtc,
   formatStarCount,
   formatStarSummary,
   HOVER_PREVIEW_WIDTH_PX,
@@ -18,6 +19,7 @@ import {
   type HoverPreviewStatus,
 } from "~/components/browse-catalog-shared";
 import { SponsorCatalogRow } from "~/components/sponsor-slot";
+import { useHydrated } from "~/hooks/use-hydrated";
 
 interface BrowseCatalogResultsProps {
   closeHoverPreview: () => void;
@@ -39,6 +41,18 @@ interface BrowseCatalogResultsProps {
 }
 
 const totalCountFormatter = new Intl.NumberFormat("en");
+
+function GeneratedAtTime({ value }: { value: string }) {
+  const hydrated = useHydrated();
+
+  return (
+    <time dateTime={value}>
+      <span className="mt-2 block text-base leading-snug font-medium text-[hsl(var(--foreground))] lg:mt-0 lg:text-sm lg:font-normal lg:whitespace-nowrap lg:text-[hsl(var(--neo-soft-text))] dark:text-[hsl(var(--foreground))] lg:dark:text-neutral-300">
+        {hydrated ? formatGeneratedAt(value) : formatGeneratedAtUtc(value)}
+      </span>
+    </time>
+  );
+}
 
 export function BrowseCatalogResults({
   closeHoverPreview,
@@ -130,11 +144,7 @@ export function BrowseCatalogResults({
                       <span className="block text-[11px] font-semibold tracking-[0.18em] text-[hsl(var(--neo-soft-text))] uppercase lg:hidden dark:text-neutral-400">
                         Last Generated
                       </span>
-                      <time dateTime={item.lastSuccessfulAt}>
-                        <span className="mt-2 block text-base leading-snug font-medium text-[hsl(var(--foreground))] lg:mt-0 lg:text-sm lg:font-normal lg:whitespace-nowrap lg:text-[hsl(var(--neo-soft-text))] dark:text-[hsl(var(--foreground))] lg:dark:text-neutral-300">
-                          {formatGeneratedAt(item.lastSuccessfulAt)}
-                        </span>
-                      </time>
+                      <GeneratedAtTime value={item.lastSuccessfulAt} />
                     </td>
                     <td className="block px-4 py-4 lg:table-cell lg:px-5 lg:py-4 lg:pr-6 xl:px-6 xl:pr-7">
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-center xl:flex xl:gap-3 xl:whitespace-nowrap">

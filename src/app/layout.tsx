@@ -80,7 +80,7 @@ export default function RootLayout({
       <body className="flex min-h-screen flex-col">
         <CSPostHogProvider>
           <Header />
-          <main className="flex-grow">{children}</main>
+          <div className="flex-grow">{children}</div>
           <Footer />
         </CSPostHogProvider>
       </body>

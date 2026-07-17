@@ -21,7 +21,7 @@
     "perf:budget": "node scripts/check-performance-budgets.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1086.0",
+    "@aws-sdk/client-s3": "^3.1089.0",
     "@mermaid-js/layout-elk": "^0.2.2",
     "@radix-ui/react-dialog": "^1.1.19",
     "@radix-ui/react-switch": "^1.3.3",
@@ -33,8 +33,8 @@
     "mermaid": "^11.16.0",
     "next": "^16.2.10",
     "next-themes": "^0.4.6",
-    "openai": "^6.46.0",
-    "posthog-js": "^1.399.4",
+    "openai": "^6.48.0",
+    "posthog-js": "^1.404.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "server-only": "^0.0.1",
@@ -43,9 +43,21 @@
     "zod": "^4.4.3"
   },
   "overrides": {
+    "@babel/core": "7.29.7",
+    "ajv": "6.15.0",
+    "brace-expansion@<2": "1.1.16",
     "dompurify": "3.4.12",
+    "esbuild": "0.28.1",
+    "eslint": "9.39.5",
+    "flatted": "3.4.2",
+    "js-yaml": "4.3.0",
     "lodash-es": "^4.18.1",
+    "minimatch@<4": "3.1.5",
+    "picomatch@<3": "2.3.2",
     "postcss": "^8.5.19",
+    "rollup": "4.62.2",
+    "undici": "7.28.0",
+    "vite": "7.3.6",
     "uuid": "^11.1.1"
   },
   "devDependencies": {
@@ -62,8 +74,8 @@
     "jsdom": "29.1.1",
     "postcss": "^8.5.19",
     "prettier": "^3.9.5",
-    "prettier-plugin-tailwindcss": "^0.8.0",
-    "tailwindcss": "^4.3.2",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "vitest": "4.1.10"
   },

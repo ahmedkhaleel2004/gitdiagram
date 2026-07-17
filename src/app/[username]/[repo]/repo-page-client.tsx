@@ -95,7 +95,7 @@ export default function RepoPageClient({
 
   return (
     <TooltipProvider delayDuration={500} skipDelayDuration={300}>
-      <div className="flex flex-col items-center p-4">
+      <main className="flex flex-col items-center p-4">
         <div className="flex w-full justify-center pt-8">
           <MainCard
             isHome={false}
@@ -178,7 +178,7 @@ export default function RepoPageClient({
           onSubmit={handleApiKeySubmit}
         />
         <Toaster />
-      </div>
+      </main>
     </TooltipProvider>
   );
 }

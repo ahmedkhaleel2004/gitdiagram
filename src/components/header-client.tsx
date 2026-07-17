@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
 import { GitHubIcon } from "~/components/icons/github-icon";
+import { useHydrated } from "~/hooks/use-hydrated";
 import { storeOpenAiKey } from "~/lib/openai-key";
 import { GITHUB_REPO_URL } from "~/lib/site";
 
@@ -63,12 +64,13 @@ function MobileMenuStarCount({ starCount }: HeaderClientProps) {
 
 export function HeaderClient({ starCount }: HeaderClientProps) {
   const pathname = usePathname();
+  const hydrated = useHydrated();
   const [isPrivateReposDialogOpen, setIsPrivateReposDialogOpen] =
     useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const isBrowsePage = pathname === "/browse";
-  const showMobileGithubButton = pathname === "/" || isBrowsePage;
+  const isBrowsePage = hydrated && pathname === "/browse";
+  const showMobileGithubButton = hydrated && (pathname === "/" || isBrowsePage);
 
   const handlePrivateReposSubmit = (pat: string) => {
     localStorage.setItem("github_pat", pat);
