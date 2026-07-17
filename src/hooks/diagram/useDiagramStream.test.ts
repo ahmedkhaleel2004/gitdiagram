@@ -74,14 +74,12 @@ describe("useDiagramStream", () => {
 
   it("updates state through stream lifecycle", async () => {
     const onComplete = vi.fn(async () => undefined);
-    const onError = vi.fn();
 
     const { result } = renderHook(() =>
       useDiagramStream({
         username: "acme",
         repo: "demo",
         onComplete,
-        onError,
       }),
     );
 
@@ -94,7 +92,19 @@ describe("useDiagramStream", () => {
     expect(result.current.state.graph?.nodes).toHaveLength(1);
     expect(result.current.state.costSummary?.kind).toBe("actual");
     expect(onComplete).toHaveBeenCalledTimes(1);
-    expect(onError).not.toHaveBeenCalled();
+    expect(streamDiagramGenerationMock.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        username: "acme",
+        repo: "demo",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(streamDiagramGenerationMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      "apiKey",
+    );
+    expect(streamDiagramGenerationMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      "githubPat",
+    );
   });
 
   it("commits multiple explanation chunks at most once per frame", async () => {
@@ -122,7 +132,6 @@ describe("useDiagramStream", () => {
         username: "acme",
         repo: "demo",
         onComplete: vi.fn(async () => undefined),
-        onError: vi.fn(),
       }),
     );
 
@@ -138,5 +147,53 @@ describe("useDiagramStream", () => {
     });
 
     expect(result.current.state.explanation).toBe("ABC");
+  });
+
+  it("ignores messages from a generation superseded by a newer run", async () => {
+    let releaseFirstRun!: () => void;
+    const firstRunBlocked = new Promise<void>((resolve) => {
+      releaseFirstRun = resolve;
+    });
+    let runCount = 0;
+
+    streamDiagramGenerationMock.mockImplementation(
+      async (_params, handlers) => {
+        runCount += 1;
+        const runNumber = runCount;
+        if (runNumber === 1) {
+          await firstRunBlocked;
+        }
+        await handlers.onMessage({
+          status: "complete",
+          diagram: `flowchart TD\nA-->${runNumber}`,
+          explanation: `run ${runNumber}`,
+        });
+      },
+    );
+
+    const { result } = renderHook(() =>
+      useDiagramStream({
+        username: "acme",
+        repo: "demo",
+        onComplete: vi.fn(async () => undefined),
+      }),
+    );
+
+    let firstRun!: Promise<void>;
+    act(() => {
+      firstRun = result.current.runGeneration();
+    });
+    await act(async () => {
+      await result.current.runGeneration();
+    });
+
+    expect(result.current.state.diagram).toContain("A-->2");
+
+    await act(async () => {
+      releaseFirstRun();
+      await firstRun;
+    });
+
+    expect(result.current.state.diagram).toContain("A-->2");
   });
 });

@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import mermaid from "mermaid";
 import elkLayouts from "@mermaid-js/layout-elk";
@@ -14,26 +8,15 @@ import { useTheme } from "next-themes";
 
 import { MermaidDiagramToolbar } from "~/components/mermaid-diagram-toolbar";
 import {
-  clampViewState,
   createHiddenRenderTarget,
-  ensureDomNodesSerializeSafely,
-  getDefaultDiagramScale,
-  getDistanceBetweenPointers,
-  getPinchScaleFactor,
-  getPointerMidpoint,
-  getSvgDimensions,
-  getTrackedPointerPair,
-  getWheelZoomScaleFactor,
-  isLikelyTrackpadGesture,
-  type PinchState,
-  type PointerCoordinates,
-  type ViewState,
+  withDomNodesSerializingSafely,
 } from "~/components/mermaid-diagram-helpers";
-import { cn } from "~/lib/utils";
 import {
   enforceSafeMermaidLinks,
   sanitizeMermaidSourceForRender,
 } from "~/features/diagram/mermaid-security";
+import { useMermaidViewport } from "~/hooks/use-mermaid-viewport";
+import { cn } from "~/lib/utils";
 
 interface MermaidChartProps {
   chart: string;
@@ -62,23 +45,7 @@ const MermaidChart = ({
   backgroundColor,
   fitToContainer = false,
 }: MermaidChartProps) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const interactionLayerRef = useRef<HTMLDivElement>(null);
-  const activePointersRef = useRef<Map<number, PointerCoordinates>>(new Map());
-  const dragStateRef = useRef<{
-    lastX: number;
-    lastY: number;
-    pointerId: number;
-  } | null>(null);
-  const pinchStateRef = useRef<PinchState | null>(null);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  const viewStateRef = useRef<ViewState | null>(null);
-  const viewStateFrameRef = useRef<number | null>(null);
-  const userInteractedRef = useRef(false);
   const reportedRenderErrorRef = useRef<string | null>(null);
-  const completedRenderVersionRef = useRef(0);
-  const [isPanZoomReady, setIsPanZoomReady] = useState(false);
-  const [viewState, setViewState] = useState<ViewState | null>(null);
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const [renderVersion, setRenderVersion] = useState(0);
   const { resolvedTheme } = useTheme();
@@ -88,208 +55,35 @@ const MermaidChart = ({
     : fitToContainer
       ? PREVIEW_FIT_PADDING
       : 0;
+  const {
+    containerRef,
+    diagramRef,
+    disconnectResizeObserver,
+    fitDiagram,
+    formattedZoom,
+    handleDragStart,
+    handlePointerCancel,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    interactionLayerRef,
+    isPanZoomReady,
+    prepareForRender,
+    stepZoom,
+  } = useMermaidViewport({
+    fitPadding,
+    fitToContainer,
+    onRenderComplete,
+    renderVersion,
+    zoomingEnabled,
+  });
 
   const reportRenderError = useEffectEvent((message: string) => {
     onRenderError?.(message);
   });
-  const reportRenderComplete = useEffectEvent(() => {
-    onRenderComplete?.();
-  });
-
-  const commitViewState = useCallback((nextView: ViewState | null) => {
-    viewStateRef.current = nextView;
-    if (viewStateFrameRef.current !== null) {
-      cancelAnimationFrame(viewStateFrameRef.current);
-      viewStateFrameRef.current = null;
-    }
-    setViewState(nextView);
-  }, []);
-
-  const scheduleViewState = useCallback((nextView: ViewState) => {
-    viewStateRef.current = nextView;
-    if (viewStateFrameRef.current !== null) return;
-
-    viewStateFrameRef.current = requestAnimationFrame(() => {
-      viewStateFrameRef.current = null;
-      setViewState(viewStateRef.current);
-    });
-  }, []);
-
-  const fitDiagram = useCallback(() => {
-    const containerElement = containerRef.current;
-    const svgElement = containerElement?.querySelector(".mermaid svg");
-    if (!(containerElement instanceof HTMLDivElement)) return;
-    if (!(svgElement instanceof SVGSVGElement)) return;
-
-    const bounds = containerElement.getBoundingClientRect();
-    const { height, width } = getSvgDimensions(svgElement);
-    const insetX = Math.min(fitPadding, Math.max((bounds.width - 1) / 2, 0));
-    const insetY = Math.min(fitPadding, Math.max((bounds.height - 1) / 2, 0));
-    const availableWidth = Math.max(bounds.width - insetX * 2, 1);
-    const availableHeight = Math.max(bounds.height - insetY * 2, 1);
-    const fitScale = Math.min(availableWidth / width, availableHeight / height);
-    const scale = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
-
-    userInteractedRef.current = false;
-    commitViewState({
-      fitScale: scale,
-      height,
-      scale,
-      width,
-      x: insetX + (availableWidth - width * scale) / 2,
-      y: insetY + (availableHeight - height * scale) / 2,
-    });
-  }, [commitViewState, fitPadding]);
-
-  const scaleDiagramForReading = useCallback(() => {
-    const containerElement = containerRef.current;
-    const svgElement = containerElement?.querySelector(".mermaid svg");
-    if (!(containerElement instanceof HTMLDivElement)) return;
-    if (!(svgElement instanceof SVGSVGElement)) return;
-
-    const { height, width } = getSvgDimensions(svgElement);
-    const scale = getDefaultDiagramScale({
-      containerWidth: containerElement.getBoundingClientRect().width,
-      contentHeight: height,
-      contentWidth: width,
-      viewportHeight: window.innerHeight,
-    });
-
-    svgElement.style.width = `${width * scale}px`;
-    svgElement.style.height = `${height * scale}px`;
-  }, []);
-
-  const zoomAroundPoint = useCallback(
-    (scaleFactor: number, clientX: number, clientY: number) => {
-      const currentView = viewStateRef.current;
-      const containerElement = containerRef.current;
-      if (!currentView || !(containerElement instanceof HTMLDivElement)) return;
-
-      const bounds = containerElement.getBoundingClientRect();
-      const localX = clientX - bounds.left;
-      const localY = clientY - bounds.top;
-      const minScale = currentView.fitScale * 0.6;
-      const maxScale = currentView.fitScale * 12;
-      const nextScale = Math.min(
-        maxScale,
-        Math.max(minScale, currentView.scale * scaleFactor),
-      );
-      const contentX = (localX - currentView.x) / currentView.scale;
-      const contentY = (localY - currentView.y) / currentView.scale;
-      const clamped = clampViewState({
-        containerHeight: bounds.height,
-        containerWidth: bounds.width,
-        contentHeight: currentView.height,
-        contentWidth: currentView.width,
-        nextScale,
-        nextX: localX - contentX * nextScale,
-        nextY: localY - contentY * nextScale,
-      });
-
-      userInteractedRef.current = true;
-      scheduleViewState({
-        ...currentView,
-        scale: nextScale,
-        x: clamped.x,
-        y: clamped.y,
-      });
-    },
-    [scheduleViewState],
-  );
-
-  const panBy = useCallback(
-    (deltaX: number, deltaY: number) => {
-      const currentView = viewStateRef.current;
-      const containerElement = containerRef.current;
-      if (!currentView || !(containerElement instanceof HTMLDivElement)) return;
-
-      const bounds = containerElement.getBoundingClientRect();
-      const clamped = clampViewState({
-        containerHeight: bounds.height,
-        containerWidth: bounds.width,
-        contentHeight: currentView.height,
-        contentWidth: currentView.width,
-        nextScale: currentView.scale,
-        nextX: currentView.x + deltaX,
-        nextY: currentView.y + deltaY,
-      });
-
-      userInteractedRef.current = true;
-      scheduleViewState({
-        ...currentView,
-        x: clamped.x,
-        y: clamped.y,
-      });
-    },
-    [scheduleViewState],
-  );
-
-  const pinchTo = useCallback(
-    (
-      baseView: ViewState,
-      startClientX: number,
-      startClientY: number,
-      clientX: number,
-      clientY: number,
-      scaleFactor: number,
-    ) => {
-      const containerElement = containerRef.current;
-      if (!(containerElement instanceof HTMLDivElement)) return null;
-
-      const bounds = containerElement.getBoundingClientRect();
-      const localStartX = startClientX - bounds.left;
-      const localStartY = startClientY - bounds.top;
-      const localX = clientX - bounds.left;
-      const localY = clientY - bounds.top;
-      const minScale = baseView.fitScale * 0.6;
-      const maxScale = baseView.fitScale * 12;
-      const nextScale = Math.min(
-        maxScale,
-        Math.max(minScale, baseView.scale * scaleFactor),
-      );
-      const contentX = (localStartX - baseView.x) / baseView.scale;
-      const contentY = (localStartY - baseView.y) / baseView.scale;
-      const clamped = clampViewState({
-        containerHeight: bounds.height,
-        containerWidth: bounds.width,
-        contentHeight: baseView.height,
-        contentWidth: baseView.width,
-        nextScale,
-        nextX: localX - contentX * nextScale,
-        nextY: localY - contentY * nextScale,
-      });
-
-      const nextView = {
-        ...baseView,
-        scale: nextScale,
-        x: clamped.x,
-        y: clamped.y,
-      };
-      userInteractedRef.current = true;
-      scheduleViewState(nextView);
-      return nextView;
-    },
-    [scheduleViewState],
-  );
-
-  const stepZoom = useCallback(
-    (scaleFactor: number) => {
-      const containerElement = containerRef.current;
-      if (!(containerElement instanceof HTMLDivElement)) return;
-
-      const bounds = containerElement.getBoundingClientRect();
-      zoomAroundPoint(
-        scaleFactor,
-        bounds.left + bounds.width / 2,
-        bounds.top + bounds.height / 2,
-      );
-    },
-    [zoomAroundPoint],
-  );
 
   useEffect(() => {
     let cancelled = false;
-    ensureDomNodesSerializeSafely();
 
     if (!elkLayoutRegistered) {
       mermaid.registerLayoutLoaders(elkLayouts as MermaidLayoutLoaders);
@@ -358,27 +152,13 @@ const MermaidChart = ({
       `,
     };
 
-    const initializeMermaid = () => {
-      mermaid.initialize({
-        ...baseConfig,
-      });
-    };
-
     const renderDiagram = async () => {
-      const mermaidElement = containerRef.current?.querySelector(".mermaid");
+      const mermaidElement = diagramRef.current;
       if (!(mermaidElement instanceof HTMLDivElement)) return;
 
       setRenderMessage(null);
-      setIsPanZoomReady(false);
-      commitViewState(null);
-      activePointersRef.current.clear();
-      pinchStateRef.current = null;
-      userInteractedRef.current = false;
-      dragStateRef.current = null;
-      resizeObserverRef.current?.disconnect();
-      resizeObserverRef.current = null;
-
-      initializeMermaid();
+      prepareForRender();
+      mermaid.initialize(baseConfig);
       mermaidElement.removeAttribute("data-processed");
       const renderTarget = createHiddenRenderTarget(
         Math.round(
@@ -391,12 +171,11 @@ const MermaidChart = ({
       try {
         const renderId = `gitdiagram-${Math.random().toString(36).slice(2)}`;
         const safeChart = sanitizeMermaidSourceForRender(chart);
-        const { svg, bindFunctions } = await mermaid.render(
-          renderId,
-          safeChart,
-          renderTarget,
+        const { svg, bindFunctions } = await withDomNodesSerializingSafely(() =>
+          mermaid.render(renderId, safeChart, renderTarget),
         );
         if (cancelled) return;
+
         mermaidElement.textContent = "";
         mermaidElement.innerHTML = DOMPurify.sanitize(svg, {
           USE_PROFILES: { html: true, svg: true, svgFilters: true },
@@ -405,7 +184,6 @@ const MermaidChart = ({
         enforceSafeMermaidLinks(mermaidElement);
         bindFunctions?.(mermaidElement);
         setRenderVersion((currentVersion) => currentVersion + 1);
-        return;
       } catch (error) {
         if (cancelled) return;
         console.error("Mermaid render failed:", error);
@@ -428,118 +206,17 @@ const MermaidChart = ({
 
     return () => {
       cancelled = true;
-      resizeObserverRef.current?.disconnect();
-      resizeObserverRef.current = null;
-    };
-  }, [backgroundColor, chart, commitViewState, isDark]);
-
-  useEffect(() => {
-    if (renderVersion === 0) return;
-
-    const containerElement = containerRef.current;
-    const svgElement = containerElement?.querySelector(".mermaid svg");
-    if (!(containerElement instanceof HTMLDivElement)) return;
-    if (!(svgElement instanceof SVGSVGElement)) return;
-
-    resizeObserverRef.current?.disconnect();
-    resizeObserverRef.current = null;
-    activePointersRef.current.clear();
-    pinchStateRef.current = null;
-    dragStateRef.current = null;
-    userInteractedRef.current = false;
-    commitViewState(null);
-
-    svgElement.style.maxWidth = "none";
-    const { height, width } = getSvgDimensions(svgElement);
-    svgElement.style.width = `${width}px`;
-    svgElement.style.height = `${height}px`;
-
-    if (zoomingEnabled || fitToContainer) {
-      fitDiagram();
-    } else {
-      scaleDiagramForReading();
-    }
-
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserverRef.current = new ResizeObserver(() => {
-        if (zoomingEnabled && userInteractedRef.current) return;
-        if (zoomingEnabled || fitToContainer) {
-          fitDiagram();
-        } else {
-          scaleDiagramForReading();
-        }
-      });
-      resizeObserverRef.current.observe(containerElement);
-    }
-
-    setIsPanZoomReady(true);
-    if (completedRenderVersionRef.current !== renderVersion) {
-      completedRenderVersionRef.current = renderVersion;
-      reportRenderComplete();
-    }
-
-    return () => {
-      resizeObserverRef.current?.disconnect();
-      resizeObserverRef.current = null;
+      disconnectResizeObserver();
     };
   }, [
-    commitViewState,
-    fitDiagram,
-    fitToContainer,
-    renderVersion,
-    scaleDiagramForReading,
-    zoomingEnabled,
+    backgroundColor,
+    chart,
+    containerRef,
+    diagramRef,
+    disconnectResizeObserver,
+    isDark,
+    prepareForRender,
   ]);
-
-  useEffect(
-    () => () => {
-      if (viewStateFrameRef.current !== null) {
-        cancelAnimationFrame(viewStateFrameRef.current);
-      }
-    },
-    [],
-  );
-
-  const handleWheelEvent = useEffectEvent((event: WheelEvent) => {
-    if (!viewStateRef.current) return;
-    if (event.deltaX === 0 && event.deltaY === 0) return;
-
-    event.preventDefault();
-
-    if (!isLikelyTrackpadGesture(event)) {
-      zoomAroundPoint(
-        getWheelZoomScaleFactor(event),
-        event.clientX,
-        event.clientY,
-      );
-      return;
-    }
-
-    panBy(-event.deltaX, -event.deltaY);
-  });
-
-  useEffect(() => {
-    if (!zoomingEnabled) return;
-
-    const interactionLayer = interactionLayerRef.current;
-    if (!interactionLayer) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      handleWheelEvent(event);
-    };
-
-    interactionLayer.addEventListener("wheel", handleWheel, {
-      passive: false,
-    });
-
-    return () => {
-      interactionLayer.removeEventListener("wheel", handleWheel);
-    };
-  }, [zoomingEnabled]);
-
-  const formattedZoom = `${Math.round(
-    ((viewState?.scale ?? 1) / (viewState?.fitScale ?? 1)) * 100,
-  )}%`;
 
   return (
     <div
@@ -568,147 +245,11 @@ const MermaidChart = ({
           zoomingEnabled &&
             "rounded-xl border border-black/12 bg-white/30 select-none dark:border-white/12 dark:bg-white/[0.03] [&_*]:select-none",
         )}
-        onDragStart={(event) => {
-          if (zoomingEnabled) {
-            event.preventDefault();
-          }
-        }}
-        onPointerCancel={() => {
-          activePointersRef.current.clear();
-          dragStateRef.current = null;
-          pinchStateRef.current = null;
-        }}
-        onPointerDown={(event) => {
-          const isTouchPointer = event.pointerType === "touch";
-          if (
-            !zoomingEnabled ||
-            !isPanZoomReady ||
-            (!isTouchPointer && event.button !== 0)
-          ) {
-            return;
-          }
-          if (!(event.target instanceof Element)) return;
-
-          const isInsideDiagram = Boolean(event.target.closest(".mermaid svg"));
-          const isClickableNode = Boolean(event.target.closest(".clickable"));
-          const isToolbarControl = Boolean(event.target.closest("button"));
-          if (
-            (!isTouchPointer && !isInsideDiagram) ||
-            isClickableNode ||
-            isToolbarControl
-          ) {
-            return;
-          }
-
-          activePointersRef.current.set(event.pointerId, {
-            x: event.clientX,
-            y: event.clientY,
-          });
-          event.currentTarget.setPointerCapture(event.pointerId);
-
-          const currentView = viewStateRef.current;
-          if (activePointersRef.current.size >= 2 && currentView) {
-            const pointerPair = getTrackedPointerPair(
-              activePointersRef.current,
-            );
-            if (!pointerPair) return;
-            const [firstPointer, secondPointer] = pointerPair;
-            const midpoint = getPointerMidpoint(firstPointer, secondPointer);
-            pinchStateRef.current = {
-              startDistance: getDistanceBetweenPointers(
-                firstPointer,
-                secondPointer,
-              ),
-              startView: currentView,
-              startX: midpoint.x,
-              startY: midpoint.y,
-            };
-            dragStateRef.current = null;
-            event.preventDefault();
-            return;
-          }
-
-          dragStateRef.current = {
-            lastX: event.clientX,
-            lastY: event.clientY,
-            pointerId: event.pointerId,
-          };
-          event.preventDefault();
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }}
-        onPointerMove={(event) => {
-          if (activePointersRef.current.has(event.pointerId)) {
-            activePointersRef.current.set(event.pointerId, {
-              x: event.clientX,
-              y: event.clientY,
-            });
-          }
-
-          if (pinchStateRef.current && activePointersRef.current.size >= 2) {
-            const pointerPair = getTrackedPointerPair(
-              activePointersRef.current,
-            );
-            if (!pointerPair) return;
-            const [firstPointer, secondPointer] = pointerPair;
-            const midpoint = getPointerMidpoint(firstPointer, secondPointer);
-            const distance = getDistanceBetweenPointers(
-              firstPointer,
-              secondPointer,
-            );
-
-            if (distance > 0 && pinchStateRef.current.startDistance > 0) {
-              event.preventDefault();
-              const nextView = pinchTo(
-                pinchStateRef.current.startView,
-                pinchStateRef.current.startX,
-                pinchStateRef.current.startY,
-                midpoint.x,
-                midpoint.y,
-                getPinchScaleFactor(
-                  pinchStateRef.current.startDistance,
-                  distance,
-                ),
-              );
-              if (nextView) {
-                pinchStateRef.current = {
-                  startDistance: distance,
-                  startView: nextView,
-                  startX: midpoint.x,
-                  startY: midpoint.y,
-                };
-              }
-            }
-            return;
-          }
-
-          const dragState = dragStateRef.current;
-          if (!dragState || dragState.pointerId !== event.pointerId) return;
-
-          event.preventDefault();
-          panBy(
-            event.clientX - dragState.lastX,
-            event.clientY - dragState.lastY,
-          );
-          dragStateRef.current = {
-            ...dragState,
-            lastX: event.clientX,
-            lastY: event.clientY,
-          };
-        }}
-        onPointerUp={(event) => {
-          activePointersRef.current.delete(event.pointerId);
-          if (activePointersRef.current.size < 2) {
-            pinchStateRef.current = null;
-          }
-
-          if (dragStateRef.current?.pointerId === event.pointerId) {
-            dragStateRef.current = null;
-          }
-
-          if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-          }
-        }}
+        onDragStart={handleDragStart}
+        onPointerCancel={handlePointerCancel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
       >
         {zoomingEnabled && (
           <MermaidDiagramToolbar
@@ -720,17 +261,7 @@ const MermaidChart = ({
           />
         )}
         <div
-          style={
-            viewState && (zoomingEnabled || fitToContainer)
-              ? {
-                  left: 0,
-                  position: "absolute",
-                  top: 0,
-                  transform: `translate3d(${viewState.x}px, ${viewState.y}px, 0) scale(${viewState.scale})`,
-                  transformOrigin: "0 0",
-                }
-              : undefined
-          }
+          ref={diagramRef}
           className={cn(
             "mermaid text-foreground [&_svg]:mx-auto [&_svg]:block [&_svg]:max-w-full [&_svg]:overflow-visible",
             !isPanZoomReady && "invisible",

@@ -45,7 +45,7 @@ export function BrowseCatalogControls({
           value={searchInput}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="owner/repo"
-          className="neo-input w-full rounded-md bg-[hsl(var(--background))] px-4 py-3 text-base placeholder:text-gray-700 focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none dark:placeholder:text-[hsl(var(--foreground))]"
+          className="neo-input w-full rounded-md bg-[hsl(var(--background))] px-4 py-3 text-base placeholder:text-gray-700 dark:placeholder:text-[hsl(var(--foreground))]"
         />
       </label>
 
@@ -56,7 +56,7 @@ export function BrowseCatalogControls({
         <select
           value={sort}
           onChange={(event) => onSortChange(event.target.value as BrowseSort)}
-          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none"
+          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base"
         >
           {sortOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -75,7 +75,7 @@ export function BrowseCatalogControls({
           onChange={(event) =>
             onMinStarsChange(Number.parseInt(event.target.value, 10))
           }
-          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none"
+          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base"
         >
           {minStarOptions.map((option) => (
             <option key={option.value} value={option.value}>

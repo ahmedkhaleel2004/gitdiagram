@@ -51,7 +51,7 @@ export default function RepoPageClient({
     lastGenerated,
     showApiKeyDialog,
     handleCopy,
-    handleApiKeySubmit,
+    handleApiKeySaved,
     handleCloseApiKeyDialog,
     handleOpenApiKeyDialog,
     handleExportImage,
@@ -175,7 +175,7 @@ export default function RepoPageClient({
         <ApiKeyDialog
           isOpen={showApiKeyDialog}
           onClose={handleCloseApiKeyDialog}
-          onSubmit={handleApiKeySubmit}
+          onSaved={handleApiKeySaved}
         />
         <Toaster />
       </main>

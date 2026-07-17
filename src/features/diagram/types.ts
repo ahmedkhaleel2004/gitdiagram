@@ -60,8 +60,6 @@ export interface DiagramStreamMessage {
 export interface StreamGenerationParams {
   username: string;
   repo: string;
-  apiKey?: string;
-  githubPat?: string;
   signal?: AbortSignal;
 }
 

@@ -5,7 +5,11 @@ import {
   generationCancelTokenSchema,
   generationSessionIdSchema,
 } from "~/server/generate/types";
-import { isSameOriginRequest } from "~/server/http/same-origin";
+import {
+  jsonErrorResponse,
+  NO_STORE_RESPONSE_HEADERS,
+  parseSameOriginJsonRequest,
+} from "~/server/http/same-origin-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,59 +21,14 @@ const cancellationRequestSchema = z.strictObject({
   cancel_token: generationCancelTokenSchema,
 });
 
-const RESPONSE_HEADERS = {
-  "Cache-Control": "no-store",
-  "X-Content-Type-Options": "nosniff",
-};
-
-function jsonError(error: string, status: number): Response {
-  return Response.json(
-    { ok: false, error },
-    { status, headers: RESPONSE_HEADERS },
-  );
-}
-
 export async function POST(request: Request): Promise<Response> {
-  if (!isSameOriginRequest(request)) {
-    return jsonError("Cross-origin cancellation is not allowed.", 403);
-  }
-
-  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
-  if (!contentType.startsWith("application/json")) {
-    return jsonError("Content-Type must be application/json.", 415);
-  }
-
-  const contentLength = Number(request.headers.get("content-length"));
-  if (
-    Number.isFinite(contentLength) &&
-    contentLength > MAX_CANCELLATION_REQUEST_BYTES
-  ) {
-    return jsonError("Request payload is too large.", 413);
-  }
-
-  let body: string;
-  try {
-    body = await request.text();
-  } catch {
-    return jsonError("Invalid request payload.", 400);
-  }
-
-  if (
-    new TextEncoder().encode(body).byteLength > MAX_CANCELLATION_REQUEST_BYTES
-  ) {
-    return jsonError("Request payload is too large.", 413);
-  }
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(body) as unknown;
-  } catch {
-    return jsonError("Invalid request payload.", 400);
-  }
-
-  const parsed = cancellationRequestSchema.safeParse(payload);
+  const parsed = await parseSameOriginJsonRequest(request, {
+    schema: cancellationRequestSchema,
+    maxBytes: MAX_CANCELLATION_REQUEST_BYTES,
+    crossOriginError: "Cross-origin cancellation is not allowed.",
+  });
   if (!parsed.success) {
-    return jsonError("Invalid request payload.", 400);
+    return parsed.response;
   }
 
   try {
@@ -85,8 +44,11 @@ export async function POST(request: Request): Promise<Response> {
         error: "Cancellation could not be recorded.",
       }),
     );
-    return jsonError("Cancellation is temporarily unavailable.", 503);
+    return jsonErrorResponse("Cancellation is temporarily unavailable.", 503);
   }
 
-  return new Response(null, { status: 204, headers: RESPONSE_HEADERS });
+  return new Response(null, {
+    status: 204,
+    headers: NO_STORE_RESPONSE_HEADERS,
+  });
 }

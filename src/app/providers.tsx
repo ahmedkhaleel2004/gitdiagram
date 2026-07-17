@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ThemeProvider } from "next-themes";
 
 import { WebVitals } from "~/components/web-vitals";
+import { migrateLegacyCredentialStorage } from "~/features/credentials/api";
 import { captureAnalyticsEvent } from "~/lib/analytics-client";
 
 function PostHogPageviewTracker() {
@@ -29,6 +30,39 @@ function PostHogPageviewTracker() {
   return null;
 }
 
+function AnalyticsAfterCredentialMigration() {
+  const [migrationComplete, setMigrationComplete] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void migrateLegacyCredentialStorage()
+      .then((complete) => {
+        if (active && complete) {
+          setMigrationComplete(true);
+        }
+      })
+      .catch(() => {
+        // Keep analytics disabled. A later app load can retry the migration.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!migrationComplete) {
+    return null;
+  }
+
+  return (
+    <>
+      <Suspense fallback={null}>
+        <PostHogPageviewTracker />
+      </Suspense>
+      <WebVitals />
+    </>
+  );
+}
+
 export function CSPostHogProvider({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider
@@ -37,10 +71,7 @@ export function CSPostHogProvider({ children }: { children: React.ReactNode }) {
       enableSystem={false}
       storageKey="gitdiagram-theme"
     >
-      <Suspense fallback={null}>
-        <PostHogPageviewTracker />
-      </Suspense>
-      <WebVitals />
+      <AnalyticsAfterCredentialMigration />
       {children}
     </ThemeProvider>
   );

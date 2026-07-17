@@ -1,5 +1,14 @@
 "use client";
 
+import Link from "next/link";
+
+import {
+  useCredentialSetting,
+  type CredentialSettingError,
+} from "~/hooks/use-credential-setting";
+import { GITHUB_REPO_URL } from "~/lib/site";
+
+import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
@@ -8,40 +17,41 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { Button } from "./ui/button";
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { GITHUB_REPO_URL } from "~/lib/site";
 
 interface PrivateReposDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (pat: string) => void;
 }
+
+const ERROR_MESSAGES: Record<Exclude<CredentialSettingError, null>, string> = {
+  load: "Could not load the saved-token status.",
+  save: "Could not save the GitHub token. Please try again.",
+  clear: "Could not clear the GitHub token. Please try again.",
+};
 
 export function PrivateReposDialog({
   isOpen,
   onClose,
-  onSubmit,
 }: PrivateReposDialogProps) {
-  const [pat, setPat] = useState<string>("");
+  const {
+    clear,
+    error,
+    isConfigured,
+    isPending,
+    save,
+    setValue: setPat,
+    value: pat,
+  } = useCredentialSetting({
+    credential: "github_pat",
+    isOpen,
+  });
 
-  useEffect(() => {
-    const storedPat = localStorage.getItem("github_pat");
-    if (storedPat) {
-      setPat(storedPat);
-    }
-  }, []);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(pat);
-    setPat("");
-  };
-
-  const handleClear = () => {
-    localStorage.removeItem("github_pat");
-    setPat("");
+    const saved = await save();
+    if (saved) {
+      onClose();
+    }
   };
 
   return (
@@ -62,8 +72,8 @@ export function PrivateReposDialog({
         >
           <div className="text-sm">
             To enable private repositories, you&apos;ll need to provide a GitHub
-            Personal Access Token with repo scope. The token will be stored
-            locally in your browser. Find out how{" "}
+            Personal Access Token with repository access. A saved token persists
+            for 30 days in a protected HttpOnly cookie. Find out how{" "}
             <Link
               href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
               className="neo-link"
@@ -78,9 +88,11 @@ export function PrivateReposDialog({
             </summary>
             <div className="mt-2 space-y-2 overflow-hidden pl-2">
               <p>
-                Successful private-repository diagrams are stored in the
-                configured private artifact bucket for this deployment. You can
-                also self-host this app by following the instructions in the{" "}
+                Page JavaScript cannot read the saved token. Your browser sends
+                it only to this site&apos;s API routes. Successful
+                private-repository diagrams are stored in the configured private
+                artifact bucket for this deployment. You can also self-host this
+                app by following the instructions in the{" "}
                 <Link href={GITHUB_REPO_URL} className="neo-link">
                   README
                 </Link>
@@ -90,17 +102,31 @@ export function PrivateReposDialog({
           </details>
           <Input
             type="password"
-            placeholder="ghp_..."
+            aria-label="GitHub personal access token"
+            placeholder={
+              isConfigured ? "Enter a replacement token" : "github_pat_..."
+            }
             value={pat}
             onChange={(e) => setPat(e.target.value)}
             className="neo-input flex-1 rounded-md px-3 py-2 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 dark:placeholder:text-neutral-400"
             required
           />
+          {isConfigured ? (
+            <p className="text-sm font-medium">
+              A GitHub token is currently saved. Its value cannot be displayed.
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="text-sm font-medium text-red-700">
+              {ERROR_MESSAGES[error]}
+            </p>
+          ) : null}
           <div className="flex items-center justify-between">
             <button
               type="button"
-              onClick={handleClear}
-              className="neo-link text-sm"
+              onClick={() => void clear()}
+              disabled={!isConfigured || isPending}
+              className="neo-link text-sm disabled:cursor-not-allowed disabled:opacity-50"
             >
               Clear
             </button>
@@ -108,16 +134,17 @@ export function PrivateReposDialog({
               <Button
                 type="button"
                 onClick={onClose}
+                disabled={isPending}
                 className="neo-button-muted px-4 py-2"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={!pat.startsWith("ghp_")}
+                disabled={pat.trim().length === 0 || isPending}
                 className="neo-button px-4 py-2 disabled:opacity-50"
               >
-                Save Token
+                {isPending ? "Saving..." : "Save Token"}
               </Button>
             </div>
           </div>

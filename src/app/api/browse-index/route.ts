@@ -1,4 +1,4 @@
-import { getCachedBrowsePage } from "~/app/browse/data";
+import { getCachedBrowsePage } from "~/server/browse-index-cache";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

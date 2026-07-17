@@ -18,6 +18,7 @@ import {
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
 import { parseGenerateRequest } from "~/server/generate/types";
+import { resolveRequestCredentials } from "~/server/http/request-credentials";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,12 +58,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const {
-      username,
-      repo,
-      api_key: apiKey,
-      github_pat: githubPat,
-    } = parsed.data;
+    const { username, repo } = parsed.data;
+    const { apiKey, githubPat } = await resolveRequestCredentials(request, {
+      apiKey: parsed.data.api_key,
+      githubPat: parsed.data.github_pat,
+    });
     const provider = getProvider();
     const model = getModel(provider);
 

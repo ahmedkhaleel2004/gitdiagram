@@ -1,3 +1,4 @@
+import { migrateLegacyCredentialStorage } from "~/features/credentials/api";
 import { parseSSEStreamBuffer } from "~/features/diagram/sse";
 import type {
   DiagramStateResponse,
@@ -16,17 +17,18 @@ const GENERATE_BASE_PATH = "/api/generate";
 export async function getDiagramState(
   username: string,
   repo: string,
-  githubPat?: string,
 ): Promise<DiagramStateResponse> {
+  await migrateLegacyCredentialStorage();
+
   const response = await fetch("/api/diagram-state", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
+    credentials: "same-origin",
     body: JSON.stringify({
       username,
       repo,
-      github_pat: githubPat,
     }),
   });
 
@@ -54,6 +56,7 @@ function sendGenerationCancellation(
     headers: {
       "Content-Type": "application/json",
     },
+    credentials: "omit",
     body: JSON.stringify({
       session_id: sessionId,
       cancel_token: cancelToken,
@@ -69,6 +72,8 @@ export async function streamDiagramGeneration(
   params: StreamGenerationParams,
   handlers: StreamHandlers,
 ): Promise<void> {
+  await migrateLegacyCredentialStorage();
+
   const sessionId = globalThis.crypto.randomUUID();
   const cancelToken = globalThis.crypto.randomUUID();
   let receivedTerminalEvent = false;
@@ -92,11 +97,10 @@ export async function streamDiagramGeneration(
       headers: {
         "Content-Type": "application/json",
       },
+      credentials: "same-origin",
       body: JSON.stringify({
         username: params.username,
         repo: params.repo,
-        api_key: params.apiKey,
-        github_pat: params.githubPat,
         session_id: sessionId,
         cancel_token: cancelToken,
       }),

@@ -2,37 +2,56 @@ import { upstashEval } from "~/server/storage/upstash";
 
 const QUOTA_TTL_SECONDS = 3 * 24 * 60 * 60;
 
-const CHECK_SCRIPT = `
+export const QUOTA_CHECK_SCRIPT = `
 local key = KEYS[1]
 local token_limit = tonumber(ARGV[1])
 local requested_tokens = tonumber(ARGV[2])
 local ttl = tonumber(ARGV[3])
+local reservation_field = "reservation:" .. ARGV[4]
 
 local used_tokens = tonumber(redis.call("HGET", key, "used_tokens") or "0")
 local reserved_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
+local existing_reservation = redis.call("HGET", key, reservation_field)
+
+if existing_reservation then
+  return {1, used_tokens}
+end
 
 if used_tokens + reserved_tokens + requested_tokens > token_limit then
   return {0, used_tokens}
 end
 
+redis.call("HSET", key, reservation_field, requested_tokens)
 redis.call("HSET", key, "reserved_tokens", reserved_tokens + requested_tokens)
 redis.call("EXPIRE", key, ttl)
 
 return {1, used_tokens}
 `;
 
-const FINALIZE_SCRIPT = `
+export const QUOTA_FINALIZE_SCRIPT = `
 local key = KEYS[1]
 local committed_tokens = tonumber(ARGV[1])
-local reservation_tokens = tonumber(ARGV[2])
-local ttl = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[2])
+local reservation_field = "reservation:" .. ARGV[3]
+local finalized_field = "finalized:" .. ARGV[3]
 
 local used_tokens = tonumber(redis.call("HGET", key, "used_tokens") or "0")
 local reserved_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
+local reservation_tokens = tonumber(redis.call("HGET", key, reservation_field))
+
+if redis.call("HEXISTS", key, finalized_field) == 1 then
+  return used_tokens
+end
+
+if not reservation_tokens then
+  return used_tokens
+end
 
 local next_used_tokens = used_tokens + math.max(committed_tokens, 0)
 local next_reserved_tokens = math.max(reserved_tokens - math.max(reservation_tokens, 0), 0)
 redis.call("HSET", key, "used_tokens", next_used_tokens)
+redis.call("HDEL", key, reservation_field)
+redis.call("HSET", key, finalized_field, committed_tokens)
 if next_reserved_tokens == 0 then
   redis.call("HDEL", key, "reserved_tokens")
 else
@@ -60,11 +79,17 @@ export async function checkQuotaInUpstash(params: {
   quotaBucket: string;
   tokenLimit: number;
   requestedTokens: number;
+  reservationId: string;
 }): Promise<{ admitted: boolean; usage: DailyQuotaUsage }> {
   const result = await upstashEval<[number, number]>({
-    script: CHECK_SCRIPT,
+    script: QUOTA_CHECK_SCRIPT,
     keys: [buildQuotaKey(params.quotaDateUtc, params.quotaBucket)],
-    args: [params.tokenLimit, params.requestedTokens, QUOTA_TTL_SECONDS],
+    args: [
+      params.tokenLimit,
+      params.requestedTokens,
+      QUOTA_TTL_SECONDS,
+      params.reservationId,
+    ],
   });
 
   return {
@@ -79,12 +104,12 @@ export async function commitQuotaUsageInUpstash(params: {
   quotaDateUtc: string;
   quotaBucket: string;
   committedTokens: number;
-  reservationTokens: number;
+  reservationId: string;
 }): Promise<DailyQuotaUsage> {
   const usedTokens = await upstashEval<number>({
-    script: FINALIZE_SCRIPT,
+    script: QUOTA_FINALIZE_SCRIPT,
     keys: [buildQuotaKey(params.quotaDateUtc, params.quotaBucket)],
-    args: [params.committedTokens, params.reservationTokens, QUOTA_TTL_SECONDS],
+    args: [params.committedTokens, QUOTA_TTL_SECONDS, params.reservationId],
   });
 
   return {

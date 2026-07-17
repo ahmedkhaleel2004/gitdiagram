@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getCachedBrowseIndex } from "~/app/browse/data";
+import { getCachedBrowseIndex } from "~/server/browse-index-cache";
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
 import { SITE_URL } from "~/lib/site";
 import { getSitemapCount, SITEMAP_PAGE_SIZE } from "~/lib/sitemaps";

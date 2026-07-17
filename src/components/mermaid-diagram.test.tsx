@@ -205,6 +205,46 @@ describe("MermaidChart", () => {
     });
   });
 
+  it("restores Element serialization after a successful Mermaid render", async () => {
+    let serializationPatchWasActive = false;
+    renderMock.mockImplementationOnce(async () => {
+      serializationPatchWasActive = "toJSON" in Element.prototype;
+      return {
+        svg: "<svg viewBox='0 0 100 100'><rect width='100' height='100' /></svg>",
+      };
+    });
+
+    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />);
+
+    await waitFor(() => {
+      expect(renderMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect("toJSON" in Element.prototype).toBe(false);
+    });
+    expect(serializationPatchWasActive).toBe(true);
+  });
+
+  it("restores Element serialization after a failed Mermaid render", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let serializationPatchWasActive = false;
+    renderMock.mockImplementationOnce(async () => {
+      serializationPatchWasActive = "toJSON" in Element.prototype;
+      throw new Error("ELK failed");
+    });
+
+    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />);
+
+    expect(
+      await screen.findByText("Mermaid render failed: ELK failed"),
+    ).toBeInTheDocument();
+    expect(serializationPatchWasActive).toBe(true);
+    expect("toJSON" in Element.prototype).toBe(false);
+    consoleError.mockRestore();
+  });
+
   it("shows custom controls when interactive mode is enabled", async () => {
     const { container } = render(
       <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />,

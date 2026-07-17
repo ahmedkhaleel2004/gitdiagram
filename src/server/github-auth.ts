@@ -15,6 +15,7 @@ let cachedInstallationToken: {
   expiresAtMs: number;
 } | null = null;
 let installationTokenPromise: Promise<string> | null = null;
+let nextPatPoolIndex = 0;
 
 function readTrimmedEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
@@ -73,6 +74,17 @@ export function readGitHubPatPool() {
   }
 
   return Array.from(new Set(tokenPool));
+}
+
+function takeNextGitHubPat(): string | null {
+  const tokenPool = readGitHubPatPool();
+  if (!tokenPool.length) {
+    return null;
+  }
+
+  const token = tokenPool[nextPatPoolIndex % tokenPool.length] ?? null;
+  nextPatPoolIndex = (nextPatPoolIndex + 1) % tokenPool.length;
+  return token;
 }
 
 async function requestGitHubAppInstallationToken() {
@@ -154,7 +166,7 @@ export async function getGitHubApiHeaders(options?: {
     githubPat ||
     (allowGitHubAppAuth && hasGitHubAppAuth()
       ? await getGitHubAppInstallationToken()
-      : (readGitHubPatPool()[0] ?? null));
+      : takeNextGitHubPat());
 
   if (!token) {
     return {

@@ -8,7 +8,6 @@ import { Menu, X } from "lucide-react";
 
 import { GitHubIcon } from "~/components/icons/github-icon";
 import { useHydrated } from "~/hooks/use-hydrated";
-import { storeOpenAiKey } from "~/lib/openai-key";
 import { GITHUB_REPO_URL } from "~/lib/site";
 
 import { ThemeToggle } from "./theme-toggle";
@@ -71,16 +70,6 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isBrowsePage = hydrated && pathname === "/browse";
   const showMobileGithubButton = hydrated && (pathname === "/" || isBrowsePage);
-
-  const handlePrivateReposSubmit = (pat: string) => {
-    localStorage.setItem("github_pat", pat);
-    setIsPrivateReposDialogOpen(false);
-  };
-
-  const handleApiKeySubmit = (apiKey: string) => {
-    storeOpenAiKey(apiKey);
-    setIsApiKeyDialogOpen(false);
-  };
 
   return (
     <header className="border-b-[3px] border-black dark:border-black">
@@ -252,15 +241,10 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
           <PrivateReposDialog
             isOpen
             onClose={() => setIsPrivateReposDialogOpen(false)}
-            onSubmit={handlePrivateReposSubmit}
           />
         ) : null}
         {isApiKeyDialogOpen ? (
-          <ApiKeyDialog
-            isOpen
-            onClose={() => setIsApiKeyDialogOpen(false)}
-            onSubmit={handleApiKeySubmit}
-          />
+          <ApiKeyDialog isOpen onClose={() => setIsApiKeyDialogOpen(false)} />
         ) : null}
       </div>
     </header>
