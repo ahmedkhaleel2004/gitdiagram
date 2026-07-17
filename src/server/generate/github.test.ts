@@ -145,7 +145,7 @@ describe("getGithubData repository input bounds", () => {
         { path: 42 },
         {},
         { path: "node_modules/pkg/index.js" },
-        { path: "src/main.ts" },
+        { path: "src/main.ts", type: "blob" },
       ],
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -156,6 +156,7 @@ describe("getGithubData repository input bounds", () => {
       readme: "# Demo",
       isPrivate: false,
       stargazerCount: 42,
+      pathTypes: new Map([["src/main.ts", "blob"]]),
     });
     expect(timeoutSpy).toHaveBeenCalledTimes(3);
     expect(timeoutSpy).toHaveBeenCalledWith(GITHUB_REQUEST_TIMEOUT_MS);
@@ -183,7 +184,7 @@ describe("getGithubData repository input bounds", () => {
           return new Response(
             JSON.stringify({
               truncated: false,
-              tree: [{ path: "src/cached.ts" }],
+              tree: [{ path: "src/cached.ts", type: "blob" }],
             }),
             {
               status: 200,
@@ -208,9 +209,11 @@ describe("getGithubData repository input bounds", () => {
 
     await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
       fileTree: "src/cached.ts",
+      pathTypes: new Map([["src/cached.ts", "blob"]]),
     });
     await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
       fileTree: "src/cached.ts",
+      pathTypes: new Map([["src/cached.ts", "blob"]]),
     });
     expect(treeRequests).toBe(2);
   });

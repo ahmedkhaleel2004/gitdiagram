@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readGitHubPatPool } from "~/server/github-auth";
+import { getGitHubApiHeaders, readGitHubPatPool } from "~/server/github-auth";
 
 const originalGithubPat = process.env.GITHUB_PAT;
 const originalGithubPats = process.env.GITHUB_PATS;
@@ -26,5 +26,35 @@ describe("readGitHubPatPool", () => {
     delete process.env.GITHUB_PATS;
 
     expect(readGitHubPatPool()).toEqual(["single"]);
+  });
+
+  it("round-robins the fallback PAT pool", async () => {
+    delete process.env.GITHUB_PAT;
+    process.env.GITHUB_PATS = "first,second";
+
+    const headers = await Promise.all([
+      getGitHubApiHeaders({ allowGitHubAppAuth: false }),
+      getGitHubApiHeaders({ allowGitHubAppAuth: false }),
+      getGitHubApiHeaders({ allowGitHubAppAuth: false }),
+    ]);
+
+    expect(headers.map((value) => value.Authorization)).toEqual([
+      "Bearer first",
+      "Bearer second",
+      "Bearer first",
+    ]);
+  });
+
+  it("keeps an explicit request PAT ahead of the fallback pool", async () => {
+    process.env.GITHUB_PATS = "fallback";
+
+    await expect(
+      getGitHubApiHeaders({
+        githubPat: "request-token",
+        allowGitHubAppAuth: false,
+      }),
+    ).resolves.toMatchObject({
+      Authorization: "Bearer request-token",
+    });
   });
 });

@@ -349,6 +349,49 @@ describe("compileDiagramGraph", () => {
     });
   });
 
+  it("uses GitHub tree metadata for extensionless files and dotted directories", () => {
+    const diagram = compileDiagramGraph({
+      graph: {
+        groups: [],
+        nodes: [
+          {
+            id: "dockerfile",
+            label: "Dockerfile",
+            type: "build config",
+            description: null,
+            groupId: null,
+            path: "Dockerfile",
+            shape: null,
+          },
+          {
+            id: "github",
+            label: "GitHub config",
+            type: "directory",
+            description: null,
+            groupId: null,
+            path: ".github",
+            shape: null,
+          },
+        ],
+        edges: [],
+      },
+      username: "acme",
+      repo: "demo",
+      branch: "feature/links",
+      pathTypes: new Map([
+        ["Dockerfile", "blob"],
+        [".github", "tree"],
+      ]),
+    });
+
+    expect(diagram).toContain(
+      'click node_dockerfile "https://github.com/acme/demo/blob/feature/links/Dockerfile"',
+    );
+    expect(diagram).toContain(
+      'click node_github "https://github.com/acme/demo/tree/feature/links/.github"',
+    );
+  });
+
   it("maps reserved graph ids to Mermaid-safe ids", async () => {
     const diagram = compileDiagramGraph({
       graph: {

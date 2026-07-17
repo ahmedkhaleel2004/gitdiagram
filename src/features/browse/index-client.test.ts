@@ -40,6 +40,7 @@ describe("browse page client cache", () => {
     await expect(second).resolves.toEqual(result);
     await expect(loadBrowsePage({ q: "vercel" })).resolves.toEqual(result);
     expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(fetchSpy.mock.calls[0]?.[1]).toEqual({ credentials: "omit" });
   });
 
   it("bounds completed browse query results", async () => {

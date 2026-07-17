@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
 import {
   checkQuotaInUpstash,
@@ -13,6 +15,7 @@ const DEFAULT_DAILY_LIMIT_TOKENS = 10_000_000;
 const DEFAULT_MODEL_FAMILY = "gpt-5.6-terra";
 const COMPLIMENTARY_QUOTA_BUCKET = "openai-complimentary-small-models";
 const RETRY_INPUT_BUFFER_TOKENS = 2_000;
+const QUOTA_FINALIZATION_ATTEMPTS = 2;
 const DEFAULT_DENIAL_MESSAGE =
   "GitDiagram's free daily OpenAI capacity is used up for now. I'm a solo student engineer running this free and open source, so please try again after 00:00 UTC or use your own OpenAI API key.";
 const DEFAULT_PROVIDER_MISMATCH_MESSAGE =
@@ -21,6 +24,7 @@ const DEFAULT_MODEL_MISMATCH_MESSAGE =
   "GitDiagram's complimentary-only mode requires the gpt-5.6-terra model family on the default server key. I'm a solo student engineer running this free and open source, so please switch the server back to GPT-5.6 Terra or use your own API key.";
 
 export interface ComplimentaryQuotaReservation {
+  reservationId: string;
   quotaBucket: string;
   quotaDateUtc: string;
   quotaResetAt: string;
@@ -196,11 +200,13 @@ export async function admitComplimentaryQuota(params: {
   const quotaDateUtc = getComplimentaryQuotaDateUtc(now);
   const quotaResetAt = getComplimentaryQuotaResetAt(now);
   const quotaBucket = getComplimentaryQuotaBucket();
+  const reservationId = randomUUID();
   const result = await checkQuotaInUpstash({
     quotaDateUtc,
     quotaBucket,
     tokenLimit: getComplimentaryDailyLimitTokens(),
     requestedTokens: params.requestedTokens,
+    reservationId,
   });
 
   if (!result.admitted) {
@@ -214,6 +220,7 @@ export async function admitComplimentaryQuota(params: {
   return {
     admitted: true,
     reservation: {
+      reservationId,
       quotaBucket,
       quotaDateUtc,
       quotaResetAt,
@@ -226,10 +233,19 @@ export async function finalizeComplimentaryQuota(params: {
   reservation: ComplimentaryQuotaReservation;
   committedTokens: number;
 }): Promise<void> {
-  await commitQuotaUsageInUpstash({
-    quotaDateUtc: params.reservation.quotaDateUtc,
-    quotaBucket: params.reservation.quotaBucket,
-    committedTokens: params.committedTokens,
-    reservationTokens: params.reservation.reservedTokens,
-  });
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= QUOTA_FINALIZATION_ATTEMPTS; attempt++) {
+    try {
+      await commitQuotaUsageInUpstash({
+        quotaDateUtc: params.reservation.quotaDateUtc,
+        quotaBucket: params.reservation.quotaBucket,
+        committedTokens: params.committedTokens,
+        reservationId: params.reservation.reservationId,
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }

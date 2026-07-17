@@ -5,7 +5,6 @@ import type {
   DiagramStreamMessage,
   DiagramStreamState,
 } from "~/features/diagram/types";
-import { getStoredOpenAiKey } from "~/lib/openai-key";
 
 interface UseDiagramStreamOptions {
   username: string;
@@ -18,7 +17,6 @@ interface UseDiagramStreamOptions {
     latestSessionAudit: DiagramStreamState["latestSessionAudit"];
     generatedAt?: string;
   }) => Promise<void>;
-  onError: (message: string) => void;
 }
 
 export function useDiagramStream({
@@ -26,7 +24,6 @@ export function useDiagramStream({
   repo,
   initialState,
   onComplete,
-  onError,
 }: UseDiagramStreamOptions) {
   const [state, setState] = useState<DiagramStreamState>(
     initialState ?? { status: "idle" },
@@ -104,7 +101,6 @@ export function useDiagramStream({
           failureStage: data.failure_stage,
           latestSessionAudit: data.latest_session_audit,
         });
-        onError(data.error);
         return false;
       }
 
@@ -175,59 +171,56 @@ export function useDiagramStream({
             failureStage: data.failure_stage,
             latestSessionAudit: data.latest_session_audit,
           });
-          if (data.error) onError(data.error);
           return false;
       }
 
       return true;
     },
-    [flushPendingExplanation, onComplete, onError, scheduleExplanationUpdate],
+    [flushPendingExplanation, onComplete, scheduleExplanationUpdate],
   );
 
-  const runGeneration = useCallback(
-    async (githubPat?: string) => {
-      activeGenerationRef.current?.abort();
-      if (explanationFrameRef.current !== null) {
-        cancelAnimationFrame(explanationFrameRef.current);
-        explanationFrameRef.current = null;
-      }
-      pendingExplanationRef.current = null;
-      const abortController = new AbortController();
-      activeGenerationRef.current = abortController;
-      setState({
-        status: "started",
-        message: "Starting generation process...",
-        costSummary: undefined,
-      });
-      const buffers = {
-        explanation: "",
-      };
+  const runGeneration = useCallback(async () => {
+    activeGenerationRef.current?.abort();
+    if (explanationFrameRef.current !== null) {
+      cancelAnimationFrame(explanationFrameRef.current);
+      explanationFrameRef.current = null;
+    }
+    pendingExplanationRef.current = null;
+    const abortController = new AbortController();
+    activeGenerationRef.current = abortController;
+    setState({
+      status: "started",
+      message: "Starting generation process...",
+      costSummary: undefined,
+    });
+    const buffers = {
+      explanation: "",
+    };
 
-      try {
-        await streamDiagramGeneration(
-          {
-            username,
-            repo,
-            apiKey: getStoredOpenAiKey(),
-            githubPat,
-            signal: abortController.signal,
-          },
-          {
-            onMessage: (message) => handleStreamMessage(message, buffers),
-          },
-        );
-      } catch (error) {
-        if (!abortController.signal.aborted) {
-          throw error;
-        }
-      } finally {
-        if (activeGenerationRef.current === abortController) {
-          activeGenerationRef.current = null;
-        }
+    try {
+      await streamDiagramGeneration(
+        {
+          username,
+          repo,
+          signal: abortController.signal,
+        },
+        {
+          onMessage: (message) =>
+            activeGenerationRef.current === abortController
+              ? handleStreamMessage(message, buffers)
+              : false,
+        },
+      );
+    } catch (error) {
+      if (!abortController.signal.aborted) {
+        throw error;
       }
-    },
-    [handleStreamMessage, repo, username],
-  );
+    } finally {
+      if (activeGenerationRef.current === abortController) {
+        activeGenerationRef.current = null;
+      }
+    }
+  }, [handleStreamMessage, repo, username]);
 
   return {
     state,

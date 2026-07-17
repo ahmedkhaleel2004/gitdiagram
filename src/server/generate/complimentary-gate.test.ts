@@ -112,6 +112,7 @@ describe("complimentary gate", () => {
       quotaBucket: "openai-complimentary-small-models",
       requestedTokens: 82_700,
       tokenLimit: 10_000_000,
+      reservationId: expect.any(String),
     });
   });
 
@@ -122,6 +123,7 @@ describe("complimentary gate", () => {
 
     await finalizeComplimentaryQuota({
       reservation: {
+        reservationId: "reservation-a",
         quotaBucket: "openai-complimentary-small-models",
         quotaDateUtc: "2026-03-28",
         quotaResetAt: "2026-03-29T00:00:00.000Z",
@@ -134,7 +136,7 @@ describe("complimentary gate", () => {
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai-complimentary-small-models",
       committedTokens: 345,
-      reservationTokens: 1_000,
+      reservationId: "reservation-a",
     });
   });
 
@@ -158,6 +160,7 @@ describe("complimentary gate", () => {
       quotaBucket: "openai-complimentary-small-models",
       requestedTokens: 1_000,
       tokenLimit: 10_000_000,
+      reservationId: expect.any(String),
     });
     expect(reservation.admitted).toBe(true);
 
@@ -166,6 +169,7 @@ describe("complimentary gate", () => {
     }
 
     expect(reservation.reservation.reservedTokens).toBe(1_000);
+    expect(reservation.reservation.reservationId).toEqual(expect.any(String));
 
     await finalizeComplimentaryQuota({
       reservation: reservation.reservation,
@@ -176,7 +180,32 @@ describe("complimentary gate", () => {
       quotaDateUtc: "2026-03-28",
       quotaBucket: "openai-complimentary-small-models",
       committedTokens: 345,
-      reservationTokens: 1_000,
+      reservationId: reservation.reservation.reservationId,
+    });
+  });
+
+  it("safely retries an ambiguous finalization once", async () => {
+    commitQuotaUsageInUpstash
+      .mockRejectedValueOnce(new Error("request timed out"))
+      .mockResolvedValueOnce({ usedTokens: 345 });
+
+    await finalizeComplimentaryQuota({
+      reservation: {
+        reservationId: "reservation-a",
+        quotaBucket: "openai-complimentary-small-models",
+        quotaDateUtc: "2026-03-28",
+        quotaResetAt: "2026-03-29T00:00:00.000Z",
+        reservedTokens: 1_000,
+      },
+      committedTokens: 345,
+    });
+
+    expect(commitQuotaUsageInUpstash).toHaveBeenCalledTimes(2);
+    expect(commitQuotaUsageInUpstash).toHaveBeenNthCalledWith(2, {
+      quotaDateUtc: "2026-03-28",
+      quotaBucket: "openai-complimentary-small-models",
+      committedTokens: 345,
+      reservationId: "reservation-a",
     });
   });
 });

@@ -51,7 +51,7 @@ async function fetchBrowsePage(
   query: BrowseQuery,
 ): Promise<BrowsePageResult | null> {
   const response = await fetch(getBrowsePageUrl(query), {
-    credentials: "same-origin",
+    credentials: "omit",
   });
 
   if (response.status === 404) {

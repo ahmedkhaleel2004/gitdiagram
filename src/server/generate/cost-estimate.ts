@@ -48,7 +48,7 @@ export interface GenerationEstimateResult {
   pricing: ReturnType<typeof estimateTextTokenCostUsd>["pricing"];
   explanationInputTokens: number;
   graphStaticInputTokens: number;
-  graphRepairStaticInputTokens: number;
+  graphRepairStaticInputTokens: number | null;
 }
 
 async function countPromptInputTokens({
@@ -109,6 +109,7 @@ export async function estimateGenerationCost(params: {
   repo: string;
   apiKey?: string;
   preferExactInputTokenCount?: boolean;
+  includeGraphRepairInputTokens?: boolean;
   signal?: AbortSignal;
   clientRequestId?: string;
 }): Promise<GenerationEstimateResult> {
@@ -154,19 +155,21 @@ export async function estimateGenerationCost(params: {
           ? `${params.clientRequestId}:graph`
           : undefined,
       }),
-      countPromptInputTokens({
-        provider: params.provider,
-        model: params.model,
-        systemPrompt: SYSTEM_GRAPH_PROMPT,
-        userPrompt: graphRepairPromptWithoutExplanation,
-        apiKey: params.apiKey,
-        reasoningEffort: GRAPH_REASONING_EFFORT,
-        preferExactInputTokenCount: params.preferExactInputTokenCount,
-        signal: params.signal,
-        clientRequestId: params.clientRequestId
-          ? `${params.clientRequestId}:graph-repair`
-          : undefined,
-      }),
+      params.includeGraphRepairInputTokens
+        ? countPromptInputTokens({
+            provider: params.provider,
+            model: params.model,
+            systemPrompt: SYSTEM_GRAPH_PROMPT,
+            userPrompt: graphRepairPromptWithoutExplanation,
+            apiKey: params.apiKey,
+            reasoningEffort: GRAPH_REASONING_EFFORT,
+            preferExactInputTokenCount: params.preferExactInputTokenCount,
+            signal: params.signal,
+            clientRequestId: params.clientRequestId
+              ? `${params.clientRequestId}:graph-repair`
+              : undefined,
+          })
+        : Promise.resolve(null),
     ]);
 
   const noteParts = [
@@ -175,7 +178,7 @@ export async function estimateGenerationCost(params: {
   if (
     explanationCount.usedFallback ||
     graphStaticCount.usedFallback ||
-    graphRepairStaticCount.usedFallback
+    graphRepairStaticCount?.usedFallback
   ) {
     noteParts.push(
       "Some input tokens were approximated with a conservative local fallback.",
@@ -205,6 +208,6 @@ export async function estimateGenerationCost(params: {
     pricing,
     explanationInputTokens: explanationCount.inputTokens,
     graphStaticInputTokens: graphStaticCount.inputTokens,
-    graphRepairStaticInputTokens: graphRepairStaticCount.inputTokens,
+    graphRepairStaticInputTokens: graphRepairStaticCount?.inputTokens ?? null,
   };
 }

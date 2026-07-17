@@ -74,17 +74,20 @@ describe("POST /api/generate/cancel", () => {
   });
 
   it("rejects cross-origin, malformed, and non-strict payloads", async () => {
-    await expect(
-      POST(
-        request(
-          { session_id: sessionId, cancel_token: cancelToken },
-          {
-            Origin: "https://attacker.example",
-            "Sec-Fetch-Site": "cross-site",
-          },
-        ),
+    const crossOriginResponse = await POST(
+      request(
+        { session_id: sessionId, cancel_token: cancelToken },
+        {
+          Origin: "https://attacker.example",
+          "Sec-Fetch-Site": "cross-site",
+        },
       ),
-    ).resolves.toMatchObject({ status: 403 });
+    );
+    expect(crossOriginResponse.status).toBe(403);
+    await expect(crossOriginResponse.json()).resolves.toEqual({
+      ok: false,
+      error: "Cross-origin cancellation is not allowed.",
+    });
     await expect(
       POST(request({ session_id: "not-a-uuid", cancel_token: cancelToken })),
     ).resolves.toMatchObject({ status: 400 });

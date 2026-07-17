@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   estimateCost: vi.fn(),
   getGithubData: vi.fn(),
+  resolveRequestCredentials: vi.fn(),
 }));
 
 vi.mock("~/server/generate/cost-estimate", () => ({
@@ -25,13 +26,20 @@ vi.mock("~/server/generate/model-config", () => ({
   getProvider: vi.fn(() => "openai"),
   shouldUseExactInputTokenCount: vi.fn(() => true),
 }));
+vi.mock("~/server/http/request-credentials", () => ({
+  resolveRequestCredentials: mocks.resolveRequestCredentials,
+}));
 
 import { POST } from "~/app/api/generate/cost/route";
 
 function request() {
   return new Request("https://gitdiagram.com/api/generate/cost", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "https://gitdiagram.com",
+      "Sec-Fetch-Site": "same-origin",
+    },
     body: JSON.stringify({ username: "openai", repo: "openai-node" }),
   });
 }
@@ -39,6 +47,18 @@ function request() {
 describe("POST /api/generate/cost", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resolveRequestCredentials.mockImplementation(
+      async (
+        _request: Request,
+        {
+          apiKey,
+          githubPat,
+        }: {
+          apiKey?: string;
+          githubPat?: string;
+        },
+      ) => ({ apiKey, githubPat }),
+    );
     mocks.getGithubData.mockResolvedValue({
       defaultBranch: "main",
       fileTree: "src/index.ts",
@@ -46,6 +66,40 @@ describe("POST /api/generate/cost", () => {
       isPrivate: false,
       stargazerCount: 10,
     });
+  });
+
+  it("uses cookie credentials when the compatibility body fields are absent", async () => {
+    mocks.resolveRequestCredentials.mockResolvedValueOnce({
+      apiKey: "cookie-openai-key",
+      githubPat: "cookie-github-pat",
+    });
+    mocks.estimateCost.mockResolvedValue({
+      costSummary: { display: "$0.0100 USD" },
+      pricingModel: "gpt-5.6-terra",
+      estimatedInputTokens: 100,
+      estimatedOutputTokens: 200,
+      pricing: {
+        inputPerMillionUsd: 1,
+        outputPerMillionUsd: 2,
+      },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveRequestCredentials).toHaveBeenCalledWith(
+      expect.any(Request),
+      { apiKey: undefined, githubPat: undefined },
+    );
+    expect(mocks.getGithubData).toHaveBeenCalledWith(
+      "openai",
+      "openai-node",
+      "cookie-github-pat",
+      expect.any(AbortSignal),
+    );
+    expect(mocks.estimateCost).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: "cookie-openai-key" }),
+    );
   });
 
   afterEach(() => {

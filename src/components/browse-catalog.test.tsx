@@ -77,6 +77,7 @@ describe("BrowseCatalog", () => {
   let getEntriesByTypeSpy: ReturnType<typeof vi.spyOn>;
   let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
   let previewFetches = 0;
+  let previewRequestInits: Array<RequestInit | undefined> = [];
 
   const createMatchMediaResult = (matches: boolean): MediaQueryList =>
     ({
@@ -93,7 +94,7 @@ describe("BrowseCatalog", () => {
       url: URL,
     ) => BrowsePageResult | null | Promise<BrowsePageResult | null>,
   ) {
-    fetchSpy = vi.spyOn(global, "fetch").mockImplementation((input) => {
+    fetchSpy = vi.spyOn(global, "fetch").mockImplementation((input, init) => {
       const rawUrl =
         typeof input === "string"
           ? input
@@ -104,6 +105,7 @@ describe("BrowseCatalog", () => {
 
       if (url.pathname === "/api/diagram-preview") {
         previewFetches += 1;
+        previewRequestInits.push(init);
         return Promise.resolve(
           new Response(JSON.stringify({ diagram: "flowchart TD\nA-->B" }), {
             status: 200,
@@ -145,6 +147,7 @@ describe("BrowseCatalog", () => {
     getEntriesByTypeSpy?.mockRestore();
     fetchSpy?.mockRestore();
     previewFetches = 0;
+    previewRequestInits = [];
     vi.useRealTimers();
     window.sessionStorage.clear();
   });
@@ -459,6 +462,13 @@ describe("BrowseCatalog", () => {
     await Promise.resolve();
 
     expect(previewFetches).toBe(1);
+    expect(previewRequestInits[0]).toEqual(
+      expect.objectContaining({
+        credentials: "omit",
+        method: "GET",
+        signal: expect.any(AbortSignal),
+      }),
+    );
 
     fireEvent.mouseLeave(repoCell!);
 

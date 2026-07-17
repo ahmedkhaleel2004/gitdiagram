@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { resetLegacyCredentialMigrationForTests } from "~/features/credentials/api";
 import {
   getDiagramState,
   streamDiagramGeneration,
@@ -21,7 +22,9 @@ function streamResponse(chunks: Uint8Array[], status = 200) {
 }
 
 afterEach(() => {
+  resetLegacyCredentialMigrationForTests();
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 describe("getDiagramState", () => {
@@ -38,22 +41,88 @@ describe("getDiagramState", () => {
       .mockResolvedValue(Response.json(state, { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      getDiagramState("openai", "openai-node", "github-pat"),
-    ).resolves.toEqual(state);
+    await expect(getDiagramState("openai", "openai-node")).resolves.toEqual(
+      state,
+    );
     expect(fetchMock).toHaveBeenCalledWith("/api/diagram-state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({
         username: "openai",
         repo: "openai-node",
-        github_pat: "github-pat",
       }),
     });
+  });
+
+  it("waits for legacy credential migration before reading diagram state", async () => {
+    window.localStorage.setItem("github_pat", "legacy-github");
+    let acceptMigration!: (response: Response) => void;
+    const state = {
+      diagram: "flowchart TD\nA-->B",
+      explanation: "Private example",
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: "2026-07-13T12:00:00.000Z",
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (input === "/api/credentials") {
+        return new Promise<Response>((resolve) => {
+          acceptMigration = resolve;
+        });
+      }
+      return Promise.resolve(Response.json(state));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const stateRequest = getDiagramState("private-owner", "private-repo");
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/credentials");
+
+    acceptMigration(configuredCredentialResponse());
+    await expect(stateRequest).resolves.toEqual(state);
+    expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
+      "/api/credentials",
+      "/api/diagram-state",
+    ]);
   });
 });
 
 describe("streamDiagramGeneration", () => {
+  it("waits for legacy credential migration before starting the stream", async () => {
+    window.localStorage.setItem("openai_api_key", "legacy-openai");
+    let acceptMigration!: (response: Response) => void;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (input === "/api/credentials") {
+        return new Promise<Response>((resolve) => {
+          acceptMigration = resolve;
+        });
+      }
+      return Promise.resolve(
+        streamResponse([
+          new TextEncoder().encode('data: {"status":"complete"}\n\n'),
+        ]),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const generation = streamDiagramGeneration(
+      { username: "private-owner", repo: "private-repo" },
+      { onMessage: vi.fn() },
+    );
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/credentials");
+
+    acceptMigration(configuredCredentialResponse());
+    await expect(generation).resolves.toBeUndefined();
+    expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
+      "/api/credentials",
+      "/api/generate/stream",
+    ]);
+  });
+
   it("preserves multibyte SSE data split across network chunks", async () => {
     const encoded = new TextEncoder().encode(
       'data: {"status":"complete","explanation":"diagram ✅"}\n\n',
@@ -93,7 +162,9 @@ describe("streamDiagramGeneration", () => {
     );
     const streamBody = JSON.parse(
       String(fetchMock.mock.calls[0]?.[1]?.body),
-    ) as { cancel_token: string; session_id: string };
+    ) as Record<string, unknown>;
+    expect(streamBody).not.toHaveProperty("api_key");
+    expect(streamBody).not.toHaveProperty("github_pat");
     expect(streamBody.session_id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
     );
@@ -102,7 +173,7 @@ describe("streamDiagramGeneration", () => {
     );
   });
 
-  it("sends a same-origin keepalive cancellation when the caller aborts", async () => {
+  it("sends a credential-free keepalive cancellation when the caller aborts", async () => {
     const abortController = new AbortController();
     const fetchMock = vi.fn(
       (url: string, init?: RequestInit): Promise<Response> => {
@@ -143,6 +214,7 @@ describe("streamDiagramGeneration", () => {
       expect.objectContaining({
         method: "POST",
         keepalive: true,
+        credentials: "omit",
         body: JSON.stringify({
           session_id: streamBody.session_id,
           cancel_token: streamBody.cancel_token,
@@ -265,3 +337,13 @@ describe("streamDiagramGeneration", () => {
     ).rejects.toThrow("Too many generation requests");
   });
 });
+
+function configuredCredentialResponse(): Response {
+  return Response.json({
+    ok: true,
+    credentials: {
+      openaiApiKeyConfigured: true,
+      githubPatConfigured: true,
+    },
+  });
+}

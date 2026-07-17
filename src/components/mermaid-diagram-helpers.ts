@@ -29,30 +29,77 @@ const TALL_DIAGRAM_NARROW_TARGET = 360;
 const MOUSE_WHEEL_ZOOM_SPEED = 0.0015;
 const TRACKPAD_PINCH_ZOOM_SPEED = 0.01;
 
-let domToJsonPatched = false;
+interface ActiveDomSerializationPatch {
+  depth: number;
+  elementPrototype: typeof Element.prototype;
+}
 
-export function ensureDomNodesSerializeSafely() {
-  if (domToJsonPatched || typeof window === "undefined") return;
+let activeDomSerializationPatch: ActiveDomSerializationPatch | null = null;
 
-  const elementProto = window.Element?.prototype;
-  if (!elementProto || "toJSON" in elementProto) {
-    domToJsonPatched = true;
-    return;
+function serializeDomElement(this: Element) {
+  return {
+    tagName: this.tagName,
+    id: this.id || undefined,
+    className: typeof this.className === "string" ? this.className : undefined,
+  };
+}
+
+function installDomSerializationPatch() {
+  if (typeof window === "undefined") return () => {};
+
+  const elementPrototype = window.Element?.prototype;
+  if (!elementPrototype) return () => {};
+
+  if (activeDomSerializationPatch?.elementPrototype === elementPrototype) {
+    activeDomSerializationPatch.depth += 1;
+    return () => {
+      if (!activeDomSerializationPatch) return;
+      activeDomSerializationPatch.depth -= 1;
+      if (activeDomSerializationPatch.depth === 0) {
+        delete (
+          activeDomSerializationPatch.elementPrototype as typeof Element.prototype & {
+            toJSON?: typeof serializeDomElement;
+          }
+        ).toJSON;
+        activeDomSerializationPatch = null;
+      }
+    };
   }
 
-  Object.defineProperty(elementProto, "toJSON", {
-    configurable: true,
-    value: function toJSON(this: Element) {
-      return {
-        tagName: this.tagName,
-        id: this.id || undefined,
-        className:
-          typeof this.className === "string" ? this.className : undefined,
-      };
-    },
-  });
+  if ("toJSON" in elementPrototype) return () => {};
 
-  domToJsonPatched = true;
+  Object.defineProperty(elementPrototype, "toJSON", {
+    configurable: true,
+    value: serializeDomElement,
+  });
+  activeDomSerializationPatch = {
+    depth: 1,
+    elementPrototype,
+  };
+
+  return () => {
+    if (!activeDomSerializationPatch) return;
+    activeDomSerializationPatch.depth -= 1;
+    if (activeDomSerializationPatch.depth === 0) {
+      delete (
+        activeDomSerializationPatch.elementPrototype as typeof Element.prototype & {
+          toJSON?: typeof serializeDomElement;
+        }
+      ).toJSON;
+      activeDomSerializationPatch = null;
+    }
+  };
+}
+
+export async function withDomNodesSerializingSafely<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const restoreDomSerialization = installDomSerializationPatch();
+  try {
+    return await operation();
+  } finally {
+    restoreDomSerialization();
+  }
 }
 
 export function createHiddenRenderTarget(width: number) {

@@ -8,6 +8,7 @@ interface GitHubRepoResponse {
 
 interface GitHubTreeItem {
   path?: unknown;
+  type?: unknown;
 }
 
 interface GitHubTreeResponse {
@@ -27,7 +28,10 @@ export interface GithubData {
   readme: string;
   isPrivate: boolean;
   stargazerCount: number | null;
+  pathTypes: ReadonlyMap<string, RepositoryPathType>;
 }
+
+export type RepositoryPathType = "blob" | "tree";
 
 export const REPOSITORY_TOO_LARGE_ERROR =
   "Repository is too large (>195k tokens) for analysis. Try a smaller repo.";
@@ -40,6 +44,7 @@ const MAX_PUBLIC_TREE_CACHE_CHARACTERS = 4_000_000;
 interface PublicTreeCacheEntry {
   etag: string;
   fileTree: string;
+  pathTypes: ReadonlyMap<string, RepositoryPathType>;
   characters: number;
 }
 
@@ -192,7 +197,10 @@ async function getFileTree(
   headers: HeadersInit,
   usePublicConditionalCache: boolean,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<{
+  fileTree: string;
+  pathTypes: ReadonlyMap<string, RepositoryPathType>;
+}> {
   const url = `https://api.github.com/repos/${username}/${repo}/git/trees/${branch}?recursive=1`;
   const cached = usePublicConditionalCache
     ? publicTreeCache.get(url)
@@ -209,7 +217,7 @@ async function getFileTree(
     cached?.etag,
   );
   if (result.notModified && cached) {
-    return cached.fileTree;
+    return { fileTree: cached.fileTree, pathTypes: cached.pathTypes };
   }
   if (result.notModified) {
     throw new Error("GitHub returned an unexpected not-modified response.");
@@ -221,9 +229,13 @@ async function getFileTree(
   }
 
   const paths: string[] = [];
+  const pathTypes = new Map<string, RepositoryPathType>();
   for (const item of data.tree ?? []) {
     if (typeof item.path === "string" && shouldIncludeFile(item.path)) {
       paths.push(item.path);
+      if (item.type === "blob" || item.type === "tree") {
+        pathTypes.set(item.path, item.type);
+      }
     }
   }
 
@@ -255,13 +267,14 @@ async function getFileTree(
       publicTreeCache.set(url, {
         etag: result.etag,
         fileTree,
+        pathTypes,
         characters: fileTree.length,
       });
       publicTreeCacheCharacters += fileTree.length;
     }
   }
 
-  return fileTree;
+  return { fileTree, pathTypes };
 }
 
 async function getReadme(
@@ -322,7 +335,7 @@ export async function getGithubData(
     headers,
     signal,
   );
-  const [fileTree, readmeResult] = await Promise.all([
+  const [tree, readmeResult] = await Promise.all([
     getFileTree(
       username,
       repo,
@@ -339,9 +352,10 @@ export async function getGithubData(
 
   return {
     defaultBranch,
-    fileTree,
+    fileTree: tree.fileTree,
     readme: readmeResult.value,
     isPrivate,
     stargazerCount,
+    pathTypes: tree.pathTypes,
   };
 }

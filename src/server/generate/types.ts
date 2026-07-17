@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DiagramStreamMessage } from "~/features/diagram/types";
 
 export const MAX_GENERATION_REQUEST_BYTES = 16 * 1024;
 
@@ -119,6 +120,6 @@ export async function parseGenerateRequest(
   return { success: true, data: parsed.data };
 }
 
-export function sseMessage(payload: Record<string, unknown>): string {
+export function sseMessage(payload: DiagramStreamMessage): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
 }

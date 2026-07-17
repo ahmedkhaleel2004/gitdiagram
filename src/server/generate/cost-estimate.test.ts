@@ -33,6 +33,7 @@ describe("estimateGenerationCost", () => {
       username: "acme",
       repo: "demo",
       apiKey: "sk-user",
+      includeGraphRepairInputTokens: true,
     });
 
     expect(result.explanationInputTokens).toBe(100);
@@ -65,6 +66,21 @@ describe("estimateGenerationCost", () => {
     expect(firstGraphCall?.userPrompt).not.toContain("<previous_graph>");
     expect(firstGraphCall?.userPrompt).not.toContain("<validation_feedback>");
     expect(repairGraphCall?.userPrompt).toContain("src/main.ts");
+  });
+
+  it("skips repair-prompt counting when complimentary admission is not needed", async () => {
+    const result = await estimateGenerationCost({
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      fileTree: "src/main.ts",
+      readme: "# Demo",
+      username: "acme",
+      repo: "demo",
+      apiKey: "sk-user",
+    });
+
+    expect(countInputTokens).toHaveBeenCalledTimes(2);
+    expect(result.graphRepairStaticInputTokens).toBeNull();
   });
 
   it("falls back to a local estimate for a provider counting failure", async () => {

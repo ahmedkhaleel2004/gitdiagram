@@ -1,19 +1,19 @@
 import * as React from "react";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DiagramStreamState } from "~/features/diagram/types";
 import { useDiagram } from "~/hooks/useDiagram";
 
 const {
+  getCredentialStatus,
   getDiagramState,
-  storeOpenAiKey,
   useDiagramExport,
   runGeneration,
   setStreamState,
 } = vi.hoisted(() => ({
+  getCredentialStatus: vi.fn(),
   getDiagramState: vi.fn(),
-  storeOpenAiKey: vi.fn(),
   useDiagramExport: vi.fn(),
   runGeneration: vi.fn(),
   setStreamState: vi.fn(),
@@ -30,13 +30,24 @@ type StreamCompletePayload = {
 type StreamOptions = {
   initialState?: DiagramStreamState;
   onComplete: (result: StreamCompletePayload) => Promise<void>;
-  onError: (message: string) => void;
 };
 
-let streamOptions: StreamOptions | undefined;
+let streamOptions:
+  (StreamOptions & { emitError: (message: string) => void }) | undefined;
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
 
 vi.mock("~/features/diagram/api", () => ({
   getDiagramState,
+}));
+vi.mock("~/features/credentials/api", () => ({
+  getCredentialStatus,
 }));
 
 vi.mock("~/hooks/diagram/useDiagramStream", () => ({
@@ -58,13 +69,12 @@ vi.mock("~/hooks/diagram/useDiagramStream", () => ({
       [setState],
     );
     streamOptions = {
-      onError: (message: string) => {
+      emitError: (message: string) => {
         trackedSetState({
           status: "error",
           error: message,
           errorCode: "API_KEY_REQUIRED",
         });
-        options.onError(message);
       },
       onComplete: async (result: StreamCompletePayload) => {
         trackedSetState({
@@ -94,16 +104,15 @@ vi.mock("~/lib/exampleRepos", () => ({
   isExampleRepo: vi.fn(() => false),
 }));
 
-vi.mock("~/lib/openai-key", () => ({
-  storeOpenAiKey,
-}));
-
 describe("useDiagram", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
     streamOptions = undefined;
 
+    getCredentialStatus.mockResolvedValue({
+      openaiApiKeyConfigured: false,
+      githubPatConfigured: false,
+    });
     getDiagramState.mockResolvedValue({
       diagram: null,
       explanation: null,
@@ -205,7 +214,7 @@ describe("useDiagram", () => {
 
     await waitFor(() => expect(result.current.diagram).toContain("A-->C"));
 
-    expect(getDiagramState).toHaveBeenCalledWith("acme", "demo", undefined);
+    expect(getDiagramState).toHaveBeenCalledWith("acme", "demo");
     expect(runGeneration).not.toHaveBeenCalled();
     expect(result.current.lastGenerated?.toISOString()).toBe(
       "2026-03-29T12:00:00.000Z",
@@ -236,7 +245,10 @@ describe("useDiagram", () => {
   });
 
   it("still checks private state when a PAT exists", async () => {
-    localStorage.setItem("github_pat", "private-token");
+    getCredentialStatus.mockResolvedValueOnce({
+      openaiApiKeyConfigured: false,
+      githubPatConfigured: true,
+    });
     getDiagramState.mockResolvedValueOnce({
       diagram: "flowchart TD\nA-->PRIVATE",
       explanation: "private diagram",
@@ -262,16 +274,78 @@ describe("useDiagram", () => {
 
     await waitFor(() => expect(result.current.diagram).toContain("PRIVATE"));
 
-    expect(getDiagramState).toHaveBeenCalledWith(
-      "acme",
-      "demo",
-      "private-token",
+    expect(getDiagramState).toHaveBeenCalledWith("acme", "demo");
+  });
+
+  it("keeps a foreground regeneration authoritative when credential status resolves later", async () => {
+    const credentialStatus = createDeferred<{
+      githubPatConfigured: boolean;
+      openaiApiKeyConfigured: boolean;
+    }>();
+    const generation = createDeferred<void>();
+    getCredentialStatus.mockReturnValueOnce(credentialStatus.promise);
+    getDiagramState.mockResolvedValueOnce({
+      diagram: "flowchart TD\nA-->STORED",
+      explanation: "stored diagram",
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+    });
+    runGeneration.mockImplementationOnce(async () => {
+      await generation.promise;
+      await streamOptions?.onComplete({
+        diagram: "flowchart TD\nA-->GENERATED",
+        explanation: "fresh generation",
+        graph: undefined,
+        latestSessionAudit: undefined,
+        generatedAt: "2026-03-29T12:00:00.000Z",
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useDiagram(
+        "acme",
+        "demo",
+        {
+          diagram: "flowchart TD\nA-->INITIAL",
+          explanation: "initial diagram",
+          graph: null,
+          latestSessionAudit: null,
+          lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+        },
+        true,
+      ),
     );
+
+    let regeneration!: Promise<void>;
+    act(() => {
+      regeneration = result.current.handleRegenerate();
+    });
+    await waitFor(() => expect(result.current.loading).toBe(true));
+
+    await act(async () => {
+      credentialStatus.resolve({
+        githubPatConfigured: true,
+        openaiApiKeyConfigured: false,
+      });
+      await credentialStatus.promise;
+    });
+
+    expect(getDiagramState).not.toHaveBeenCalled();
+    expect(result.current.diagram).toContain("A-->INITIAL");
+
+    await act(async () => {
+      generation.resolve();
+      await regeneration;
+    });
+
+    expect(result.current.diagram).toContain("A-->GENERATED");
+    expect(result.current.loading).toBe(false);
   });
 
   it("shows an over-limit error from the current regenerate attempt", async () => {
     runGeneration.mockImplementationOnce(async () => {
-      streamOptions?.onError(
+      streamOptions?.emitError(
         "File tree and README combined exceeds token limit (100,000). This repository is too large for free generation. Provide your own OpenAI API key to continue.",
       );
     });
@@ -292,6 +366,60 @@ describe("useDiagram", () => {
 
     await waitFor(() => expect(result.current.error).toContain("100,000"));
     expect(result.current.error).toContain("API key");
+  });
+
+  it("keeps loading while a newer regeneration is still active", async () => {
+    let resolveFirst!: () => void;
+    let resolveSecond!: () => void;
+    const firstRun = new Promise<void>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondRun = new Promise<void>((resolve) => {
+      resolveSecond = resolve;
+    });
+    runGeneration
+      .mockReset()
+      .mockImplementationOnce(() => firstRun)
+      .mockImplementationOnce(() => secondRun);
+
+    const { result } = renderHook(() =>
+      useDiagram(
+        "acme",
+        "demo",
+        {
+          diagram: "flowchart TD\nA-->B",
+          explanation: "server diagram",
+          graph: null,
+          latestSessionAudit: null,
+          lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+        },
+        true,
+      ),
+    );
+
+    let firstOperation!: Promise<void>;
+    act(() => {
+      firstOperation = result.current.handleRegenerate();
+    });
+    await waitFor(() => expect(runGeneration).toHaveBeenCalledTimes(1));
+
+    let secondOperation!: Promise<void>;
+    act(() => {
+      secondOperation = result.current.handleRegenerate();
+    });
+    await waitFor(() => expect(runGeneration).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveFirst();
+      await firstOperation;
+    });
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      resolveSecond();
+      await secondOperation;
+    });
+    expect(result.current.loading).toBe(false);
   });
 
   it("surfaces browser render failures without mutating shared state", async () => {

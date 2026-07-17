@@ -7,6 +7,7 @@ import {
   diagramGraphSchema,
   normalizeDiagramText,
 } from "~/features/diagram/graph";
+import type { RepositoryPathType } from "~/server/generate/github";
 
 export interface GraphValidationIssue {
   category: GraphValidationCategory;
@@ -324,12 +325,13 @@ function buildGitHubUrl(
   username: string,
   repo: string,
   branch: string,
+  pathType?: RepositoryPathType,
 ): string {
-  const isFile = path.includes(".") && !path.endsWith("/");
-  const pathType = isFile ? "blob" : "tree";
+  const githubPathType =
+    pathType ?? (path.includes(".") && !path.endsWith("/") ? "blob" : "tree");
   const encodePath = (value: string) =>
     value.split("/").map(encodeURIComponent).join("/");
-  return `https://github.com/${encodeURIComponent(username)}/${encodeURIComponent(repo)}/${pathType}/${encodePath(branch)}/${encodePath(path)}`;
+  return `https://github.com/${encodeURIComponent(username)}/${encodeURIComponent(repo)}/${githubPathType}/${encodePath(branch)}/${encodePath(path)}`;
 }
 
 export function compileDiagramGraph(params: {
@@ -337,8 +339,9 @@ export function compileDiagramGraph(params: {
   username: string;
   repo: string;
   branch: string;
+  pathTypes?: ReadonlyMap<string, RepositoryPathType>;
 }): string {
-  const { graph, username, repo, branch } = params;
+  const { graph, username, repo, branch, pathTypes } = params;
   const lines: string[] = ["flowchart TD"];
   const groupedNodeIds = new Set<string>();
   const classAssignments = new Map<string, string[]>();
@@ -391,7 +394,7 @@ export function compileDiagramGraph(params: {
     lines.push("");
     for (const node of nodesWithPaths) {
       lines.push(
-        `click ${mermaidNodeId(node.id)} "${buildGitHubUrl(node.path!, username, repo, branch)}"`,
+        `click ${mermaidNodeId(node.id)} "${buildGitHubUrl(node.path!, username, repo, branch, pathTypes?.get(node.path!))}"`,
       );
     }
   }

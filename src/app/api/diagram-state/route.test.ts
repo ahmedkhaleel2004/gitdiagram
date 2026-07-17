@@ -3,10 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getDiagramStateRecord: vi.fn(),
+  resolveRequestCredentials: vi.fn(),
 }));
 
 vi.mock("~/server/storage/diagram-state", () => ({
   getDiagramStateRecord: mocks.getDiagramStateRecord,
+}));
+vi.mock("~/server/http/request-credentials", () => ({
+  resolveRequestCredentials: mocks.resolveRequestCredentials,
 }));
 
 import { POST } from "~/app/api/diagram-state/route";
@@ -32,6 +36,11 @@ describe("POST /api/diagram-state", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.resolveRequestCredentials.mockImplementation(
+      async (_request: Request, { githubPat }: { githubPat?: string }) => ({
+        githubPat,
+      }),
+    );
   });
 
   it("returns a validated public diagram state without caching it", async () => {
@@ -87,18 +96,49 @@ describe("POST /api/diagram-state", () => {
     );
   });
 
+  it("uses a protected cookie credential when no explicit PAT is sent", async () => {
+    mocks.resolveRequestCredentials.mockResolvedValueOnce({
+      githubPat: "cookie-github-token",
+    });
+    mocks.getDiagramStateRecord.mockResolvedValue({
+      diagram: "flowchart TD\nA-->PRIVATE",
+      explanation: "Private state",
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: "2026-07-13T12:00:00.000Z",
+    });
+
+    const response = await POST(
+      request({ username: "openai", repo: "private-repo" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveRequestCredentials).toHaveBeenCalledWith(
+      expect.any(Request),
+      { githubPat: undefined },
+    );
+    expect(mocks.getDiagramStateRecord).toHaveBeenCalledWith(
+      "openai",
+      "private-repo",
+      "cookie-github-token",
+    );
+  });
+
   it("rejects cross-origin and malformed requests before storage access", async () => {
-    await expect(
-      POST(
-        request(
-          { username: "openai", repo: "openai-node" },
-          {
-            Origin: "https://attacker.example",
-            "Sec-Fetch-Site": "cross-site",
-          },
-        ),
+    const crossOriginResponse = await POST(
+      request(
+        { username: "openai", repo: "openai-node" },
+        {
+          Origin: "https://attacker.example",
+          "Sec-Fetch-Site": "cross-site",
+        },
       ),
-    ).resolves.toMatchObject({ status: 403 });
+    );
+    expect(crossOriginResponse.status).toBe(403);
+    await expect(crossOriginResponse.json()).resolves.toEqual({
+      ok: false,
+      error: "Cross-origin state access is not allowed.",
+    });
     await expect(
       POST(request({ username: "../openai", repo: "repo/name" })),
     ).resolves.toMatchObject({ status: 400 });

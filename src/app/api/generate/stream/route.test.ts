@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getGithubData: vi.fn(),
   persistAudit: vi.fn(),
   registerActiveGeneration: vi.fn(),
+  resolveRequestCredentials: vi.fn(),
   saveDiagram: vi.fn(),
   startCancellationPolling: vi.fn(),
   stopCancellationPolling: vi.fn(),
@@ -27,7 +28,9 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),
 }));
-vi.mock("~/app/browse/data", () => ({ revalidateBrowseIndexCache: vi.fn() }));
+vi.mock("~/server/browse-index-cache", () => ({
+  revalidateBrowseIndexCache: vi.fn(),
+}));
 vi.mock("~/server/storage/artifact-store", () => ({
   writePublicDiagramPreview: mocks.writePublicPreview,
 }));
@@ -71,6 +74,9 @@ vi.mock("~/server/generate/model-config", () => ({
 vi.mock("~/server/generate/openai", () => ({
   generateStructuredOutput: mocks.generateStructuredOutput,
   streamCompletion: mocks.streamCompletion,
+}));
+vi.mock("~/server/http/request-credentials", () => ({
+  resolveRequestCredentials: mocks.resolveRequestCredentials,
 }));
 import { POST } from "~/app/api/generate/stream/route";
 
@@ -149,6 +155,12 @@ describe("POST /api/generate/stream", () => {
       },
     );
     mocks.registerActiveGeneration.mockResolvedValue(true);
+    mocks.resolveRequestCredentials.mockImplementation(
+      async (
+        _request: Request,
+        explicit: { apiKey?: string; githubPat?: string },
+      ) => explicit,
+    );
     mocks.unregisterActiveGeneration.mockResolvedValue(undefined);
     mocks.writePublicPreview.mockResolvedValue(true);
     mocks.cancellationCallback = undefined;
@@ -173,11 +185,38 @@ describe("POST /api/generate/stream", () => {
     expect(mocks.streamCompletion).not.toHaveBeenCalled();
   });
 
+  it("uses same-origin stored credentials resolved at the request boundary", async () => {
+    mockEstimate(200_000);
+    mocks.resolveRequestCredentials.mockResolvedValueOnce({
+      apiKey: "stored-openai-key",
+      githubPat: "stored-github-pat",
+    });
+    const generationRequest = request();
+
+    const response = await POST(generationRequest);
+    await response.text();
+
+    expect(mocks.resolveRequestCredentials).toHaveBeenCalledWith(
+      generationRequest,
+      { apiKey: undefined, githubPat: undefined },
+    );
+    expect(mocks.getGithubData).toHaveBeenCalledWith(
+      "openai",
+      "openai-node",
+      "stored-github-pat",
+      expect.any(AbortSignal),
+    );
+    expect(mocks.estimateCost).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: "stored-openai-key" }),
+    );
+  });
+
   it("commits only the in-flight stage bound before closing a failed stream", async () => {
     mockEstimate(100);
     mocks.admitQuota.mockResolvedValue({
       admitted: true,
       reservation: {
+        reservationId: "reservation-1",
         quotaBucket: "daily",
         quotaDateUtc: "2026-07-13",
         quotaResetAt: "2026-07-14T00:00:00.000Z",
@@ -258,6 +297,7 @@ describe("POST /api/generate/stream", () => {
     mocks.admitQuota.mockResolvedValue({
       admitted: true,
       reservation: {
+        reservationId: "reservation-1",
         quotaBucket: "daily",
         quotaDateUtc: "2026-07-13",
         quotaResetAt: "2026-07-14T00:00:00.000Z",
@@ -299,6 +339,7 @@ describe("POST /api/generate/stream", () => {
     mocks.admitQuota.mockResolvedValue({
       admitted: true,
       reservation: {
+        reservationId: "reservation-1",
         quotaBucket: "daily",
         quotaDateUtc: "2026-07-13",
         quotaResetAt: "2026-07-14T00:00:00.000Z",
@@ -363,6 +404,7 @@ describe("POST /api/generate/stream", () => {
     mocks.admitQuota.mockResolvedValue({
       admitted: true,
       reservation: {
+        reservationId: "reservation-1",
         quotaBucket: "daily",
         quotaDateUtc: "2026-07-13",
         quotaResetAt: "2026-07-14T00:00:00.000Z",
@@ -454,6 +496,7 @@ describe("POST /api/generate/stream", () => {
     mocks.admitQuota.mockResolvedValue({
       admitted: true,
       reservation: {
+        reservationId: "reservation-1",
         quotaBucket: "daily",
         quotaDateUtc: "2026-07-13",
         quotaResetAt: "2026-07-14T00:00:00.000Z",
@@ -515,6 +558,7 @@ describe("POST /api/generate/stream", () => {
     mocks.admitQuota.mockResolvedValue({
       admitted: true,
       reservation: {
+        reservationId: "reservation-1",
         quotaBucket: "daily",
         quotaDateUtc: "2026-07-13",
         quotaResetAt: "2026-07-14T00:00:00.000Z",

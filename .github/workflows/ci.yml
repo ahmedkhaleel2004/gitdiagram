@@ -9,6 +9,16 @@ on:
 jobs:
   app:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7.0.0
       - name: Setup Bun
@@ -23,6 +33,8 @@ jobs:
         run: bun run typecheck
       - name: Tests
         run: bun run test
+        env:
+          REDIS_TEST_URL: redis://127.0.0.1:6379
       - name: Build
         run: bun run build
       - name: Performance budgets

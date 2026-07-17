@@ -61,7 +61,7 @@ describe("browse data cache", () => {
       entries: recentEntries,
       total: 81_178,
     });
-    const data = await import("~/app/browse/data");
+    const data = await import("~/server/browse-index-cache");
 
     await expect(data.getCachedBrowsePage({})).resolves.toMatchObject({
       items: recentEntries,
@@ -79,7 +79,7 @@ describe("browse data cache", () => {
     mocks.readBrowseIndex
       .mockReturnValueOnce(oldRead)
       .mockResolvedValueOnce(freshEntries);
-    const data = await import("~/app/browse/data");
+    const data = await import("~/server/browse-index-cache");
 
     const firstRead = data.getCachedBrowseIndex();
     data.revalidateBrowseIndexCache();

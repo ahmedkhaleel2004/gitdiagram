@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
-import { getCachedBrowsePage } from "~/app/browse/data";
+import { getCachedBrowsePage } from "~/server/browse-index-cache";
 import { BrowseCatalog } from "~/components/browse-catalog";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { BrowseQuery } from "~/features/browse/catalog";
