@@ -460,30 +460,7 @@ export async function POST(request: Request) {
           });
 
           throwIfAborted(generationAbortController.signal);
-          if (
-            tokenCount > FREE_GENERATION_INPUT_TOKEN_LIMIT &&
-            tokenCount < HARD_GENERATION_INPUT_TOKEN_LIMIT &&
-            !apiKey
-          ) {
-            const error = `File tree and README combined exceeds token limit (${FREE_GENERATION_INPUT_TOKEN_LIMIT.toLocaleString("en-US")}). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`;
-            audit = withFailure(audit, {
-              failureStage: "started",
-              validationError: error,
-            });
-            queueTerminal({
-              status: "error",
-              session_id: audit.sessionId,
-              error,
-              error_code: "API_KEY_REQUIRED",
-              validation_error: error,
-              failure_stage: "started",
-              cost_summary: audit.finalCost ?? audit.estimatedCost,
-              latest_session_audit: audit,
-            });
-            return;
-          }
-
-          if (tokenCount > HARD_GENERATION_INPUT_TOKEN_LIMIT) {
+          if (tokenCount >= HARD_GENERATION_INPUT_TOKEN_LIMIT) {
             const error = REPOSITORY_TOO_LARGE_ERROR;
             audit = withFailure(audit, {
               failureStage: "started",
@@ -494,6 +471,25 @@ export async function POST(request: Request) {
               session_id: audit.sessionId,
               error,
               error_code: "TOKEN_LIMIT_EXCEEDED",
+              validation_error: error,
+              failure_stage: "started",
+              cost_summary: audit.finalCost ?? audit.estimatedCost,
+              latest_session_audit: audit,
+            });
+            return;
+          }
+
+          if (tokenCount > FREE_GENERATION_INPUT_TOKEN_LIMIT && !apiKey) {
+            const error = `File tree and README combined exceeds token limit (${FREE_GENERATION_INPUT_TOKEN_LIMIT.toLocaleString("en-US")}). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`;
+            audit = withFailure(audit, {
+              failureStage: "started",
+              validationError: error,
+            });
+            queueTerminal({
+              status: "error",
+              session_id: audit.sessionId,
+              error,
+              error_code: "API_KEY_REQUIRED",
               validation_error: error,
               failure_stage: "started",
               cost_summary: audit.finalCost ?? audit.estimatedCost,

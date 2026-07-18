@@ -185,6 +185,28 @@ describe("POST /api/generate/stream", () => {
     expect(mocks.streamCompletion).not.toHaveBeenCalled();
   });
 
+  it("rejects a repository at exactly the hard token limit", async () => {
+    mockEstimate(195_000);
+
+    const response = await POST(request());
+    const body = await response.text();
+
+    expect(body).toContain('"error_code":"TOKEN_LIMIT_EXCEEDED"');
+    expect(mocks.admitQuota).not.toHaveBeenCalled();
+    expect(mocks.streamCompletion).not.toHaveBeenCalled();
+  });
+
+  it("requires an API key between the free and hard token limits", async () => {
+    mockEstimate(150_000);
+
+    const response = await POST(request());
+    const body = await response.text();
+
+    expect(body).toContain('"error_code":"API_KEY_REQUIRED"');
+    expect(mocks.admitQuota).not.toHaveBeenCalled();
+    expect(mocks.streamCompletion).not.toHaveBeenCalled();
+  });
+
   it("uses same-origin stored credentials resolved at the request boundary", async () => {
     mockEstimate(200_000);
     mocks.resolveRequestCredentials.mockResolvedValueOnce({

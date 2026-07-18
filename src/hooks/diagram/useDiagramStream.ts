@@ -167,6 +167,7 @@ export function useDiagramStream({
             costSummary: data.cost_summary,
             quotaResetAt: data.quota_reset_at,
             error: data.error,
+            errorCode: data.error_code,
             validationError: data.validation_error,
             failureStage: data.failure_stage,
             latestSessionAudit: data.latest_session_audit,
