@@ -42,6 +42,18 @@ describe("getModel", () => {
     expect(getModel("openrouter")).toBe("openai/gpt-5.6-terra");
   });
 
+  it("uses GPT-5.6 Terra as the Requesty fallback", () => {
+    delete process.env.REQUESTY_MODEL;
+
+    expect(getModel("requesty")).toBe("openai/gpt-5.6-terra");
+  });
+
+  it("preserves an explicit Requesty model override", () => {
+    process.env.REQUESTY_MODEL = "anthropic/claude-sonnet-4-5";
+
+    expect(getModel("requesty")).toBe("anthropic/claude-sonnet-4-5");
+  });
+
   it("uses the Atlas model override when configured", () => {
     process.env.ATLAS_MODEL = "deepseek-ai/DeepSeek-V3-0324";
 

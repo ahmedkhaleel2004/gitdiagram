@@ -38,6 +38,7 @@ Choose one AI provider:
 
 - OpenAI: `AI_PROVIDER=openai` and `OPENAI_API_KEY`
 - OpenRouter: `AI_PROVIDER=openrouter` and `OPENROUTER_API_KEY`
+- Requesty: `AI_PROVIDER=requesty` and `REQUESTY_API_KEY`
 - Atlas Cloud: `AI_PROVIDER=atlas` and `ATLAS_API_KEY`
 
 Optional generation controls include:
@@ -49,6 +50,10 @@ Optional generation controls include:
 - `OPENROUTER_MODEL`
 - `OPENROUTER_SITE_URL`
 - `OPENROUTER_APP_NAME`
+- `REQUESTY_MODEL`
+- `REQUESTY_BASE_URL`
+- `REQUESTY_SITE_URL`
+- `REQUESTY_APP_NAME`
 - `ATLAS_MODEL`
 - `ATLAS_BASE_URL`
 
@@ -77,6 +82,16 @@ OPENROUTER_API_KEY=...
 OPENROUTER_MODEL=openai/gpt-5.6-terra
 OPENROUTER_SITE_URL=http://localhost:3000
 OPENROUTER_APP_NAME=GitDiagram
+```
+
+A Requesty example:
+
+```dotenv
+AI_PROVIDER=requesty
+REQUESTY_API_KEY=...
+REQUESTY_MODEL=openai/gpt-5.6-terra
+REQUESTY_SITE_URL=http://localhost:3000
+REQUESTY_APP_NAME=GitDiagram
 ```
 
 ## Run
