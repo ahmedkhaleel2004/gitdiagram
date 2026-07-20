@@ -145,6 +145,8 @@ describe("getGithubData repository input bounds", () => {
         { path: 42 },
         {},
         { path: "node_modules/pkg/index.js" },
+        { path: "logs/debug.log" },
+        { path: "src/user.login.ts", type: "blob" },
         { path: "src/main.ts", type: "blob" },
       ],
     });
@@ -152,11 +154,14 @@ describe("getGithubData repository input bounds", () => {
 
     await expect(getGithubData("acme", "demo")).resolves.toEqual({
       defaultBranch: "main",
-      fileTree: "src/main.ts",
+      fileTree: "src/user.login.ts\nsrc/main.ts",
       readme: "# Demo",
       isPrivate: false,
       stargazerCount: 42,
-      pathTypes: new Map([["src/main.ts", "blob"]]),
+      pathTypes: new Map([
+        ["src/user.login.ts", "blob"],
+        ["src/main.ts", "blob"],
+      ]),
     });
     expect(timeoutSpy).toHaveBeenCalledTimes(3);
     expect(timeoutSpy).toHaveBeenCalledWith(GITHUB_REQUEST_TIMEOUT_MS);

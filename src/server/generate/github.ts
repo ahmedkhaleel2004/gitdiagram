@@ -97,7 +97,11 @@ const EXCLUDED_PATTERNS = [
 
 function shouldIncludeFile(path: string): boolean {
   const lowerPath = path.toLowerCase();
-  return !EXCLUDED_PATTERNS.some((pattern) => lowerPath.includes(pattern));
+  return !EXCLUDED_PATTERNS.some((pattern) =>
+    pattern.startsWith("*")
+      ? lowerPath.endsWith(pattern.slice(1))
+      : lowerPath.includes(pattern),
+  );
 }
 
 async function fetchJsonResult<T>(
