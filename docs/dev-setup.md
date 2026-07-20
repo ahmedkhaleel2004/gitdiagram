@@ -38,7 +38,6 @@ Choose one AI provider:
 
 - OpenAI: `AI_PROVIDER=openai` and `OPENAI_API_KEY`
 - OpenRouter: `AI_PROVIDER=openrouter` and `OPENROUTER_API_KEY`
-- Atlas Cloud: `AI_PROVIDER=atlas` and `ATLAS_API_KEY`
 
 Optional generation controls include:
 
@@ -49,8 +48,6 @@ Optional generation controls include:
 - `OPENROUTER_MODEL`
 - `OPENROUTER_SITE_URL`
 - `OPENROUTER_APP_NAME`
-- `ATLAS_MODEL`
-- `ATLAS_BASE_URL`
 
 Optional GitHub authentication:
 
