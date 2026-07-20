@@ -11,8 +11,6 @@ You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 
 > **Sponsor slot:** Reach developers while they are actively exploring codebases. [Sponsor GitDiagram](https://gitdiagram.com/sponsor).
 
-> 🎁 [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=gitdiagram) provides one API for hundreds of LLM, image, and video models. Its [coding plan](https://www.atlascloud.ai/console/coding-plan) offers a budget-oriented option for coding workloads.
-
 ## Features
 
 - **Architecture-first diagrams:** converts a repository tree and README into a system-level graph instead of merely drawing folders.
@@ -20,7 +18,7 @@ You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 - **Streaming generation:** see the explanation arrive while the graph is planned.
 - **Private repositories:** provide a GitHub token locally in the browser; private artifacts use a separate protected storage namespace.
 - **Export:** copy Mermaid source or download the rendered diagram as PNG.
-- **Provider choice:** OpenAI by default, with OpenRouter and Atlas Cloud available for self-hosted deployments.
+- **Provider choice:** OpenAI by default, with OpenRouter available for self-hosted deployments.
 
 ## Stack
 
@@ -28,7 +26,7 @@ You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 - **Generation API:** same-origin Next.js Route Handlers running on Vercel's Bun runtime
 - **Storage:** Cloudflare R2 for diagram artifacts
 - **Coordination:** Upstash Redis for quota accounting, cancellation, locks, and short-lived failure state
-- **AI:** OpenAI, OpenRouter, or Atlas Cloud through `AI_PROVIDER`
+- **AI:** OpenAI or OpenRouter through `AI_PROVIDER`
 - **Analytics:** PostHog
 - **Deployment:** Vercel is the only live runtime; an offline Railway/Docker recipe is retained for disaster recovery
 
@@ -87,15 +85,6 @@ bun run dev
 Open [http://localhost:3000](http://localhost:3000).
 
 At minimum, configure R2, Upstash, and one AI provider in `.env`. A GitHub PAT or GitHub App is optional but strongly recommended for higher GitHub API limits.
-
-For Atlas Cloud:
-
-```dotenv
-AI_PROVIDER=atlas
-ATLAS_API_KEY=...
-ATLAS_MODEL=deepseek-ai/DeepSeek-V3-0324
-ATLAS_BASE_URL=https://api.atlascloud.ai/v1
-```
 
 Run the complete local gate before opening a pull request:
 

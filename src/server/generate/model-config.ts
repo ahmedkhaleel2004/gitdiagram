@@ -1,6 +1,4 @@
-export type AIProvider = "atlas" | "openai" | "openrouter";
-
-import { DEFAULT_ATLAS_MODEL } from "~/server/generate/atlas-models";
+export type AIProvider = "openai" | "openrouter";
 
 const DEFAULT_PROVIDER: AIProvider = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.6-terra";
@@ -15,9 +13,6 @@ function readEnvValue(name: string): string | undefined {
 
 function normalizeProvider(value?: string): AIProvider {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "atlas") {
-    return "atlas";
-  }
   if (normalized === "openrouter") {
     return "openrouter";
   }
@@ -29,9 +24,6 @@ export function getProvider(overrideProvider?: string): AIProvider {
 }
 
 export function getProviderLabel(provider: AIProvider): string {
-  if (provider === "atlas") {
-    return "Atlas Cloud";
-  }
   return provider === "openrouter" ? "OpenRouter" : "OpenAI";
 }
 
@@ -57,9 +49,6 @@ export function shouldUseExactInputTokenCount(params: {
 }
 
 export function getModel(provider = getProvider()): string {
-  if (provider === "atlas") {
-    return readEnvValue("ATLAS_MODEL") ?? DEFAULT_ATLAS_MODEL;
-  }
   if (provider === "openrouter") {
     return readEnvValue("OPENROUTER_MODEL") ?? DEFAULT_OPENROUTER_MODEL;
   }

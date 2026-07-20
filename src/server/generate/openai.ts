@@ -13,14 +13,10 @@ import { normalizeGenerationUsage } from "~/server/generate/pricing";
 export type ReasoningEffort = "low" | "medium" | "high";
 type TextVerbosity = "low" | "medium" | "high";
 
-const DEFAULT_ATLAS_BASE_URL = "https://api.atlascloud.ai/v1";
 const AI_REQUEST_TIMEOUT_MS = 150_000;
 const AI_MAX_RETRIES = 0;
 
 function getEnvApiKey(provider: AIProvider): string | undefined {
-  if (provider === "atlas") {
-    return process.env.ATLAS_API_KEY?.trim();
-  }
   if (provider === "openrouter") {
     return process.env.OPENROUTER_API_KEY?.trim();
   }
@@ -45,14 +41,6 @@ function getOpenRouterHeaders(): Record<string, string> {
 }
 
 function createClient(provider: AIProvider, apiKey: string): OpenAI {
-  if (provider === "atlas") {
-    return new OpenAI({
-      apiKey,
-      baseURL: process.env.ATLAS_BASE_URL?.trim() || DEFAULT_ATLAS_BASE_URL,
-      maxRetries: AI_MAX_RETRIES,
-      timeout: AI_REQUEST_TIMEOUT_MS,
-    });
-  }
   if (provider === "openrouter") {
     return new OpenAI({
       apiKey,
@@ -94,11 +82,7 @@ function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
   const apiKey = overrideApiKey?.trim() || getEnvApiKey(provider);
   if (!apiKey) {
     const envVarName =
-      provider === "atlas"
-        ? "ATLAS_API_KEY"
-        : provider === "openrouter"
-          ? "OPENROUTER_API_KEY"
-          : "OPENAI_API_KEY";
+      provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
     throw new Error(
       `Missing ${getProviderLabel(provider)} API key. Set ${envVarName} or provide api_key in request.`,
     );
@@ -111,86 +95,6 @@ function buildMessages(systemPrompt: string, userPrompt: string) {
     { role: "system" as const, content: systemPrompt },
     { role: "user" as const, content: userPrompt },
   ];
-}
-
-function extractChatCompletionText(
-  content:
-    string | Array<{ type?: string; text?: string | null }> | null | undefined,
-): string {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (!Array.isArray(content)) {
-    return "";
-  }
-
-  return content
-    .map((part) =>
-      part?.type === "text" && typeof part.text === "string" ? part.text : "",
-    )
-    .join("");
-}
-
-function normalizeChatCompletionUsage(
-  usage:
-    | {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_tokens?: number;
-        prompt_tokens_details?: { cached_tokens?: number } | null;
-        completion_tokens_details?: { reasoning_tokens?: number } | null;
-      }
-    | null
-    | undefined,
-): GenerationTokenUsage | null {
-  if (!usage) {
-    return null;
-  }
-
-  const inputTokens = usage.prompt_tokens ?? 0;
-  const outputTokens = usage.completion_tokens ?? 0;
-  const totalTokens = usage.total_tokens ?? inputTokens + outputTokens;
-  const cachedInputTokens = usage.prompt_tokens_details?.cached_tokens;
-  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens;
-
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    ...(typeof cachedInputTokens === "number" ? { cachedInputTokens } : {}),
-    ...(typeof reasoningTokens === "number" ? { reasoningTokens } : {}),
-  };
-}
-
-function buildAtlasStructuredOutputPrompt(params: {
-  systemPrompt: string;
-  userPrompt: string;
-  schemaName: string;
-}): string {
-  if (params.schemaName === "diagram_graph") {
-    return [
-      params.userPrompt,
-      "",
-      "Return valid JSON only.",
-      'Schema name: "diagram_graph".',
-      "Use this exact shape:",
-      "{",
-      '  "groups": [{"id": "group_id", "label": "Group", "description": null}],',
-      '  "nodes": [{"id": "node_id", "label": "Node", "type": "Subsystem", "description": null, "groupId": null, "path": null, "shape": null}],',
-      '  "edges": [{"from": "source_id", "to": "target_id", "label": null, "description": null, "style": null}]',
-      "}",
-      "Required constraints:",
-      '- Always include "groups", "nodes", and "edges".',
-      "- Always include every object field. Use null instead of omitting optional fields.",
-      '- "shape" must be one of: box, database, queue, document, circle, hexagon, or null.',
-      '- "style" must be one of: solid, dashed, or null.',
-      "- IDs must match ^[a-z][a-z0-9_]*$.",
-      "- Return JSON only with no markdown fences or commentary.",
-    ].join("\n");
-  }
-
-  return `${params.userPrompt}\n\nReturn valid JSON only for schema "${params.schemaName}" with no markdown fences or commentary.`;
 }
 
 export function estimateTokens(text: string): number {
@@ -278,53 +182,6 @@ export async function streamCompletion({
   clientRequestId,
 }: StreamCompletionParams): Promise<StreamCompletionResult> {
   const client = createClient(provider, resolveApiKey(provider, apiKey));
-  if (provider === "atlas") {
-    const stream = await client.chat.completions.create(
-      {
-        model,
-        stream: true,
-        messages: buildMessages(systemPrompt, userPrompt),
-        ...(maxOutputTokens ? { max_tokens: maxOutputTokens } : {}),
-      },
-      buildRequestOptions({ provider, signal, clientRequestId }),
-    );
-
-    let usageSettled = false;
-    let resolveUsage!: (usage: GenerationTokenUsage | null) => void;
-    const usagePromise = new Promise<GenerationTokenUsage | null>((resolve) => {
-      resolveUsage = resolve;
-    });
-
-    async function* atlasOutputStream(): AsyncGenerator<string, void, void> {
-      let finalUsage: GenerationTokenUsage | null = null;
-      try {
-        for await (const chunk of stream) {
-          finalUsage = normalizeChatCompletionUsage(chunk.usage) ?? finalUsage;
-          const delta = chunk.choices[0]?.delta?.content;
-          if (typeof delta === "string" && delta) {
-            yield delta;
-          }
-        }
-
-        usageSettled = true;
-        resolveUsage(finalUsage);
-      } catch (error) {
-        usageSettled = true;
-        resolveUsage(null);
-        throw error;
-      } finally {
-        if (!usageSettled) {
-          resolveUsage(null);
-        }
-      }
-    }
-
-    return {
-      stream: atlasOutputStream(),
-      usagePromise,
-    };
-  }
-
   const stream = await client.responses.create(
     {
       model,
@@ -442,12 +299,6 @@ export async function countInputTokens({
   signal,
   clientRequestId,
 }: CountInputTokensParams): Promise<number> {
-  if (provider === "atlas") {
-    throw new Error(
-      "Atlas Cloud does not expose exact input token counting in this integration.",
-    );
-  }
-
   const client = createClient(provider, resolveApiKey(provider, apiKey));
 
   const response = await client.responses.inputTokens.count(
@@ -484,39 +335,6 @@ export async function generateStructuredOutput<T>({
   usage: GenerationTokenUsage | null;
 }> {
   const client = createClient(provider, resolveApiKey(provider, apiKey));
-
-  if (provider === "atlas") {
-    const response = await client.chat.completions.create(
-      {
-        model,
-        messages: buildMessages(
-          systemPrompt,
-          buildAtlasStructuredOutputPrompt({
-            systemPrompt,
-            userPrompt,
-            schemaName,
-          }),
-        ),
-        response_format: { type: "json_object" },
-        temperature: 0,
-        ...(maxOutputTokens ? { max_tokens: maxOutputTokens } : {}),
-      },
-      buildRequestOptions({ provider, signal, clientRequestId }),
-    );
-
-    const rawText = extractChatCompletionText(
-      response.choices[0]?.message?.content,
-    ).trim();
-    if (!rawText) {
-      throw new Error("Structured output parsing returned no parsed payload.");
-    }
-
-    return {
-      output: schema.parse(JSON.parse(rawText)),
-      rawText,
-      usage: normalizeChatCompletionUsage(response.usage),
-    };
-  }
 
   try {
     const response = await client.responses.parse(

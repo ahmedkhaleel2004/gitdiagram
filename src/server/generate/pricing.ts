@@ -32,7 +32,6 @@ interface RawResponseUsage {
 const DEFAULT_PRICING_MODEL = "gpt-5.6-terra";
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
-  "deepseek-v3-0324": { inputPerMillionUsd: 0.216, outputPerMillionUsd: 0.88 },
   "gpt-5.6-sol": { inputPerMillionUsd: 5.0, outputPerMillionUsd: 30.0 },
   "gpt-5.6-terra": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
   "gpt-5.6-luna": { inputPerMillionUsd: 1.0, outputPerMillionUsd: 6.0 },
@@ -92,7 +91,6 @@ export function resolvePricingModel(model: string): string {
   if (withoutDate.startsWith("gpt-5-nano")) return "gpt-5-nano";
   if (withoutDate.startsWith("gpt-5")) return "gpt-5";
   if (withoutDate.startsWith("o4-mini")) return "o4-mini";
-  if (withoutDate.startsWith("deepseek-v3-0324")) return "deepseek-v3-0324";
 
   return DEFAULT_PRICING_MODEL;
 }
