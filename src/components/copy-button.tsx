@@ -39,7 +39,7 @@ export function CopyButton({ onClick }: CopyButtonProps) {
           type="button"
           onClick={handleClick}
           aria-label={copied ? "Mermaid code copied" : "Copy Mermaid.js code"}
-          className="neo-button p-4 px-4 text-base sm:p-6 sm:px-6 sm:text-lg"
+          className="neo-button h-11 w-full px-3 text-sm sm:h-10 sm:w-auto sm:p-6 sm:px-6 sm:text-lg"
         >
           <span className="copy-button-content" aria-hidden="true">
             <span className="copy-button-state" data-active={!copied}>

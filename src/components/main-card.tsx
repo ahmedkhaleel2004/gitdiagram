@@ -104,10 +104,10 @@ export default function MainCard({
         ) : null}
 
         {!isHome && (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {!loading && (
               <>
-                <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4">
                   {onRegenerate && (
                     <button
                       type="button"
@@ -117,7 +117,7 @@ export default function MainCard({
                           ? "Regeneration is disabled for example repositories."
                           : undefined
                       }
-                      className={`flex items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-[background-color,transform] duration-150 ease-[var(--ease-out)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:active:opacity-80 sm:max-w-[250px] dark:text-black ${
+                      className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-md border-[3px] border-black px-2 py-2 text-sm leading-tight font-semibold text-black transition-[background-color,transform] duration-150 ease-[var(--ease-out)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:active:opacity-80 sm:min-h-0 sm:w-auto sm:max-w-[250px] sm:justify-between sm:px-4 sm:text-base sm:font-medium dark:text-black ${
                         isExampleRepoSelected
                           ? "cursor-not-allowed bg-purple-200 opacity-70 dark:bg-[#251b3a] dark:text-[hsl(var(--foreground))]"
                           : "bg-purple-300 hover:bg-purple-400 dark:border-[#2d1d4e] dark:bg-[hsl(var(--neo-subtle-muted))] dark:hover:bg-[hsl(var(--neo-subtle))]"
@@ -129,40 +129,42 @@ export default function MainCard({
                         onRegenerate();
                       }}
                     >
-                      Regenerate Diagram
+                      <span className="sm:hidden">Regenerate</span>
+                      <span className="hidden sm:inline">
+                        Regenerate Diagram
+                      </span>
                     </button>
                   )}
                   {hasDiagram && onCopy && onExportImage && (
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleDropdownToggle("export");
-                        }}
-                        aria-expanded={activeDropdown === "export"}
-                        className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border-[3px] border-black px-4 py-2 font-medium text-black transition-[background-color,transform] duration-150 ease-[var(--ease-out)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:active:opacity-80 sm:max-w-[250px] dark:text-black ${
-                          activeDropdown === "export"
-                            ? "bg-purple-400 dark:border-[#2d1d4e] dark:bg-[hsl(var(--neo-button))]"
-                            : "bg-purple-300 hover:bg-purple-400 dark:border-[#2d1d4e] dark:bg-[hsl(var(--neo-subtle-muted))] dark:hover:bg-[hsl(var(--neo-button-hover))]"
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleDropdownToggle("export");
+                      }}
+                      aria-expanded={activeDropdown === "export"}
+                      className={`flex min-h-11 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border-[3px] border-black px-2 py-2 text-sm leading-tight font-semibold text-black transition-[background-color,transform] duration-150 ease-[var(--ease-out)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:active:opacity-80 sm:min-h-0 sm:w-auto sm:max-w-[250px] sm:justify-between sm:gap-2 sm:px-4 sm:text-base sm:font-medium dark:text-black ${
+                        activeDropdown === "export"
+                          ? "bg-purple-400 dark:border-[#2d1d4e] dark:bg-[hsl(var(--neo-button))]"
+                          : "bg-purple-300 hover:bg-purple-400 dark:border-[#2d1d4e] dark:bg-[hsl(var(--neo-subtle-muted))] dark:hover:bg-[hsl(var(--neo-button-hover))]"
+                      }`}
+                    >
+                      <span className="sm:hidden">Export</span>
+                      <span className="hidden sm:inline">Export Diagram</span>
+                      <ChevronDown
+                        size={20}
+                        aria-hidden="true"
+                        className={`size-4 transition-transform duration-150 ease-[var(--ease-in-out)] motion-reduce:rotate-0 sm:size-5 ${
+                          activeDropdown === "export" ? "rotate-180" : ""
                         }`}
-                      >
-                        <span>Export Diagram</span>
-                        <ChevronDown
-                          size={20}
-                          aria-hidden="true"
-                          className={`transition-transform duration-150 ease-[var(--ease-in-out)] motion-reduce:rotate-0 ${
-                            activeDropdown === "export" ? "rotate-180" : ""
-                          }`}
-                        />
-                      </button>
-                    </div>
+                      />
+                    </button>
                   )}
                   {hasDiagram && (
-                    <>
+                    <div className="col-span-2 flex min-h-11 w-full items-center justify-between gap-4 border-t-2 border-black/15 pt-3 sm:min-h-0 sm:w-auto sm:border-0 sm:pt-0 dark:border-white/15">
                       <label
                         htmlFor="zoom-toggle"
-                        className="font-medium text-black dark:text-neutral-100"
+                        className="text-sm font-semibold text-black sm:text-base sm:font-medium dark:text-neutral-100"
                       >
                         Enable Zoom
                       </label>
@@ -171,7 +173,7 @@ export default function MainCard({
                         checked={zoomingEnabled}
                         onCheckedChange={onZoomToggle}
                       />
-                    </>
+                    </div>
                   )}
                 </div>
 
