@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
 import { GitHubIcon } from "~/components/icons/github-icon";
-import { useHydrated } from "~/hooks/use-hydrated";
 import { GITHUB_REPO_URL } from "~/lib/site";
 
 import { ThemeToggle } from "./theme-toggle";
@@ -63,19 +62,20 @@ function MobileMenuStarCount({ starCount }: HeaderClientProps) {
 
 export function HeaderClient({ starCount }: HeaderClientProps) {
   const pathname = usePathname();
-  const hydrated = useHydrated();
   const [isPrivateReposDialogOpen, setIsPrivateReposDialogOpen] =
     useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const isBrowsePage = hydrated && pathname === "/browse";
-  const showMobileGithubButton = hydrated && (pathname === "/" || isBrowsePage);
+  // pathname is identical on server and client for full-page loads (the proxy
+  // never rewrites URLs), so these can render at SSR without mismatch risk.
+  const isBrowsePage = pathname === "/browse";
+  const showMobileGithubButton = pathname === "/" || isBrowsePage;
 
   return (
     <header className="border-b-[3px] border-black dark:border-black">
       <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-8">
         <Link href="/" className="flex items-center">
-          <span className="text-xl font-semibold sm:text-xl">
+          <span className="text-[clamp(1.25rem,6vw,1.5rem)] font-semibold sm:text-xl">
             <span className="text-black transition-colors duration-200 hover:text-gray-600 dark:text-white dark:hover:text-[hsl(var(--neo-button-hover))]">
               Git
             </span>

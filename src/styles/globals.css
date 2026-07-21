@@ -214,6 +214,32 @@
     transition-duration: 120ms;
   }
 
+  /* Scale the hard shadows down with the viewport: 8px/4px offsets are
+     proportionate on desktop but read as bulk on a ~400px screen. */
+  @media (max-width: 39.9375rem) {
+    .neo-panel {
+      box-shadow: 5px 5px 0 0 #000 !important;
+    }
+
+    .neo-input,
+    .neo-button,
+    .neo-button-muted,
+    .browse-muted-button {
+      box-shadow: 3px 3px 0 0 #000 !important;
+    }
+
+    .dark .neo-panel,
+    .dark .neo-input {
+      box-shadow: 5px 5px 0 0 #0d0a19 !important;
+    }
+
+    .dark .neo-button,
+    .dark .neo-button-muted,
+    .dark .browse-muted-button {
+      box-shadow: 3px 3px 0 0 #0d0a19 !important;
+    }
+  }
+
   .neo-lift:active {
     transform: translateY(1px) scale(0.97);
   }

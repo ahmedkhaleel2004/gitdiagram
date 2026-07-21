@@ -80,18 +80,18 @@ export default function MainCard({
 
   return (
     <div className="neo-panel relative w-full max-w-3xl rounded-lg !bg-[hsl(var(--neo-panel))] p-4 sm:p-8">
-      <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <Input
             placeholder="owner/repo or GitHub URL"
-            className="neo-input min-w-0 flex-1 rounded-md px-3 py-4 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
+            className="neo-input h-14 min-w-0 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:h-10 sm:flex-1 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
             required
           />
           <Button
             type="submit"
-            className="neo-button p-4 px-4 text-base sm:p-6 sm:px-6 sm:text-lg"
+            className="neo-button h-14 px-4 text-base sm:h-10 sm:p-6 sm:px-6 sm:text-lg"
           >
             Diagram
           </Button>
@@ -192,7 +192,7 @@ export default function MainCard({
 
         {isHome && (
           <div className="space-y-4">
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               <div className="text-sm font-medium text-gray-700 sm:text-base dark:text-neutral-300">
                 Try these example repositories:
               </div>
@@ -202,7 +202,11 @@ export default function MainCard({
                     key={name}
                     type="button"
                     variant="outline"
-                    className="border-2 border-black bg-purple-400 text-sm text-black hover:bg-purple-300 sm:text-base dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]"
+                    className={`h-9 border-2 border-black bg-purple-400 px-3 text-sm font-semibold text-black hover:bg-purple-300 sm:h-10 sm:px-4 sm:text-base sm:font-medium dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19] ${
+                      name === "Streamlit" || name === "api-analytics"
+                        ? "hidden sm:inline-flex"
+                        : ""
+                    }`}
                     onClick={(e) => handleExampleClick(path, e)}
                   >
                     {name}
