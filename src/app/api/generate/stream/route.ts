@@ -83,7 +83,12 @@ import {
   createCostSummary,
   sumGenerationUsage,
 } from "~/server/generate/pricing";
+import {
+  consumeGenerationRateLimit,
+  getGenerationRateLimitMessage,
+} from "~/server/generate/rate-limit";
 import { parseGenerateRequest } from "~/server/generate/types";
+import { getClientIp } from "~/server/http/client-ip";
 import { resolveRequestCredentials } from "~/server/http/request-credentials";
 
 export const runtime = "nodejs";
@@ -137,6 +142,31 @@ export async function POST(request: Request) {
     apiKey: parsed.data.api_key,
     githubPat: parsed.data.github_pat,
   });
+
+  // Generations billed to the server's own key are the ones that can drain the
+  // shared daily budget, so they are the ones worth throttling per caller.
+  if (!apiKey?.trim()) {
+    const rateLimit = await consumeGenerationRateLimit({
+      clientIp: getClientIp(request),
+    });
+    if (!rateLimit.allowed) {
+      return Response.json(
+        {
+          ok: false,
+          error: getGenerationRateLimitMessage(rateLimit.retryAfterSeconds),
+          error_code: "RATE_LIMITED",
+        },
+        {
+          status: 429,
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Retry-After": String(rateLimit.retryAfterSeconds),
+          },
+        },
+      );
+    }
+  }
 
   const sessionId = requestedSessionId ?? randomUUID();
   let cancellationRegistered = false;

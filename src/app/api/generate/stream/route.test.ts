@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   generateStructuredOutput: vi.fn(),
   getGithubData: vi.fn(),
   persistAudit: vi.fn(),
+  consumeRateLimit: vi.fn(),
   registerActiveGeneration: vi.fn(),
   resolveRequestCredentials: vi.fn(),
   saveDiagram: vi.fn(),
@@ -78,6 +79,10 @@ vi.mock("~/server/generate/openai", () => ({
 vi.mock("~/server/http/request-credentials", () => ({
   resolveRequestCredentials: mocks.resolveRequestCredentials,
 }));
+vi.mock("~/server/generate/rate-limit", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  consumeGenerationRateLimit: mocks.consumeRateLimit,
+}));
 import { POST } from "~/app/api/generate/stream/route";
 
 const estimateCostSummary = {
@@ -129,6 +134,10 @@ describe("POST /api/generate/stream", () => {
       isPrivate: false,
       stargazerCount: 10,
     });
+    mocks.consumeRateLimit.mockResolvedValue({
+      allowed: true,
+      retryAfterSeconds: 0,
+    });
     mocks.persistAudit.mockResolvedValue(undefined);
     mocks.clearFailureSummary.mockResolvedValue(undefined);
     mocks.saveDiagram.mockResolvedValue(true);
@@ -170,6 +179,42 @@ describe("POST /api/generate/stream", () => {
         return mocks.stopCancellationPolling;
       },
     );
+  });
+
+  it("throttles a complimentary caller before spending any upstream work", async () => {
+    mockEstimate(1_000);
+    mocks.consumeRateLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 900,
+    });
+
+    const response = await POST(request());
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("900");
+    expect(body.error_code).toBe("RATE_LIMITED");
+    expect(body.error).toContain("15 minutes");
+    // Nothing downstream of the limiter may run: no GitHub fetch, no quota
+    // reservation, no model call.
+    expect(mocks.getGithubData).not.toHaveBeenCalled();
+    expect(mocks.admitQuota).not.toHaveBeenCalled();
+    expect(mocks.streamCompletion).not.toHaveBeenCalled();
+  });
+
+  it("does not throttle a caller who brings their own API key", async () => {
+    mockEstimate(1_000);
+    mocks.resolveRequestCredentials.mockResolvedValue({ apiKey: "sk-user" });
+    mocks.consumeRateLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 900,
+    });
+
+    const response = await POST(request());
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(mocks.consumeRateLimit).not.toHaveBeenCalled();
   });
 
   it("rejects an oversized repository before reserving complimentary quota", async () => {

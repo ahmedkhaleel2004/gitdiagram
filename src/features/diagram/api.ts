@@ -109,8 +109,15 @@ export async function streamDiagramGeneration(
 
     if (!response.ok) {
       if (response.status === 429) {
+        // Our own limiter explains how long the wait is; the platform WAF
+        // returns HTML, so fall back to a generic message for it.
+        const throttled = await response
+          .json()
+          .then((data) => (data as DiagramStreamMessage).error)
+          .catch(() => undefined);
         throw new Error(
-          "Too many generation requests. Please wait and try again.",
+          throttled ??
+            "Too many generation requests. Please wait and try again.",
         );
       }
 
