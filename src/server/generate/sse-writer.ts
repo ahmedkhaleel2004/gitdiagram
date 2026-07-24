@@ -73,7 +73,13 @@ export function createGenerationSseWriter(params: {
         return false;
       }
     });
-    writeTail = write.then(() => undefined);
+    // The tail must never reject: a poisoned chain would make every later write
+    // and the final close() throw, leaving the response open until the platform
+    // timeout instead of delivering a terminal event.
+    writeTail = write.then(
+      () => undefined,
+      () => undefined,
+    );
     return write;
   };
 

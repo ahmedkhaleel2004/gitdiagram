@@ -14,7 +14,10 @@ export const githubRepoSchema = z
   .trim()
   .min(1)
   .max(100)
-  .regex(/^[A-Za-z0-9._-]+$/u);
+  .regex(/^[A-Za-z0-9._-]+$/u)
+  // "." and ".." are legal under the character rule but resolve away when
+  // interpolated into a GitHub API path, retargeting the request.
+  .refine((value) => value !== "." && value !== "..");
 export const credentialSchema = z.string().trim().min(1).max(2_048);
 
 export const generationSessionIdSchema = z.uuid();
