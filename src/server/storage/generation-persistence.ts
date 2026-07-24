@@ -12,9 +12,11 @@ import {
   updatePublicBrowseIndexForSuccessfulDiagram,
 } from "./diagram-state";
 import { writePublicDiagramPreview } from "./artifact-store";
+import { canPersistVisibility } from "./cache-key";
 import {
   getPublicDiagramStateCacheTag,
   getRepoPagePath,
+  getRequestedRepoPagePath,
 } from "./repo-page-cache";
 import type { ArtifactVisibility } from "./types";
 
@@ -37,6 +39,23 @@ export async function persistGenerationResult(params: {
   recordTiming: (stage: string, startedAt: number) => void;
 }): Promise<string | undefined> {
   const persistenceStartedAt = performance.now();
+
+  // The server's own GitHub credential can reach private repositories the
+  // caller never authenticated for. There is no destination for that result:
+  // the public bucket would expose it, and the private bucket is namespaced by
+  // the caller's token. Skip persistence rather than write something unreadable.
+  if (!canPersistVisibility(params)) {
+    console.info(
+      JSON.stringify({
+        event: "generate.persistence.skipped_private_without_token",
+        session_id: params.audit.sessionId,
+      }),
+    );
+    params.recordTiming("persistence", persistenceStartedAt);
+    return params.successfulDiagramState && params.audit.status === "succeeded"
+      ? "This private repository was read with GitDiagram's own GitHub access, so the diagram cannot be cached. Connect your own GitHub token to keep it."
+      : undefined;
+  }
 
   try {
     if (params.successfulDiagramState && params.audit.status === "succeeded") {
@@ -100,7 +119,18 @@ export async function persistGenerationResult(params: {
         });
         params.postResponseTasks.push(async () => {
           try {
-            revalidatePath(getRepoPagePath(params.username, params.repo));
+            const normalizedPath = getRepoPagePath(
+              params.username,
+              params.repo,
+            );
+            const requestedPath = getRequestedRepoPagePath(
+              params.username,
+              params.repo,
+            );
+            revalidatePath(normalizedPath);
+            if (requestedPath !== normalizedPath) {
+              revalidatePath(requestedPath);
+            }
             revalidateTag(
               getPublicDiagramStateCacheTag(params.username, params.repo),
               "max",

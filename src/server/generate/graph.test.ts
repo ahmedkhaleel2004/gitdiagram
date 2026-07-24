@@ -389,6 +389,63 @@ describe("compileDiagramGraph", () => {
     }
   });
 
+  it("neutralizes backticks so a label cannot become a markdown string", async () => {
+    // A leading backtick makes Mermaid read the quoted label as a markdown
+    // string, which fails to lex and takes the whole diagram down. Labels like
+    // "`pnpm` runner" are ordinary model output, so they must stay inert.
+    const backtickLabels = [
+      "`pnpm` runner",
+      "`**bold**`",
+      "single ` tick",
+      "a`b`c",
+    ];
+
+    for (const [index, label] of backtickLabels.entries()) {
+      const diagram = compileDiagramGraph({
+        username: "acme",
+        repo: "demo",
+        branch: "main",
+        graph: {
+          groups: [{ id: `group_${index}`, label, description: null }],
+          nodes: [
+            {
+              id: `node_${index}`,
+              label,
+              type: "service",
+              description: null,
+              groupId: `group_${index}`,
+              path: null,
+              shape: "box",
+            },
+            {
+              id: `target_${index}`,
+              label: "Target",
+              type: "component",
+              description: null,
+              groupId: null,
+              path: null,
+              shape: "box",
+            },
+          ],
+          edges: [
+            {
+              from: `node_${index}`,
+              to: `target_${index}`,
+              label,
+              description: null,
+              style: "solid",
+            },
+          ],
+        },
+      });
+
+      expect(diagram).not.toContain("`");
+      await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+        valid: true,
+      });
+    }
+  });
+
   it("builds deterministic Mermaid with click urls", async () => {
     const diagram = compileDiagramGraph({
       graph: {

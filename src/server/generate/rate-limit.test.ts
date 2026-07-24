@@ -14,6 +14,8 @@ import {
   getGenerationRateLimitMax,
   getGenerationRateLimitMessage,
   getGenerationRateLimitWindowSeconds,
+  refundGenerationRateLimit,
+  toRateLimitBucket,
 } from "~/server/generate/rate-limit";
 
 const originalEnv = { ...process.env };
@@ -98,5 +100,61 @@ describe("consumeGenerationRateLimit", () => {
     await expect(
       consumeGenerationRateLimit({ clientIp: "203.0.113.7" }),
     ).resolves.toEqual({ allowed: true, retryAfterSeconds: 0 });
+  });
+});
+
+describe("toRateLimitBucket", () => {
+  it("leaves IPv4 addresses alone", () => {
+    expect(toRateLimitBucket("203.0.113.7")).toBe("203.0.113.7");
+  });
+
+  it("collapses an IPv6 address to its /64 prefix", () => {
+    // A single allocation spans the whole /64, so every address inside it has
+    // to share one bucket or the limiter is trivially bypassed.
+    expect(toRateLimitBucket("2001:db8:1:2:3:4:5:6")).toBe(
+      "2001:0db8:0001:0002::/64",
+    );
+    expect(toRateLimitBucket("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe(
+      toRateLimitBucket("2001:db8:1:2:1111:2222:3333:4444"),
+    );
+    expect(toRateLimitBucket("2001:db8:1:3::1")).not.toBe(
+      toRateLimitBucket("2001:db8:1:2::1"),
+    );
+  });
+
+  it("expands compressed forms before truncating", () => {
+    expect(toRateLimitBucket("2001:db8::1")).toBe("2001:0db8:0000:0000::/64");
+    expect(toRateLimitBucket("::1")).toBe("0000:0000:0000:0000::/64");
+  });
+
+  it("does not reshape an embedded IPv4 literal", () => {
+    expect(toRateLimitBucket("::ffff:203.0.113.7")).toBe("::ffff:203.0.113.7");
+  });
+});
+
+describe("refundGenerationRateLimit", () => {
+  it("returns a slot consumed by a request that never reached a model call", async () => {
+    upstashEval.mockResolvedValue(1);
+
+    await refundGenerationRateLimit({ clientIp: "203.0.113.7" });
+
+    expect(upstashEval).toHaveBeenCalledWith(
+      expect.objectContaining({ keys: ["ratelimit:v1:generate:203.0.113.7"] }),
+    );
+  });
+
+  it("skips the round trip when the caller is unattributable", async () => {
+    await refundGenerationRateLimit({ clientIp: null });
+
+    expect(upstashEval).not.toHaveBeenCalled();
+  });
+
+  it("swallows Redis failures so a refund cannot fail the response", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    upstashEval.mockRejectedValue(new Error("upstash unavailable"));
+
+    await expect(
+      refundGenerationRateLimit({ clientIp: "203.0.113.7" }),
+    ).resolves.toBeUndefined();
   });
 });

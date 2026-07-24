@@ -48,8 +48,62 @@ export function getGenerationRateLimitWindowSeconds(): number {
   );
 }
 
+export const GENERATION_RATE_LIMIT_REFUND_SCRIPT = `
+local key = KEYS[1]
+local count = tonumber(redis.call("GET", key))
+if not count or count <= 0 then
+  return 0
+end
+
+-- DECR leaves the TTL alone, so the window still closes on its original clock.
+redis.call("DECR", key)
+return 1
+`;
+
+/**
+ * Collapses an IPv6 address to its /64 prefix.
+ *
+ * A residential IPv6 allocation is a whole /64 or larger, so keying the limiter
+ * on the full /128 lets one client occupy an effectively unlimited number of
+ * buckets. IPv4 (and IPv4-mapped) addresses are returned unchanged.
+ */
+export function toRateLimitBucket(clientIp: string): string {
+  if (!clientIp.includes(":")) {
+    return clientIp;
+  }
+
+  const [head, tail] = clientIp.split("::", 2);
+  const headGroups = head ? head.split(":").filter(Boolean) : [];
+  const tailGroups = tail ? tail.split(":").filter(Boolean) : [];
+  // An embedded IPv4 literal is not a plain hextet, so leave the address whole
+  // rather than risk mangling it into a different prefix.
+  if ([...headGroups, ...tailGroups].some((group) => group.includes("."))) {
+    return clientIp;
+  }
+
+  const groups =
+    tail === undefined
+      ? headGroups
+      : [
+          ...headGroups,
+          ...Array.from(
+            { length: Math.max(8 - headGroups.length - tailGroups.length, 0) },
+            () => "0",
+          ),
+          ...tailGroups,
+        ];
+  if (groups.length < 8) {
+    return clientIp;
+  }
+
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.padStart(4, "0"))
+    .join(":")}::/64`;
+}
+
 export function buildGenerationRateLimitKey(clientIp: string): string {
-  return `ratelimit:v1:generate:${encodeURIComponent(clientIp)}`;
+  return `ratelimit:v1:generate:${encodeURIComponent(toRateLimitBucket(clientIp))}`;
 }
 
 export function getGenerationRateLimitMessage(
@@ -100,5 +154,34 @@ export async function consumeGenerationRateLimit(params: {
       }),
     );
     return { allowed: true, retryAfterSeconds: 0 };
+  }
+}
+
+/**
+ * Returns a consumed slot when the request is rejected before any billable work
+ * starts. The limiter runs first on purpose — it also shields the cancellation
+ * registration behind it — so a caller who is turned away by a session conflict
+ * or an unavailable Redis must not lose quota they never spent.
+ */
+export async function refundGenerationRateLimit(params: {
+  clientIp: string | null;
+}): Promise<void> {
+  if (!params.clientIp) {
+    return;
+  }
+
+  try {
+    await upstashEval<number>({
+      script: GENERATION_RATE_LIMIT_REFUND_SCRIPT,
+      keys: [buildGenerationRateLimitKey(params.clientIp)],
+      args: [],
+    });
+  } catch {
+    console.warn(
+      JSON.stringify({
+        event: "generate.rate_limit.refund_failed",
+        error: "Rate limit refund failed; the slot stays consumed.",
+      }),
+    );
   }
 }

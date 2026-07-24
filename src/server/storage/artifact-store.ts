@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import type { GenerationSessionAudit } from "~/features/diagram/graph";
 import {
-  getPrivateLocation,
   getPublicPreviewKey,
   getReadLocations,
   getPublicLocation,
+  getWriteLocation,
   type StorageLocation,
 } from "~/server/storage/cache-key";
 import {
@@ -231,10 +231,7 @@ export async function writeDiagramArtifact(params: {
   latestSessionSummary: GenerationSessionAudit;
   lastSuccessfulAt: string;
 }): Promise<boolean> {
-  const location =
-    params.visibility === "private"
-      ? getPrivateLocation(params.username, params.repo, params.githubPat ?? "")
-      : getPublicLocation(params.username, params.repo);
+  const location = getWriteLocation(params);
 
   const artifact: DiagramArtifact = {
     version: 1,
@@ -280,10 +277,7 @@ export async function updateArtifactLatestSessionSummary(params: {
   visibility: ArtifactVisibility;
   latestSessionSummary: GenerationSessionAudit;
 }): Promise<boolean> {
-  const location =
-    params.visibility === "private"
-      ? getPrivateLocation(params.username, params.repo, params.githubPat ?? "")
-      : getPublicLocation(params.username, params.repo);
+  const location = getWriteLocation(params);
 
   return withDistributedLock({
     key: getArtifactLockKey(location),

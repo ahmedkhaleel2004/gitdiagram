@@ -1,9 +1,8 @@
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import type { GenerationSessionAudit } from "~/features/diagram/graph";
 import {
-  getPrivateLocation,
   getReadLocations,
-  getPublicLocation,
+  getWriteLocation,
   type StorageLocation,
 } from "~/server/storage/cache-key";
 import { upstashCommand } from "~/server/storage/upstash";
@@ -62,10 +61,7 @@ export async function writeFailureSummary(params: {
   visibility: ArtifactVisibility;
   latestSessionSummary: GenerationSessionAudit;
 }): Promise<void> {
-  const location =
-    params.visibility === "private"
-      ? getPrivateLocation(params.username, params.repo, params.githubPat ?? "")
-      : getPublicLocation(params.username, params.repo);
+  const location = getWriteLocation(params);
 
   const summary: StoredFailureSummary = {
     version: 1,
@@ -90,10 +86,7 @@ export async function clearFailureSummary(params: {
   githubPat?: string;
   visibility: ArtifactVisibility;
 }): Promise<void> {
-  const location =
-    params.visibility === "private"
-      ? getPrivateLocation(params.username, params.repo, params.githubPat ?? "")
-      : getPublicLocation(params.username, params.repo);
+  const location = getWriteLocation(params);
 
   await upstashCommand(["DEL", location.statusKey]);
 }

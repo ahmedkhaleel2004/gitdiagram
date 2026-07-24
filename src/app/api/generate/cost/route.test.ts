@@ -5,6 +5,12 @@ const mocks = vi.hoisted(() => ({
   estimateCost: vi.fn(),
   getGithubData: vi.fn(),
   resolveRequestCredentials: vi.fn(),
+  consumeRateLimit: vi.fn(),
+}));
+
+vi.mock("~/server/generate/rate-limit", () => ({
+  consumeGenerationRateLimit: mocks.consumeRateLimit,
+  getGenerationRateLimitMessage: vi.fn(() => "Too many free generations."),
 }));
 
 vi.mock("~/server/generate/cost-estimate", () => ({
@@ -47,6 +53,10 @@ function request() {
 describe("POST /api/generate/cost", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.consumeRateLimit.mockResolvedValue({
+      allowed: true,
+      retryAfterSeconds: 0,
+    });
     mocks.resolveRequestCredentials.mockImplementation(
       async (
         _request: Request,
@@ -100,6 +110,91 @@ describe("POST /api/generate/cost", () => {
     expect(mocks.estimateCost).toHaveBeenCalledWith(
       expect.objectContaining({ apiKey: "cookie-openai-key" }),
     );
+  });
+
+  it("rejects a cross-origin caller before touching GitHub", async () => {
+    // Estimation runs the same GitHub ingestion as a real generation, so an
+    // open endpoint drains the server's shared API budget.
+    const crossOrigin = new Request("https://gitdiagram.com/api/generate/cost", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://evil.example",
+        "Sec-Fetch-Site": "cross-site",
+      },
+      body: JSON.stringify({ username: "openai", repo: "openai-node" }),
+    });
+
+    const response = await POST(crossOrigin);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "CROSS_ORIGIN_FORBIDDEN",
+    });
+    expect(mocks.getGithubData).not.toHaveBeenCalled();
+  });
+
+  it("throttles callers on the server's own key", async () => {
+    mocks.consumeRateLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 900,
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "RATE_LIMITED",
+    });
+    expect(mocks.getGithubData).not.toHaveBeenCalled();
+  });
+
+  it("does not throttle a caller paying with their own key", async () => {
+    mocks.resolveRequestCredentials.mockResolvedValueOnce({
+      apiKey: "caller-owned-key",
+    });
+    mocks.estimateCost.mockResolvedValue({
+      costSummary: { display: "$0.0100 USD" },
+      pricingModel: "gpt-5.6-terra",
+      estimatedInputTokens: 100,
+      estimatedOutputTokens: 200,
+      pricing: { inputPerMillionUsd: 1, outputPerMillionUsd: 2 },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.consumeRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("does not echo raw upstream failure text to the caller", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.getGithubData.mockRejectedValue(
+      new Error('GitHub request failed (403): {"message":"rate limit"}'),
+    );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe(
+      "Failed to estimate generation cost. Please retry.",
+    );
+    expect(body.error).not.toContain("rate limit");
+  });
+
+  it("still surfaces the actionable repository errors verbatim", async () => {
+    mocks.getGithubData.mockRejectedValue(new Error("Repository not found."));
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Repository not found.",
+      error_code: "REPOSITORY_NOT_FOUND",
+    });
   });
 
   afterEach(() => {

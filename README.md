@@ -36,7 +36,7 @@ There is no separate FastAPI implementation, Postgres database, or Neon runtime.
 
 Vercel serves both the UI and the generation endpoints:
 
-- `/api/generate/cost` estimates a run after bounded GitHub ingestion.
+- `/api/generate/cost` estimates a run after bounded GitHub ingestion, same-origin and rate limited.
 - `/api/generate/stream` streams Server-Sent Events for explanation and graph progress.
 - `/api/generate/cancel` records authenticated, same-origin cancellation signals.
 - `/api/diagram-state` reads and writes the persisted result contract.

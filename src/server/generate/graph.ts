@@ -217,6 +217,11 @@ function escapeMermaidText(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
+    // A label that opens with a backtick turns the whole quoted string into a
+    // Mermaid markdown string, which fails to lex and takes the entire diagram
+    // down. Nothing downstream parses Mermaid on the server, so an unescaped
+    // backtick would be persisted and break the artifact for every later reader.
+    .replace(/`/g, "&#96;")
     .replace(/\\/g, "&#92;")
     .replace(/\|/g, "&#124;")
     .replace(/\[/g, "&#91;")

@@ -17,8 +17,14 @@ import {
   getProvider,
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
+import {
+  consumeGenerationRateLimit,
+  getGenerationRateLimitMessage,
+} from "~/server/generate/rate-limit";
 import { parseGenerateRequest } from "~/server/generate/types";
+import { getClientIp } from "~/server/http/client-ip";
 import { resolveRequestCredentials } from "~/server/http/request-credentials";
+import { isSameOriginRequest } from "~/server/http/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +52,20 @@ export async function POST(request: Request) {
   const signal = AbortSignal.any([request.signal, deadlineSignal]);
 
   try {
+    // Estimation runs the same bounded GitHub ingestion as a real generation,
+    // so an unguarded endpoint lets anyone drain the server's shared GitHub
+    // API budget and take generation down for everybody.
+    if (!isSameOriginRequest(request)) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: "Cross-origin cost estimation is not allowed.",
+          error_code: "CROSS_ORIGIN_FORBIDDEN",
+        },
+        { status: 403, requestId },
+      );
+    }
+
     const parsed = await parseGenerateRequest(request);
     if (!parsed.success) {
       return jsonResponse(
@@ -63,6 +83,24 @@ export async function POST(request: Request) {
       apiKey: parsed.data.api_key,
       githubPat: parsed.data.github_pat,
     });
+
+    // Callers on their own key pay for their own usage; everyone else shares
+    // the server's GitHub budget, exactly as in the stream route.
+    if (!apiKey?.trim()) {
+      const rateLimit = await consumeGenerationRateLimit({
+        clientIp: getClientIp(request),
+      });
+      if (!rateLimit.allowed) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: getGenerationRateLimitMessage(rateLimit.retryAfterSeconds),
+            error_code: "RATE_LIMITED",
+          },
+          { status: 429, requestId },
+        );
+      }
+    }
     const provider = getProvider();
     const model = getModel(provider);
 
@@ -132,10 +170,26 @@ export async function POST(request: Request) {
     const repositoryTooLarge = message === REPOSITORY_TOO_LARGE_ERROR;
     const repositoryNotFound = message === "Repository not found.";
 
+    if (!timedOut && !repositoryTooLarge && !repositoryNotFound) {
+      // Upstream failures carry raw GitHub and provider response bodies. Log
+      // them, but hand the caller a fixed message like the stream route does.
+      console.error(
+        JSON.stringify({
+          event: "generate.cost.failed",
+          request_id: requestId,
+          error: message,
+        }),
+      );
+    }
+
     return jsonResponse(
       {
         ok: false,
-        error: timedOut ? "Cost estimation timed out. Please retry." : message,
+        error: timedOut
+          ? "Cost estimation timed out. Please retry."
+          : repositoryTooLarge || repositoryNotFound
+            ? message
+            : "Failed to estimate generation cost. Please retry.",
         error_code: timedOut
           ? "GENERATION_TIMEOUT"
           : repositoryTooLarge

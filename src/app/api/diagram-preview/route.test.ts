@@ -60,6 +60,42 @@ describe("GET /api/diagram-preview", () => {
     });
   });
 
+  it("rejects a malformed repository identifier before reaching storage", async () => {
+    const response = await GET(
+      new NextRequest(
+        "https://gitdiagram.com/api/diagram-preview?username=not%20a%20user&repo=demo",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.getPreview).not.toHaveBeenCalled();
+  });
+
+  it("bounds the timestamp so an oversized value cannot reach storage", async () => {
+    const response = await GET(
+      new NextRequest(
+        `https://gitdiagram.com/api/diagram-preview?username=acme&repo=demo&lastSuccessfulAt=${"9".repeat(500)}`,
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.getPreview).not.toHaveBeenCalled();
+  });
+
+  it("answers a storage outage with 503 rather than an unhandled failure", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.getPreview.mockRejectedValue(new Error("R2 unavailable"));
+
+    const response = await GET(
+      new NextRequest(
+        "https://gitdiagram.com/api/diagram-preview?username=acme&repo=demo",
+      ),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
   it("does not rewrite a matching sidecar", async () => {
     mocks.getPreview.mockResolvedValue({
       diagram: "flowchart TD",

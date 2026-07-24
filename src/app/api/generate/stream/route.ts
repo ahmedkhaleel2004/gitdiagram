@@ -86,6 +86,7 @@ import {
 import {
   consumeGenerationRateLimit,
   getGenerationRateLimitMessage,
+  refundGenerationRateLimit,
 } from "~/server/generate/rate-limit";
 import { parseGenerateRequest } from "~/server/generate/types";
 import { getClientIp } from "~/server/http/client-ip";
@@ -145,9 +146,14 @@ export async function POST(request: Request) {
 
   // Generations billed to the server's own key are the ones that can drain the
   // shared daily budget, so they are the ones worth throttling per caller.
+  const rateLimitedClientIp = apiKey?.trim() ? null : getClientIp(request);
+  // Returned on the early-reject paths below, which cost the caller a slot
+  // without ever reaching a billable model call.
+  const refundRateLimit = () =>
+    refundGenerationRateLimit({ clientIp: rateLimitedClientIp });
   if (!apiKey?.trim()) {
     const rateLimit = await consumeGenerationRateLimit({
-      clientIp: getClientIp(request),
+      clientIp: rateLimitedClientIp,
     });
     if (!rateLimit.allowed) {
       return Response.json(
@@ -184,6 +190,7 @@ export async function POST(request: Request) {
           error: "Cancellation registration is temporarily unavailable.",
         }),
       );
+      await refundRateLimit();
       return Response.json(
         {
           ok: false,
@@ -201,6 +208,7 @@ export async function POST(request: Request) {
     }
 
     if (!cancellationRegistered) {
+      await refundRateLimit();
       return Response.json(
         {
           ok: false,
