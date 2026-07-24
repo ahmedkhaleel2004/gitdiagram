@@ -141,6 +141,29 @@ describe("generation cancellation", () => {
     stop();
   });
 
+  it("backs off after the window where a user is most likely to cancel", async () => {
+    vi.useFakeTimers();
+    mocks.upstashCommand.mockResolvedValue(null);
+    const stop = startGenerationCancellationPolling({
+      sessionId: "550e8400-e29b-41d4-a716-446655440000",
+      onCancelled: vi.fn(),
+    });
+
+    // First 15s stay at one poll per second: 1 immediate + 15 scheduled.
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(mocks.upstashCommand).toHaveBeenCalledTimes(16);
+
+    // The next 45s drop to one poll every 3s rather than another 45 requests.
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(mocks.upstashCommand).toHaveBeenCalledTimes(31);
+
+    // A flat 1s poll would have issued 220 requests over a full-length
+    // generation; the backoff keeps the whole run well under a quarter of that.
+    await vi.advanceTimersByTimeAsync(160_000);
+    expect(mocks.upstashCommand.mock.calls.length).toBeLessThan(70);
+    stop();
+  });
+
   it("keeps polling after a failure and logs only sanitized context", async () => {
     vi.useFakeTimers();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);

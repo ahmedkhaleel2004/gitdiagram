@@ -2,7 +2,26 @@ import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
 export const GENERATION_CANCELLATION_TTL_SECONDS = 10 * 60;
 export const GENERATION_ACTIVE_TTL_SECONDS = 6 * 60;
-const GENERATION_CANCELLATION_POLL_INTERVAL_MS = 1_000;
+/**
+ * Cancellation is user-initiated and rare, so a flat one-second poll spends
+ * hundreds of billed Redis round trips per generation to detect an event that
+ * usually never happens. Stay responsive while the user is most likely to hit
+ * cancel, then back off for the long tail of a slow generation.
+ */
+const GENERATION_CANCELLATION_POLL_SCHEDULE = [
+  { throughElapsedMs: 15_000, intervalMs: 1_000 },
+  { throughElapsedMs: 60_000, intervalMs: 3_000 },
+] as const;
+const GENERATION_CANCELLATION_MAX_POLL_INTERVAL_MS = 5_000;
+
+function pollIntervalForElapsed(elapsedMs: number): number {
+  for (const step of GENERATION_CANCELLATION_POLL_SCHEDULE) {
+    if (elapsedMs < step.throughElapsedMs) {
+      return step.intervalMs;
+    }
+  }
+  return GENERATION_CANCELLATION_MAX_POLL_INTERVAL_MS;
+}
 
 const MARK_CANCELLED_SCRIPT = `
 if redis.call("GET", KEYS[1]) ~= ARGV[1] then
@@ -82,15 +101,29 @@ export function startGenerationCancellationPolling(params: {
   onCancelled: () => void;
 }): () => void {
   let stopped = false;
-  let pollInFlight = false;
   let pollFailureLogged = false;
+  let elapsedMs = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
 
-  const poll = async () => {
-    if (stopped || pollInFlight) {
+  // Each poll schedules the next one only after it settles, so a slow Redis
+  // round trip can never stack overlapping requests.
+  const scheduleNextPoll = () => {
+    if (stopped) {
       return;
     }
 
-    pollInFlight = true;
+    const intervalMs = pollIntervalForElapsed(elapsedMs);
+    timer = setTimeout(() => {
+      elapsedMs += intervalMs;
+      void poll();
+    }, intervalMs);
+  };
+
+  const poll = async () => {
+    if (stopped) {
+      return;
+    }
+
     try {
       const cancelled = await isGenerationCancelled(params.sessionId);
       if (stopped) {
@@ -100,8 +133,11 @@ export function startGenerationCancellationPolling(params: {
       pollFailureLogged = false;
       if (cancelled) {
         stopped = true;
-        clearInterval(timer);
+        if (timer) {
+          clearTimeout(timer);
+        }
         params.onCancelled();
+        return;
       }
     } catch {
       if (!stopped && !pollFailureLogged) {
@@ -114,19 +150,17 @@ export function startGenerationCancellationPolling(params: {
           }),
         );
       }
-    } finally {
-      pollInFlight = false;
     }
+
+    scheduleNextPoll();
   };
 
-  const timer = setInterval(
-    () => void poll(),
-    GENERATION_CANCELLATION_POLL_INTERVAL_MS,
-  );
   void poll();
 
   return () => {
     stopped = true;
-    clearInterval(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
   };
 }
