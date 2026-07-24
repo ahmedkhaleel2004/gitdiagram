@@ -35,16 +35,44 @@ describe("buildQuotaKey", () => {
         tokenLimit: 10_000_000,
         requestedTokens: 82_700,
         reservationId: "reservation-a",
+        nowMs: 1_774_000_000_000,
       }),
     ).resolves.toEqual({ admitted: true, usage: { usedTokens: 1_000 } });
 
     expect(upstashEval).toHaveBeenCalledWith(
       expect.objectContaining({
-        args: [10_000_000, 82_700, 259_200, "reservation-a"],
-        keys: ["quota:v2:2026-03-30:openai-complimentary-small-models"],
+        args: [
+          10_000_000,
+          82_700,
+          259_200,
+          "reservation-a",
+          1_774_000_000_000,
+          360_000,
+        ],
+        keys: [
+          "quota:v2:2026-03-30:openai-complimentary-small-models",
+          "quota:v2:2026-03-30:openai-complimentary-small-models:leases",
+        ],
         script: expect.stringContaining('reservation_field = "reservation:"'),
       }),
     );
+  });
+
+  it("stamps a lease deadline from the wall clock when no time is supplied", async () => {
+    upstashEval.mockResolvedValue([1, 0]);
+    const before = Date.now();
+
+    await checkQuotaInUpstash({
+      quotaDateUtc: "2026-03-30",
+      quotaBucket: "openai-complimentary-small-models",
+      tokenLimit: 10_000_000,
+      requestedTokens: 82_700,
+      reservationId: "reservation-a",
+    });
+
+    const nowArg = upstashEval.mock.calls[0]?.[0]?.args?.[4] as number;
+    expect(nowArg).toBeGreaterThanOrEqual(before);
+    expect(nowArg).toBeLessThanOrEqual(Date.now());
   });
 
   it("finalizes a reservation by identity so duplicate calls are idempotent", async () => {
@@ -62,7 +90,10 @@ describe("buildQuotaKey", () => {
     expect(upstashEval).toHaveBeenCalledWith(
       expect.objectContaining({
         args: [345, 259_200, "reservation-a"],
-        keys: ["quota:v2:2026-03-30:openai-complimentary-small-models"],
+        keys: [
+          "quota:v2:2026-03-30:openai-complimentary-small-models",
+          "quota:v2:2026-03-30:openai-complimentary-small-models:leases",
+        ],
         script: expect.stringContaining('HEXISTS", key, finalized_field'),
       }),
     );
@@ -88,7 +119,7 @@ describe("buildQuotaKey", () => {
       }),
     ]);
 
-    expect(upstashEval.mock.calls.map(([call]) => call.args?.at(-1))).toEqual([
+    expect(upstashEval.mock.calls.map(([call]) => call.args?.[3])).toEqual([
       "reservation-a",
       "reservation-b",
     ]);

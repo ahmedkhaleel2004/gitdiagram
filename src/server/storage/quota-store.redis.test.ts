@@ -9,11 +9,14 @@ import { createClient } from "redis";
 
 import {
   buildQuotaKey,
+  buildQuotaLeaseKey,
   QUOTA_CHECK_SCRIPT,
   QUOTA_FINALIZE_SCRIPT,
+  QUOTA_RESERVATION_LEASE_MS,
 } from "~/server/storage/quota-store";
 
 const SCRIPT_TTL_SECONDS = 3 * 24 * 60 * 60;
+const NOW_MS = 1_774_000_000_000;
 const CONNECT_TIMEOUT_MS = 5_000;
 const runId = randomUUID();
 
@@ -107,9 +110,14 @@ async function startRedisForTests(): Promise<string> {
 }
 
 function quotaKey(label: string): string {
-  const key = buildQuotaKey("2026-03-30", `${runId}-${label}`);
-  testKeys.push(key);
+  const bucket = `${runId}-${label}`;
+  const key = buildQuotaKey("2026-03-30", bucket);
+  testKeys.push(key, buildQuotaLeaseKey("2026-03-30", bucket));
   return key;
+}
+
+function leaseKeyFor(key: string): string {
+  return `${key}:leases`;
 }
 
 async function checkQuota(params: {
@@ -117,14 +125,17 @@ async function checkQuota(params: {
   reservationId: string;
   requestedTokens: number;
   tokenLimit?: number;
+  nowMs?: number;
 }): Promise<[number, number]> {
   const result = await redisClient.eval(QUOTA_CHECK_SCRIPT, {
-    keys: [params.key],
+    keys: [params.key, leaseKeyFor(params.key)],
     arguments: [
       String(params.tokenLimit ?? 1_000),
       String(params.requestedTokens),
       String(SCRIPT_TTL_SECONDS),
       params.reservationId,
+      String(params.nowMs ?? NOW_MS),
+      String(QUOTA_RESERVATION_LEASE_MS),
     ],
   });
   expect(result).toBeInstanceOf(Array);
@@ -137,7 +148,7 @@ async function finalizeQuota(params: {
   committedTokens: number;
 }): Promise<number> {
   const result = await redisClient.eval(QUOTA_FINALIZE_SCRIPT, {
-    keys: [params.key],
+    keys: [params.key, leaseKeyFor(params.key)],
     arguments: [
       String(params.committedTokens),
       String(SCRIPT_TTL_SECONDS),
@@ -298,5 +309,89 @@ describe("quota Lua semantics", () => {
       "finalized:reservation-a": "450",
       used_tokens: "450",
     });
+  });
+
+  it("reclaims budget from a lease whose generation died before finalizing", async () => {
+    const key = quotaKey("expired-lease");
+
+    // A generation is admitted and then the process disappears: nothing ever
+    // finalizes this reservation.
+    await expect(
+      checkQuota({ key, reservationId: "dead-a", requestedTokens: 900 }),
+    ).resolves.toEqual([1, 0]);
+    await expect(
+      checkQuota({ key, reservationId: "live-b", requestedTokens: 900 }),
+    ).resolves.toEqual([0, 0]);
+
+    // Once the lease deadline passes, the next admission reclaims the budget
+    // instead of leaving it stranded for the rest of the UTC day.
+    await expect(
+      checkQuota({
+        key,
+        reservationId: "live-b",
+        requestedTokens: 900,
+        nowMs: NOW_MS + QUOTA_RESERVATION_LEASE_MS + 1,
+      }),
+    ).resolves.toEqual([1, 0]);
+
+    const state = await redisClient.hGetAll(key);
+    expect(state["reservation:dead-a"]).toBeUndefined();
+    expect(state["reclaimed:dead-a"]).toBe("900");
+    expect(state.reserved_tokens).toBe("900");
+    await expect(redisClient.zScore(leaseKeyFor(key), "dead-a")).resolves.toBe(
+      null,
+    );
+  });
+
+  it("still charges real usage when a late finalize follows a reclaim", async () => {
+    const key = quotaKey("late-finalize");
+
+    await checkQuota({ key, reservationId: "slow-a", requestedTokens: 900 });
+    await checkQuota({
+      key,
+      reservationId: "sweeper-b",
+      requestedTokens: 50,
+      nowMs: NOW_MS + QUOTA_RESERVATION_LEASE_MS + 1,
+    });
+
+    // The reclaim gave the reservation back, but the tokens were really spent,
+    // so a late finalize must still move the daily counter exactly once.
+    await expect(
+      finalizeQuota({ key, reservationId: "slow-a", committedTokens: 700 }),
+    ).resolves.toBe(700);
+    await expect(
+      finalizeQuota({ key, reservationId: "slow-a", committedTokens: 700 }),
+    ).resolves.toBe(700);
+
+    const state = await redisClient.hGetAll(key);
+    expect(state.used_tokens).toBe("700");
+    expect(state["reclaimed:slow-a"]).toBeUndefined();
+    // Only the sweeper's own lease is still outstanding.
+    expect(state.reserved_tokens).toBe("50");
+  });
+
+  it("keeps a renewed lease from being reclaimed by a later sweep", async () => {
+    const key = quotaKey("renewed-lease");
+
+    await checkQuota({ key, reservationId: "retry-a", requestedTokens: 600 });
+    // A duplicate admission for the same id renews the lease rather than
+    // double-charging, so the reservation survives a later sweep.
+    await checkQuota({
+      key,
+      reservationId: "retry-a",
+      requestedTokens: 600,
+      nowMs: NOW_MS + QUOTA_RESERVATION_LEASE_MS - 1,
+    });
+    await checkQuota({
+      key,
+      reservationId: "sweeper-b",
+      requestedTokens: 100,
+      nowMs: NOW_MS + QUOTA_RESERVATION_LEASE_MS + 1,
+    });
+
+    const state = await redisClient.hGetAll(key);
+    expect(state["reservation:retry-a"]).toBe("600");
+    expect(state["reclaimed:retry-a"]).toBeUndefined();
+    expect(state.reserved_tokens).toBe("700");
   });
 });
