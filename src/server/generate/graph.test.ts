@@ -4,10 +4,104 @@ import { describe, expect, it } from "vitest";
 import {
   buildFileTreeLookup,
   compileDiagramGraph,
+  isRepairableWithoutRetry,
   parseDiagramGraph,
+  stripUnknownNodePaths,
   validateDiagramGraph,
 } from "~/server/generate/graph";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
+
+function nodeFixture(id: string, path: string | null) {
+  return {
+    id,
+    label: id.toUpperCase(),
+    type: "service",
+    description: null,
+    groupId: null,
+    path,
+    shape: null,
+  };
+}
+
+describe("in-place graph repair", () => {
+  it("treats a graph whose only faults are unresolvable paths as repairable", () => {
+    const fileTreeLookup = buildFileTreeLookup("src/index.ts");
+    const graph = {
+      groups: [],
+      nodes: [nodeFixture("api", "src/missing.ts")],
+      edges: [],
+    };
+
+    const { issues } = validateDiagramGraph(graph, fileTreeLookup);
+    expect(isRepairableWithoutRetry(issues)).toBe(true);
+
+    const repaired = stripUnknownNodePaths(graph, fileTreeLookup);
+    expect(repaired.strippedPathCount).toBe(1);
+    expect(repaired.graph.nodes[0]?.path).toBeNull();
+    expect(validateDiagramGraph(repaired.graph, fileTreeLookup).valid).toBe(
+      true,
+    );
+  });
+
+  it("keeps paths that do resolve while dropping only the broken ones", () => {
+    const fileTreeLookup = buildFileTreeLookup("src/index.ts\nsrc/api.ts");
+    const repaired = stripUnknownNodePaths(
+      {
+        groups: [],
+        nodes: [
+          nodeFixture("api", "src/api.ts"),
+          nodeFixture("gone", "src/missing.ts"),
+          nodeFixture("bare", null),
+        ],
+        edges: [],
+      },
+      fileTreeLookup,
+    );
+
+    expect(repaired.strippedPathCount).toBe(1);
+    expect(repaired.graph.nodes.map((node) => node.path)).toEqual([
+      "src/api.ts",
+      null,
+      null,
+    ]);
+  });
+
+  it("does not treat structural faults as repairable", () => {
+    const fileTreeLookup = buildFileTreeLookup("src/index.ts");
+    const { issues } = validateDiagramGraph(
+      {
+        groups: [],
+        nodes: [nodeFixture("api", "src/missing.ts")],
+        edges: [
+          {
+            from: "api",
+            to: "ghost",
+            label: null,
+            description: null,
+            style: null,
+          },
+        ],
+      },
+      fileTreeLookup,
+    );
+
+    expect(
+      issues.some((issue) => issue.category === "unknown_edge_target"),
+    ).toBe(true);
+    expect(isRepairableWithoutRetry(issues)).toBe(false);
+  });
+
+  it("reports a fully valid graph as needing no repair", () => {
+    const fileTreeLookup = buildFileTreeLookup("src/index.ts");
+    expect(isRepairableWithoutRetry([])).toBe(false);
+    expect(
+      stripUnknownNodePaths(
+        { groups: [], nodes: [nodeFixture("api", "src/index.ts")], edges: [] },
+        fileTreeLookup,
+      ).strippedPathCount,
+    ).toBe(0);
+  });
+});
 
 describe("validateDiagramGraph", () => {
   it("rejects paths that are not in the repo file tree", () => {

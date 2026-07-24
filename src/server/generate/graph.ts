@@ -174,9 +174,46 @@ export function formatGraphValidationFeedback(
   return issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
 }
 
+/**
+ * A path only drives a node's "open on GitHub" link, so an unresolvable one is
+ * cosmetic. Dropping it keeps an otherwise-correct graph instead of spending a
+ * whole extra model call to regenerate the entire structure.
+ */
+export function stripUnknownNodePaths(
+  graph: DiagramGraph,
+  fileTreeLookup: Set<string>,
+): { graph: DiagramGraph; strippedPathCount: number } {
+  let strippedPathCount = 0;
+  const nodes = graph.nodes.map((node) => {
+    if (node.path && !fileTreeLookup.has(node.path)) {
+      strippedPathCount += 1;
+      return { ...node, path: null };
+    }
+    return node;
+  });
+
+  if (!strippedPathCount) {
+    return { graph, strippedPathCount: 0 };
+  }
+
+  return { graph: { ...graph, nodes }, strippedPathCount };
+}
+
+export function isRepairableWithoutRetry(
+  issues: GraphValidationIssue[],
+): boolean {
+  return (
+    issues.length > 0 &&
+    issues.every((issue) => issue.category === "missing_repository_path")
+  );
+}
+
 function escapeMermaidText(value: string): string {
   const escaped = normalizeDiagramText(value)
     .replace(/&/g, "&amp;")
+    // Mermaid decodes its own '#nn;' entity codes inside label text, so an
+    // unescaped '#' would reintroduce characters the rules below just removed.
+    .replace(/#/g, "&#35;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")

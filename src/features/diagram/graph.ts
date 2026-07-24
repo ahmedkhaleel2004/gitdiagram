@@ -99,6 +99,8 @@ export interface GraphAttemptAudit {
   graph: DiagramGraph | null;
   validationFeedback?: string;
   validationCategories?: string[];
+  /** Node paths dropped because they did not resolve in the repository tree. */
+  strippedPathCount?: number;
   status: "failed" | "succeeded";
   createdAt: string;
 }

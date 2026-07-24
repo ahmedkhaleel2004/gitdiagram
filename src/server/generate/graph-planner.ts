@@ -17,6 +17,8 @@ import {
 import { toTaggedMessage } from "./format";
 import {
   formatGraphValidationFeedback,
+  isRepairableWithoutRetry,
+  stripUnknownNodePaths,
   type GraphValidationCategory,
   validateDiagramGraph,
 } from "./graph";
@@ -176,27 +178,48 @@ export async function generateValidatedGraph(
       params.validationCategoryCounts[category] =
         (params.validationCategoryCounts[category] ?? 0) + 1;
     }
+    // Unresolvable paths only cost a node its GitHub link, so repair them in
+    // place. Only structural problems are worth another model call.
+    const repairableWithoutRetry = isRepairableWithoutRetry(
+      graphValidation.issues,
+    );
+    const { graph: acceptedGraph, strippedPathCount } = repairableWithoutRetry
+      ? stripUnknownNodePaths(graph, params.fileTreeLookup)
+      : { graph, strippedPathCount: 0 };
+    const accepted = graphValidation.valid || repairableWithoutRetry;
+
     const attemptAudit = {
       attempt,
       rawOutput: rawText,
-      graph,
-      validationFeedback: graphValidation.valid
+      graph: acceptedGraph,
+      validationFeedback: accepted
         ? undefined
         : formatGraphValidationFeedback(graphValidation.issues),
       validationCategories: graphValidation.valid
         ? undefined
         : validationCategories,
-      status: graphValidation.valid ? "succeeded" : "failed",
+      strippedPathCount: strippedPathCount || undefined,
+      status: accepted ? "succeeded" : "failed",
       createdAt: new Date().toISOString(),
     } satisfies GraphAttemptAudit;
 
     audit = withGraphAttempt(audit, attemptAudit);
 
-    if (graphValidation.valid) {
+    if (accepted) {
+      if (strippedPathCount) {
+        console.info(
+          JSON.stringify({
+            event: "generate.graph.paths_stripped",
+            session_id: params.sessionId,
+            attempt,
+            stripped_path_count: strippedPathCount,
+          }),
+        );
+      }
       return {
         ok: true,
-        audit: withGraph(audit, graph),
-        graph,
+        audit: withGraph(audit, acceptedGraph),
+        graph: acceptedGraph,
       };
     }
 
