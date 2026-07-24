@@ -65,11 +65,22 @@ function deletePublicTreeCacheEntry(key: string): void {
   }
 }
 
-const EXCLUDED_PATTERNS = [
-  "node_modules/",
-  "vendor/",
-  "venv/",
-  ".min.",
+// Directory segments are matched anywhere in the path.
+const EXCLUDED_DIRECTORY_SEGMENTS = [
+  "node_modules",
+  "vendor",
+  "venv",
+  "__pycache__",
+  ".cache",
+  ".tmp",
+  ".vscode",
+  ".idea",
+];
+
+// Suffixes are matched against the end of the path only. Substring matching
+// here silently drops real source files: ".ico" appears inside "ui.icons.ts",
+// ".so" inside "data.source.ts", and ".class" inside "model.classifier.py".
+const EXCLUDED_SUFFIXES = [
   ".pyc",
   ".pyo",
   ".pyd",
@@ -84,24 +95,30 @@ const EXCLUDED_PATTERNS = [
   ".svg",
   ".ttf",
   ".woff",
+  ".woff2",
   ".webp",
-  "__pycache__/",
-  ".cache/",
-  ".tmp/",
+  ".log",
   "yarn.lock",
   "poetry.lock",
-  "*.log",
-  ".vscode/",
-  ".idea/",
 ];
+
+// Minified bundles carry no architectural signal regardless of extension.
+const MINIFIED_INFIX = ".min.";
 
 function shouldIncludeFile(path: string): boolean {
   const lowerPath = path.toLowerCase();
-  return !EXCLUDED_PATTERNS.some((pattern) =>
-    pattern.startsWith("*")
-      ? lowerPath.endsWith(pattern.slice(1))
-      : lowerPath.includes(pattern),
-  );
+
+  if (lowerPath.includes(MINIFIED_INFIX)) {
+    return false;
+  }
+
+  if (EXCLUDED_SUFFIXES.some((suffix) => lowerPath.endsWith(suffix))) {
+    return false;
+  }
+
+  return !lowerPath
+    .split("/")
+    .some((segment) => EXCLUDED_DIRECTORY_SEGMENTS.includes(segment));
 }
 
 async function fetchJsonResult<T>(
@@ -281,25 +298,37 @@ async function getFileTree(
   return { fileTree, pathTypes };
 }
 
+class MissingReadmeError extends Error {}
+
+const MISSING_README_MESSAGE = "No README found for the specified repository.";
+
 async function getReadme(
   username: string,
   repo: string,
   headers: HeadersInit,
   signal?: AbortSignal,
 ): Promise<string> {
-  const data = await fetchJson<GitHubReadmeResponse>(
-    `https://api.github.com/repos/${username}/${repo}/readme`,
-    headers,
-    "No README found for the specified repository.",
-    signal,
-  );
+  let data: GitHubReadmeResponse;
+  try {
+    data = await fetchJson<GitHubReadmeResponse>(
+      `https://api.github.com/repos/${username}/${repo}/readme`,
+      headers,
+      MISSING_README_MESSAGE,
+      signal,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message === MISSING_README_MESSAGE) {
+      throw new MissingReadmeError(MISSING_README_MESSAGE);
+    }
+    throw error;
+  }
 
   if (typeof data.size === "number" && data.size > MAX_README_BYTES) {
     throw new Error(REPOSITORY_TOO_LARGE_ERROR);
   }
 
   if (typeof data.content !== "string" || !data.content) {
-    throw new Error("No README found for the specified repository.");
+    throw new MissingReadmeError(MISSING_README_MESSAGE);
   }
 
   // GitHub's contents API returns base64 with line breaks. Bound the encoded
@@ -350,14 +379,16 @@ export async function getGithubData(
     ),
     readmeResultPromise,
   ]);
-  if (!readmeResult.ok) {
+  // A repository without a README is still perfectly diagrammable from its file
+  // tree, so only a genuine fetch failure should abort the run.
+  if (!readmeResult.ok && !(readmeResult.error instanceof MissingReadmeError)) {
     throw readmeResult.error;
   }
 
   return {
     defaultBranch,
     fileTree: tree.fileTree,
-    readme: readmeResult.value,
+    readme: readmeResult.ok ? readmeResult.value : "",
     isPrivate,
     stargazerCount,
     pathTypes: tree.pathTypes,

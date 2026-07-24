@@ -167,6 +167,78 @@ describe("getGithubData repository input bounds", () => {
     expect(timeoutSpy).toHaveBeenCalledWith(GITHUB_REQUEST_TIMEOUT_MS);
   });
 
+  it("still ingests a repository that has no README", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/demo")) {
+        return jsonResponse({
+          default_branch: "main",
+          private: false,
+          stargazers_count: 42,
+        });
+      }
+      if (url.includes("/git/trees/main?recursive=1")) {
+        return jsonResponse({
+          truncated: false,
+          tree: [{ path: "src/main.ts", type: "blob" }],
+        });
+      }
+      if (url.endsWith("/repos/acme/demo/readme")) {
+        return jsonResponse({ message: "Not Found" }, 404);
+      }
+      throw new Error(`Unexpected GitHub URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
+      fileTree: "src/main.ts",
+      readme: "",
+    });
+  });
+
+  it("still fails when the README exists but is oversized", async () => {
+    const fetchMock = createGitHubFetch(
+      { truncated: false, tree: [{ path: "src/main.ts", type: "blob" }] },
+      { size: MAX_README_BYTES + 1, content: "abc", encoding: "base64" },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getGithubData("acme", "demo")).rejects.toThrow(
+      REPOSITORY_TOO_LARGE_ERROR,
+    );
+  });
+
+  it("keeps source files whose names merely contain an excluded extension", async () => {
+    const fetchMock = createGitHubFetch({
+      truncated: false,
+      tree: [
+        // Each of these was dropped when extensions were matched as substrings.
+        { path: "src/ui.icons.ts", type: "blob" },
+        { path: "src/data.source.ts", type: "blob" },
+        { path: "app/model.classifier.py", type: "blob" },
+        { path: "src/parse.sortable.ts", type: "blob" },
+        { path: "internal/api.pngenerator.go", type: "blob" },
+        // Real matches must still be excluded.
+        { path: "assets/logo.png" },
+        { path: "build/app.min.js" },
+        { path: "src/native.so" },
+        { path: "yarn.lock" },
+        { path: "pkg/node_modules/dep/index.js" },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
+      fileTree: [
+        "src/ui.icons.ts",
+        "src/data.source.ts",
+        "app/model.classifier.py",
+        "src/parse.sortable.ts",
+        "internal/api.pngenerator.go",
+      ].join("\n"),
+    });
+  });
+
   it("revalidates cached public trees with ETag and reuses a 304 body", async () => {
     let treeRequests = 0;
     const fetchMock = vi.fn(
