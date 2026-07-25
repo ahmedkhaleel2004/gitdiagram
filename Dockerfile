@@ -3,6 +3,7 @@ FROM oven/bun:1.3.11-alpine AS dependencies
 WORKDIR /app
 
 COPY package.json bun.lock ./
+COPY patches ./patches
 RUN bun install --frozen-lockfile
 
 FROM oven/bun:1.3.11-alpine AS builder

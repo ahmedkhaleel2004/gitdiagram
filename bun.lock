@@ -48,6 +48,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "minimatch@3.1.5": "patches/minimatch@3.1.5.patch",
+  },
   "overrides": {
     "@babel/core": "7.29.7",
     "ajv": "6.15.0",
