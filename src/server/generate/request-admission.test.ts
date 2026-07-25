@@ -2,8 +2,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  consumeInfrastructureRateLimit: vi.fn(),
   consumeRateLimit: vi.fn(),
   getClientIp: vi.fn(),
+  refundInfrastructureRateLimit: vi.fn(),
   refundRateLimit: vi.fn(),
   registerActiveGeneration: vi.fn(),
   resolveRequestCredentials: vi.fn(),
@@ -13,10 +15,16 @@ vi.mock("./cancellation", () => ({
   registerActiveGeneration: mocks.registerActiveGeneration,
 }));
 vi.mock("./rate-limit", () => ({
+  consumeGenerationInfrastructureRateLimit:
+    mocks.consumeInfrastructureRateLimit,
   consumeGenerationRateLimit: mocks.consumeRateLimit,
+  getGenerationInfrastructureRateLimitMessage: vi.fn(
+    (seconds: number) => `Retry infrastructure in ${seconds} seconds.`,
+  ),
   getGenerationRateLimitMessage: vi.fn(
     (seconds: number) => `Retry in ${seconds} seconds.`,
   ),
+  refundGenerationInfrastructureRateLimit: mocks.refundInfrastructureRateLimit,
   refundGenerationRateLimit: mocks.refundRateLimit,
 }));
 vi.mock("~/server/http/client-ip", () => ({
@@ -40,9 +48,15 @@ describe("admitGenerationRequest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.consumeInfrastructureRateLimit.mockResolvedValue({
+      allowed: true,
+      retryAfterSeconds: 0,
+      consumed: true,
+    });
     mocks.consumeRateLimit.mockResolvedValue({
       allowed: true,
       retryAfterSeconds: 0,
+      consumed: true,
     });
     mocks.getClientIp.mockReturnValue("203.0.113.10");
     mocks.refundRateLimit.mockResolvedValue(undefined);
@@ -72,21 +86,28 @@ describe("admitGenerationRequest", () => {
     expect(mocks.consumeRateLimit).toHaveBeenCalledWith({
       clientIp: "203.0.113.10",
     });
+    expect(mocks.consumeInfrastructureRateLimit).toHaveBeenCalledWith({
+      clientIp: "203.0.113.10",
+    });
   });
 
-  it("does not rate-limit a caller using their own model key", async () => {
+  it("still infrastructure-limits a caller using their own model key", async () => {
     mocks.resolveRequestCredentials.mockResolvedValue({ apiKey: "sk-user" });
 
     const result = await admitGenerationRequest(request());
 
     expect(result.admitted).toBe(true);
     expect(mocks.consumeRateLimit).not.toHaveBeenCalled();
+    expect(mocks.consumeInfrastructureRateLimit).toHaveBeenCalledWith({
+      clientIp: "203.0.113.10",
+    });
   });
 
   it("returns the limiter response before registering a session", async () => {
     mocks.consumeRateLimit.mockResolvedValue({
       allowed: false,
       retryAfterSeconds: 900,
+      consumed: true,
     });
 
     const result = await admitGenerationRequest(request());
@@ -119,6 +140,9 @@ describe("admitGenerationRequest", () => {
     expect(mocks.refundRateLimit).toHaveBeenCalledWith({
       clientIp: "203.0.113.10",
     });
+    expect(mocks.refundInfrastructureRateLimit).toHaveBeenCalledWith({
+      clientIp: "203.0.113.10",
+    });
   });
 
   it("refunds the limiter when the requested session already exists", async () => {
@@ -141,6 +165,29 @@ describe("admitGenerationRequest", () => {
     expect(mocks.refundRateLimit).toHaveBeenCalledWith({
       clientIp: "203.0.113.10",
     });
+    expect(mocks.refundInfrastructureRateLimit).toHaveBeenCalledWith({
+      clientIp: "203.0.113.10",
+    });
+  });
+
+  it("rejects infrastructure abuse even when a model key is present", async () => {
+    mocks.resolveRequestCredentials.mockResolvedValue({
+      apiKey: "not-validated",
+    });
+    mocks.consumeInfrastructureRateLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 600,
+      consumed: true,
+    });
+
+    const result = await admitGenerationRequest(request());
+
+    expect(result.admitted).toBe(false);
+    if (!result.admitted) {
+      expect(result.response.status).toBe(429);
+    }
+    expect(mocks.consumeRateLimit).not.toHaveBeenCalled();
+    expect(mocks.registerActiveGeneration).not.toHaveBeenCalled();
   });
 
   it("rejects invalid transport input before resolving credentials", async () => {
@@ -161,3 +208,4 @@ describe("admitGenerationRequest", () => {
     expect(mocks.resolveRequestCredentials).not.toHaveBeenCalled();
   });
 });
+mocks.refundInfrastructureRateLimit.mockResolvedValue(undefined);

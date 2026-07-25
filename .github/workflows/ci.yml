@@ -31,6 +31,12 @@ jobs:
         run: bun run lint
       - name: Typecheck
         run: bun run typecheck
+      - name: Formatting
+        run: bun run format:check
+      - name: Dead code and dependency boundaries
+        run: bunx knip --reporter compact
+      - name: Dependency audit
+        run: bun audit
       - name: Tests
         run: bun run test
         env:
@@ -39,3 +45,5 @@ jobs:
         run: bun run build
       - name: Performance budgets
         run: bun run perf:budget
+      - name: Standalone container build
+        run: docker build --tag gitdiagram-ci .

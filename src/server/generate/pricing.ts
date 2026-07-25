@@ -30,8 +30,6 @@ interface RawResponseUsage {
   };
 }
 
-const DEFAULT_PRICING_MODEL = "gpt-5.6-terra";
-
 const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.6-sol": { inputPerMillionUsd: 5.0, outputPerMillionUsd: 30.0 },
   "gpt-5.6-terra": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
@@ -55,7 +53,15 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5-nano": { inputPerMillionUsd: 0.05, outputPerMillionUsd: 0.4 },
   "o4-mini": { inputPerMillionUsd: 1.1, outputPerMillionUsd: 4.4 },
 };
-const DEFAULT_PRICING = MODEL_PRICING[DEFAULT_PRICING_MODEL] as ModelPricing;
+export const MODEL_PRICING_UNAVAILABLE_ERROR =
+  "Cost information is unavailable for the configured AI model.";
+
+export class ModelPricingUnavailableError extends Error {
+  constructor() {
+    super(MODEL_PRICING_UNAVAILABLE_ERROR);
+    this.name = "ModelPricingUnavailableError";
+  }
+}
 
 function normalizeModelId(model: string): string {
   return model.trim().toLowerCase();
@@ -69,7 +75,7 @@ function stripProviderPrefix(model: string): string {
   return model.includes("/") ? (model.split("/").at(-1) ?? model) : model;
 }
 
-export function resolvePricingModel(model: string): string {
+export function resolvePricingModel(model: string): string | null {
   const normalized = normalizeModelId(model);
   if (MODEL_PRICING[normalized]) return normalized;
 
@@ -93,7 +99,15 @@ export function resolvePricingModel(model: string): string {
   if (withoutDate.startsWith("gpt-5")) return "gpt-5";
   if (withoutDate.startsWith("o4-mini")) return "o4-mini";
 
-  return DEFAULT_PRICING_MODEL;
+  return null;
+}
+
+export function assertModelPricingAvailable(model: string): string {
+  const pricingModel = resolvePricingModel(model);
+  if (!pricingModel) {
+    throw new ModelPricingUnavailableError();
+  }
+  return pricingModel;
 }
 
 export function estimateTextTokenCostUsd(
@@ -101,8 +115,11 @@ export function estimateTextTokenCostUsd(
   inputTokens: number,
   outputTokens: number,
 ): { costUsd: number; pricingModel: string; pricing: ModelPricing } {
-  const pricingModel = resolvePricingModel(model);
-  const pricing = MODEL_PRICING[pricingModel] ?? DEFAULT_PRICING;
+  const pricingModel = assertModelPricingAvailable(model);
+  const pricing = MODEL_PRICING[pricingModel];
+  if (!pricing) {
+    throw new ModelPricingUnavailableError();
+  }
   const inputCost =
     (Math.max(inputTokens, 0) / 1_000_000) * pricing.inputPerMillionUsd;
   const outputCost =

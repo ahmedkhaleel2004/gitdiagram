@@ -11,6 +11,13 @@ export const R2_REQUEST_TIMEOUT_MS = 10_000;
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
+export interface ObjectReadResult<T> {
+  value: T;
+  etag: string;
+}
+
+export type ObjectWriteCondition = { ifMatch: string } | { ifNoneMatch: true };
+
 function requestOptions() {
   return { abortSignal: AbortSignal.timeout(R2_REQUEST_TIMEOUT_MS) };
 }
@@ -120,10 +127,46 @@ export async function getGzipJsonObject<T>(
   }
 }
 
+export async function getGzipJsonObjectWithEtag<T>(
+  bucket: string,
+  key: string,
+): Promise<ObjectReadResult<T> | null> {
+  try {
+    const { client: storageClient, s3 } = await getClient();
+    const response = await storageClient.send(
+      new s3.GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+      requestOptions(),
+    );
+
+    const body = await response.Body?.transformToByteArray();
+    if (!body?.byteLength) {
+      return null;
+    }
+    if (!response.ETag) {
+      throw new Error(`R2 object ${key} did not include an ETag.`);
+    }
+
+    const decompressed = await gunzipAsync(body);
+    return {
+      value: JSON.parse(decompressed.toString("utf8")) as T,
+      etag: response.ETag,
+    };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function putGzipJsonObject(
   bucket: string,
   key: string,
   payload: unknown,
+  condition?: ObjectWriteCondition,
 ): Promise<void> {
   const [body, { client: storageClient, s3 }] = await Promise.all([
     gzipAsync(JSON.stringify(payload)),
@@ -137,6 +180,10 @@ export async function putGzipJsonObject(
       Body: body,
       ContentEncoding: "gzip",
       ContentType: "application/json",
+      ...(condition && "ifMatch" in condition
+        ? { IfMatch: condition.ifMatch }
+        : {}),
+      ...(condition && "ifNoneMatch" in condition ? { IfNoneMatch: "*" } : {}),
     }),
     requestOptions(),
   );
@@ -150,5 +197,15 @@ export async function deleteObject(bucket: string, key: string): Promise<void> {
       Key: key,
     }),
     requestOptions(),
+  );
+}
+
+export async function checkR2Bucket(bucket: string): Promise<void> {
+  // Exercise the same authenticated GetObject path used by the application.
+  // A missing sentinel is a successful readiness result; permission failures
+  // and transport errors still propagate.
+  await getJsonObject(
+    bucket,
+    "_meta/gitdiagram-readiness-sentinel-does-not-exist.json",
   );
 }

@@ -23,6 +23,13 @@ describe("resolvePricingModel", () => {
     expect(resolvePricingModel("openai/gpt-5.4")).toBe("gpt-5.4");
     expect(resolvePricingModel("openai/gpt-5.6-terra")).toBe("gpt-5.6-terra");
   });
+
+  it("does not substitute unrelated pricing for an unknown provider model", () => {
+    expect(resolvePricingModel("anthropic/claude-opus-5")).toBeNull();
+    expect(() =>
+      estimateTextTokenCostUsd("anthropic/claude-opus-5", 1_000_000, 1_000_000),
+    ).toThrow("Cost information is unavailable");
+  });
 });
 
 describe("estimateTextTokenCostUsd", () => {

@@ -104,11 +104,7 @@ export default function RepoPageClient({
             hasDiagram={hasDiagram}
             onCopy={handleCopy}
             lastGenerated={lastGenerated}
-            actualCost={
-              state.costSummary?.kind === "actual"
-                ? state.costSummary.display
-                : undefined
-            }
+            costSummary={state.costSummary}
             onExportImage={handleExportImage}
             onRegenerate={handleRegenerate}
             zoomingEnabled={zoomingEnabled}

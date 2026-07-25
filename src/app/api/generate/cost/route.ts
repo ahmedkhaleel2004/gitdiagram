@@ -18,9 +18,14 @@ import {
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
 import {
-  consumeGenerationRateLimit,
-  getGenerationRateLimitMessage,
+  consumeGenerationInfrastructureRateLimit,
+  getGenerationInfrastructureRateLimitMessage,
 } from "~/server/generate/rate-limit";
+import {
+  assertModelPricingAvailable,
+  MODEL_PRICING_UNAVAILABLE_ERROR,
+  ModelPricingUnavailableError,
+} from "~/server/generate/pricing";
 import { parseGenerateRequest } from "~/server/generate/types";
 import { getClientIp } from "~/server/http/client-ip";
 import { resolveRequestCredentials } from "~/server/http/request-credentials";
@@ -84,25 +89,24 @@ export async function POST(request: Request) {
       githubPat: parsed.data.github_pat,
     });
 
-    // Callers on their own key pay for their own usage; everyone else shares
-    // the server's GitHub budget, exactly as in the stream route.
-    if (!apiKey?.trim()) {
-      const rateLimit = await consumeGenerationRateLimit({
-        clientIp: getClientIp(request),
-      });
-      if (!rateLimit.allowed) {
-        return jsonResponse(
-          {
-            ok: false,
-            error: getGenerationRateLimitMessage(rateLimit.retryAfterSeconds),
-            error_code: "RATE_LIMITED",
-          },
-          { status: 429, requestId },
-        );
-      }
+    const rateLimit = await consumeGenerationInfrastructureRateLimit({
+      clientIp: getClientIp(request),
+    });
+    if (!rateLimit.allowed) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: getGenerationInfrastructureRateLimitMessage(
+            rateLimit.retryAfterSeconds,
+          ),
+          error_code: "RATE_LIMITED",
+        },
+        { status: 429, requestId },
+      );
     }
     const provider = getProvider();
     const model = getModel(provider);
+    assertModelPricingAvailable(model);
 
     if (isComplimentaryGateEnabled() && !apiKey) {
       if (provider !== "openai") {
@@ -167,6 +171,7 @@ export async function POST(request: Request) {
         ? error.message
         : "Failed to estimate generation cost.";
     const timedOut = deadlineSignal.aborted;
+    const pricingUnavailable = error instanceof ModelPricingUnavailableError;
     const repositoryTooLarge = message === REPOSITORY_TOO_LARGE_ERROR;
     const repositoryNotFound = message === "Repository not found.";
 
@@ -187,25 +192,31 @@ export async function POST(request: Request) {
         ok: false,
         error: timedOut
           ? "Cost estimation timed out. Please retry."
-          : repositoryTooLarge || repositoryNotFound
-            ? message
-            : "Failed to estimate generation cost. Please retry.",
+          : pricingUnavailable
+            ? MODEL_PRICING_UNAVAILABLE_ERROR
+            : repositoryTooLarge || repositoryNotFound
+              ? message
+              : "Failed to estimate generation cost. Please retry.",
         error_code: timedOut
           ? "GENERATION_TIMEOUT"
-          : repositoryTooLarge
-            ? "TOKEN_LIMIT_EXCEEDED"
-            : repositoryNotFound
-              ? "REPOSITORY_NOT_FOUND"
-              : "COST_ESTIMATION_FAILED",
+          : pricingUnavailable
+            ? "MODEL_PRICING_UNAVAILABLE"
+            : repositoryTooLarge
+              ? "TOKEN_LIMIT_EXCEEDED"
+              : repositoryNotFound
+                ? "REPOSITORY_NOT_FOUND"
+                : "COST_ESTIMATION_FAILED",
       },
       {
         status: timedOut
           ? 504
-          : repositoryTooLarge
-            ? 413
-            : repositoryNotFound
-              ? 404
-              : 500,
+          : pricingUnavailable
+            ? 503
+            : repositoryTooLarge
+              ? 413
+              : repositoryNotFound
+                ? 404
+                : 500,
         requestId,
       },
     );

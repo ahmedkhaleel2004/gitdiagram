@@ -12,6 +12,7 @@ import {
   buildQuotaKey,
   checkQuotaInUpstash,
   commitQuotaUsageInUpstash,
+  markQuotaReservationStartedInUpstash,
 } from "~/server/storage/quota-store";
 
 beforeEach(() => {
@@ -97,6 +98,37 @@ describe("buildQuotaKey", () => {
         script: expect.stringContaining('HEXISTS", key, finalized_field'),
       }),
     );
+  });
+
+  it("marks a reservation as provider-started before any model spend", async () => {
+    upstashEval.mockResolvedValue(1);
+
+    await expect(
+      markQuotaReservationStartedInUpstash({
+        quotaDateUtc: "2026-03-30",
+        quotaBucket: "openai-complimentary-small-models",
+        reservationId: "reservation-a",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(upstashEval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: ["reservation-a", 259_200],
+        script: expect.stringContaining('"started:" .. reservation_id'),
+      }),
+    );
+  });
+
+  it("rejects a start marker for an expired reservation", async () => {
+    upstashEval.mockResolvedValue(0);
+
+    await expect(
+      markQuotaReservationStartedInUpstash({
+        quotaDateUtc: "2026-03-30",
+        quotaBucket: "openai-complimentary-small-models",
+        reservationId: "reservation-a",
+      }),
+    ).rejects.toThrow("expired before use");
   });
 
   it("keeps concurrent reservations distinct inside the atomic quota hash", async () => {

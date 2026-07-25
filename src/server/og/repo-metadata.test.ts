@@ -1,99 +1,84 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { getStoredDiagramArtifact } = vi.hoisted(() => ({
+  getStoredDiagramArtifact: vi.fn(),
+}));
 
 vi.mock("server-only", () => ({}));
-vi.mock("~/server/github-auth", () => ({
-  getGitHubApiHeaders: vi.fn().mockResolvedValue({
-    Accept: "application/vnd.github+json",
-  }),
+vi.mock("~/server/storage/artifact-store", () => ({
+  getStoredDiagramArtifact,
 }));
 
 import { getRepoSocialMetadata } from "~/server/og/repo-metadata";
 
+function storedArtifact(visibility: "public" | "private" = "public") {
+  return {
+    artifact: {
+      version: 1,
+      visibility,
+      username: "owner",
+      repo: "repo",
+      stargazerCount: 42,
+    },
+    location: {
+      visibility,
+      bucket: "bucket",
+      artifactKey: "artifact",
+      statusKey: "status",
+    },
+  };
+}
+
 describe("getRepoSocialMetadata", () => {
+  beforeEach(() => {
+    getStoredDiagramArtifact.mockReset();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("returns GitHub metadata and encodes repository path segments", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          default_branch: "main",
-          private: false,
-          language: "TypeScript",
-          stargazers_count: 42,
-        }),
-        { status: 200 },
-      ),
-    );
-
-    await expect(
-      getRepoSocialMetadata("owner name", "repo/name"),
-    ).resolves.toEqual({
-      defaultBranch: "main",
-      isPrivate: false,
-      language: "TypeScript",
-      stargazerCount: 42,
-    });
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api.github.com/repos/owner%20name/repo%2Fname",
-      expect.any(Object),
-    );
-  });
-
-  it("silently uses fallback metadata for missing repositories", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(null, { status: 404 }),
-    );
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    await expect(getRepoSocialMetadata("owner", "missing")).resolves.toEqual({
-      defaultBranch: null,
-      isPrivate: null,
-      language: null,
-      stargazerCount: null,
-    });
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it("does not expose metadata for repositories visible only to server credentials", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          default_branch: "main",
-          private: true,
-          language: "TypeScript",
-          stargazers_count: 42,
-        }),
-        { status: 200 },
-      ),
-    );
-
-    await expect(getRepoSocialMetadata("owner", "private")).resolves.toEqual({
-      defaultBranch: null,
-      isPrivate: null,
-      language: null,
-      stargazerCount: null,
-    });
-  });
-
-  it("records upstream failures as warnings while preserving the fallback card", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(null, { status: 503 }),
-    );
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("uses only metadata already stored for a generated public diagram", async () => {
+    getStoredDiagramArtifact.mockResolvedValue(storedArtifact());
 
     await expect(getRepoSocialMetadata("owner", "repo")).resolves.toEqual({
       defaultBranch: null,
-      isPrivate: null,
+      isPrivate: false,
       language: null,
-      stargazerCount: null,
+      stargazerCount: 42,
     });
+    expect(getStoredDiagramArtifact).toHaveBeenCalledWith({
+      username: "owner",
+      repo: "repo",
+    });
+  });
+
+  it("rejects malformed route segments before touching storage", async () => {
+    await expect(
+      getRepoSocialMetadata("owner name", "repo/name"),
+    ).resolves.toBeNull();
+    expect(getStoredDiagramArtifact).not.toHaveBeenCalled();
+  });
+
+  it("returns no image metadata when a public artifact is missing", async () => {
+    getStoredDiagramArtifact.mockResolvedValue(null);
+
+    await expect(getRepoSocialMetadata("owner", "missing")).resolves.toBeNull();
+  });
+
+  it("does not expose private artifact metadata", async () => {
+    getStoredDiagramArtifact.mockResolvedValue(storedArtifact("private"));
+
+    await expect(getRepoSocialMetadata("owner", "private")).resolves.toBeNull();
+  });
+
+  it("records storage failures while returning no metadata", async () => {
+    getStoredDiagramArtifact.mockRejectedValue(new Error("R2 unavailable"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(getRepoSocialMetadata("owner", "repo")).resolves.toBeNull();
     expect(warnSpy).toHaveBeenCalledWith(
-      JSON.stringify({
-        event: "og.repo_metadata.fetch_failed",
-        status: 503,
-      }),
+      expect.stringContaining("og.repo_metadata.fetch_failed"),
     );
   });
 });

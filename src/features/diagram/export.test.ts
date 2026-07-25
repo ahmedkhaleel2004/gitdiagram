@@ -8,7 +8,7 @@ describe("exportMermaidSvgAsPng", () => {
     vi.unstubAllGlobals();
   });
 
-  it("preserves the 4x export while encoding asynchronously", async () => {
+  it("uses intrinsic bounds instead of viewer zoom while encoding asynchronously", async () => {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.getBBox = vi.fn(() => ({
       bottom: 50,
@@ -74,15 +74,15 @@ describe("exportMermaidSvgAsPng", () => {
 
     await exportMermaidSvgAsPng(svg);
 
-    expect(canvas.width).toBe(800);
-    expect(canvas.height).toBe(600);
+    expect(canvas.width).toBe(400);
+    expect(canvas.height).toBe(200);
     expect(context.scale).toHaveBeenCalledWith(4, 4);
     expect(context.drawImage).toHaveBeenCalledWith(
       expect.any(ImageMock),
       0,
       0,
-      200,
-      150,
+      100,
+      50,
     );
     expect(canvas.toBlob).toHaveBeenCalledWith(
       expect.any(Function),

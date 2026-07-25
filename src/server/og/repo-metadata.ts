@@ -1,13 +1,10 @@
 import "server-only";
 
-import { getGitHubApiHeaders } from "~/server/github-auth";
-
-type RepoMetadataResponse = {
-  default_branch?: string;
-  private?: boolean;
-  stargazers_count?: number;
-  language?: string | null;
-};
+import {
+  githubRepoSchema,
+  githubUsernameSchema,
+} from "~/server/generate/types";
+import { getStoredDiagramArtifact } from "~/server/storage/artifact-store";
 
 export type RepoSocialMetadata = {
   defaultBranch: string | null;
@@ -16,55 +13,30 @@ export type RepoSocialMetadata = {
   stargazerCount: number | null;
 };
 
-const REVALIDATE_SECONDS = 60 * 30;
-const EMPTY_REPO_SOCIAL_METADATA: RepoSocialMetadata = {
-  defaultBranch: null,
-  isPrivate: null,
-  language: null,
-  stargazerCount: null,
-};
-
 export async function getRepoSocialMetadata(
   username: string,
   repo: string,
-): Promise<RepoSocialMetadata> {
+): Promise<RepoSocialMetadata | null> {
+  const parsedUsername = githubUsernameSchema.safeParse(username);
+  const parsedRepo = githubRepoSchema.safeParse(repo);
+  if (!parsedUsername.success || !parsedRepo.success) {
+    return null;
+  }
+
   try {
-    const response = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(username)}/${encodeURIComponent(repo)}`,
-      {
-        headers: await getGitHubApiHeaders(),
-        next: {
-          revalidate: REVALIDATE_SECONDS,
-        },
-      },
-    );
-
-    if (!response.ok) {
-      if (response.status !== 404) {
-        console.warn(
-          JSON.stringify({
-            event: "og.repo_metadata.fetch_failed",
-            status: response.status,
-          }),
-        );
-      }
-      return EMPTY_REPO_SOCIAL_METADATA;
-    }
-
-    const data = (await response.json()) as RepoMetadataResponse;
-    if (data.private === true) {
-      return EMPTY_REPO_SOCIAL_METADATA;
+    const stored = await getStoredDiagramArtifact({
+      username: parsedUsername.data,
+      repo: parsedRepo.data,
+    });
+    if (!stored || stored.artifact.visibility !== "public") {
+      return null;
     }
 
     return {
-      defaultBranch:
-        typeof data.default_branch === "string" ? data.default_branch : null,
-      isPrivate: typeof data.private === "boolean" ? data.private : null,
-      language: typeof data.language === "string" ? data.language : null,
-      stargazerCount:
-        typeof data.stargazers_count === "number"
-          ? data.stargazers_count
-          : null,
+      defaultBranch: null,
+      isPrivate: false,
+      language: null,
+      stargazerCount: stored.artifact.stargazerCount,
     };
   } catch (error) {
     console.warn(
@@ -74,6 +46,6 @@ export async function getRepoSocialMetadata(
       }),
     );
 
-    return EMPTY_REPO_SOCIAL_METADATA;
+    return null;
   }
 }

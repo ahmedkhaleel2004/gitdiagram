@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import RepoPageClient from "./repo-page-client";
 
-const { warningToast } = vi.hoisted(() => ({
+const { mainCardProps, warningToast } = vi.hoisted(() => ({
+  mainCardProps: vi.fn(),
   warningToast: vi.fn(),
 }));
 
@@ -23,7 +24,10 @@ vi.mock("~/hooks/useStarReminder", () => ({
 }));
 
 vi.mock("~/components/main-card", () => ({
-  default: () => <div data-testid="main-card" />,
+  default: (props: unknown) => {
+    mainCardProps(props);
+    return <div data-testid="main-card" />;
+  },
 }));
 
 vi.mock("~/components/loading", () => ({
@@ -49,6 +53,7 @@ vi.mock("~/components/api-key-dialog", () => ({
 describe("RepoPageClient", () => {
   beforeEach(() => {
     warningToast.mockClear();
+    mainCardProps.mockClear();
   });
 
   it("renders the cached diagram before failure details", async () => {
@@ -111,6 +116,41 @@ describe("RepoPageClient", () => {
     expect(warningToast).toHaveBeenCalledWith(
       "Diagram generated, but not saved",
       expect.objectContaining({ description: persistenceWarning }),
+    );
+  });
+
+  it("preserves a final estimated cost after generation completes", () => {
+    const costSummary = {
+      kind: "estimate",
+      approximate: true,
+      amountUsd: 0.01,
+      display: "$0.0100 USD",
+      pricingModel: "gpt-5.6-terra",
+      usage: { inputTokens: 100, outputTokens: 100, totalTokens: 200 },
+    };
+    useDiagram.mockReturnValue({
+      diagram: "flowchart TD\nA-->B",
+      error: "",
+      loading: false,
+      lastGenerated: undefined,
+      showApiKeyDialog: false,
+      handleCopy: vi.fn(),
+      handleApiKeySaved: vi.fn(),
+      handleCloseApiKeyDialog: vi.fn(),
+      handleOpenApiKeyDialog: vi.fn(),
+      handleExportImage: vi.fn(),
+      handleRegenerate: vi.fn(),
+      handleDiagramRenderError: vi.fn(),
+      state: {
+        status: "complete",
+        costSummary,
+      },
+    });
+
+    render(<RepoPageClient username="Acme" repo="Demo" />);
+
+    expect(mainCardProps).toHaveBeenCalledWith(
+      expect.objectContaining({ costSummary }),
     );
   });
 });

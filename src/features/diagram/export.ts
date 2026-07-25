@@ -1,4 +1,6 @@
 const PNG_EXPORT_SCALE = 4;
+const MAX_PNG_EXPORT_DIMENSION = 16_384;
+const MAX_PNG_EXPORT_PIXELS = 32_000_000;
 
 function loadSvgImage(sourceUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -36,12 +38,21 @@ export async function exportMermaidSvgAsPng(
   svgElement: SVGSVGElement,
 ): Promise<void> {
   const bbox = svgElement.getBBox();
-  const transform = svgElement.getScreenCTM();
-  if (!transform) return;
-
-  const width = Math.ceil(bbox.width * transform.a);
-  const height = Math.ceil(bbox.height * transform.d);
-  if (width <= 0 || height <= 0) return;
+  const viewBox = svgElement.viewBox.baseVal;
+  const width = viewBox.width > 0 ? viewBox.width : bbox.width;
+  const height = viewBox.height > 0 ? viewBox.height : bbox.height;
+  if (width <= 0 || height <= 0) {
+    throw new Error("Diagram has no exportable dimensions.");
+  }
+  const scale = Math.min(
+    PNG_EXPORT_SCALE,
+    MAX_PNG_EXPORT_DIMENSION / width,
+    MAX_PNG_EXPORT_DIMENSION / height,
+    Math.sqrt(MAX_PNG_EXPORT_PIXELS / (width * height)),
+  );
+  if (!Number.isFinite(scale) || scale <= 0) {
+    throw new Error("Diagram is too large to export.");
+  }
 
   const svgData = new XMLSerializer().serializeToString(svgElement);
   const svgBlob = new Blob([svgData], {
@@ -52,15 +63,17 @@ export async function exportMermaidSvgAsPng(
   try {
     const image = await loadSvgImage(svgUrl);
     const canvas = document.createElement("canvas");
-    canvas.width = width * PNG_EXPORT_SCALE;
-    canvas.height = height * PNG_EXPORT_SCALE;
+    canvas.width = Math.max(1, Math.floor(width * scale));
+    canvas.height = Math.max(1, Math.floor(height * scale));
 
     const context = canvas.getContext("2d");
-    if (!context) return;
+    if (!context) {
+      throw new Error("Unable to create an image export canvas.");
+    }
 
     context.fillStyle = "white";
     context.fillRect(0, 0, canvas.width, canvas.height);
-    context.scale(PNG_EXPORT_SCALE, PNG_EXPORT_SCALE);
+    context.scale(scale, scale);
     context.drawImage(image, 0, 0, width, height);
 
     // Encoding is asynchronous, avoiding the large synchronous base64 string

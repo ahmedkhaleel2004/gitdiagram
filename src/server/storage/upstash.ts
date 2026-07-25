@@ -62,3 +62,10 @@ export async function upstashEval<T>(params: {
   const args = params.args ?? [];
   return execute<T>("", ["EVAL", params.script, keys.length, ...keys, ...args]);
 }
+
+export async function checkUpstashConnection(): Promise<void> {
+  const response = await upstashCommand<string>(["PING"]);
+  if (response !== "PONG") {
+    throw new Error("Upstash did not return PONG.");
+  }
+}

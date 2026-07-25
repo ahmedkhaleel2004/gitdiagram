@@ -2,6 +2,7 @@ import { upstashEval } from "~/server/storage/upstash";
 
 const DEFAULT_MAX_GENERATIONS = 8;
 const DEFAULT_WINDOW_SECONDS = 60 * 60;
+const DEFAULT_MAX_INFRASTRUCTURE_REQUESTS = 60;
 
 const GENERATION_RATE_LIMIT_SCRIPT = `
 local key = KEYS[1]
@@ -44,6 +45,20 @@ export function getGenerationRateLimitMax(): number {
 export function getGenerationRateLimitWindowSeconds(): number {
   return readEnvInt(
     "GENERATION_RATE_LIMIT_WINDOW_SECONDS",
+    DEFAULT_WINDOW_SECONDS,
+  );
+}
+
+export function getGenerationInfrastructureRateLimitMax(): number {
+  return readEnvInt(
+    "GENERATION_INFRASTRUCTURE_RATE_LIMIT_MAX",
+    DEFAULT_MAX_INFRASTRUCTURE_REQUESTS,
+  );
+}
+
+function getGenerationInfrastructureRateLimitWindowSeconds(): number {
+  return readEnvInt(
+    "GENERATION_INFRASTRUCTURE_RATE_LIMIT_WINDOW_SECONDS",
     DEFAULT_WINDOW_SECONDS,
   );
 }
@@ -106,6 +121,12 @@ export function buildGenerationRateLimitKey(clientIp: string): string {
   return `ratelimit:v1:generate:${encodeURIComponent(toRateLimitBucket(clientIp))}`;
 }
 
+export function buildGenerationInfrastructureRateLimitKey(
+  clientIp: string,
+): string {
+  return `ratelimit:v1:generate-infrastructure:${encodeURIComponent(toRateLimitBucket(clientIp))}`;
+}
+
 export function getGenerationRateLimitMessage(
   retryAfterSeconds: number,
 ): string {
@@ -113,47 +134,108 @@ export function getGenerationRateLimitMessage(
   return `Too many free generations from this network. I'm a solo student engineer running this free and open source, so please try again in about ${minutes} minute${minutes === 1 ? "" : "s"} or use your own API key.`;
 }
 
+export function getGenerationInfrastructureRateLimitMessage(
+  retryAfterSeconds: number,
+): string {
+  const minutes = Math.max(Math.ceil(retryAfterSeconds / 60), 1);
+  return `Too many repository analysis requests from this network. Please try again in about ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+}
+
 export interface GenerationRateLimitResult {
   allowed: boolean;
   retryAfterSeconds: number;
+  consumed: boolean;
 }
 
-/**
- * Fixed-window per-IP limiter for generations billed to the server's own key.
- *
- * Callers bringing their own API key are not throttled here: they pay for their
- * own usage, so the shared daily budget is not at risk. Redis failures fail
- * open because the complimentary quota still bounds total spend, and a Redis
- * blip should not take generation down.
- */
-export async function consumeGenerationRateLimit(params: {
+async function consumeRateLimit(params: {
   clientIp: string | null;
+  buildKey: (clientIp: string) => string;
+  max: number;
+  windowSeconds: number;
+  unavailableEvent: string;
 }): Promise<GenerationRateLimitResult> {
   if (!params.clientIp) {
-    return { allowed: true, retryAfterSeconds: 0 };
+    return { allowed: true, retryAfterSeconds: 0, consumed: false };
   }
-
-  const windowSeconds = getGenerationRateLimitWindowSeconds();
 
   try {
     const result = await upstashEval<[number, number]>({
       script: GENERATION_RATE_LIMIT_SCRIPT,
-      keys: [buildGenerationRateLimitKey(params.clientIp)],
-      args: [getGenerationRateLimitMax(), windowSeconds],
+      keys: [params.buildKey(params.clientIp)],
+      args: [params.max, params.windowSeconds],
     });
 
     return {
       allowed: result[0] === 1,
-      retryAfterSeconds: result[1] > 0 ? result[1] : windowSeconds,
+      retryAfterSeconds: result[1] > 0 ? result[1] : params.windowSeconds,
+      consumed: true,
     };
   } catch {
     console.warn(
       JSON.stringify({
-        event: "generate.rate_limit.unavailable",
+        event: params.unavailableEvent,
         error: "Rate limit check failed; allowing the request.",
       }),
     );
-    return { allowed: true, retryAfterSeconds: 0 };
+    return { allowed: true, retryAfterSeconds: 0, consumed: false };
+  }
+}
+
+/**
+ * Fixed-window per-IP limiter for generations billed to the server's own key.
+ * BYOK callers skip this spend limiter, but never the separate infrastructure
+ * limiter below.
+ */
+export function consumeGenerationRateLimit(params: {
+  clientIp: string | null;
+}): Promise<GenerationRateLimitResult> {
+  return consumeRateLimit({
+    ...params,
+    buildKey: buildGenerationRateLimitKey,
+    max: getGenerationRateLimitMax(),
+    windowSeconds: getGenerationRateLimitWindowSeconds(),
+    unavailableEvent: "generate.rate_limit.unavailable",
+  });
+}
+
+/**
+ * Bounds GitHub API, repository parsing, and session-registration work for all
+ * callers, including callers presenting an arbitrary or invalid model key.
+ */
+export function consumeGenerationInfrastructureRateLimit(params: {
+  clientIp: string | null;
+}): Promise<GenerationRateLimitResult> {
+  return consumeRateLimit({
+    ...params,
+    buildKey: buildGenerationInfrastructureRateLimitKey,
+    max: getGenerationInfrastructureRateLimitMax(),
+    windowSeconds: getGenerationInfrastructureRateLimitWindowSeconds(),
+    unavailableEvent: "generate.infrastructure_rate_limit.unavailable",
+  });
+}
+
+async function refundRateLimit(params: {
+  clientIp: string | null;
+  buildKey: (clientIp: string) => string;
+  failureEvent: string;
+}): Promise<void> {
+  if (!params.clientIp) {
+    return;
+  }
+
+  try {
+    await upstashEval<number>({
+      script: GENERATION_RATE_LIMIT_REFUND_SCRIPT,
+      keys: [params.buildKey(params.clientIp)],
+      args: [],
+    });
+  } catch {
+    console.warn(
+      JSON.stringify({
+        event: params.failureEvent,
+        error: "Rate limit refund failed; the slot stays consumed.",
+      }),
+    );
   }
 }
 
@@ -166,22 +248,19 @@ export async function consumeGenerationRateLimit(params: {
 export async function refundGenerationRateLimit(params: {
   clientIp: string | null;
 }): Promise<void> {
-  if (!params.clientIp) {
-    return;
-  }
+  return refundRateLimit({
+    ...params,
+    buildKey: buildGenerationRateLimitKey,
+    failureEvent: "generate.rate_limit.refund_failed",
+  });
+}
 
-  try {
-    await upstashEval<number>({
-      script: GENERATION_RATE_LIMIT_REFUND_SCRIPT,
-      keys: [buildGenerationRateLimitKey(params.clientIp)],
-      args: [],
-    });
-  } catch {
-    console.warn(
-      JSON.stringify({
-        event: "generate.rate_limit.refund_failed",
-        error: "Rate limit refund failed; the slot stays consumed.",
-      }),
-    );
-  }
+export async function refundGenerationInfrastructureRateLimit(params: {
+  clientIp: string | null;
+}): Promise<void> {
+  return refundRateLimit({
+    ...params,
+    buildKey: buildGenerationInfrastructureRateLimitKey,
+    failureEvent: "generate.infrastructure_rate_limit.refund_failed",
+  });
 }

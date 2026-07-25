@@ -5,12 +5,15 @@ const mocks = vi.hoisted(() => ({
   estimateCost: vi.fn(),
   getGithubData: vi.fn(),
   resolveRequestCredentials: vi.fn(),
-  consumeRateLimit: vi.fn(),
+  consumeInfrastructureRateLimit: vi.fn(),
 }));
 
 vi.mock("~/server/generate/rate-limit", () => ({
-  consumeGenerationRateLimit: mocks.consumeRateLimit,
-  getGenerationRateLimitMessage: vi.fn(() => "Too many free generations."),
+  consumeGenerationInfrastructureRateLimit:
+    mocks.consumeInfrastructureRateLimit,
+  getGenerationInfrastructureRateLimitMessage: vi.fn(
+    () => "Too many repository requests.",
+  ),
 }));
 
 vi.mock("~/server/generate/cost-estimate", () => ({
@@ -53,9 +56,10 @@ function request() {
 describe("POST /api/generate/cost", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.consumeRateLimit.mockResolvedValue({
+    mocks.consumeInfrastructureRateLimit.mockResolvedValue({
       allowed: true,
       retryAfterSeconds: 0,
+      consumed: true,
     });
     mocks.resolveRequestCredentials.mockImplementation(
       async (
@@ -139,9 +143,10 @@ describe("POST /api/generate/cost", () => {
   });
 
   it("throttles callers on the server's own key", async () => {
-    mocks.consumeRateLimit.mockResolvedValue({
+    mocks.consumeInfrastructureRateLimit.mockResolvedValue({
       allowed: false,
       retryAfterSeconds: 900,
+      consumed: true,
     });
 
     const response = await POST(request());
@@ -154,7 +159,7 @@ describe("POST /api/generate/cost", () => {
     expect(mocks.getGithubData).not.toHaveBeenCalled();
   });
 
-  it("does not throttle a caller paying with their own key", async () => {
+  it("still infrastructure-limits a caller paying with their own key", async () => {
     mocks.resolveRequestCredentials.mockResolvedValueOnce({
       apiKey: "caller-owned-key",
     });
@@ -169,7 +174,7 @@ describe("POST /api/generate/cost", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(200);
-    expect(mocks.consumeRateLimit).not.toHaveBeenCalled();
+    expect(mocks.consumeInfrastructureRateLimit).toHaveBeenCalledOnce();
   });
 
   it("does not echo raw upstream failure text to the caller", async () => {

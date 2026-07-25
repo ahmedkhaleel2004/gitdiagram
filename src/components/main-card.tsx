@@ -10,15 +10,16 @@ import { ExportDropdown } from "./export-dropdown";
 import { Switch } from "~/components/ui/switch";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
 import { SponsorSlot } from "~/components/sponsor-slot";
+import type { GenerationCostSummary } from "~/features/diagram/cost";
 
 interface MainCardProps {
   isHome?: boolean;
   username?: string;
   repo?: string;
   hasDiagram?: boolean;
-  onCopy?: () => void;
+  onCopy?: () => Promise<void> | void;
   lastGenerated?: Date;
-  actualCost?: string;
+  costSummary?: GenerationCostSummary;
   onExportImage?: () => void;
   onRegenerate?: () => void;
   zoomingEnabled?: boolean;
@@ -33,7 +34,7 @@ export default function MainCard({
   hasDiagram = false,
   onCopy,
   lastGenerated,
-  actualCost,
+  costSummary,
   onExportImage,
   onRegenerate,
   zoomingEnabled,
@@ -82,11 +83,17 @@ export default function MainCard({
     <div className="neo-panel relative w-full max-w-3xl rounded-lg !bg-[hsl(var(--neo-panel))] p-4 sm:p-8">
       <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+          <label htmlFor="repository-input" className="sr-only">
+            GitHub repository
+          </label>
           <Input
+            id="repository-input"
             placeholder="owner/repo or GitHub URL"
             className="neo-input h-14 min-w-0 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:h-10 sm:flex-1 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
+            aria-describedby={error ? "repository-input-error" : undefined}
+            aria-invalid={Boolean(error)}
             required
           />
           <Button
@@ -98,7 +105,11 @@ export default function MainCard({
         </div>
 
         {error ? (
-          <p className="status-message text-sm text-red-600" role="alert">
+          <p
+            id="repository-input-error"
+            className="status-message text-sm text-red-600"
+            role="alert"
+          >
             {error}
           </p>
         ) : null}
@@ -182,7 +193,7 @@ export default function MainCard({
                     <ExportDropdown
                       onCopy={onCopy!}
                       lastGenerated={lastGenerated}
-                      actualCost={actualCost}
+                      costSummary={costSummary}
                       onExportImage={onExportImage!}
                     />
                   </div>

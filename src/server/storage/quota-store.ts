@@ -19,37 +19,47 @@ local reservation_id = ARGV[4]
 local now_ms = tonumber(ARGV[5])
 local lease_ms = tonumber(ARGV[6])
 local reservation_field = "reservation:" .. reservation_id
+local used_tokens = tonumber(redis.call("HGET", key, "used_tokens") or "0")
+local reserved_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
 
 -- Reclaim leases that expired because a generation process died before it could
 -- finalize. Without this, reserved tokens leak for the rest of the UTC day and
--- can lock out the daily budget without any real usage behind it. Each reclaim
--- leaves a marker so a late finalize still charges the tokens it actually spent.
+-- can lock out the daily budget. A reservation marked as started may already
+-- have spent provider tokens, so conservatively charge its full reserved bound
+-- until a late finalize replaces that bound with measured usage.
 local expired = redis.call("ZRANGEBYSCORE", leases_key, "-inf", now_ms)
 if #expired > 0 then
   local reclaimed_tokens = 0
   for index = 1, #expired do
-    local expired_field = "reservation:" .. expired[index]
+    local expired_id = expired[index]
+    local expired_field = "reservation:" .. expired_id
+    local started_field = "started:" .. expired_id
     local expired_tokens = tonumber(redis.call("HGET", key, expired_field))
     if expired_tokens then
       reclaimed_tokens = reclaimed_tokens + expired_tokens
       redis.call("HDEL", key, expired_field)
-      redis.call("HSET", key, "reclaimed:" .. expired[index], expired_tokens)
+      if redis.call("HEXISTS", key, started_field) == 1 then
+        used_tokens = used_tokens + expired_tokens
+        redis.call("HSET", key, "expired_charged:" .. expired_id, expired_tokens)
+      else
+        redis.call("HSET", key, "reclaimed:" .. expired_id, expired_tokens)
+      end
+      redis.call("HDEL", key, started_field)
     end
   end
   redis.call("ZREMRANGEBYSCORE", leases_key, "-inf", now_ms)
   if reclaimed_tokens > 0 then
-    local held_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
-    local remaining_tokens = math.max(held_tokens - reclaimed_tokens, 0)
+    local remaining_tokens = math.max(reserved_tokens - reclaimed_tokens, 0)
+    reserved_tokens = remaining_tokens
     if remaining_tokens == 0 then
       redis.call("HDEL", key, "reserved_tokens")
     else
       redis.call("HSET", key, "reserved_tokens", remaining_tokens)
     end
+    redis.call("HSET", key, "used_tokens", used_tokens)
   end
 end
 
-local used_tokens = tonumber(redis.call("HGET", key, "used_tokens") or "0")
-local reserved_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
 local existing_reservation = redis.call("HGET", key, reservation_field)
 
 if existing_reservation then
@@ -71,6 +81,26 @@ redis.call("EXPIRE", leases_key, ttl)
 return {1, used_tokens}
 `;
 
+export const QUOTA_MARK_STARTED_SCRIPT = `
+local key = KEYS[1]
+local reservation_id = ARGV[1]
+local ttl = tonumber(ARGV[2])
+local reservation_field = "reservation:" .. reservation_id
+local finalized_field = "finalized:" .. reservation_id
+
+if redis.call("HEXISTS", key, finalized_field) == 1 then
+  return 1
+end
+
+if redis.call("HEXISTS", key, reservation_field) == 0 then
+  return 0
+end
+
+redis.call("HSET", key, "started:" .. reservation_id, 1)
+redis.call("EXPIRE", key, ttl)
+return 1
+`;
+
 export const QUOTA_FINALIZE_SCRIPT = `
 local key = KEYS[1]
 local leases_key = KEYS[2]
@@ -80,11 +110,14 @@ local reservation_id = ARGV[3]
 local reservation_field = "reservation:" .. reservation_id
 local finalized_field = "finalized:" .. reservation_id
 local reclaimed_field = "reclaimed:" .. reservation_id
+local expired_charged_field = "expired_charged:" .. reservation_id
+local started_field = "started:" .. reservation_id
 
 local used_tokens = tonumber(redis.call("HGET", key, "used_tokens") or "0")
 local reserved_tokens = tonumber(redis.call("HGET", key, "reserved_tokens") or "0")
 local reservation_tokens = tonumber(redis.call("HGET", key, reservation_field))
 local reclaimed_tokens = tonumber(redis.call("HGET", key, reclaimed_field))
+local expired_charged_tokens = tonumber(redis.call("HGET", key, expired_charged_field))
 
 if redis.call("HEXISTS", key, finalized_field) == 1 then
   return used_tokens
@@ -92,14 +125,19 @@ end
 
 -- A reservation this finalize never held is a no-op: it is either an unknown id
 -- or a mismatched quota key, and neither should move the daily counter.
-if not reservation_tokens and not reclaimed_tokens then
+if not reservation_tokens and not reclaimed_tokens and not expired_charged_tokens then
   return used_tokens
 end
 
 local next_used_tokens = used_tokens + math.max(committed_tokens, 0)
+if expired_charged_tokens then
+  next_used_tokens = math.max(used_tokens - expired_charged_tokens, 0) + math.max(committed_tokens, 0)
+end
 redis.call("HSET", key, "used_tokens", next_used_tokens)
 redis.call("HDEL", key, reservation_field)
 redis.call("HDEL", key, reclaimed_field)
+redis.call("HDEL", key, expired_charged_field)
+redis.call("HDEL", key, started_field)
 redis.call("HSET", key, finalized_field, committed_tokens)
 redis.call("ZREM", leases_key, reservation_id)
 
@@ -187,4 +225,20 @@ export async function commitQuotaUsageInUpstash(params: {
   return {
     usedTokens: usedTokens ?? 0,
   };
+}
+
+export async function markQuotaReservationStartedInUpstash(params: {
+  quotaDateUtc: string;
+  quotaBucket: string;
+  reservationId: string;
+}): Promise<void> {
+  const marked = await upstashEval<number>({
+    script: QUOTA_MARK_STARTED_SCRIPT,
+    keys: [buildQuotaKey(params.quotaDateUtc, params.quotaBucket)],
+    args: [params.reservationId, QUOTA_TTL_SECONDS],
+  });
+
+  if (marked !== 1) {
+    throw new Error("Complimentary quota reservation expired before use.");
+  }
 }

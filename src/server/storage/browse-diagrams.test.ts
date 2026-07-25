@@ -17,6 +17,7 @@ vi.mock("~/server/storage/browse-index-pending", () => pendingMocks);
 const storageMocks = vi.hoisted(() => ({
   deleteObject: vi.fn(),
   getGzipJsonObject: vi.fn(),
+  getGzipJsonObjectWithEtag: vi.fn(),
   getJsonObject: vi.fn(),
   putGzipJsonObject: vi.fn(),
 }));
@@ -119,6 +120,17 @@ describe("browse diagram storage", () => {
         return value === undefined ? null : structuredClone(value);
       },
     );
+    storageMocks.getGzipJsonObjectWithEtag.mockImplementation(
+      async (_bucket: string, key: string) => {
+        const value = gzipObjects.get(key);
+        return value === undefined
+          ? null
+          : {
+              value: structuredClone(value),
+              etag: '"test-manifest-etag"',
+            };
+      },
+    );
     storageMocks.getJsonObject.mockImplementation(
       async (_bucket: string, key: string) => {
         const value = jsonObjects.get(key);
@@ -178,6 +190,7 @@ describe("browse diagram storage", () => {
         total: 2,
         entries,
       }),
+      { ifNoneMatch: true },
     ]);
     expect(
       storageMocks.putGzipJsonObject.mock.invocationCallOrder[0],
@@ -251,7 +264,7 @@ describe("browse diagram storage", () => {
     expect(storageMocks.deleteObject).not.toHaveBeenCalled();
   });
 
-  it("retries a failed manifest commit using the same staged snapshot", async () => {
+  it("retries a failed manifest commit with a fresh staged snapshot", async () => {
     const previousSnapshotKey = seedAtomicIndex([
       {
         username: "older",
@@ -282,7 +295,7 @@ describe("browse diagram storage", () => {
     const snapshotKeys = storageMocks.putGzipJsonObject.mock.calls
       .map((call) => call[1] as string)
       .filter((key) => key.startsWith(V3_SNAPSHOT_PREFIX));
-    expect(new Set(snapshotKeys).size).toBe(1);
+    expect(new Set(snapshotKeys).size).toBe(2);
     expect(manifestAttempts).toBe(2);
     expect(storageMocks.deleteObject).not.toHaveBeenCalled();
     expect(gzipObjects.get(V3_MANIFEST_KEY)).toMatchObject({
@@ -418,6 +431,27 @@ describe("browse diagram storage", () => {
     await expect(migrateBrowseIndexToAtomicV3()).resolves.toBe(1);
     expect(storageMocks.putGzipJsonObject).not.toHaveBeenCalled();
     expect(storageMocks.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it("refuses to migrate pending rows without a canonical baseline", async () => {
+    pendingEntries = [
+      {
+        field: "acme/demo",
+        serialized: "pending|acme/demo",
+        entry: {
+          username: "acme",
+          repo: "demo",
+          lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+          stargazerCount: 42,
+        },
+      },
+    ];
+
+    await expect(migrateBrowseIndexToAtomicV3()).rejects.toBeInstanceOf(
+      BrowseIndexNotFoundError,
+    );
+    expect(storageMocks.putGzipJsonObject).not.toHaveBeenCalled();
+    expect(pendingEntries).toHaveLength(1);
   });
 
   it("supports recent and star sorting, search, filtering, and pagination", async () => {

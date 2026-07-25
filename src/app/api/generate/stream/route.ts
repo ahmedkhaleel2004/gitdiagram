@@ -7,11 +7,11 @@ import {
   admitComplimentaryQuota,
   buildComplimentaryAdmissionTokens,
   buildComplimentaryStageTokenBound,
-  finalizeComplimentaryQuota,
   getComplimentaryDenialMessage,
   getComplimentaryModelMismatchMessage,
   getComplimentaryProviderMismatchMessage,
   isComplimentaryGateEnabled,
+  markComplimentaryQuotaStarted,
   modelMatchesComplimentaryFamily,
   shouldApplyComplimentaryGate,
   type ComplimentaryAdmissionEstimate,
@@ -57,10 +57,7 @@ import {
 } from "~/server/generate/model-config";
 import { streamCompletion } from "~/server/generate/openai";
 import { SYSTEM_FIRST_PROMPT } from "~/server/generate/prompts";
-import {
-  persistGenerationResult,
-  type SuccessfulDiagramState,
-} from "~/server/storage/generation-persistence";
+import type { SuccessfulDiagramState } from "~/server/storage/generation-persistence";
 import {
   createGenerationSessionAudit,
   toTerminalSessionAudit,
@@ -79,11 +76,14 @@ import {
   type GenerationStreamState,
 } from "~/server/generate/sse-writer";
 import {
+  assertModelPricingAvailable,
   createCostSummary,
-  sumGenerationUsage,
 } from "~/server/generate/pricing";
 import { admitGenerationRequest } from "~/server/generate/request-admission";
-import { refundGenerationRateLimit } from "~/server/generate/rate-limit";
+import {
+  finalizeGenerationStream,
+  logGenerationFinished,
+} from "~/server/generate/stream-finalization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -267,6 +267,7 @@ export async function POST(request: Request) {
           const provider = getProvider();
           const providerLabel = getProviderLabel(provider);
           const model = getModel(provider);
+          assertModelPricingAvailable(model);
 
           console.info(
             JSON.stringify({
@@ -516,6 +517,9 @@ export async function POST(request: Request) {
           });
 
           let explanationResponse = "";
+          if (quotaReservation) {
+            await markComplimentaryQuotaStarted(quotaReservation);
+          }
           accounting.pendingModelRequestTokenBound = complimentaryEstimate
             ? buildComplimentaryStageTokenBound(complimentaryEstimate, {
                 stage: "explanation",
@@ -745,19 +749,21 @@ export async function POST(request: Request) {
             latest_session_audit: audit,
           });
         } finally {
-          let terminalSent = false;
-          let persistenceWarning: string | undefined;
-          const sendTerminal = async () => {
+          const sendTerminal = async (
+            terminalAudit: typeof audit,
+            persistenceWarning?: string,
+          ) => {
             clearInterval(heartbeat);
             const finalTerminalPayload = terminalPayload;
             if (!finalTerminalPayload || streamState.wasCancelled) {
-              return;
+              return false;
             }
-            terminalSent = await send(
+            return send(
               {
                 ...finalTerminalPayload,
-                cost_summary: audit.finalCost ?? audit.estimatedCost,
-                latest_session_audit: toTerminalSessionAudit(audit),
+                cost_summary:
+                  terminalAudit.finalCost ?? terminalAudit.estimatedCost,
+                latest_session_audit: toTerminalSessionAudit(terminalAudit),
                 ...(persistenceWarning
                   ? { persistence_warning: persistenceWarning }
                   : {}),
@@ -768,81 +774,24 @@ export async function POST(request: Request) {
             );
           };
 
-          // A timeout must reach the client before best-effort cleanup consumes
-          // the remaining Vercel function budget.
-          if (abortCause === "deadline") {
-            await sendTerminal();
-          }
-
-          if (quotaReservation) {
-            const quotaFinalizationStartedAt = performance.now();
-            const measuredCommittedTokens = sumGenerationUsage(
-              ...accounting.actualUsages,
-            ).totalTokens;
-            const actualCommittedTokens =
-              accounting.hasCompleteMeasuredUsage && !streamState.wasCancelled
-                ? measuredCommittedTokens
-                : Math.min(
-                    quotaReservation.reservedTokens,
-                    measuredCommittedTokens +
-                      accounting.completedUnmeasuredTokenBound +
-                      accounting.pendingModelRequestTokenBound,
-                  );
-
-            try {
-              await finalizeComplimentaryQuota({
-                reservation: quotaReservation,
-                committedTokens: actualCommittedTokens,
-              });
-              audit = {
-                ...audit,
-                quotaStatus: "finalized",
-                quotaBucket: quotaReservation.quotaBucket,
-                quotaDateUtc: quotaReservation.quotaDateUtc,
-                actualCommittedTokens,
-                quotaResetAt: quotaReservation.quotaResetAt,
-              };
-            } catch (quotaError) {
-              console.error(
-                JSON.stringify({
-                  event: "generate.quota.finalization_failed",
-                  session_id: audit.sessionId,
-                  error:
-                    quotaError instanceof Error
-                      ? quotaError.message
-                      : "Unknown error",
-                }),
-              );
-            } finally {
-              recordTiming("quota_finalization", quotaFinalizationStartedAt);
-            }
-          }
-
-          if (repositoryVerified) {
-            persistenceWarning = await persistGenerationResult({
-              username,
-              repo,
-              githubPat,
-              visibility: storageVisibility,
-              audit,
-              successfulDiagramState,
-              usedOwnKey: Boolean(apiKey),
-              postResponseTasks,
-              recordTiming,
-            });
-          } else if (rateLimitedClientIp) {
-            // Nothing billable ran: a bad repository name, a server-side gate
-            // mismatch, or an unreachable GitHub all end here. Charging a slot
-            // would let a typo eat one of the caller's free generations, so
-            // return it once the response no longer depends on it.
-            postResponseTasks.push(() =>
-              refundGenerationRateLimit({ clientIp: rateLimitedClientIp }),
-            );
-          }
-
-          if (!terminalSent) {
-            await sendTerminal();
-          }
+          audit = await finalizeGenerationStream({
+            abortCause,
+            accounting,
+            apiKey,
+            audit,
+            githubPat,
+            postResponseTasks,
+            quotaReservation,
+            rateLimitedClientIp,
+            recordTiming,
+            repo,
+            repositoryVerified,
+            sendTerminal,
+            storageVisibility,
+            streamState,
+            successfulDiagramState,
+            username,
+          });
 
           clearInterval(heartbeat);
           stopCancellationPolling();
@@ -850,32 +799,16 @@ export async function POST(request: Request) {
           deadlineSignal.removeEventListener("abort", handleDeadline);
           await closeStream();
 
-          const totalUsage = sumGenerationUsage(...accounting.actualUsages);
-          console.info(
-            JSON.stringify({
-              event: "generate.stream.finished",
-              session_id: audit.sessionId,
-              outcome: streamState.wasCancelled
-                ? "cancelled"
-                : audit.status === "succeeded"
-                  ? "succeeded"
-                  : "failed",
-              error_code: terminalErrorCode,
-              stage: audit.failureStage ?? audit.stage,
-              elapsed_ms: Math.round(performance.now() - invocationStartedAt),
-              stage_timings_ms: stageTimingsMs,
-              provider: audit.provider,
-              model: audit.model,
-              visibility: storageVisibility,
-              input_tokens: totalUsage.inputTokens,
-              output_tokens: totalUsage.outputTokens,
-              total_tokens: totalUsage.totalTokens,
-              cached_input_tokens: totalUsage.cachedInputTokens ?? 0,
-              reasoning_tokens: totalUsage.reasoningTokens ?? 0,
-              graph_validation_categories: graphValidationCategoryCounts,
-              quota_committed_tokens: audit.actualCommittedTokens ?? null,
-            }),
-          );
+          logGenerationFinished({
+            accounting,
+            audit,
+            graphValidationCategoryCounts,
+            invocationStartedAt,
+            stageTimingsMs,
+            storageVisibility,
+            streamState,
+            terminalErrorCode,
+          });
         }
       };
 

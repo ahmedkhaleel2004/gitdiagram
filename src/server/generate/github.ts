@@ -38,14 +38,12 @@ export const REPOSITORY_TOO_LARGE_ERROR =
 // Messages this module authors itself. They describe the caller's own request
 // and carry no upstream response text, so `normalizeGenerationError` is willing
 // to show them verbatim.
-export const GITHUB_REQUEST_TIMEOUT_ERROR =
-  "GitHub request timed out. Please retry.";
-export const REPOSITORY_NOT_FOUND_ERROR = "Repository not found.";
-export const FILE_TREE_UNAVAILABLE_ERROR =
-  "Could not fetch repository file tree.";
-export const EMPTY_REPOSITORY_ERROR =
+const GITHUB_REQUEST_TIMEOUT_ERROR = "GitHub request timed out. Please retry.";
+const REPOSITORY_NOT_FOUND_ERROR = "Repository not found.";
+const FILE_TREE_UNAVAILABLE_ERROR = "Could not fetch repository file tree.";
+const EMPTY_REPOSITORY_ERROR =
   "Could not fetch repository file tree. Repository might be empty or inaccessible.";
-export function buildGithubRequestFailedError(status: number): string {
+function buildGithubRequestFailedError(status: number): string {
   return `GitHub request failed (${status}). Please retry.`;
 }
 const PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR =
@@ -284,9 +282,7 @@ async function getFileTree(
   }
 
   if (!paths.length) {
-    throw new Error(
-      EMPTY_REPOSITORY_ERROR,
-    );
+    throw new Error(EMPTY_REPOSITORY_ERROR);
   }
 
   const fileTree = paths.join("\n");

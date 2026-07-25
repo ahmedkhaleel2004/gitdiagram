@@ -40,7 +40,10 @@ describe("browse page client cache", () => {
     await expect(second).resolves.toEqual(result);
     await expect(loadBrowsePage({ q: "vercel" })).resolves.toEqual(result);
     expect(fetchSpy).toHaveBeenCalledOnce();
-    expect(fetchSpy.mock.calls[0]?.[1]).toEqual({ credentials: "omit" });
+    expect(fetchSpy.mock.calls[0]?.[1]).toEqual({
+      credentials: "omit",
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it("bounds completed browse query results", async () => {
@@ -54,5 +57,50 @@ describe("browse page client cache", () => {
     await loadBrowsePage({ q: "repo-0" });
 
     expect(fetchSpy).toHaveBeenCalledTimes(102);
+  });
+
+  it("aborts the underlying request once every waiter cancels", async () => {
+    let underlyingSignal: AbortSignal | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          underlyingSignal = init?.signal as AbortSignal;
+          underlyingSignal.addEventListener(
+            "abort",
+            () =>
+              reject(
+                new DOMException("The request was aborted.", "AbortError"),
+              ),
+            { once: true },
+          );
+        }),
+    );
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+
+    const first = loadBrowsePage({ q: "vercel" }, firstController.signal);
+    const second = loadBrowsePage({ q: "vercel" }, secondController.signal);
+    firstController.abort();
+    expect(underlyingSignal?.aborted).toBe(false);
+    secondController.abort();
+
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await expect(second).rejects.toMatchObject({ name: "AbortError" });
+    expect(underlyingSignal?.aborted).toBe(true);
+  });
+
+  it("refreshes a cached page after its five-minute TTL", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockImplementation(async () => Response.json(result));
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+
+    await loadBrowsePage({ q: "vercel" });
+    await loadBrowsePage({ q: "vercel" });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+
+    now.mockReturnValue(5 * 60 * 1_000 + 1_001);
+    await loadBrowsePage({ q: "vercel" });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });

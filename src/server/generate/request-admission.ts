@@ -2,8 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { registerActiveGeneration } from "./cancellation";
 import {
+  consumeGenerationInfrastructureRateLimit,
   consumeGenerationRateLimit,
+  getGenerationInfrastructureRateLimitMessage,
   getGenerationRateLimitMessage,
+  refundGenerationInfrastructureRateLimit,
   refundGenerationRateLimit,
 } from "./rate-limit";
 import { parseGenerateRequest } from "./types";
@@ -81,15 +84,48 @@ export async function admitGenerationRequest(
     apiKey: parsed.data.api_key,
     githubPat: parsed.data.github_pat,
   });
-  const rateLimitedClientIp = apiKey?.trim() ? null : getClientIp(request);
-  const refundRateLimit = () =>
-    refundGenerationRateLimit({ clientIp: rateLimitedClientIp });
+  const clientIp = getClientIp(request);
+  const infrastructureRateLimit =
+    await consumeGenerationInfrastructureRateLimit({ clientIp });
+  if (!infrastructureRateLimit.allowed) {
+    return {
+      admitted: false,
+      response: jsonError(
+        {
+          error: getGenerationInfrastructureRateLimitMessage(
+            infrastructureRateLimit.retryAfterSeconds,
+          ),
+          errorCode: "RATE_LIMITED",
+        },
+        {
+          status: 429,
+          retryAfterSeconds: infrastructureRateLimit.retryAfterSeconds,
+        },
+      ),
+    };
+  }
+  const infrastructureRateLimitedClientIp = infrastructureRateLimit.consumed
+    ? clientIp
+    : null;
+
+  let rateLimitedClientIp: string | null = null;
+  const refundAdmissionRateLimits = async () => {
+    await Promise.all([
+      refundGenerationInfrastructureRateLimit({
+        clientIp: infrastructureRateLimitedClientIp,
+      }),
+      refundGenerationRateLimit({ clientIp: rateLimitedClientIp }),
+    ]);
+  };
 
   if (!apiKey?.trim()) {
     const rateLimit = await consumeGenerationRateLimit({
-      clientIp: rateLimitedClientIp,
+      clientIp,
     });
     if (!rateLimit.allowed) {
+      await refundGenerationInfrastructureRateLimit({
+        clientIp: infrastructureRateLimitedClientIp,
+      });
       return {
         admitted: false,
         response: jsonError(
@@ -104,6 +140,7 @@ export async function admitGenerationRequest(
         ),
       };
     }
+    rateLimitedClientIp = rateLimit.consumed ? clientIp : null;
   }
 
   const sessionId = requestedSessionId ?? randomUUID();
@@ -122,7 +159,7 @@ export async function admitGenerationRequest(
           error: "Cancellation registration is temporarily unavailable.",
         }),
       );
-      await refundRateLimit();
+      await refundAdmissionRateLimits();
       return {
         admitted: false,
         response: jsonError(
@@ -136,7 +173,7 @@ export async function admitGenerationRequest(
     }
 
     if (!cancellationRegistered) {
-      await refundRateLimit();
+      await refundAdmissionRateLimits();
       return {
         admitted: false,
         response: jsonError(

@@ -4,6 +4,7 @@ import { MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
 import {
   checkQuotaInUpstash,
   commitQuotaUsageInUpstash,
+  markQuotaReservationStartedInUpstash,
 } from "~/server/storage/quota-store";
 import type { AIProvider } from "~/server/generate/model-config";
 import {
@@ -248,4 +249,14 @@ export async function finalizeComplimentaryQuota(params: {
     }
   }
   throw lastError;
+}
+
+export async function markComplimentaryQuotaStarted(
+  reservation: ComplimentaryQuotaReservation,
+): Promise<void> {
+  await markQuotaReservationStartedInUpstash({
+    quotaDateUtc: reservation.quotaDateUtc,
+    quotaBucket: reservation.quotaBucket,
+    reservationId: reservation.reservationId,
+  });
 }

@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "bunVersion": "1.x"
+  "bunVersion": "1.x",
+  "crons": [
+    {
+      "path": "/api/internal/browse-index/drain",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

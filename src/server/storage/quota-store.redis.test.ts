@@ -12,6 +12,7 @@ import {
   buildQuotaLeaseKey,
   QUOTA_CHECK_SCRIPT,
   QUOTA_FINALIZE_SCRIPT,
+  QUOTA_MARK_STARTED_SCRIPT,
   QUOTA_RESERVATION_LEASE_MS,
 } from "~/server/storage/quota-store";
 
@@ -157,6 +158,16 @@ async function finalizeQuota(params: {
   });
   expect(typeof result).toBe("number");
   return result as number;
+}
+
+async function markQuotaStarted(params: {
+  key: string;
+  reservationId: string;
+}): Promise<number> {
+  return (await redisClient.eval(QUOTA_MARK_STARTED_SCRIPT, {
+    keys: [params.key],
+    arguments: [params.reservationId, String(SCRIPT_TTL_SECONDS)],
+  })) as number;
 }
 
 beforeAll(async () => {
@@ -368,6 +379,42 @@ describe("quota Lua semantics", () => {
     expect(state["reclaimed:slow-a"]).toBeUndefined();
     // Only the sweeper's own lease is still outstanding.
     expect(state.reserved_tokens).toBe("50");
+  });
+
+  it("conservatively charges an expired reservation that reached the provider", async () => {
+    const key = quotaKey("expired-started");
+
+    await checkQuota({ key, reservationId: "started-a", requestedTokens: 900 });
+    await expect(
+      markQuotaStarted({ key, reservationId: "started-a" }),
+    ).resolves.toBe(1);
+
+    await expect(
+      checkQuota({
+        key,
+        reservationId: "sweeper-b",
+        requestedTokens: 100,
+        nowMs: NOW_MS + QUOTA_RESERVATION_LEASE_MS + 1,
+      }),
+    ).resolves.toEqual([1, 900]);
+
+    let state = await redisClient.hGetAll(key);
+    expect(state.used_tokens).toBe("900");
+    expect(state["expired_charged:started-a"]).toBe("900");
+    expect(state["started:started-a"]).toBeUndefined();
+
+    await expect(
+      finalizeQuota({
+        key,
+        reservationId: "started-a",
+        committedTokens: 700,
+      }),
+    ).resolves.toBe(700);
+
+    state = await redisClient.hGetAll(key);
+    expect(state.used_tokens).toBe("700");
+    expect(state["expired_charged:started-a"]).toBeUndefined();
+    expect(state["finalized:started-a"]).toBe("700");
   });
 
   it("keeps a renewed lease from being reclaimed by a later sweep", async () => {

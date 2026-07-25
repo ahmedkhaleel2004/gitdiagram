@@ -9,8 +9,11 @@ vi.mock("~/server/storage/upstash", () => ({
 }));
 
 import {
+  buildGenerationInfrastructureRateLimitKey,
   buildGenerationRateLimitKey,
+  consumeGenerationInfrastructureRateLimit,
   consumeGenerationRateLimit,
+  getGenerationInfrastructureRateLimitMax,
   getGenerationRateLimitMax,
   getGenerationRateLimitMessage,
   getGenerationRateLimitWindowSeconds,
@@ -35,6 +38,7 @@ describe("generation rate limit configuration", () => {
     delete process.env.GENERATION_RATE_LIMIT_WINDOW_SECONDS;
 
     expect(getGenerationRateLimitMax()).toBe(8);
+    expect(getGenerationInfrastructureRateLimitMax()).toBe(60);
     expect(getGenerationRateLimitWindowSeconds()).toBe(3_600);
   });
 
@@ -43,7 +47,17 @@ describe("generation rate limit configuration", () => {
     process.env.GENERATION_RATE_LIMIT_WINDOW_SECONDS = "-5";
 
     expect(getGenerationRateLimitMax()).toBe(8);
+    expect(getGenerationInfrastructureRateLimitMax()).toBe(60);
     expect(getGenerationRateLimitWindowSeconds()).toBe(3_600);
+  });
+
+  it("uses a separate infrastructure namespace", () => {
+    expect(buildGenerationInfrastructureRateLimitKey("203.0.113.7")).toBe(
+      "ratelimit:v1:generate-infrastructure:203.0.113.7",
+    );
+    expect(buildGenerationInfrastructureRateLimitKey("203.0.113.7")).not.toBe(
+      buildGenerationRateLimitKey("203.0.113.7"),
+    );
   });
 
   it("namespaces buckets per caller so one IP cannot evict another", () => {
@@ -67,7 +81,11 @@ describe("consumeGenerationRateLimit", () => {
 
     await expect(
       consumeGenerationRateLimit({ clientIp: "203.0.113.7" }),
-    ).resolves.toEqual({ allowed: true, retryAfterSeconds: 3_400 });
+    ).resolves.toEqual({
+      allowed: true,
+      retryAfterSeconds: 3_400,
+      consumed: true,
+    });
 
     expect(upstashEval).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -82,13 +100,21 @@ describe("consumeGenerationRateLimit", () => {
 
     await expect(
       consumeGenerationRateLimit({ clientIp: "203.0.113.7" }),
-    ).resolves.toEqual({ allowed: false, retryAfterSeconds: 120 });
+    ).resolves.toEqual({
+      allowed: false,
+      retryAfterSeconds: 120,
+      consumed: true,
+    });
   });
 
   it("skips the round trip when the caller is unattributable", async () => {
     await expect(
       consumeGenerationRateLimit({ clientIp: null }),
-    ).resolves.toEqual({ allowed: true, retryAfterSeconds: 0 });
+    ).resolves.toEqual({
+      allowed: true,
+      retryAfterSeconds: 0,
+      consumed: false,
+    });
 
     expect(upstashEval).not.toHaveBeenCalled();
   });
@@ -99,7 +125,34 @@ describe("consumeGenerationRateLimit", () => {
 
     await expect(
       consumeGenerationRateLimit({ clientIp: "203.0.113.7" }),
-    ).resolves.toEqual({ allowed: true, retryAfterSeconds: 0 });
+    ).resolves.toEqual({
+      allowed: true,
+      retryAfterSeconds: 0,
+      consumed: false,
+    });
+  });
+});
+
+describe("consumeGenerationInfrastructureRateLimit", () => {
+  it("limits infrastructure work independently from model spend", async () => {
+    upstashEval.mockResolvedValue([1, 3_400]);
+
+    await expect(
+      consumeGenerationInfrastructureRateLimit({
+        clientIp: "203.0.113.7",
+      }),
+    ).resolves.toEqual({
+      allowed: true,
+      retryAfterSeconds: 3_400,
+      consumed: true,
+    });
+
+    expect(upstashEval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keys: ["ratelimit:v1:generate-infrastructure:203.0.113.7"],
+        args: [60, 3_600],
+      }),
+    );
   });
 });
 

@@ -6,18 +6,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
+import type { GenerationCostSummary } from "~/features/diagram/cost";
 
 interface ExportDropdownProps {
-  onCopy: () => void;
+  onCopy: () => Promise<void> | void;
   lastGenerated?: Date;
-  actualCost?: string;
+  costSummary?: GenerationCostSummary;
   onExportImage: () => void;
 }
 
 export function ExportDropdown({
   onCopy,
   lastGenerated,
-  actualCost,
+  costSummary,
   onExportImage,
 }: ExportDropdownProps) {
   return (
@@ -50,10 +51,11 @@ export function ExportDropdown({
           </span>
         </div>
       ) : null}
-      {actualCost ? (
+      {costSummary ? (
         <div className="flex items-center">
           <span className="text-xs text-gray-700 sm:text-sm dark:text-neutral-300">
-            Actual cost: {actualCost}
+            {costSummary.kind === "actual" ? "Actual" : "Estimated"} cost:{" "}
+            {costSummary.display}
           </span>
         </div>
       ) : null}

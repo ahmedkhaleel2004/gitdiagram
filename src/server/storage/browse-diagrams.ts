@@ -12,9 +12,11 @@ import { withDistributedLock } from "./distributed-lock";
 import {
   deleteObject,
   getGzipJsonObject,
+  getGzipJsonObjectWithEtag,
   getJsonObject,
   putGzipJsonObject,
 } from "./r2";
+import type { ObjectReadResult, ObjectWriteCondition } from "./r2";
 import {
   acknowledgePendingBrowseIndexEntries,
   enqueuePendingBrowseIndexEntry,
@@ -66,11 +68,16 @@ interface StoredBrowseIndex {
   entries: BrowseIndexEntry[];
   activeSnapshotKey: string | null;
   retainedSnapshotKeys: string[];
+  manifestEtag: string | null;
 }
 
 type PutGzipJsonObjectFn = typeof putGzipJsonObject;
 type DeleteObjectFn = typeof deleteObject;
 type ReadJsonObjectFn = <T>(bucket: string, key: string) => Promise<T | null>;
+type ReadJsonObjectWithEtagFn = <T>(
+  bucket: string,
+  key: string,
+) => Promise<ObjectReadResult<T> | null>;
 
 export class BrowseIndexNotFoundError extends Error {
   constructor() {
@@ -205,7 +212,11 @@ function isBrowseSnapshotKey(value: unknown): value is string {
 }
 
 async function readStoredBrowseIndex(): Promise<StoredBrowseIndex | null> {
-  return readStoredBrowseIndexWith(getGzipJsonObject, getJsonObject);
+  return readStoredBrowseIndexWith(
+    getGzipJsonObject,
+    getJsonObject,
+    getGzipJsonObjectWithEtag,
+  );
 }
 
 export async function readBrowseIndex(): Promise<BrowseIndexEntry[] | null> {
@@ -260,11 +271,13 @@ export async function migrateBrowseIndexToAtomicV3(): Promise<number> {
 async function readStoredBrowseIndexWith(
   getGzipJsonObjectFn: ReadJsonObjectFn,
   getJsonObjectFn: ReadJsonObjectFn,
+  getManifestFn: ReadJsonObjectWithEtagFn,
 ): Promise<StoredBrowseIndex | null> {
-  const manifest = await getGzipJsonObjectFn<BrowseIndexManifestPayload>(
+  const manifestResult = await getManifestFn<BrowseIndexManifestPayload>(
     getPublicBucket(),
     PUBLIC_BROWSE_MANIFEST_KEY,
   );
+  const manifest = manifestResult?.value ?? null;
   if (
     manifest?.version === 3 &&
     typeof manifest.generation === "string" &&
@@ -285,6 +298,7 @@ async function readStoredBrowseIndexWith(
           manifest.snapshotKey,
           ...(manifest.retainedSnapshotKeys ?? []).filter(isBrowseSnapshotKey),
         ].filter((key, index, keys) => keys.indexOf(key) === index),
+        manifestEtag: manifestResult!.etag,
       };
     }
 
@@ -318,6 +332,7 @@ async function readStoredBrowseIndexWith(
         : normalizeBrowseIndexEntries(stored.entries ?? []),
     activeSnapshotKey: null,
     retainedSnapshotKeys: [],
+    manifestEtag: manifestResult?.etag ?? null,
   };
 }
 
@@ -325,6 +340,7 @@ async function writeBrowseIndex(
   params: {
     entries: BrowseIndexEntry[];
     retainedSnapshotKeys: string[];
+    expectedManifestEtag: string | null;
   },
   dependencies: {
     putGzipJsonObjectFn?: PutGzipJsonObjectFn;
@@ -357,15 +373,23 @@ async function writeBrowseIndex(
     updatedAt,
     entries: params.entries,
   } satisfies BrowseIndexSnapshotPayload);
-  await putGzipJsonObjectFn(getPublicBucket(), PUBLIC_BROWSE_MANIFEST_KEY, {
-    version: 3,
-    generation,
-    updatedAt,
-    snapshotKey,
-    retainedSnapshotKeys,
-    total: params.entries.length,
-    entries: params.entries.slice(0, RECENT_BROWSE_INDEX_SIZE),
-  } satisfies BrowseIndexManifestPayload);
+  const manifestCondition: ObjectWriteCondition = params.expectedManifestEtag
+    ? { ifMatch: params.expectedManifestEtag }
+    : { ifNoneMatch: true };
+  await putGzipJsonObjectFn(
+    getPublicBucket(),
+    PUBLIC_BROWSE_MANIFEST_KEY,
+    {
+      version: 3,
+      generation,
+      updatedAt,
+      snapshotKey,
+      retainedSnapshotKeys,
+      total: params.entries.length,
+      entries: params.entries.slice(0, RECENT_BROWSE_INDEX_SIZE),
+    } satisfies BrowseIndexManifestPayload,
+    manifestCondition,
+  );
 
   await Promise.all(
     retiredSnapshotKeys.map(async (retiredSnapshotKey) => {
@@ -394,7 +418,7 @@ async function materializePendingBrowseIndex(params: {
     readStoredBrowseIndex(),
     readPendingBrowseIndexEntries(),
   ]);
-  if (!stored && !pending.length && params.requireExistingIndex) {
+  if (!stored && params.requireExistingIndex) {
     throw new BrowseIndexNotFoundError();
   }
 
@@ -412,6 +436,7 @@ async function materializePendingBrowseIndex(params: {
           {
             entries,
             retainedSnapshotKeys: stored?.retainedSnapshotKeys ?? [],
+            expectedManifestEtag: stored?.manifestEtag ?? null,
           },
           { generation: params.generation },
         )
@@ -425,7 +450,6 @@ export async function upsertBrowseIndexEntry(
 ): Promise<BrowseIndexEntry[]> {
   const normalizedEntry = normalizeBrowseIndexEntry(entry);
   await enqueuePendingBrowseIndexEntry(normalizedEntry);
-  const generation = randomUUID();
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= BROWSE_INDEX_WRITE_ATTEMPTS; attempt++) {
@@ -434,8 +458,39 @@ export async function upsertBrowseIndexEntry(
         key: PUBLIC_BROWSE_INDEX_LOCK_KEY,
         ttlMs: BROWSE_INDEX_LOCK_TTL_MS,
         waitMs: BROWSE_INDEX_LOCK_WAIT_MS,
-        callback: () => materializePendingBrowseIndex({ generation }),
+        callback: () =>
+          materializePendingBrowseIndex({
+            generation: randomUUID(),
+            requireExistingIndex: true,
+          }),
       });
+    } catch (error) {
+      lastError = error;
+      if (attempt < BROWSE_INDEX_WRITE_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+export async function drainPendingBrowseIndex(): Promise<number> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= BROWSE_INDEX_WRITE_ATTEMPTS; attempt++) {
+    try {
+      const entries = await withDistributedLock({
+        key: PUBLIC_BROWSE_INDEX_LOCK_KEY,
+        ttlMs: BROWSE_INDEX_LOCK_TTL_MS,
+        waitMs: BROWSE_INDEX_LOCK_WAIT_MS,
+        callback: () =>
+          materializePendingBrowseIndex({
+            generation: randomUUID(),
+            requireExistingIndex: true,
+          }),
+      });
+      return entries.length;
     } catch (error) {
       lastError = error;
       if (attempt < BROWSE_INDEX_WRITE_ATTEMPTS) {

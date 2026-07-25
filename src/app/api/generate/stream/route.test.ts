@@ -11,8 +11,11 @@ const mocks = vi.hoisted(() => ({
   generateStructuredOutput: vi.fn(),
   getGithubData: vi.fn(),
   persistAudit: vi.fn(),
+  consumeInfrastructureRateLimit: vi.fn(),
   consumeRateLimit: vi.fn(),
+  refundInfrastructureRateLimit: vi.fn(),
   refundRateLimit: vi.fn(),
+  markQuotaStarted: vi.fn(),
   registerActiveGeneration: vi.fn(),
   resolveRequestCredentials: vi.fn(),
   saveDiagram: vi.fn(),
@@ -47,6 +50,7 @@ vi.mock("~/server/generate/complimentary-gate", () => ({
   buildComplimentaryAdmissionTokens: vi.fn(() => 10_000),
   buildComplimentaryStageTokenBound: mocks.buildStageTokenBound,
   finalizeComplimentaryQuota: mocks.finalizeQuota,
+  markComplimentaryQuotaStarted: mocks.markQuotaStarted,
   getComplimentaryDenialMessage: vi.fn(() => "Daily limit reached."),
   getComplimentaryModelMismatchMessage: vi.fn(() => "Model mismatch."),
   getComplimentaryProviderMismatchMessage: vi.fn(() => "Provider mismatch."),
@@ -82,7 +86,10 @@ vi.mock("~/server/http/request-credentials", () => ({
 }));
 vi.mock("~/server/generate/rate-limit", async (importOriginal) => ({
   ...(await importOriginal<object>()),
+  consumeGenerationInfrastructureRateLimit:
+    mocks.consumeInfrastructureRateLimit,
   consumeGenerationRateLimit: mocks.consumeRateLimit,
+  refundGenerationInfrastructureRateLimit: mocks.refundInfrastructureRateLimit,
   refundGenerationRateLimit: mocks.refundRateLimit,
 }));
 import { POST } from "~/app/api/generate/stream/route";
@@ -139,11 +146,19 @@ describe("POST /api/generate/stream", () => {
       isPrivate: false,
       stargazerCount: 10,
     });
+    mocks.consumeInfrastructureRateLimit.mockResolvedValue({
+      allowed: true,
+      retryAfterSeconds: 0,
+      consumed: true,
+    });
     mocks.consumeRateLimit.mockResolvedValue({
       allowed: true,
       retryAfterSeconds: 0,
+      consumed: true,
     });
+    mocks.refundInfrastructureRateLimit.mockResolvedValue(undefined);
     mocks.refundRateLimit.mockResolvedValue(undefined);
+    mocks.markQuotaStarted.mockResolvedValue(undefined);
     mocks.persistAudit.mockResolvedValue(undefined);
     mocks.clearFailureSummary.mockResolvedValue(undefined);
     mocks.saveDiagram.mockResolvedValue(true);
@@ -192,6 +207,7 @@ describe("POST /api/generate/stream", () => {
     mocks.consumeRateLimit.mockResolvedValue({
       allowed: false,
       retryAfterSeconds: 900,
+      consumed: true,
     });
 
     const response = await POST(request());
