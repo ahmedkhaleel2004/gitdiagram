@@ -20,7 +20,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
