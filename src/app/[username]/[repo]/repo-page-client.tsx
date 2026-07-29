@@ -18,9 +18,9 @@ import { TooltipProvider } from "~/components/ui/tooltip";
 
 const loadMermaidChart = () => import("~/components/mermaid-diagram");
 const MermaidChart = dynamic(loadMermaidChart, {
-  loading: () => (
-    <div className="h-[70vh] max-h-[52rem] min-h-[22rem] w-full animate-pulse rounded-xl border border-black/12 bg-white/30 dark:border-white/12 dark:bg-white/[0.03]" />
-  ),
+  // The default diagram is not shown in the zoom viewer, so rendering that
+  // frame while this chunk loads causes a misleading flash on cold visits.
+  loading: () => null,
 });
 
 type RepoPageClientProps = {
