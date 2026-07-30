@@ -139,6 +139,38 @@ interface StreamCompletionResult {
   usagePromise: Promise<GenerationTokenUsage | null>;
 }
 
+const NO_PARSED_STRUCTURED_PAYLOAD_ERROR =
+  "Structured output parsing returned no parsed payload.";
+
+// OpenRouter fronts many models, and only some honor the strict json_schema
+// response format the graph stage requires. Only a request rejected over the
+// schema itself (a 4xx that names the response format) or a response that
+// ignored it entirely indicates a capability problem; rate limits, auth
+// failures, and transient network faults must keep their own meaning so
+// abort/timeout propagation and status-based handling stay intact.
+const STRUCTURED_OUTPUT_REJECTION_STATUSES = new Set([400, 404, 422]);
+const STRUCTURED_OUTPUT_REJECTION_PATTERN =
+  /structured outputs?|response_format|json_schema|text\.format/i;
+
+function isStructuredOutputRejection(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  if (error.message === NO_PARSED_STRUCTURED_PAYLOAD_ERROR) {
+    return true;
+  }
+
+  // Duck-typed rather than `instanceof OpenAI.APIError` so classification does
+  // not depend on which SDK error subclass (or mock) produced the failure.
+  const status = (error as { status?: unknown }).status;
+  return (
+    typeof status === "number" &&
+    STRUCTURED_OUTPUT_REJECTION_STATUSES.has(status) &&
+    STRUCTURED_OUTPUT_REJECTION_PATTERN.test(error.message)
+  );
+}
+
 function getResponseFailureMessage(response: {
   error?: { message?: string | null } | null;
   incomplete_details?: { reason?: string | null } | null;
@@ -364,7 +396,7 @@ export async function generateStructuredOutput<T>({
     );
 
     if (!response.output_parsed) {
-      throw new Error("Structured output parsing returned no parsed payload.");
+      throw new Error(NO_PARSED_STRUCTURED_PAYLOAD_ERROR);
     }
 
     const rawText =
@@ -377,16 +409,19 @@ export async function generateStructuredOutput<T>({
       usage: normalizeGenerationUsage(response.usage),
     };
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Structured output request failed.";
-    if (provider === "openrouter") {
+    if (provider === "openrouter" && isStructuredOutputRejection(error)) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Structured output request failed.";
       throw new UpstreamProviderError(
         `OpenRouter model does not support the required structured graph output: ${message}`,
         { cause: error },
       );
     }
+    // Everything else keeps its own identity: aborts and the route deadline
+    // propagate unchanged (see rethrowAsUpstreamProviderError), and other API
+    // failures surface as plain upstream provider errors.
     rethrowAsUpstreamProviderError(error);
   }
 }

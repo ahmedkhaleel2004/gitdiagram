@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GenerationSessionAudit } from "~/features/diagram/graph";
+import { BYOK_UPSTREAM_ERROR_PREFIX } from "~/server/generate/errors";
 import type { DiagramArtifact } from "~/server/storage/types";
 
 const storageMocks = vi.hoisted(() => ({
@@ -212,6 +213,46 @@ describe("toStoredSessionSummary", () => {
 
     expect(toStoredSessionSummary(audit).graph).toEqual(graph);
   });
+
+  it("redacts raw BYOK provider text before it reaches shared storage", () => {
+    const rawProviderText =
+      "401 Incorrect API key provided: sk-proj-********************abcd for org-abc123def.";
+    const audit = {
+      ...createAudit({
+        sessionId: "session-byok-failure",
+        createdAt: "2026-07-13T12:00:00.000Z",
+        updatedAt: "2026-07-13T12:05:00.000Z",
+      }),
+      status: "failed" as const,
+      failureStage: "explanation_streaming",
+      validationError: `${BYOK_UPSTREAM_ERROR_PREFIX}${rawProviderText}`,
+    };
+
+    const summary = toStoredSessionSummary(audit);
+
+    expect(summary.validationError).not.toContain("org-abc123def");
+    expect(summary.validationError).not.toContain("sk-proj");
+    expect(summary.validationError).toBe(
+      "The AI provider returned an error while generating this diagram. Please retry.",
+    );
+  });
+
+  it("keeps app-authored validation errors readable in shared storage", () => {
+    const audit = {
+      ...createAudit({
+        sessionId: "session-validation-failure",
+        createdAt: "2026-07-13T12:00:00.000Z",
+        updatedAt: "2026-07-13T12:05:00.000Z",
+      }),
+      status: "failed" as const,
+      failureStage: "graph_validating",
+      validationError: "Graph validation failed after the maximum attempts.",
+    };
+
+    expect(toStoredSessionSummary(audit).validationError).toBe(
+      "Graph validation failed after the maximum attempts.",
+    );
+  });
 });
 
 describe("public diagram previews", () => {
@@ -246,7 +287,7 @@ describe("public diagram previews", () => {
     expect(storageMocks.getJsonObject).toHaveBeenCalledOnce();
     expect(storageMocks.getJsonObject).toHaveBeenCalledWith(
       "test-public-bucket",
-      "public/v1/acme/demo.preview.json",
+      "public-preview/v1/acme/demo.json",
     );
   });
 
@@ -299,7 +340,7 @@ describe("public diagram previews", () => {
     ).resolves.toBe(true);
     expect(storageMocks.putJsonObject).toHaveBeenCalledWith(
       "test-public-bucket",
-      "public/v1/acme/demo.preview.json",
+      "public-preview/v1/acme/demo.json",
       {
         version: 1,
         username: "acme",

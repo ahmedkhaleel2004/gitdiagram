@@ -140,6 +140,7 @@ async function fetchJsonResult<T>(
   notFoundMessage: string,
   signal?: AbortSignal,
   ifNoneMatch?: string,
+  conflictMessage?: string,
 ): Promise<JsonFetchResult<T>> {
   const timeoutSignal = AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS);
   const requestHeaders = new Headers(headers);
@@ -166,6 +167,12 @@ async function fetchJsonResult<T>(
 
   if (response.status === 404) {
     throw new Error(notFoundMessage);
+  }
+
+  // GitHub answers 409 ("Git Repository is empty.") for zero-commit repos on
+  // the trees endpoint — a permanent condition, not a transient failure.
+  if (response.status === 409 && conflictMessage) {
+    throw new Error(conflictMessage);
   }
 
   if (!response.ok) {
@@ -243,7 +250,10 @@ async function getFileTree(
   fileTree: string;
   pathTypes: ReadonlyMap<string, RepositoryPathType>;
 }> {
-  const url = `https://api.github.com/repos/${username}/${repo}/git/trees/${branch}?recursive=1`;
+  // Branch names may contain URL-significant characters ("#", "?", …).
+  // encodeURIComponent also encodes "/" as %2F, which the trees API accepts
+  // in the {tree_sha} position; plain branch names are unchanged.
+  const url = `https://api.github.com/repos/${username}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
   const cached = usePublicConditionalCache
     ? publicTreeCache.get(url)
     : undefined;
@@ -257,6 +267,7 @@ async function getFileTree(
     FILE_TREE_UNAVAILABLE_ERROR,
     signal,
     cached?.etag,
+    EMPTY_REPOSITORY_ERROR,
   );
   if (result.notModified && cached) {
     return { fileTree: cached.fileTree, pathTypes: cached.pathTypes };

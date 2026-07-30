@@ -31,7 +31,11 @@ export interface StorageLocation {
 }
 
 export function getPublicPreviewKey(username: string, repo: string): string {
-  return `public/v1/${normalizeSegment(username)}/${normalizeSegment(repo)}.preview.json`;
+  // The sidecar lives under its own prefix rather than a ".preview" suffix on
+  // the repo segment: normalizeSegment leaves "." unescaped, so a suffix would
+  // let the sidecar for repo "app" collide with the artifact for the legal
+  // repo name "app.preview" and silently overwrite it.
+  return `public-preview/v1/${normalizeSegment(username)}/${normalizeSegment(repo)}.json`;
 }
 
 export function getPublicLocation(

@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RepoPageClient from "./repo-page-client";
 
@@ -54,6 +54,10 @@ describe("RepoPageClient", () => {
   beforeEach(() => {
     warningToast.mockClear();
     mainCardProps.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("renders the cached diagram before failure details", async () => {
@@ -117,6 +121,64 @@ describe("RepoPageClient", () => {
       "Diagram generated, but not saved",
       expect.objectContaining({ description: persistenceWarning }),
     );
+  });
+
+  it("offers the API key CTA when a generation is rate-limited", () => {
+    const rateLimitMessage =
+      "Too many free generations from this network. Please try again in about 12 minutes.";
+    useDiagram.mockReturnValue({
+      diagram: "",
+      error: rateLimitMessage,
+      loading: false,
+      lastGenerated: undefined,
+      showApiKeyDialog: false,
+      handleCopy: vi.fn(),
+      handleApiKeySaved: vi.fn(),
+      handleCloseApiKeyDialog: vi.fn(),
+      handleOpenApiKeyDialog: vi.fn(),
+      handleExportImage: vi.fn(),
+      handleRegenerate: vi.fn(),
+      handleDiagramRenderError: vi.fn(),
+      state: {
+        status: "error",
+        error: rateLimitMessage,
+        errorCode: "RATE_LIMITED",
+      },
+    });
+
+    render(<RepoPageClient username="Acme" repo="Demo" />);
+
+    expect(
+      screen.getByRole("button", { name: /use your ai key/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not offer the API key CTA for unrelated failures", () => {
+    const failureMessage = "Something went wrong. Please try again later.";
+    useDiagram.mockReturnValue({
+      diagram: "",
+      error: failureMessage,
+      loading: false,
+      lastGenerated: undefined,
+      showApiKeyDialog: false,
+      handleCopy: vi.fn(),
+      handleApiKeySaved: vi.fn(),
+      handleCloseApiKeyDialog: vi.fn(),
+      handleOpenApiKeyDialog: vi.fn(),
+      handleExportImage: vi.fn(),
+      handleRegenerate: vi.fn(),
+      handleDiagramRenderError: vi.fn(),
+      state: {
+        status: "error",
+        error: failureMessage,
+      },
+    });
+
+    render(<RepoPageClient username="Acme" repo="Demo" />);
+
+    expect(
+      screen.queryByRole("button", { name: /use your ai key/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("preserves a final estimated cost after generation completes", () => {

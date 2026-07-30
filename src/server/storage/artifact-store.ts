@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import type { GenerationSessionAudit } from "~/features/diagram/graph";
+import { redactUpstreamProviderTextForSharedRecord } from "~/server/generate/errors";
 import {
   getPublicPreviewKey,
   getReadLocations,
@@ -49,7 +50,13 @@ export function toStoredSessionSummary(
     graph: audit.status === "failed" ? audit.graph : null,
     graphAttempts: audit.status === "failed" ? audit.graphAttempts : [],
     stageUsages: [],
-    validationError: audit.validationError,
+    // The live SSE audit may show a caller their own provider's raw error, but
+    // this summary is written to shared storage (the public failure record and
+    // the artifact's latest session summary) and served to later visitors, so
+    // raw upstream provider text must never survive into it.
+    validationError: redactUpstreamProviderTextForSharedRecord(
+      audit.validationError,
+    ),
     failureStage: audit.failureStage,
     compilerError: audit.compilerError,
     renderError: audit.renderError,
@@ -187,6 +194,11 @@ export async function writePublicDiagramPreview(params: {
 }): Promise<boolean> {
   const location = getPublicLocation(params.username, params.repo);
 
+  // Deliberately reuses the canonical artifact's lock: the sidecar is only
+  // valid while its artifact is canonical, so the read-check-write below must
+  // serialize against writeDiagramArtifact for the same repo. The sidecar key
+  // itself lives in a separate namespace (see getPublicPreviewKey) and is
+  // never written under any other lock.
   return withDistributedLock({
     key: getArtifactLockKey(location),
     ttlMs: ARTIFACT_LOCK_TTL_MS,

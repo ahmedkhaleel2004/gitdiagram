@@ -120,6 +120,7 @@ export async function POST(request: Request) {
     cancelToken,
     cancellationRegistered,
     rateLimitedClientIp,
+    rateLimitedWindowStartSeconds,
   } = admission.value;
   const generationAbortController = new AbortController();
   const deadlineSignal = AbortSignal.timeout(GENERATION_DEADLINE_MS);
@@ -175,6 +176,11 @@ export async function POST(request: Request) {
 
   request.signal.addEventListener("abort", handleRequestAbort, { once: true });
   deadlineSignal.addEventListener("abort", handleDeadline, { once: true });
+  // Listeners attached to an already-aborted signal never fire, and the client
+  // may have disconnected while admission was performing Redis round trips.
+  if (request.signal.aborted) {
+    handleRequestAbort();
+  }
 
   after(async () => {
     await generationDone;
@@ -783,6 +789,7 @@ export async function POST(request: Request) {
             postResponseTasks,
             quotaReservation,
             rateLimitedClientIp,
+            rateLimitedWindowStartSeconds,
             recordTiming,
             repo,
             repositoryVerified,

@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   canPersistVisibility,
   getPrivateLocation,
+  getPublicLocation,
+  getPublicPreviewKey,
   getReadLocations,
   getWriteLocation,
 } from "~/server/storage/cache-key";
@@ -38,6 +40,21 @@ describe("private namespace", () => {
     expect(() => getPrivateLocation("acme", "demo", "   ")).toThrow(
       /non-empty GitHub token/u,
     );
+  });
+});
+
+describe("getPublicPreviewKey", () => {
+  it("lives in a namespace no artifact key can reach", () => {
+    // Dots are legal in repo names and survive normalization, so the sidecar
+    // for repo "app" must never share a key with the artifact for repo
+    // "app.preview" — that collision let a preview write destroy an artifact.
+    expect(getPublicPreviewKey("acme", "app")).not.toBe(
+      getPublicLocation("acme", "app.preview").artifactKey,
+    );
+    expect(getPublicPreviewKey("acme", "app")).toBe(
+      "public-preview/v1/acme/app.json",
+    );
+    expect(getPublicPreviewKey("acme", "app")).not.toMatch(/^public\//u);
   });
 });
 

@@ -23,11 +23,20 @@ import {
 
 const originalEnv = { ...process.env };
 
+// Half past the hour, so the aligned window is unambiguous: it started at
+// 00:00:00Z and has 1800 seconds left to run.
+const NOW_MS = Date.parse("2026-01-01T00:30:00Z");
+const WINDOW_START_SECONDS = 1_767_225_600;
+const WINDOW_REMAINING_SECONDS = 1_800;
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW_MS);
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   process.env = { ...originalEnv };
   vi.restoreAllMocks();
 });
@@ -52,20 +61,40 @@ describe("generation rate limit configuration", () => {
   });
 
   it("uses a separate infrastructure namespace", () => {
-    expect(buildGenerationInfrastructureRateLimitKey("203.0.113.7")).toBe(
-      "ratelimit:v1:generate-infrastructure:203.0.113.7",
+    expect(
+      buildGenerationInfrastructureRateLimitKey(
+        "203.0.113.7",
+        WINDOW_START_SECONDS,
+      ),
+    ).toBe(
+      `ratelimit:v2:generate-infrastructure:203.0.113.7:${WINDOW_START_SECONDS}`,
     );
-    expect(buildGenerationInfrastructureRateLimitKey("203.0.113.7")).not.toBe(
-      buildGenerationRateLimitKey("203.0.113.7"),
+    expect(
+      buildGenerationInfrastructureRateLimitKey(
+        "203.0.113.7",
+        WINDOW_START_SECONDS,
+      ),
+    ).not.toBe(
+      buildGenerationRateLimitKey("203.0.113.7", WINDOW_START_SECONDS),
     );
   });
 
   it("namespaces buckets per caller so one IP cannot evict another", () => {
-    expect(buildGenerationRateLimitKey("203.0.113.7")).toBe(
-      "ratelimit:v1:generate:203.0.113.7",
+    expect(
+      buildGenerationRateLimitKey("203.0.113.7", WINDOW_START_SECONDS),
+    ).toBe(`ratelimit:v2:generate:203.0.113.7:${WINDOW_START_SECONDS}`);
+    expect(
+      buildGenerationRateLimitKey("2001:db8::1", WINDOW_START_SECONDS),
+    ).not.toBe(
+      buildGenerationRateLimitKey("203.0.113.7", WINDOW_START_SECONDS),
     );
-    expect(buildGenerationRateLimitKey("2001:db8::1")).not.toBe(
-      buildGenerationRateLimitKey("203.0.113.7"),
+  });
+
+  it("gives each window its own key so counters never blend together", () => {
+    expect(
+      buildGenerationRateLimitKey("203.0.113.7", WINDOW_START_SECONDS),
+    ).not.toBe(
+      buildGenerationRateLimitKey("203.0.113.7", WINDOW_START_SECONDS + 3_600),
     );
   });
 
@@ -77,20 +106,23 @@ describe("generation rate limit configuration", () => {
 
 describe("consumeGenerationRateLimit", () => {
   it("admits a caller under the limit", async () => {
-    upstashEval.mockResolvedValue([1, 3_400]);
+    upstashEval.mockResolvedValue([1, 1_700]);
 
     await expect(
       consumeGenerationRateLimit({ clientIp: "203.0.113.7" }),
     ).resolves.toEqual({
       allowed: true,
-      retryAfterSeconds: 3_400,
+      retryAfterSeconds: 1_700,
       consumed: true,
+      windowStartSeconds: WINDOW_START_SECONDS,
     });
 
+    // The key carries the window, and the TTL is only the remainder of it, so
+    // the window closes on its own clock rather than sliding per caller.
     expect(upstashEval).toHaveBeenCalledWith(
       expect.objectContaining({
-        keys: ["ratelimit:v1:generate:203.0.113.7"],
-        args: [8, 3_600],
+        keys: [`ratelimit:v2:generate:203.0.113.7:${WINDOW_START_SECONDS}`],
+        args: [8, WINDOW_REMAINING_SECONDS],
       }),
     );
   });
@@ -104,6 +136,7 @@ describe("consumeGenerationRateLimit", () => {
       allowed: false,
       retryAfterSeconds: 120,
       consumed: true,
+      windowStartSeconds: WINDOW_START_SECONDS,
     });
   });
 
@@ -114,6 +147,7 @@ describe("consumeGenerationRateLimit", () => {
       allowed: true,
       retryAfterSeconds: 0,
       consumed: false,
+      windowStartSeconds: WINDOW_START_SECONDS,
     });
 
     expect(upstashEval).not.toHaveBeenCalled();
@@ -129,13 +163,14 @@ describe("consumeGenerationRateLimit", () => {
       allowed: true,
       retryAfterSeconds: 0,
       consumed: false,
+      windowStartSeconds: WINDOW_START_SECONDS,
     });
   });
 });
 
 describe("consumeGenerationInfrastructureRateLimit", () => {
   it("limits infrastructure work independently from model spend", async () => {
-    upstashEval.mockResolvedValue([1, 3_400]);
+    upstashEval.mockResolvedValue([1, 1_700]);
 
     await expect(
       consumeGenerationInfrastructureRateLimit({
@@ -143,14 +178,17 @@ describe("consumeGenerationInfrastructureRateLimit", () => {
       }),
     ).resolves.toEqual({
       allowed: true,
-      retryAfterSeconds: 3_400,
+      retryAfterSeconds: 1_700,
       consumed: true,
+      windowStartSeconds: WINDOW_START_SECONDS,
     });
 
     expect(upstashEval).toHaveBeenCalledWith(
       expect.objectContaining({
-        keys: ["ratelimit:v1:generate-infrastructure:203.0.113.7"],
-        args: [60, 3_600],
+        keys: [
+          `ratelimit:v2:generate-infrastructure:203.0.113.7:${WINDOW_START_SECONDS}`,
+        ],
+        args: [60, WINDOW_REMAINING_SECONDS],
       }),
     );
   });
@@ -189,15 +227,50 @@ describe("refundGenerationRateLimit", () => {
   it("returns a slot consumed by a request that never reached a model call", async () => {
     upstashEval.mockResolvedValue(1);
 
-    await refundGenerationRateLimit({ clientIp: "203.0.113.7" });
+    await refundGenerationRateLimit({
+      clientIp: "203.0.113.7",
+      windowStartSeconds: WINDOW_START_SECONDS,
+    });
 
     expect(upstashEval).toHaveBeenCalledWith(
-      expect.objectContaining({ keys: ["ratelimit:v1:generate:203.0.113.7"] }),
+      expect.objectContaining({
+        keys: [`ratelimit:v2:generate:203.0.113.7:${WINDOW_START_SECONDS}`],
+      }),
+    );
+  });
+
+  it("refunds the window the slot was charged to, not the current one", async () => {
+    upstashEval.mockResolvedValue(0);
+    const consumedWindowStartSeconds = WINDOW_START_SECONDS - 3_600;
+
+    // A refund queued as a post-response task can outlive the window it was
+    // charged in. It has to target the old (now expired) key and lapse into a
+    // no-op, rather than decrementing the current window and handing the bucket
+    // an extra slot it never paid for.
+    await refundGenerationRateLimit({
+      clientIp: "203.0.113.7",
+      windowStartSeconds: consumedWindowStartSeconds,
+    });
+
+    expect(upstashEval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keys: [
+          `ratelimit:v2:generate:203.0.113.7:${consumedWindowStartSeconds}`,
+        ],
+      }),
+    );
+    expect(upstashEval).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        keys: [`ratelimit:v2:generate:203.0.113.7:${WINDOW_START_SECONDS}`],
+      }),
     );
   });
 
   it("skips the round trip when the caller is unattributable", async () => {
-    await refundGenerationRateLimit({ clientIp: null });
+    await refundGenerationRateLimit({
+      clientIp: null,
+      windowStartSeconds: WINDOW_START_SECONDS,
+    });
 
     expect(upstashEval).not.toHaveBeenCalled();
   });
@@ -207,7 +280,10 @@ describe("refundGenerationRateLimit", () => {
     upstashEval.mockRejectedValue(new Error("upstash unavailable"));
 
     await expect(
-      refundGenerationRateLimit({ clientIp: "203.0.113.7" }),
+      refundGenerationRateLimit({
+        clientIp: "203.0.113.7",
+        windowStartSeconds: WINDOW_START_SECONDS,
+      }),
     ).resolves.toBeUndefined();
   });
 });

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resetLegacyCredentialMigrationForTests } from "~/features/credentials/api";
 import {
+  DiagramStreamHttpError,
   getDiagramState,
   streamDiagramGeneration,
 } from "~/features/diagram/api";
@@ -335,6 +336,82 @@ describe("streamDiagramGeneration", () => {
         { onMessage: vi.fn() },
       ),
     ).rejects.toThrow("Too many generation requests");
+  });
+
+  it("surfaces the server's own rate-limit explanation with status and code", async () => {
+    const serverMessage =
+      "Too many free generations from this network. Please try again in about 12 minutes or use your own API key.";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json(
+            { ok: false, error: serverMessage, error_code: "RATE_LIMITED" },
+            { status: 429 },
+          ),
+        ),
+    );
+
+    const failure = streamDiagramGeneration(
+      { username: "openai", repo: "openai-node" },
+      { onMessage: vi.fn() },
+    );
+
+    await expect(failure).rejects.toBeInstanceOf(DiagramStreamHttpError);
+    await expect(failure).rejects.toMatchObject({
+      message: serverMessage,
+      status: 429,
+      errorCode: "RATE_LIMITED",
+    });
+  });
+
+  it("surfaces non-429 pre-stream rejections verbatim", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json(
+          {
+            ok: false,
+            error: "Generation session already exists. Please retry.",
+            error_code: "SESSION_CONFLICT",
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    await expect(
+      streamDiagramGeneration(
+        { username: "openai", repo: "openai-node" },
+        { onMessage: vi.fn() },
+      ),
+    ).rejects.toMatchObject({
+      message: "Generation session already exists. Please retry.",
+      status: 409,
+      errorCode: "SESSION_CONFLICT",
+    });
+  });
+
+  it("falls back to a generic message for unparseable pre-stream failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response("<html>outage</html>", { status: 503 }),
+        ),
+    );
+
+    await expect(
+      streamDiagramGeneration(
+        { username: "openai", repo: "openai-node" },
+        { onMessage: vi.fn() },
+      ),
+    ).rejects.toMatchObject({
+      message: "Failed to start streaming",
+      status: 503,
+    });
   });
 });
 

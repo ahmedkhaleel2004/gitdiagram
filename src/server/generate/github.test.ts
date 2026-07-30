@@ -376,6 +376,78 @@ describe("getGithubData repository input bounds", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("reports an empty repository when the tree endpoint returns 409", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/empty")) {
+        return jsonResponse({ default_branch: "main", private: false });
+      }
+      if (url.includes("/git/trees/main?recursive=1")) {
+        // GitHub's actual response for a zero-commit repository.
+        return jsonResponse({ message: "Git Repository is empty." }, 409);
+      }
+      if (url.endsWith("/repos/acme/empty/readme")) {
+        return jsonResponse({ message: "Not Found" }, 404);
+      }
+      throw new Error(`Unexpected GitHub URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getGithubData("acme", "empty")).rejects.toThrow(
+      "Could not fetch repository file tree. Repository might be empty or inaccessible.",
+    );
+  });
+
+  it("keeps the generic retry message for a 409 outside the tree endpoint", async () => {
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ message: "Conflict" }, 409)),
+    );
+
+    // The repo metadata request fails first; only the tree endpoint maps 409
+    // to the empty-repository message.
+    await expect(getGithubData("acme", "demo")).rejects.toThrow(
+      "GitHub request failed (409). Please retry.",
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("percent-encodes the default branch in the tree URL", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/demo")) {
+        return jsonResponse({
+          default_branch: "feat/v#2",
+          private: false,
+          stargazers_count: 1,
+        });
+      }
+      if (url.includes("/git/trees/feat%2Fv%232?recursive=1")) {
+        return jsonResponse({
+          truncated: false,
+          tree: [{ path: "src/main.ts", type: "blob" }],
+        });
+      }
+      if (url.endsWith("/repos/acme/demo/readme")) {
+        return jsonResponse({ message: "Not Found" }, 404);
+      }
+      throw new Error(`Unexpected GitHub URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
+      defaultBranch: "feat/v#2",
+      fileTree: "src/main.ts",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/repos/acme/demo/git/trees/feat%2Fv%232?recursive=1",
+      expect.anything(),
+    );
+  });
+
   it("keeps the GitHub error body out of the thrown message", async () => {
     const secretBody = JSON.stringify({
       message:

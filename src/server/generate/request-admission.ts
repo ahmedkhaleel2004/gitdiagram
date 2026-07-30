@@ -28,6 +28,11 @@ interface AdmittedGenerationRequest {
    * ever verified.
    */
   rateLimitedClientIp: string | null;
+  /**
+   * The fixed window the slot above was charged to. A refund that outlives the
+   * window must expire with it rather than credit the next window's counter.
+   */
+  rateLimitedWindowStartSeconds: number;
 }
 
 type GenerationRequestAdmission =
@@ -109,12 +114,17 @@ export async function admitGenerationRequest(
     : null;
 
   let rateLimitedClientIp: string | null = null;
+  let rateLimitedWindowStartSeconds = 0;
   const refundAdmissionRateLimits = async () => {
     await Promise.all([
       refundGenerationInfrastructureRateLimit({
         clientIp: infrastructureRateLimitedClientIp,
+        windowStartSeconds: infrastructureRateLimit.windowStartSeconds,
       }),
-      refundGenerationRateLimit({ clientIp: rateLimitedClientIp }),
+      refundGenerationRateLimit({
+        clientIp: rateLimitedClientIp,
+        windowStartSeconds: rateLimitedWindowStartSeconds,
+      }),
     ]);
   };
 
@@ -125,6 +135,7 @@ export async function admitGenerationRequest(
     if (!rateLimit.allowed) {
       await refundGenerationInfrastructureRateLimit({
         clientIp: infrastructureRateLimitedClientIp,
+        windowStartSeconds: infrastructureRateLimit.windowStartSeconds,
       });
       return {
         admitted: false,
@@ -141,6 +152,7 @@ export async function admitGenerationRequest(
       };
     }
     rateLimitedClientIp = rateLimit.consumed ? clientIp : null;
+    rateLimitedWindowStartSeconds = rateLimit.windowStartSeconds;
   }
 
   const sessionId = requestedSessionId ?? randomUUID();
@@ -198,6 +210,7 @@ export async function admitGenerationRequest(
       cancelToken,
       cancellationRegistered,
       rateLimitedClientIp,
+      rateLimitedWindowStartSeconds,
     },
   };
 }

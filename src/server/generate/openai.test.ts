@@ -22,6 +22,7 @@ vi.mock("openai", () => ({
   },
 }));
 
+import { UpstreamProviderError } from "~/server/generate/errors";
 import {
   generateStructuredOutput,
   streamCompletion,
@@ -217,5 +218,90 @@ describe("OpenAI Responses incomplete streams", () => {
       "OpenAI stream ended before response.completed.",
     );
     await expect(result.usagePromise).resolves.toBeNull();
+  });
+});
+
+describe("generateStructuredOutput error classification", () => {
+  const schema = z.object({ value: z.string() });
+
+  function requestStructuredOutput() {
+    return generateStructuredOutput({
+      provider: "openrouter",
+      model: "some/openrouter-model",
+      systemPrompt: "system",
+      userPrompt: "user",
+      schema,
+      schemaName: "payload",
+      apiKey: "sk-or-test",
+    });
+  }
+
+  it("propagates an abort unchanged instead of calling it a capability failure", async () => {
+    const abortError = new DOMException(
+      "The operation was aborted.",
+      "AbortError",
+    );
+    openAiMocks.responsesParse.mockRejectedValue(abortError);
+
+    await expect(requestStructuredOutput()).rejects.toBe(abortError);
+  });
+
+  it("propagates a timeout unchanged instead of calling it a capability failure", async () => {
+    const timeoutError = new DOMException(
+      "The operation timed out.",
+      "TimeoutError",
+    );
+    openAiMocks.responsesParse.mockRejectedValue(timeoutError);
+
+    await expect(requestStructuredOutput()).rejects.toBe(timeoutError);
+  });
+
+  it("keeps a rate limit as a plain upstream error, not a capability failure", async () => {
+    openAiMocks.responsesParse.mockRejectedValue(
+      Object.assign(new Error("429 Rate limit exceeded, retry shortly."), {
+        status: 429,
+      }),
+    );
+
+    const error: unknown = await requestStructuredOutput().then(
+      () => {
+        throw new Error("expected rejection");
+      },
+      (cause: unknown) => cause,
+    );
+
+    expect(error).toBeInstanceOf(UpstreamProviderError);
+    expect((error as Error).message).toBe(
+      "429 Rate limit exceeded, retry shortly.",
+    );
+  });
+
+  it("labels a schema rejection as a structured output capability failure", async () => {
+    openAiMocks.responsesParse.mockRejectedValue(
+      Object.assign(
+        new Error("404 No endpoints found that support response_format."),
+        { status: 404 },
+      ),
+    );
+
+    const request = requestStructuredOutput();
+    await expect(request).rejects.toBeInstanceOf(UpstreamProviderError);
+    await expect(request).rejects.toThrow(
+      "OpenRouter model does not support the required structured graph output: 404 No endpoints found that support response_format.",
+    );
+  });
+
+  it("labels a response that ignored the schema as a capability failure", async () => {
+    openAiMocks.responsesParse.mockResolvedValue({
+      output_parsed: null,
+      output_text: "not json",
+      usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+    });
+
+    const request = requestStructuredOutput();
+    await expect(request).rejects.toBeInstanceOf(UpstreamProviderError);
+    await expect(request).rejects.toThrow(
+      "OpenRouter model does not support the required structured graph output: Structured output parsing returned no parsed payload.",
+    );
   });
 });

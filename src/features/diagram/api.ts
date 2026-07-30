@@ -14,6 +14,24 @@ interface StreamHandlers {
 
 const GENERATE_BASE_PATH = "/api/generate";
 
+/**
+ * A generation request rejected before any SSE stream started (rate limit,
+ * validation, session conflict, outage). Carries the server's own explanation
+ * so consumers can surface it verbatim, plus the HTTP status and error code
+ * for robust handling (e.g. offering the API-key CTA on a 429).
+ */
+export class DiagramStreamHttpError extends Error {
+  readonly status: number;
+  readonly errorCode?: string;
+
+  constructor(message: string, status: number, errorCode?: string) {
+    super(message);
+    this.name = "DiagramStreamHttpError";
+    this.status = status;
+    this.errorCode = errorCode;
+  }
+}
+
 export async function getDiagramState(
   username: string,
   repo: string,
@@ -108,28 +126,21 @@ export async function streamDiagramGeneration(
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        // Our own limiter explains how long the wait is; the platform WAF
-        // returns HTML, so fall back to a generic message for it.
-        const throttled = await response
-          .json()
-          .then((data) => (data as DiagramStreamMessage).error)
-          .catch(() => undefined);
-        throw new Error(
-          throttled ??
-            "Too many generation requests. Please wait and try again.",
-        );
-      }
-
-      try {
-        const data = (await response.json()) as DiagramStreamMessage;
-        throw new Error(data.error ?? "Failed to start streaming");
-      } catch (error) {
-        if (error instanceof Error) {
-          throw error;
-        }
-        throw new Error("Failed to start streaming");
-      }
+      // Our own admission errors are JSON explaining exactly what went wrong
+      // (a 429 says how long the wait is); the platform WAF returns HTML, so
+      // fall back to a generic message when no error body can be parsed.
+      const body = await response
+        .json()
+        .then((data) => data as DiagramStreamMessage)
+        .catch(() => undefined);
+      throw new DiagramStreamHttpError(
+        body?.error ??
+          (response.status === 429
+            ? "Too many generation requests. Please wait and try again."
+            : "Failed to start streaming"),
+        response.status,
+        body?.error_code,
+      );
     }
 
     const reader = response.body?.getReader();

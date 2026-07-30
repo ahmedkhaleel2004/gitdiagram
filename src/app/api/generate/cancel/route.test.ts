@@ -51,7 +51,7 @@ describe("POST /api/generate/cancel", () => {
           `generation:active:${sessionId}`,
           `generation:cancel:${sessionId}`,
         ],
-        args: [cancelToken, 600],
+        args: [cancelToken, 600, 60],
       }),
     );
   });

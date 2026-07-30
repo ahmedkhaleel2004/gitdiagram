@@ -7,18 +7,18 @@ const DEFAULT_MAX_INFRASTRUCTURE_REQUESTS = 60;
 const GENERATION_RATE_LIMIT_SCRIPT = `
 local key = KEYS[1]
 local limit = tonumber(ARGV[1])
-local window = tonumber(ARGV[2])
+local windowRemaining = tonumber(ARGV[2])
 
 local count = redis.call("INCR", key)
 if count == 1 then
-  redis.call("EXPIRE", key, window)
+  redis.call("EXPIRE", key, windowRemaining)
 end
 
 local ttl = redis.call("TTL", key)
 if ttl < 0 then
-  -- A key without a TTL would throttle the caller forever, so re-arm it.
-  redis.call("EXPIRE", key, window)
-  ttl = window
+  -- A key without a TTL would linger (and throttle) forever, so re-arm it.
+  redis.call("EXPIRE", key, windowRemaining)
+  ttl = windowRemaining
 end
 
 if count > limit then
@@ -71,9 +71,30 @@ if not count or count <= 0 then
 end
 
 -- DECR leaves the TTL alone, so the window still closes on its original clock.
+-- The key is stamped with the window it was consumed in, so once that window's
+-- key expires this refund is a harmless no-op instead of a decrement against
+-- the next window's counter.
 redis.call("DECR", key)
 return 1
 `;
+
+/**
+ * Fixed windows are aligned to the epoch so the window a slot was consumed in
+ * is identified purely by its start timestamp, which is stamped into the Redis
+ * key. A refund that outlives the window then targets a key that no longer
+ * exists rather than the successor window's counter.
+ */
+function getCurrentRateLimitWindow(windowSeconds: number): {
+  windowStartSeconds: number;
+  remainingSeconds: number;
+} {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const windowStartSeconds = nowSeconds - (nowSeconds % windowSeconds);
+  return {
+    windowStartSeconds,
+    remainingSeconds: windowStartSeconds + windowSeconds - nowSeconds,
+  };
+}
 
 /**
  * Collapses an IPv6 address to its /64 prefix.
@@ -117,14 +138,18 @@ export function toRateLimitBucket(clientIp: string): string {
     .join(":")}::/64`;
 }
 
-export function buildGenerationRateLimitKey(clientIp: string): string {
-  return `ratelimit:v1:generate:${encodeURIComponent(toRateLimitBucket(clientIp))}`;
+export function buildGenerationRateLimitKey(
+  clientIp: string,
+  windowStartSeconds: number,
+): string {
+  return `ratelimit:v2:generate:${encodeURIComponent(toRateLimitBucket(clientIp))}:${windowStartSeconds}`;
 }
 
 export function buildGenerationInfrastructureRateLimitKey(
   clientIp: string,
+  windowStartSeconds: number,
 ): string {
-  return `ratelimit:v1:generate-infrastructure:${encodeURIComponent(toRateLimitBucket(clientIp))}`;
+  return `ratelimit:v2:generate-infrastructure:${encodeURIComponent(toRateLimitBucket(clientIp))}:${windowStartSeconds}`;
 }
 
 export function getGenerationRateLimitMessage(
@@ -145,30 +170,46 @@ export interface GenerationRateLimitResult {
   allowed: boolean;
   retryAfterSeconds: number;
   consumed: boolean;
+  /**
+   * The window the slot was consumed in. A refund must be issued against this
+   * exact window, never against whichever window happens to be current when the
+   * refund runs.
+   */
+  windowStartSeconds: number;
 }
 
 async function consumeRateLimit(params: {
   clientIp: string | null;
-  buildKey: (clientIp: string) => string;
+  buildKey: (clientIp: string, windowStartSeconds: number) => string;
   max: number;
   windowSeconds: number;
   unavailableEvent: string;
 }): Promise<GenerationRateLimitResult> {
+  const { windowStartSeconds, remainingSeconds } = getCurrentRateLimitWindow(
+    params.windowSeconds,
+  );
+
   if (!params.clientIp) {
-    return { allowed: true, retryAfterSeconds: 0, consumed: false };
+    return {
+      allowed: true,
+      retryAfterSeconds: 0,
+      consumed: false,
+      windowStartSeconds,
+    };
   }
 
   try {
     const result = await upstashEval<[number, number]>({
       script: GENERATION_RATE_LIMIT_SCRIPT,
-      keys: [params.buildKey(params.clientIp)],
-      args: [params.max, params.windowSeconds],
+      keys: [params.buildKey(params.clientIp, windowStartSeconds)],
+      args: [params.max, remainingSeconds],
     });
 
     return {
       allowed: result[0] === 1,
-      retryAfterSeconds: result[1] > 0 ? result[1] : params.windowSeconds,
+      retryAfterSeconds: result[1] > 0 ? result[1] : remainingSeconds,
       consumed: true,
+      windowStartSeconds,
     };
   } catch {
     console.warn(
@@ -177,7 +218,12 @@ async function consumeRateLimit(params: {
         error: "Rate limit check failed; allowing the request.",
       }),
     );
-    return { allowed: true, retryAfterSeconds: 0, consumed: false };
+    return {
+      allowed: true,
+      retryAfterSeconds: 0,
+      consumed: false,
+      windowStartSeconds,
+    };
   }
 }
 
@@ -216,7 +262,8 @@ export function consumeGenerationInfrastructureRateLimit(params: {
 
 async function refundRateLimit(params: {
   clientIp: string | null;
-  buildKey: (clientIp: string) => string;
+  windowStartSeconds: number;
+  buildKey: (clientIp: string, windowStartSeconds: number) => string;
   failureEvent: string;
 }): Promise<void> {
   if (!params.clientIp) {
@@ -226,7 +273,7 @@ async function refundRateLimit(params: {
   try {
     await upstashEval<number>({
       script: GENERATION_RATE_LIMIT_REFUND_SCRIPT,
-      keys: [params.buildKey(params.clientIp)],
+      keys: [params.buildKey(params.clientIp, params.windowStartSeconds)],
       args: [],
     });
   } catch {
@@ -247,6 +294,7 @@ async function refundRateLimit(params: {
  */
 export async function refundGenerationRateLimit(params: {
   clientIp: string | null;
+  windowStartSeconds: number;
 }): Promise<void> {
   return refundRateLimit({
     ...params,
@@ -257,6 +305,7 @@ export async function refundGenerationRateLimit(params: {
 
 export async function refundGenerationInfrastructureRateLimit(params: {
   clientIp: string | null;
+  windowStartSeconds: number;
 }): Promise<void> {
   return refundRateLimit({
     ...params,

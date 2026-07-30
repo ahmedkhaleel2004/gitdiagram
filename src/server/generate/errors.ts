@@ -45,6 +45,31 @@ const DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR =
 const REDACTED_UPSTREAM_ERROR =
   "The AI provider returned an error while generating this diagram. Please retry.";
 
+/**
+ * Prefixed onto raw provider text shown to a caller who supplied their own API
+ * key. Provider bodies can echo a masked key prefix/suffix or an organization
+ * id, so while the caller may see their own account's error live over SSE, the
+ * same message is also persisted into a shared failure record that later
+ * visitors read. The prefix marks the message as raw provider text so
+ * `redactUpstreamProviderTextForSharedRecord` can strip it at the persistence
+ * boundary without a side channel.
+ */
+export const BYOK_UPSTREAM_ERROR_PREFIX = "Your AI provider key hit an error: ";
+
+/**
+ * Replaces raw provider text (marked by `BYOK_UPSTREAM_ERROR_PREFIX`) with the
+ * generic upstream error before an audit is written to shared storage.
+ * App-authored messages pass through untouched.
+ */
+export function redactUpstreamProviderTextForSharedRecord(
+  message: string | undefined,
+): string | undefined {
+  if (message?.startsWith(BYOK_UPSTREAM_ERROR_PREFIX)) {
+    return REDACTED_UPSTREAM_ERROR;
+  }
+  return message;
+}
+
 function isOpenAiQuotaExhaustedError(message: string): boolean {
   const normalized = message.trim().toLowerCase();
   if (!normalized) {
@@ -93,10 +118,18 @@ export function normalizeGenerationError(params: {
   // key that can name the organization or its rate-limit state, and this
   // message is both streamed to the client and persisted into the public
   // session audit, where later visitors read it. A caller using their own key
-  // is only shown their own account's error, which they need to act on.
-  if (!params.apiKey?.trim() && params.error instanceof UpstreamProviderError) {
+  // is shown their own account's error, which they need to act on — but the
+  // message is tagged with `BYOK_UPSTREAM_ERROR_PREFIX` so the persistence
+  // boundary keeps the raw provider text out of the shared failure record.
+  if (params.error instanceof UpstreamProviderError) {
+    if (!params.apiKey?.trim()) {
+      return {
+        message: REDACTED_UPSTREAM_ERROR,
+        errorCode: "STREAM_FAILED",
+      };
+    }
     return {
-      message: REDACTED_UPSTREAM_ERROR,
+      message: `${BYOK_UPSTREAM_ERROR_PREFIX}${params.message}`,
       errorCode: "STREAM_FAILED",
     };
   }

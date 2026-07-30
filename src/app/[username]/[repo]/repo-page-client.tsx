@@ -67,6 +67,12 @@ export default function RepoPageClient({
 
   const hasDiagram = Boolean(diagram);
   const hasError = Boolean(error || state.error);
+  // Offer the personal-key escape hatch on any rate-limited generation, not
+  // only when the error text happens to mention an API key.
+  const showApiKeyCta =
+    state.errorCode === "RATE_LIMITED" ||
+    Boolean(error?.includes("API key")) ||
+    Boolean(state.error?.includes("API key"));
 
   useEffect(() => {
     if (hasDiagram || loading) {
@@ -150,8 +156,7 @@ export default function RepoPageClient({
                     audit={state.latestSessionAudit}
                     error={error || state.error}
                   />
-                  {(error?.includes("API key") ||
-                    state.error?.includes("API key")) && (
+                  {showApiKeyCta && (
                     <div className="mt-8 flex flex-col items-center gap-2">
                       <Button
                         onClick={handleOpenApiKeyDialog}

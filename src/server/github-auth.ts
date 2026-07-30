@@ -117,8 +117,18 @@ async function requestGitHubAppInstallationToken() {
   }
 
   if (!response.ok) {
+    // GitHub's error body describes the app's own credential, and this message
+    // can reach the client and the persisted audit through the generation
+    // error path. Keep the body in the server log only (mirrors github.ts).
+    console.error(
+      JSON.stringify({
+        event: "github_auth.installation_token_failed",
+        status: response.status,
+        body: (await response.text()).slice(0, 500),
+      }),
+    );
     throw new Error(
-      `Failed to create GitHub App installation token (${response.status}): ${await response.text()}`,
+      `Failed to create GitHub App installation token (${response.status}). Please retry.`,
     );
   }
 

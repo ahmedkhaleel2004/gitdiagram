@@ -2,6 +2,7 @@ import * as React from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DiagramStreamHttpError } from "~/features/diagram/api";
 import type { DiagramStreamState } from "~/features/diagram/types";
 import { useDiagram } from "~/hooks/useDiagram";
 
@@ -43,11 +44,13 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
-vi.mock("~/features/diagram/api", () => ({
+vi.mock("~/features/diagram/api", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   getDiagramState,
 }));
 vi.mock("~/features/credentials/api", () => ({
   getCredentialStatus,
+  migrateLegacyCredentialStorage: vi.fn(),
 }));
 
 vi.mock("~/hooks/diagram/useDiagramStream", () => ({
@@ -420,6 +423,87 @@ describe("useDiagram", () => {
       await secondOperation;
     });
     expect(result.current.loading).toBe(false);
+  });
+
+  it("surfaces a pre-stream rate-limit rejection verbatim when regenerating", async () => {
+    const rateLimitMessage =
+      "Too many free generations from this network. Please try again in about 12 minutes or use your own API key.";
+    runGeneration.mockImplementationOnce(async () => {
+      throw new DiagramStreamHttpError(rateLimitMessage, 429, "RATE_LIMITED");
+    });
+
+    const { result } = renderHook(() =>
+      useDiagram(
+        "acme",
+        "demo",
+        {
+          diagram: "flowchart TD\nA-->B",
+          explanation: "old diagram",
+          graph: null,
+          latestSessionAudit: null,
+          lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+        },
+        true,
+      ),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.handleRegenerate();
+    });
+
+    expect(result.current.error).toBe(rateLimitMessage);
+    expect(result.current.state.errorCode).toBe("RATE_LIMITED");
+  });
+
+  it("surfaces a pre-stream HTTP rejection verbatim during initial generation", async () => {
+    const conflictMessage = "Generation session already exists. Please retry.";
+    runGeneration.mockImplementationOnce(async () => {
+      throw new DiagramStreamHttpError(
+        conflictMessage,
+        409,
+        "SESSION_CONFLICT",
+      );
+    });
+
+    const { result } = renderHook(() => useDiagram("acme", "demo"));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toBe(conflictMessage);
+    expect(result.current.state.errorCode).toBe("SESSION_CONFLICT");
+  });
+
+  it("keeps the static fallback message for untyped generation failures", async () => {
+    runGeneration.mockImplementationOnce(async () => {
+      throw new Error("connection reset");
+    });
+
+    const { result } = renderHook(() =>
+      useDiagram(
+        "acme",
+        "demo",
+        {
+          diagram: "flowchart TD\nA-->B",
+          explanation: "old diagram",
+          graph: null,
+          latestSessionAudit: null,
+          lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+        },
+        true,
+      ),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.handleRegenerate();
+    });
+
+    expect(result.current.error).toBe(
+      "Something went wrong. Please try again later.",
+    );
   });
 
   it("surfaces browser render failures without mutating shared state", async () => {

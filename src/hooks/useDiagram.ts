@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 import { getCredentialStatus } from "~/features/credentials/api";
-import { getDiagramState } from "~/features/diagram/api";
+import {
+  DiagramStreamHttpError,
+  getDiagramState,
+} from "~/features/diagram/api";
 import type {
   DiagramStateResponse,
   DiagramStreamState,
@@ -39,6 +42,18 @@ function getFailureMessage(
   }
 
   return audit.renderError ?? audit.compilerError ?? audit.validationError;
+}
+
+function toGenerationFailure(
+  error: unknown,
+  fallbackMessage: string,
+): { error: string; errorCode?: string } {
+  // Pre-stream HTTP rejections carry the server's own explanation (e.g. the
+  // rate-limit wait time); surface it verbatim like SSE errors already are.
+  if (error instanceof DiagramStreamHttpError) {
+    return { error: error.message, errorCode: error.errorCode };
+  }
+  return { error: fallbackMessage };
 }
 
 export function useDiagram(
@@ -216,12 +231,17 @@ export function useDiagram(
         }
 
         await runGeneration();
-      } catch {
+      } catch (error) {
         if (mode === "foreground" && isCurrentSync()) {
+          const failure = toGenerationFailure(
+            error,
+            "Something went wrong. Please try again later.",
+          );
           setState((prev) => ({
             ...prev,
             status: "error",
-            error: "Something went wrong. Please try again later.",
+            error: failure.error,
+            errorCode: failure.errorCode,
           }));
         }
       } finally {
@@ -262,12 +282,14 @@ export function useDiagram(
 
       try {
         await runGeneration();
-      } catch {
+      } catch (error) {
         if (isActiveForegroundOperation(operationId)) {
+          const failure = toGenerationFailure(error, failureMessage);
           setState((prev) => ({
             ...prev,
             status: "error",
-            error: failureMessage,
+            error: failure.error,
+            errorCode: failure.errorCode,
           }));
         }
       } finally {

@@ -26,6 +26,38 @@ describe("sanitizeMermaidSourceForRender", () => {
       ].join("\n"),
     );
   });
+
+  it("removes click directives that use non-space whitespace after the keyword", () => {
+    const source = [
+      "flowchart TD",
+      'click\tnode_a "https://evil.example.com/x"',
+    ].join("\n");
+
+    expect(sanitizeMermaidSourceForRender(source)).toBe("flowchart TD");
+  });
+
+  it("removes a bare click line that continues onto the next line", () => {
+    // Mermaid's lexer treats the newline after "click" as whitespace, so the
+    // directive spans two lines; dropping the bare "click" line breaks it.
+    const source = [
+      "flowchart TD",
+      "click",
+      'node_a "https://evil.example.com/x"',
+    ].join("\n");
+
+    expect(sanitizeMermaidSourceForRender(source)).toBe(
+      ["flowchart TD", 'node_a "https://evil.example.com/x"'].join("\n"),
+    );
+  });
+
+  it("preserves canonical compiler click output unchanged", () => {
+    const source = [
+      "flowchart TD",
+      'click node_safe "https://github.com/acme/demo/blob/main/src/a.ts"',
+    ].join("\n");
+
+    expect(sanitizeMermaidSourceForRender(source)).toBe(source);
+  });
 });
 
 describe("enforceSafeMermaidLinks", () => {

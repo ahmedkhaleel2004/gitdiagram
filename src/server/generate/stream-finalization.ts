@@ -25,6 +25,7 @@ export interface FinalizeGenerationStreamParams {
   postResponseTasks: PostResponseTask[];
   quotaReservation: ComplimentaryQuotaReservation | null;
   rateLimitedClientIp: string | null;
+  rateLimitedWindowStartSeconds: number;
   recordTiming: (stage: string, startedAt: number) => void;
   repo: string;
   repositoryVerified: boolean;
@@ -108,6 +109,7 @@ export async function finalizeGenerationStream(
     params.postResponseTasks.push(() =>
       refundGenerationRateLimit({
         clientIp: params.rateLimitedClientIp,
+        windowStartSeconds: params.rateLimitedWindowStartSeconds,
       }),
     );
   }

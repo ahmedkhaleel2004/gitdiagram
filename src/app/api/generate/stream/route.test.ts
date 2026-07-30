@@ -410,6 +410,51 @@ describe("POST /api/generate/stream", () => {
     );
   });
 
+  it("cancels immediately when the client aborted during request admission", async () => {
+    const sessionId = "550e8400-e29b-41d4-a716-446655440000";
+    const cancelToken = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+    const abortController = new AbortController();
+    // The client disconnects while admission is still mid-Redis round trips,
+    // so the request signal is already aborted before the route can attach
+    // its abort listener (which would then never fire).
+    mocks.resolveRequestCredentials.mockImplementation(
+      async (
+        _request: Request,
+        explicit: { apiKey?: string; githubPat?: string },
+      ) => {
+        abortController.abort();
+        return explicit;
+      },
+    );
+
+    const response = await POST(
+      new Request("https://gitdiagram.com/api/generate/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: "openai",
+          repo: "openai-node",
+          session_id: sessionId,
+          cancel_token: cancelToken,
+        }),
+        signal: abortController.signal,
+      }),
+    );
+    const body = await response.text();
+    await mocks.afterCallback?.();
+
+    expect(mocks.getGithubData).not.toHaveBeenCalled();
+    expect(mocks.streamCompletion).not.toHaveBeenCalled();
+    expect(body).not.toContain('"status":"error"');
+    expect(mocks.unregisterActiveGeneration).toHaveBeenCalledWith(
+      sessionId,
+      cancelToken,
+    );
+    expect(console.info).toHaveBeenCalledWith(
+      expect.stringContaining('"outcome":"cancelled"'),
+    );
+  });
+
   it("commits the explanation-stage bound when cancelled mid-request", async () => {
     const sessionId = "550e8400-e29b-41d4-a716-446655440000";
     const cancelToken = "f47ac10b-58cc-4372-a567-0e02b2c3d479";

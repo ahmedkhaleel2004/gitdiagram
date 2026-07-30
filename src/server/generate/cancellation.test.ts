@@ -13,6 +13,7 @@ vi.mock("~/server/storage/upstash", () => ({
 import {
   GENERATION_ACTIVE_TTL_SECONDS,
   GENERATION_CANCELLATION_TTL_SECONDS,
+  GENERATION_PENDING_CANCELLATION_TTL_SECONDS,
   isGenerationCancelled,
   markGenerationCancelled,
   registerActiveGeneration,
@@ -31,9 +32,7 @@ describe("generation cancellation", () => {
   });
 
   it("registers an unguessable active session without replacing a collision", async () => {
-    mocks.upstashCommand
-      .mockResolvedValueOnce("OK")
-      .mockResolvedValueOnce(null);
+    mocks.upstashEval.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
 
     await expect(
       registerActiveGeneration(
@@ -48,13 +47,65 @@ describe("generation cancellation", () => {
       ),
     ).resolves.toBe(false);
 
-    expect(mocks.upstashCommand).toHaveBeenNthCalledWith(1, [
-      "SET",
-      "generation:active:550e8400-e29b-41d4-a716-446655440000",
+    expect(mocks.upstashEval).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        script: expect.stringContaining('"NX"'),
+        keys: [
+          "generation:active:550e8400-e29b-41d4-a716-446655440000",
+          "generation:cancel:550e8400-e29b-41d4-a716-446655440000",
+        ],
+        args: [
+          "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+          GENERATION_ACTIVE_TTL_SECONDS,
+          GENERATION_CANCELLATION_TTL_SECONDS,
+        ],
+      }),
+    );
+  });
+
+  it("promotes a token-matching early cancel during registration", async () => {
+    mocks.upstashEval.mockResolvedValueOnce(1);
+
+    await registerActiveGeneration(
+      "550e8400-e29b-41d4-a716-446655440000",
       "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-      "EX",
-      GENERATION_ACTIVE_TTL_SECONDS,
-      "NX",
+    );
+
+    const call = mocks.upstashEval.mock.calls[0]?.[0] as { script: string };
+    // A cancel that landed before registration is stored as the raw token;
+    // registration must atomically convert it into the "1" flag polling reads,
+    // and must clear a stale marker whose token does not match.
+    expect(call.script).toContain("if pending == ARGV[1] then");
+    expect(call.script).toContain(
+      'redis.call("SET", KEYS[2], "1", "EX", ARGV[3])',
+    );
+    expect(call.script).toContain('redis.call("DEL", KEYS[2])');
+  });
+
+  it("records an early cancel as a short-lived token-bound pending marker", async () => {
+    mocks.upstashEval.mockResolvedValueOnce(0);
+
+    await expect(
+      markGenerationCancelled(
+        "550e8400-e29b-41d4-a716-446655440000",
+        "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      ),
+    ).resolves.toBe(false);
+
+    const call = mocks.upstashEval.mock.calls[0]?.[0] as {
+      script: string;
+      args: unknown[];
+    };
+    // When no active session exists yet the script must still persist the
+    // cancel (as the raw token, never "1"), bounded by the pending TTL.
+    expect(call.script).toContain(
+      'redis.call("SET", KEYS[2], ARGV[1], "EX", ARGV[3])',
+    );
+    expect(call.args).toEqual([
+      "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      GENERATION_CANCELLATION_TTL_SECONDS,
+      GENERATION_PENDING_CANCELLATION_TTL_SECONDS,
     ]);
   });
 
@@ -82,6 +133,7 @@ describe("generation cancellation", () => {
         args: [
           "f47ac10b-58cc-4372-a567-0e02b2c3d479",
           GENERATION_CANCELLATION_TTL_SECONDS,
+          GENERATION_PENDING_CANCELLATION_TTL_SECONDS,
         ],
       }),
     );

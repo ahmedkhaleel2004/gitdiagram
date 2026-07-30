@@ -3,6 +3,15 @@ import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 export const GENERATION_CANCELLATION_TTL_SECONDS = 10 * 60;
 export const GENERATION_ACTIVE_TTL_SECONDS = 6 * 60;
 /**
+ * A cancel request can race ahead of the generation route: the client's
+ * keepalive cancel POST may land while request admission is still mid-Redis
+ * round trips, before the active session key exists. Such an early cancel is
+ * recorded as a token-bound pending marker with a short TTL; registration
+ * atomically promotes a matching marker into a real cancellation flag so the
+ * generation observes it on its first poll instead of running to the deadline.
+ */
+export const GENERATION_PENDING_CANCELLATION_TTL_SECONDS = 60;
+/**
  * Cancellation is user-initiated and rare, so a flat one-second poll spends
  * hundreds of billed Redis round trips per generation to detect an event that
  * usually never happens. Stay responsive while the user is most likely to hit
@@ -23,11 +32,37 @@ function pollIntervalForElapsed(elapsedMs: number): number {
   return GENERATION_CANCELLATION_MAX_POLL_INTERVAL_MS;
 }
 
+// KEYS[1] = active key, KEYS[2] = cancel key.
+// ARGV[1] = cancel token, ARGV[2] = cancellation TTL, ARGV[3] = pending TTL.
+// When no active session exists yet, the cancel is stored as the raw token
+// (never "1", so polling ignores it) for REGISTER_ACTIVE_SCRIPT to promote.
 const MARK_CANCELLED_SCRIPT = `
-if redis.call("GET", KEYS[1]) ~= ARGV[1] then
+local active = redis.call("GET", KEYS[1])
+if active == ARGV[1] then
+  redis.call("SET", KEYS[2], "1", "EX", ARGV[2])
+  return 1
+end
+if active then
   return 0
 end
-redis.call("SET", KEYS[2], "1", "EX", ARGV[2])
+redis.call("SET", KEYS[2], ARGV[1], "EX", ARGV[3])
+return 0
+`;
+
+// KEYS[1] = active key, KEYS[2] = cancel key.
+// ARGV[1] = cancel token, ARGV[2] = active TTL, ARGV[3] = cancellation TTL.
+// Registration promotes a token-matching pending cancel into a real flag and
+// clears any stale marker left over from an earlier session with this id.
+const REGISTER_ACTIVE_SCRIPT = `
+if not redis.call("SET", KEYS[1], ARGV[1], "EX", ARGV[2], "NX") then
+  return 0
+end
+local pending = redis.call("GET", KEYS[2])
+if pending == ARGV[1] then
+  redis.call("SET", KEYS[2], "1", "EX", ARGV[3])
+elseif pending then
+  redis.call("DEL", KEYS[2])
+end
 return 1
 `;
 
@@ -52,15 +87,16 @@ export async function registerActiveGeneration(
   sessionId: string,
   cancelToken: string,
 ): Promise<boolean> {
-  const result = await upstashCommand<"OK" | null>([
-    "SET",
-    getActiveGenerationKey(sessionId),
-    cancelToken,
-    "EX",
-    GENERATION_ACTIVE_TTL_SECONDS,
-    "NX",
-  ]);
-  return result === "OK";
+  const result = await upstashEval<number>({
+    script: REGISTER_ACTIVE_SCRIPT,
+    keys: [getActiveGenerationKey(sessionId), getCancellationKey(sessionId)],
+    args: [
+      cancelToken,
+      GENERATION_ACTIVE_TTL_SECONDS,
+      GENERATION_CANCELLATION_TTL_SECONDS,
+    ],
+  });
+  return result === 1;
 }
 
 export async function markGenerationCancelled(
@@ -70,7 +106,11 @@ export async function markGenerationCancelled(
   const result = await upstashEval<number>({
     script: MARK_CANCELLED_SCRIPT,
     keys: [getActiveGenerationKey(sessionId), getCancellationKey(sessionId)],
-    args: [cancelToken, GENERATION_CANCELLATION_TTL_SECONDS],
+    args: [
+      cancelToken,
+      GENERATION_CANCELLATION_TTL_SECONDS,
+      GENERATION_PENDING_CANCELLATION_TTL_SECONDS,
+    ],
   });
   return result === 1;
 }

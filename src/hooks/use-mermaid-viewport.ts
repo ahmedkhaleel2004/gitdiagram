@@ -614,8 +614,21 @@ export function useMermaidViewport({
     (event: ReactPointerEvent<HTMLDivElement>) => {
       activePointersRef.current.delete(event.pointerId);
       if (activePointersRef.current.size < 2) {
+        const wasPinching = pinchStateRef.current !== null;
         pinchStateRef.current = null;
         flushPendingZoomLabel();
+
+        if (wasPinching && activePointersRef.current.size === 1) {
+          const [remainingEntry] = activePointersRef.current.entries();
+          if (remainingEntry) {
+            const [remainingPointerId, remainingPointer] = remainingEntry;
+            dragStateRef.current = {
+              lastX: remainingPointer.x,
+              lastY: remainingPointer.y,
+              pointerId: remainingPointerId,
+            };
+          }
+        }
       }
 
       if (dragStateRef.current?.pointerId === event.pointerId) {
