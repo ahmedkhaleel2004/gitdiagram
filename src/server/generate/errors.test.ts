@@ -121,6 +121,8 @@ describe("redactUpstreamProviderTextForSharedRecord", () => {
     expect(
       redactUpstreamProviderTextForSharedRecord("Graph validation failed."),
     ).toBe("Graph validation failed.");
-    expect(redactUpstreamProviderTextForSharedRecord(undefined)).toBeUndefined();
+    expect(
+      redactUpstreamProviderTextForSharedRecord(undefined),
+    ).toBeUndefined();
   });
 });

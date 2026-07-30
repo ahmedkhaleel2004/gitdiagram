@@ -25,12 +25,12 @@ describe("parseGitHubRepoUrl", () => {
   });
 
   it("strips a trailing .git from https clone urls", () => {
-    expect(
-      parseGitHubRepoUrl("https://github.com/vercel/next.js.git"),
-    ).toEqual({
-      username: "vercel",
-      repo: "next.js",
-    });
+    expect(parseGitHubRepoUrl("https://github.com/vercel/next.js.git")).toEqual(
+      {
+        username: "vercel",
+        repo: "next.js",
+      },
+    );
   });
 
   it("strips a trailing .git from owner/repo shorthand", () => {
