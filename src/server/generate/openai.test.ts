@@ -170,6 +170,69 @@ describe("OpenAI Responses text verbosity", () => {
   });
 });
 
+describe("gateway provider client wiring", () => {
+  it("points OrcaRouter at its own base URL and attribution headers", async () => {
+    process.env.ORCAROUTER_SITE_URL = "https://gitdiagram.com";
+    openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
+
+    const result = await streamCompletion({
+      provider: "orcarouter",
+      model: "openai/gpt-5.6-terra",
+      systemPrompt: "system",
+      userPrompt: "user",
+      apiKey: "sk-orca-test",
+    });
+    await consume(result.stream);
+
+    expect(openAiMocks.clientOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "sk-orca-test",
+        baseURL: "https://api.orcarouter.ai/v1",
+        defaultHeaders: {
+          "HTTP-Referer": "https://gitdiagram.com",
+          "X-Title": "GitDiagram",
+        },
+      }),
+    );
+
+    delete process.env.ORCAROUTER_SITE_URL;
+  });
+
+  it("reads the OrcaRouter key from the environment when none is supplied", async () => {
+    process.env.ORCAROUTER_API_KEY = "sk-orca-env";
+    openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
+
+    const result = await streamCompletion({
+      provider: "orcarouter",
+      model: "openai/gpt-5.6-terra",
+      systemPrompt: "system",
+      userPrompt: "user",
+    });
+    await consume(result.stream);
+
+    expect(openAiMocks.clientOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: "sk-orca-env" }),
+    );
+
+    delete process.env.ORCAROUTER_API_KEY;
+  });
+
+  it("names the missing OrcaRouter environment variable", async () => {
+    delete process.env.ORCAROUTER_API_KEY;
+
+    await expect(
+      streamCompletion({
+        provider: "orcarouter",
+        model: "openai/gpt-5.6-terra",
+        systemPrompt: "system",
+        userPrompt: "user",
+      }),
+    ).rejects.toThrow(
+      "Missing OrcaRouter API key. Set ORCAROUTER_API_KEY or provide api_key in request.",
+    );
+  });
+});
+
 describe("OpenAI Responses incomplete streams", () => {
   it("fails even when an incomplete response already emitted visible output", async () => {
     openAiMocks.responsesCreate.mockResolvedValue(
@@ -288,6 +351,30 @@ describe("generateStructuredOutput error classification", () => {
     await expect(request).rejects.toBeInstanceOf(UpstreamProviderError);
     await expect(request).rejects.toThrow(
       "OpenRouter model does not support the required structured graph output: 404 No endpoints found that support response_format.",
+    );
+  });
+
+  it("labels the schema rejection with the gateway that produced it", async () => {
+    openAiMocks.responsesParse.mockRejectedValue(
+      Object.assign(
+        new Error("400 This model does not support response_format."),
+        { status: 400 },
+      ),
+    );
+
+    const request = generateStructuredOutput({
+      provider: "orcarouter",
+      model: "some/orcarouter-model",
+      systemPrompt: "system",
+      userPrompt: "user",
+      schema,
+      schemaName: "payload",
+      apiKey: "sk-orca-test",
+    });
+
+    await expect(request).rejects.toBeInstanceOf(UpstreamProviderError);
+    await expect(request).rejects.toThrow(
+      "OrcaRouter model does not support the required structured graph output: 400 This model does not support response_format.",
     );
   });
 
