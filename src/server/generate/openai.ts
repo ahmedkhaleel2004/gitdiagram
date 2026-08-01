@@ -8,6 +8,7 @@ import {
   UpstreamProviderError,
 } from "~/server/generate/errors";
 import {
+  getApiKeyEnvVar,
   getProviderLabel,
   supportsTextVerbosity,
   type AIProvider,
@@ -21,11 +22,7 @@ const AI_REQUEST_TIMEOUT_MS = 150_000;
 const AI_MAX_RETRIES = 0;
 
 function getEnvApiKey(provider: AIProvider): string | undefined {
-  if (provider === "openrouter") {
-    return process.env.OPENROUTER_API_KEY?.trim();
-  }
-
-  return process.env.OPENAI_API_KEY?.trim();
+  return process.env[getApiKeyEnvVar(provider)]?.trim();
 }
 
 function getOpenRouterHeaders(): Record<string, string> {
@@ -44,12 +41,38 @@ function getOpenRouterHeaders(): Record<string, string> {
   return headers;
 }
 
+function getOrcaRouterHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const siteUrl = process.env.ORCAROUTER_SITE_URL?.trim();
+  const appName = process.env.ORCAROUTER_APP_NAME?.trim() || "GitDiagram";
+
+  if (siteUrl) {
+    headers["HTTP-Referer"] = siteUrl;
+  }
+
+  if (appName) {
+    headers["X-Title"] = appName;
+  }
+
+  return headers;
+}
+
 function createClient(provider: AIProvider, apiKey: string): OpenAI {
   if (provider === "openrouter") {
     return new OpenAI({
       apiKey,
       baseURL: "https://openrouter.ai/api/v1",
       defaultHeaders: getOpenRouterHeaders(),
+      maxRetries: AI_MAX_RETRIES,
+      timeout: AI_REQUEST_TIMEOUT_MS,
+    });
+  }
+
+  if (provider === "orcarouter") {
+    return new OpenAI({
+      apiKey,
+      baseURL: "https://api.orcarouter.ai/v1",
+      defaultHeaders: getOrcaRouterHeaders(),
       maxRetries: AI_MAX_RETRIES,
       timeout: AI_REQUEST_TIMEOUT_MS,
     });
@@ -85,8 +108,7 @@ function buildRequestOptions(params: {
 function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
   const apiKey = overrideApiKey?.trim() || getEnvApiKey(provider);
   if (!apiKey) {
-    const envVarName =
-      provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
+    const envVarName = getApiKeyEnvVar(provider);
     throw new Error(
       `Missing ${getProviderLabel(provider)} API key. Set ${envVarName} or provide api_key in request.`,
     );
@@ -142,12 +164,13 @@ interface StreamCompletionResult {
 const NO_PARSED_STRUCTURED_PAYLOAD_ERROR =
   "Structured output parsing returned no parsed payload.";
 
-// OpenRouter fronts many models, and only some honor the strict json_schema
-// response format the graph stage requires. Only a request rejected over the
-// schema itself (a 4xx that names the response format) or a response that
-// ignored it entirely indicates a capability problem; rate limits, auth
-// failures, and transient network faults must keep their own meaning so
-// abort/timeout propagation and status-based handling stay intact.
+// Gateway providers (OpenRouter, OrcaRouter) front many models, and only some
+// of those honor the strict json_schema response format the graph stage
+// requires. Only a request rejected over the schema itself (a 4xx that names
+// the response format) or a response that ignored it entirely indicates a
+// capability problem; rate limits, auth failures, and transient network faults
+// must keep their own meaning so abort/timeout propagation and status-based
+// handling stay intact.
 const STRUCTURED_OUTPUT_REJECTION_STATUSES = new Set([400, 404, 422]);
 const STRUCTURED_OUTPUT_REJECTION_PATTERN =
   /structured outputs?|response_format|json_schema|text\.format/i;
@@ -409,13 +432,13 @@ export async function generateStructuredOutput<T>({
       usage: normalizeGenerationUsage(response.usage),
     };
   } catch (error) {
-    if (provider === "openrouter" && isStructuredOutputRejection(error)) {
+    if (provider !== "openai" && isStructuredOutputRejection(error)) {
       const message =
         error instanceof Error
           ? error.message
           : "Structured output request failed.";
       throw new UpstreamProviderError(
-        `OpenRouter model does not support the required structured graph output: ${message}`,
+        `${getProviderLabel(provider)} model does not support the required structured graph output: ${message}`,
         { cause: error },
       );
     }

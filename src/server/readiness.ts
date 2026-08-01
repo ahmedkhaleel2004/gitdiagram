@@ -1,4 +1,4 @@
-import { getProvider } from "~/server/generate/model-config";
+import { getApiKeyEnvVar, getProvider } from "~/server/generate/model-config";
 import { readRequiredEnv } from "~/server/storage/config";
 import { checkR2Bucket } from "~/server/storage/r2";
 import { checkUpstashConnection } from "~/server/storage/upstash";
@@ -15,10 +15,7 @@ export interface ReadinessResult {
 }
 
 function hasProviderKey(): boolean {
-  const provider = getProvider();
-  const keyName =
-    provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
-  return Boolean(process.env[keyName]?.trim());
+  return Boolean(process.env[getApiKeyEnvVar(getProvider())]?.trim());
 }
 
 export async function checkReadiness(): Promise<ReadinessResult> {
