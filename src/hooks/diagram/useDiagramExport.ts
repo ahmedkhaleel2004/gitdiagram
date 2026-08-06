@@ -1,6 +1,9 @@
 import { useCallback } from "react";
 
-import { exportMermaidSvgAsPng } from "~/features/diagram/export";
+import {
+  exportMermaidSvgAsPdf,
+  exportMermaidSvgAsPng,
+} from "~/features/diagram/export";
 
 export function useDiagramExport(diagram: string) {
   const handleCopy = useCallback(async () => {
@@ -16,8 +19,18 @@ export function useDiagramExport(diagram: string) {
     });
   }, []);
 
+  const handleExportPdf = useCallback(() => {
+    const svgElement = document.querySelector(".mermaid svg");
+    if (!(svgElement instanceof SVGSVGElement)) return;
+
+    void exportMermaidSvgAsPdf(svgElement).catch((error: unknown) => {
+      console.error("Diagram PDF export failed:", error);
+    });
+  }, []);
+
   return {
     handleCopy,
     handleExportImage,
+    handleExportPdf,
   };
 }
