@@ -1,5 +1,5 @@
 import { CopyButton } from "./copy-button";
-import { Image as ImageIcon } from "lucide-react";
+import { FileText, Image as ImageIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import {
   Tooltip,
@@ -13,6 +13,7 @@ interface ExportDropdownProps {
   lastGenerated?: Date;
   costSummary?: GenerationCostSummary;
   onExportImage: () => void;
+  onExportPdf: () => void;
 }
 
 export function ExportDropdown({
@@ -20,6 +21,7 @@ export function ExportDropdown({
   lastGenerated,
   costSummary,
   onExportImage,
+  onExportPdf,
 }: ExportDropdownProps) {
   return (
     <div className="space-y-3 sm:space-y-4">
@@ -39,6 +41,23 @@ export function ExportDropdown({
           </TooltipTrigger>
           <TooltipContent>
             <p>Download diagram as high-quality PNG</p>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={(event) => {
+                event.preventDefault();
+                onExportPdf();
+              }}
+              className="neo-button h-11 w-full px-3 text-sm sm:h-10 sm:w-auto sm:p-6 sm:px-6 sm:text-lg"
+            >
+              <FileText className="h-6 w-6" />
+              <span className="text-sm">Download PDF</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Download diagram as PDF that fills the page</p>
           </TooltipContent>
         </Tooltip>
         <CopyButton onClick={onCopy} />
