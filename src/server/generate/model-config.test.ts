@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  getApiKeyEnvVar,
   getModel,
   getProvider,
   getProviderLabel,
@@ -20,6 +21,29 @@ describe("getProvider", () => {
 
     expect(getProvider()).toBe("openrouter");
     expect(getProviderLabel("openrouter")).toBe("OpenRouter");
+  });
+
+  it("recognizes OrcaRouter as a first-class provider", () => {
+    process.env.AI_PROVIDER = "orcarouter";
+
+    expect(getProvider()).toBe("orcarouter");
+    expect(getProviderLabel("orcarouter")).toBe("OrcaRouter");
+  });
+
+  it("falls back to OpenAI for an unknown provider name", () => {
+    process.env.AI_PROVIDER = "not-a-provider";
+
+    expect(getProvider()).toBe("openai");
+  });
+});
+
+describe("getApiKeyEnvVar", () => {
+  it.each([
+    ["openai", "OPENAI_API_KEY"],
+    ["openrouter", "OPENROUTER_API_KEY"],
+    ["orcarouter", "ORCAROUTER_API_KEY"],
+  ] as const)("maps %s onto %s", (provider, envVar) => {
+    expect(getApiKeyEnvVar(provider)).toBe(envVar);
   });
 });
 
@@ -41,17 +65,32 @@ describe("getModel", () => {
 
     expect(getModel("openrouter")).toBe("openai/gpt-5.6-terra");
   });
+
+  it("uses GPT-5.6 Terra as the OrcaRouter fallback", () => {
+    delete process.env.ORCAROUTER_MODEL;
+
+    expect(getModel("orcarouter")).toBe("openai/gpt-5.6-terra");
+  });
+
+  it("preserves an explicit OrcaRouter model override", () => {
+    process.env.ORCAROUTER_MODEL = "openai/gpt-5.6-luna";
+
+    expect(getModel("orcarouter")).toBe("openai/gpt-5.6-luna");
+  });
 });
 
 describe("shouldUseExactInputTokenCount", () => {
-  it("keeps OpenRouter on the conservative local token fallback", () => {
-    expect(
-      shouldUseExactInputTokenCount({
-        provider: "openrouter",
-        apiKey: "apikey-test",
-      }),
-    ).toBe(false);
-  });
+  it.each(["openrouter", "orcarouter"] as const)(
+    "keeps %s on the conservative local token fallback",
+    (provider) => {
+      expect(
+        shouldUseExactInputTokenCount({
+          provider,
+          apiKey: "apikey-test",
+        }),
+      ).toBe(false);
+    },
+  );
 });
 
 describe("supportsTextVerbosity", () => {
@@ -71,6 +110,7 @@ describe("supportsTextVerbosity", () => {
     ["openai", "gpt-5.6-pro"],
     ["openai", "gpt-5.6-terra-preview"],
     ["openrouter", "gpt-5.6-terra"],
+    ["orcarouter", "gpt-5.6-terra"],
   ] as const)(
     "rejects unsupported provider/model pair %s/%s",
     (provider, model) => {

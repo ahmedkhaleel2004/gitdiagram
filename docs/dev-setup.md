@@ -38,6 +38,7 @@ Choose one AI provider:
 
 - OpenAI: `AI_PROVIDER=openai` and `OPENAI_API_KEY`
 - OpenRouter: `AI_PROVIDER=openrouter` and `OPENROUTER_API_KEY`
+- OrcaRouter: `AI_PROVIDER=orcarouter` and `ORCAROUTER_API_KEY`
 
 Optional generation controls include:
 
@@ -48,6 +49,9 @@ Optional generation controls include:
 - `OPENROUTER_MODEL`
 - `OPENROUTER_SITE_URL`
 - `OPENROUTER_APP_NAME`
+- `ORCAROUTER_MODEL`
+- `ORCAROUTER_SITE_URL`
+- `ORCAROUTER_APP_NAME`
 
 Optional GitHub authentication:
 
@@ -74,6 +78,16 @@ OPENROUTER_API_KEY=...
 OPENROUTER_MODEL=openai/gpt-5.6-terra
 OPENROUTER_SITE_URL=http://localhost:3000
 OPENROUTER_APP_NAME=GitDiagram
+```
+
+An OrcaRouter example:
+
+```dotenv
+AI_PROVIDER=orcarouter
+ORCAROUTER_API_KEY=sk-orca-...
+ORCAROUTER_MODEL=openai/gpt-5.6-terra
+ORCAROUTER_SITE_URL=http://localhost:3000
+ORCAROUTER_APP_NAME=GitDiagram
 ```
 
 ## Run
