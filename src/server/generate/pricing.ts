@@ -32,8 +32,8 @@ interface RawResponseUsage {
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.6-sol": { inputPerMillionUsd: 5.0, outputPerMillionUsd: 30.0 },
-  "gpt-5.6-terra": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
-  "gpt-5.6-luna": { inputPerMillionUsd: 1.0, outputPerMillionUsd: 6.0 },
+  "gpt-5.6-terra": { inputPerMillionUsd: 2.0, outputPerMillionUsd: 12.0 },
+  "gpt-5.6-luna": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 1.2 },
   "gpt-5.4": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
   "gpt-5.4-pro": { inputPerMillionUsd: 30.0, outputPerMillionUsd: 180.0 },
   "gpt-5.4-nano": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 1.25 },

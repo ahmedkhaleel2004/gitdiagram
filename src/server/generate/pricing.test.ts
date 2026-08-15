@@ -41,9 +41,9 @@ describe("estimateTextTokenCostUsd", () => {
     );
 
     expect(result.pricingModel).toBe("gpt-5.6-terra");
-    expect(result.pricing.inputPerMillionUsd).toBe(2.5);
-    expect(result.pricing.outputPerMillionUsd).toBe(15);
-    expect(result.costUsd).toBe(17.5);
+    expect(result.pricing.inputPerMillionUsd).toBe(2);
+    expect(result.pricing.outputPerMillionUsd).toBe(12);
+    expect(result.costUsd).toBe(14);
   });
 });
 
