@@ -21,6 +21,7 @@ interface MainCardProps {
   lastGenerated?: Date;
   costSummary?: GenerationCostSummary;
   onExportImage?: () => void;
+  onExportPdf?: () => void;
   onRegenerate?: () => void;
   zoomingEnabled?: boolean;
   onZoomToggle?: () => void;
@@ -36,6 +37,7 @@ export default function MainCard({
   lastGenerated,
   costSummary,
   onExportImage,
+  onExportPdf,
   onRegenerate,
   zoomingEnabled,
   onZoomToggle,
@@ -146,7 +148,7 @@ export default function MainCard({
                       </span>
                     </button>
                   )}
-                  {hasDiagram && onCopy && onExportImage && (
+                  {hasDiagram && onCopy && onExportImage && onExportPdf && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -195,6 +197,7 @@ export default function MainCard({
                       lastGenerated={lastGenerated}
                       costSummary={costSummary}
                       onExportImage={onExportImage!}
+                      onExportPdf={onExportPdf!}
                     />
                   </div>
                 ) : null}

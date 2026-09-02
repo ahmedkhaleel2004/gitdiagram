@@ -126,6 +126,7 @@ describe("useDiagram", () => {
     useDiagramExport.mockReturnValue({
       handleCopy: vi.fn(),
       handleExportImage: vi.fn(),
+      handleExportPdf: vi.fn(),
     });
     setStreamState.mockReset();
     runGeneration.mockImplementation(async () => {
