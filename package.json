@@ -44,6 +44,7 @@
   },
   "overrides": {
     "@babel/core": "7.29.7",
+    "browserslist": "4.28.8",
     "ajv": "6.15.0",
     "brace-expansion": "5.0.9",
     "dompurify": "3.4.13",
@@ -87,9 +88,9 @@
     ]
   },
   "engines": {
-    "bun": ">=1.3.11 <2"
+    "bun": ">=1.3.14 <2"
   },
-  "packageManager": "bun@1.3.11",
+  "packageManager": "bun@1.3.14",
   "patchedDependencies": {
     "minimatch@3.1.5": "patches/minimatch@3.1.5.patch"
   }
