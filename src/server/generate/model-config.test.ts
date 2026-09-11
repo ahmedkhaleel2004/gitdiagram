@@ -21,6 +21,13 @@ describe("getProvider", () => {
     expect(getProvider()).toBe("openrouter");
     expect(getProviderLabel("openrouter")).toBe("OpenRouter");
   });
+
+  it("recognizes Requesty only when selected explicitly", () => {
+    process.env.AI_PROVIDER = "requesty";
+
+    expect(getProvider()).toBe("requesty");
+    expect(getProviderLabel("requesty")).toBe("Requesty");
+  });
 });
 
 describe("getModel", () => {
@@ -40,6 +47,18 @@ describe("getModel", () => {
     delete process.env.OPENROUTER_MODEL;
 
     expect(getModel("openrouter")).toBe("openai/gpt-5.6-terra");
+  });
+
+  it("uses GPT-5.6 Terra as the Requesty fallback", () => {
+    delete process.env.REQUESTY_MODEL;
+
+    expect(getModel("requesty")).toBe("openai/gpt-5.6-terra");
+  });
+
+  it("preserves an explicit Requesty model override", () => {
+    process.env.REQUESTY_MODEL = "anthropic/claude-sonnet-4-5";
+
+    expect(getModel("requesty")).toBe("anthropic/claude-sonnet-4-5");
   });
 });
 
