@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { estimateGenerationCost } from "~/server/generate/cost-estimate";
@@ -7,66 +8,136 @@ import {
   isComplimentaryGateEnabled,
   modelMatchesComplimentaryFamily,
 } from "~/server/generate/complimentary-gate";
-import { getGithubData } from "~/server/generate/github";
+import {
+  getGithubData,
+  REPOSITORY_TOO_LARGE_ERROR,
+} from "~/server/generate/github";
 import {
   getModel,
   getProvider,
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
-import { generateRequestSchema } from "~/server/generate/types";
-import { getLocalData } from "~/server/generate/local";
+import {
+  consumeGenerationInfrastructureRateLimit,
+  getGenerationInfrastructureRateLimitMessage,
+} from "~/server/generate/rate-limit";
+import {
+  assertModelPricingAvailable,
+  MODEL_PRICING_UNAVAILABLE_ERROR,
+  ModelPricingUnavailableError,
+} from "~/server/generate/pricing";
+import { parseGenerateRequest } from "~/server/generate/types";
+import { getClientIp } from "~/server/http/client-ip";
+import { resolveRequestCredentials } from "~/server/http/request-credentials";
+import { isSameOriginRequest } from "~/server/http/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 60;
+
+const COST_REQUEST_DEADLINE_MS = 55_000;
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  init: { status?: number; requestId: string },
+) {
+  return NextResponse.json(body, {
+    status: init.status,
+    headers: {
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "X-Generation-Request-Id": init.requestId,
+    },
+  });
+}
 
 export async function POST(request: Request) {
+  const requestId = randomUUID();
+  const deadlineSignal = AbortSignal.timeout(COST_REQUEST_DEADLINE_MS);
+  const signal = AbortSignal.any([request.signal, deadlineSignal]);
+
   try {
-    const parsed = generateRequestSchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return NextResponse.json({
-        ok: false,
-        error: "Invalid request payload.",
-        error_code: "VALIDATION_ERROR",
-      });
+    // Estimation runs the same bounded GitHub ingestion as a real generation,
+    // so an unguarded endpoint lets anyone drain the server's shared GitHub
+    // API budget and take generation down for everybody.
+    if (!isSameOriginRequest(request)) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: "Cross-origin cost estimation is not allowed.",
+          error_code: "CROSS_ORIGIN_FORBIDDEN",
+        },
+        { status: 403, requestId },
+      );
     }
 
-    const {
-      username,
-      repo,
-      local_path: localPath,
-      api_key: apiKey,
-      github_pat: githubPat,
-    } = parsed.data;
+    const parsed = await parseGenerateRequest(request);
+    if (!parsed.success) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: parsed.error,
+          error_code: parsed.errorCode,
+        },
+        { status: parsed.status, requestId },
+      );
+    }
+
+    const { username, repo } = parsed.data;
+    const { apiKey, githubPat } = await resolveRequestCredentials(request, {
+      apiKey: parsed.data.api_key,
+      githubPat: parsed.data.github_pat,
+    });
+
+    const rateLimit = await consumeGenerationInfrastructureRateLimit({
+      clientIp: getClientIp(request),
+    });
+    if (!rateLimit.allowed) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: getGenerationInfrastructureRateLimitMessage(
+            rateLimit.retryAfterSeconds,
+          ),
+          error_code: "RATE_LIMITED",
+        },
+        { status: 429, requestId },
+      );
+    }
     const provider = getProvider();
     const model = getModel(provider);
+    assertModelPricingAvailable(model);
 
-    if (provider !== "cli" && isComplimentaryGateEnabled() && !apiKey) {
+    if (isComplimentaryGateEnabled() && !apiKey) {
       if (provider !== "openai") {
-        return NextResponse.json({
-          ok: false,
-          error: getComplimentaryProviderMismatchMessage(),
-          error_code: "COMPLIMENTARY_GATE_PROVIDER_MISMATCH",
-        });
+        return jsonResponse(
+          {
+            ok: false,
+            error: getComplimentaryProviderMismatchMessage(),
+            error_code: "COMPLIMENTARY_GATE_PROVIDER_MISMATCH",
+          },
+          { requestId },
+        );
       }
 
       if (!modelMatchesComplimentaryFamily(model)) {
-        return NextResponse.json({
-          ok: false,
-          error: getComplimentaryModelMismatchMessage(),
-          error_code: "COMPLIMENTARY_GATE_MODEL_MISMATCH",
-        });
+        return jsonResponse(
+          {
+            ok: false,
+            error: getComplimentaryModelMismatchMessage(),
+            error_code: "COMPLIMENTARY_GATE_MODEL_MISMATCH",
+          },
+          { requestId },
+        );
       }
     }
 
-    const repositoryData = localPath
-      ? await getLocalData(localPath)
-      : await getGithubData(username, repo, githubPat);
+    const githubData = await getGithubData(username, repo, githubPat, signal);
     const estimate = await estimateGenerationCost({
       provider,
       model,
-      fileTree: repositoryData.fileTree,
-      readme: repositoryData.readme,
+      fileTree: githubData.fileTree,
+      readme: githubData.readme,
       username,
       repo,
       apiKey,
@@ -74,29 +145,80 @@ export async function POST(request: Request) {
         provider,
         apiKey,
       }),
+      signal,
+      clientRequestId: `${requestId}:estimate`,
     });
 
-    return NextResponse.json({
-      ok: true,
-      cost: estimate.costSummary.display,
-      cost_summary: estimate.costSummary,
-      model,
-      pricing_model: estimate.pricingModel,
-      estimated_input_tokens: estimate.estimatedInputTokens,
-      estimated_output_tokens: estimate.estimatedOutputTokens,
-      pricing: {
-        input_per_million_usd: estimate.pricing.inputPerMillionUsd,
-        output_per_million_usd: estimate.pricing.outputPerMillionUsd,
+    return jsonResponse(
+      {
+        ok: true,
+        cost: estimate.costSummary.display,
+        cost_summary: estimate.costSummary,
+        model,
+        pricing_model: estimate.pricingModel,
+        estimated_input_tokens: estimate.estimatedInputTokens,
+        estimated_output_tokens: estimate.estimatedOutputTokens,
+        pricing: {
+          input_per_million_usd: estimate.pricing.inputPerMillionUsd,
+          output_per_million_usd: estimate.pricing.outputPerMillionUsd,
+        },
       },
-    });
+      { requestId },
+    );
   } catch (error) {
-    return NextResponse.json({
-      ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to estimate generation cost.",
-      error_code: "COST_ESTIMATION_FAILED",
-    });
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to estimate generation cost.";
+    const timedOut = deadlineSignal.aborted;
+    const pricingUnavailable = error instanceof ModelPricingUnavailableError;
+    const repositoryTooLarge = message === REPOSITORY_TOO_LARGE_ERROR;
+    const repositoryNotFound = message === "Repository not found.";
+
+    if (!timedOut && !repositoryTooLarge && !repositoryNotFound) {
+      // Upstream failures carry raw GitHub and provider response bodies. Log
+      // them, but hand the caller a fixed message like the stream route does.
+      console.error(
+        JSON.stringify({
+          event: "generate.cost.failed",
+          request_id: requestId,
+          error: message,
+        }),
+      );
+    }
+
+    return jsonResponse(
+      {
+        ok: false,
+        error: timedOut
+          ? "Cost estimation timed out. Please retry."
+          : pricingUnavailable
+            ? MODEL_PRICING_UNAVAILABLE_ERROR
+            : repositoryTooLarge || repositoryNotFound
+              ? message
+              : "Failed to estimate generation cost. Please retry.",
+        error_code: timedOut
+          ? "GENERATION_TIMEOUT"
+          : pricingUnavailable
+            ? "MODEL_PRICING_UNAVAILABLE"
+            : repositoryTooLarge
+              ? "TOKEN_LIMIT_EXCEEDED"
+              : repositoryNotFound
+                ? "REPOSITORY_NOT_FOUND"
+                : "COST_ESTIMATION_FAILED",
+      },
+      {
+        status: timedOut
+          ? 504
+          : pricingUnavailable
+            ? 503
+            : repositoryTooLarge
+              ? 413
+              : repositoryNotFound
+                ? 404
+                : 500,
+        requestId,
+      },
+    );
   }
 }

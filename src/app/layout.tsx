@@ -5,7 +5,6 @@ import { type Metadata } from "next";
 import { Header } from "~/components/header";
 import { Footer } from "~/components/footer";
 import { CSPostHogProvider } from "./providers";
-import { Toaster } from "~/components/ui/sonner";
 import { SITE_URL } from "~/lib/site";
 
 export const metadata: Metadata = {
@@ -20,16 +19,11 @@ export const metadata: Metadata = {
     "git diagram tool",
     "git diagram maker",
     "git diagram creator",
-    "git diagram",
     "diagram",
     "repository",
     "visualization",
     "code structure",
     "system design",
-    "software architecture",
-    "software design",
-    "software engineering",
-    "software development",
     "software architecture",
     "software design",
     "software engineering",
@@ -48,7 +42,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://gitdiagram.com",
+    url: SITE_URL,
     title: "GitDiagram - Repository to Diagram in Seconds",
     description:
       "Turn any GitHub repository into an interactive diagram for visualization.",
@@ -86,9 +80,8 @@ export default function RootLayout({
       <body className="flex min-h-screen flex-col">
         <CSPostHogProvider>
           <Header />
-          <main className="flex-grow">{children}</main>
+          <div className="flex-grow">{children}</div>
           <Footer />
-          <Toaster />
         </CSPostHogProvider>
       </body>
     </html>

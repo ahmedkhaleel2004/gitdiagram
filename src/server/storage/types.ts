@@ -17,6 +17,14 @@ export interface DiagramArtifact {
   lastSuccessfulAt: string;
 }
 
+export interface PublicDiagramPreview {
+  version: 1;
+  username: string;
+  repo: string;
+  diagram: string;
+  lastSuccessfulAt: string;
+}
+
 export interface StoredFailureSummary {
   version: 1;
   visibility: ArtifactVisibility;

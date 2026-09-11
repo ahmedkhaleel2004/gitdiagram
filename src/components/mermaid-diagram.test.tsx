@@ -1,24 +1,42 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
-import MermaidChart, {
+import MermaidChart from "~/components/mermaid-diagram";
+import {
   getDefaultDiagramScale,
   getPinchScaleFactor,
   getWheelZoomScaleFactor,
   isLikelyTrackpadGesture,
   normalizeWheelDelta,
-} from "~/components/mermaid-diagram";
+} from "~/components/mermaid-diagram-helpers";
 
-const { renderMock, resizeObserverObserveMock } = vi.hoisted(() => ({
-  renderMock: vi.fn().mockResolvedValue({
-    svg: "<svg viewBox='0 0 100 100'><rect width='100' height='100' /></svg>",
+const { initializeMock, renderMock, resizeObserverObserveMock } = vi.hoisted(
+  () => ({
+    initializeMock: vi.fn(),
+    renderMock: vi.fn().mockResolvedValue({
+      svg: "<svg viewBox='0 0 100 100'><rect width='100' height='100' /></svg>",
+    }),
+    resizeObserverObserveMock: vi.fn(),
   }),
-  resizeObserverObserveMock: vi.fn(),
-}));
+);
 
 vi.mock("mermaid", () => ({
   default: {
-    initialize: vi.fn(),
+    initialize: initializeMock,
     registerLayoutLoaders: vi.fn(),
     render: renderMock,
   },
@@ -68,6 +86,7 @@ describe("MermaidChart", () => {
   });
 
   beforeEach(() => {
+    initializeMock.mockClear();
     renderMock.mockClear();
     resizeObserverObserveMock.mockClear();
   });
@@ -78,10 +97,42 @@ describe("MermaidChart", () => {
     );
 
     expect(container.querySelector(".mermaid")).toBeInTheDocument();
-    expect(screen.queryByText(/Mermaid render failed:/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Mermaid render failed:/),
+    ).not.toBeInTheDocument();
   });
 
-  it("keeps vertical touch scrolling enabled in read-only mode", () => {
+  it("uses pure SVG labels so sanitization does not strip node text", async () => {
+    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />);
+
+    await waitFor(() => {
+      expect(initializeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ htmlLabels: false }),
+      );
+    });
+  });
+
+  it("only gives clickable diagram nodes hover feedback", async () => {
+    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />);
+
+    await waitFor(() => {
+      expect(initializeMock).toHaveBeenCalled();
+    });
+
+    const config = initializeMock.mock.calls.at(-1)?.[0] as
+      { themeCSS?: string } | undefined;
+
+    expect(config?.themeCSS).toContain(".clickable:hover > *");
+    expect(config?.themeCSS).not.toContain(".node:hover");
+    expect(config?.themeCSS).toContain("scale: 1.05");
+    expect(config?.themeCSS).toContain("transition: scale 160ms");
+    expect(config?.themeCSS).toContain("transform-origin: center");
+    expect(config?.themeCSS).toContain(".clickable");
+    expect(config?.themeCSS).toContain("cursor: pointer");
+    expect(config?.themeCSS).toContain("prefers-reduced-motion: reduce");
+  });
+
+  it("allows two-axis panning and native pinch zoom in read-only mode", () => {
     const { container } = render(
       <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />,
     );
@@ -89,6 +140,8 @@ describe("MermaidChart", () => {
     const interactionLayer = container.querySelector(".touch-pan-y");
 
     expect(interactionLayer).toBeInTheDocument();
+    expect(interactionLayer).toHaveClass("touch-pan-x");
+    expect(interactionLayer).toHaveClass("touch-pinch-zoom");
     expect(container.querySelector(".touch-none")).not.toBeInTheDocument();
   });
 
@@ -152,6 +205,46 @@ describe("MermaidChart", () => {
     });
   });
 
+  it("restores Element serialization after a successful Mermaid render", async () => {
+    let serializationPatchWasActive = false;
+    renderMock.mockImplementationOnce(async () => {
+      serializationPatchWasActive = "toJSON" in Element.prototype;
+      return {
+        svg: "<svg viewBox='0 0 100 100'><rect width='100' height='100' /></svg>",
+      };
+    });
+
+    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />);
+
+    await waitFor(() => {
+      expect(renderMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect("toJSON" in Element.prototype).toBe(false);
+    });
+    expect(serializationPatchWasActive).toBe(true);
+  });
+
+  it("restores Element serialization after a failed Mermaid render", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let serializationPatchWasActive = false;
+    renderMock.mockImplementationOnce(async () => {
+      serializationPatchWasActive = "toJSON" in Element.prototype;
+      throw new Error("ELK failed");
+    });
+
+    render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled={false} />);
+
+    expect(
+      await screen.findByText("Mermaid render failed: ELK failed"),
+    ).toBeInTheDocument();
+    expect(serializationPatchWasActive).toBe(true);
+    expect("toJSON" in Element.prototype).toBe(false);
+    consoleError.mockRestore();
+  });
+
   it("shows custom controls when interactive mode is enabled", async () => {
     const { container } = render(
       <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />,
@@ -161,14 +254,47 @@ describe("MermaidChart", () => {
       expect(screen.getByText("100%")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("region", { name: /interactive diagram viewer/i }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /interactive diagram viewer/i }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Zoom out")).toBeInTheDocument();
     expect(screen.getByLabelText("Zoom in")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /fit/i })).toBeInTheDocument();
-    expect(resizeObserverObserveMock).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(resizeObserverObserveMock).toHaveBeenCalled();
+    });
     expect(container.querySelector(".select-none")).toBeInTheDocument();
     expect(container.querySelector(".touch-none")).toBeInTheDocument();
+  });
+
+  it("does not recompile the chart when interactive zoom is toggled", async () => {
+    const onRenderComplete = vi.fn();
+    const { rerender } = render(
+      <MermaidChart
+        chart="flowchart TD\nA-->B"
+        zoomingEnabled={false}
+        onRenderComplete={onRenderComplete}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(renderMock).toHaveBeenCalledTimes(1);
+      expect(onRenderComplete).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <MermaidChart
+        chart="flowchart TD\nA-->B"
+        zoomingEnabled
+        onRenderComplete={onRenderComplete}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Zoom in")).toBeEnabled();
+    });
+    expect(renderMock).toHaveBeenCalledTimes(1);
+    expect(onRenderComplete).toHaveBeenCalledTimes(1);
   });
 
   it("pans the diagram after zooming in", async () => {
@@ -204,7 +330,9 @@ describe("MermaidChart", () => {
     });
 
     await waitFor(() => {
-      expect((mermaid as HTMLDivElement).style.transform).not.toBe(initialTransform);
+      expect((mermaid as HTMLDivElement).style.transform).not.toBe(
+        initialTransform,
+      );
     });
   });
 

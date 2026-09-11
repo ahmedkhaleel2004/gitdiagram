@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
+import { getCredentialStatus } from "~/features/credentials/api";
 import {
+  DiagramStreamHttpError,
   getDiagramState,
-  persistDiagramRenderError,
-} from "~/app/_actions/cache";
+} from "~/features/diagram/api";
 import type {
   DiagramStateResponse,
   DiagramStreamState,
@@ -11,7 +12,8 @@ import type {
 import { useDiagramStream } from "~/hooks/diagram/useDiagramStream";
 import { useDiagramExport } from "~/hooks/diagram/useDiagramExport";
 import { isExampleRepo } from "~/lib/exampleRepos";
-import { storeOpenAiKey } from "~/lib/openai-key";
+
+type DiagramStateSyncMode = "foreground" | "background";
 
 function toInitialStreamState(
   stateRecord: DiagramStateResponse | null | undefined,
@@ -42,32 +44,41 @@ function getFailureMessage(
   return audit.renderError ?? audit.compilerError ?? audit.validationError;
 }
 
+function toGenerationFailure(
+  error: unknown,
+  fallbackMessage: string,
+): { error: string; errorCode?: string } {
+  // Pre-stream HTTP rejections carry the server's own explanation (e.g. the
+  // rate-limit wait time); surface it verbatim like SSE errors already are.
+  if (error instanceof DiagramStreamHttpError) {
+    return { error: error.message, errorCode: error.errorCode };
+  }
+  return { error: fallbackMessage };
+}
+
 export function useDiagram(
   username: string,
   repo: string,
   initialState?: DiagramStateResponse | null,
+  initialStateIsAuthoritative = false,
 ) {
-  const [loading, setLoading] = useState<boolean>(!Boolean(initialState?.diagram));
+  const [loading, setLoading] = useState<boolean>(
+    !Boolean(initialState?.diagram),
+  );
   const [lastGenerated, setLastGenerated] = useState<Date | undefined>(
     initialState?.lastSuccessfulAt
       ? new Date(initialState.lastSuccessfulAt)
       : undefined,
   );
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
-
-  const applyCompletedDiagram = useCallback(
-    async ({
-      generatedAt,
-    }: {
-      generatedAt?: string;
-    }) => {
-      if (generatedAt) {
-        setLastGenerated(new Date(generatedAt));
-      }
-      setLoading(false);
-    },
-    [],
-  );
+  const foregroundOperationRef = useRef<{
+    activeId: number | null;
+    nextId: number;
+  }>({
+    activeId: null,
+    nextId: 0,
+  });
+  const backgroundSyncRevisionRef = useRef(0);
 
   const onStreamComplete = useCallback(
     async (result: {
@@ -77,22 +88,60 @@ export function useDiagram(
       latestSessionAudit: DiagramStreamState["latestSessionAudit"];
       generatedAt?: string;
     }) => {
-      await applyCompletedDiagram({
-        generatedAt: result.generatedAt,
-      });
+      if (result.generatedAt) {
+        setLastGenerated(new Date(result.generatedAt));
+      }
     },
-    [applyCompletedDiagram],
+    [],
   );
 
-  const onStreamError = useCallback((_message: string) => {
-    setLoading(false);
+  const beginForegroundOperation = useCallback(() => {
+    const operationId = foregroundOperationRef.current.nextId + 1;
+    foregroundOperationRef.current = {
+      activeId: operationId,
+      nextId: operationId,
+    };
+    backgroundSyncRevisionRef.current += 1;
+    setLoading(true);
+    return operationId;
+  }, []);
+
+  const isActiveForegroundOperation = useCallback(
+    (operationId: number) =>
+      foregroundOperationRef.current.activeId === operationId,
+    [],
+  );
+
+  const finishForegroundOperation = useCallback(
+    (operationId: number) => {
+      if (isActiveForegroundOperation(operationId)) {
+        foregroundOperationRef.current.activeId = null;
+        setLoading(false);
+      }
+    },
+    [isActiveForegroundOperation],
+  );
+
+  const beginBackgroundSync = useCallback(() => {
+    if (foregroundOperationRef.current.activeId !== null) {
+      return null;
+    }
+
+    backgroundSyncRevisionRef.current += 1;
+    return backgroundSyncRevisionRef.current;
+  }, []);
+
+  const isActiveBackgroundSync = useCallback((revision: number) => {
+    return (
+      foregroundOperationRef.current.activeId === null &&
+      backgroundSyncRevisionRef.current === revision
+    );
   }, []);
 
   const { state, runGeneration, setState } = useDiagramStream({
     username,
     repo,
     onComplete: onStreamComplete,
-    onError: onStreamError,
     initialState: toInitialStreamState(initialState),
   });
 
@@ -122,7 +171,9 @@ export function useDiagram(
         explanation: stateRecord.explanation ?? prev.explanation,
         latestSessionAudit: latestAudit ?? prev.latestSessionAudit,
         costSummary:
-          latestAudit?.finalCost ?? latestAudit?.estimatedCost ?? prev.costSummary,
+          latestAudit?.finalCost ??
+          latestAudit?.estimatedCost ??
+          prev.costSummary,
         graph: stateRecord.graph ?? latestAudit?.graph ?? prev.graph,
         graphAttempts: latestAudit?.graphAttempts ?? prev.graphAttempts,
         failureStage: shouldExposeFailure
@@ -144,20 +195,24 @@ export function useDiagram(
   );
 
   const syncDiagramState = useCallback(
-    async ({
-      generateIfMissing,
-      showLoading,
-      clearError,
-    }: {
-      generateIfMissing: boolean;
-      showLoading: boolean;
-      clearError: boolean;
-    }) => {
-      if (showLoading) {
-        setLoading(true);
+    async (mode: DiagramStateSyncMode) => {
+      const foregroundOperationId =
+        mode === "foreground" ? beginForegroundOperation() : null;
+      const backgroundSyncRevision =
+        mode === "background" ? beginBackgroundSync() : null;
+
+      if (mode === "background" && backgroundSyncRevision === null) {
+        return;
       }
 
-      if (clearError) {
+      const isCurrentSync = () =>
+        mode === "foreground"
+          ? foregroundOperationId !== null &&
+            isActiveForegroundOperation(foregroundOperationId)
+          : backgroundSyncRevision !== null &&
+            isActiveBackgroundSync(backgroundSyncRevision);
+
+      if (mode === "foreground") {
         setState((prev) => ({
           ...prev,
           error: undefined,
@@ -165,112 +220,143 @@ export function useDiagram(
       }
 
       try {
-        const githubPat = localStorage.getItem("github_pat");
-        const stateRecord = await getDiagramState(
-          username,
-          repo,
-          githubPat ?? undefined,
-        );
+        const stateRecord = await getDiagramState(username, repo);
+        if (!isCurrentSync()) {
+          return;
+        }
         const hasStoredDiagram = applyStoredState(stateRecord);
 
-        if (hasStoredDiagram || !generateIfMissing) {
+        if (hasStoredDiagram || mode === "background") {
           return;
         }
 
-        await runGeneration(githubPat ?? undefined);
-      } catch {
-        if (generateIfMissing) {
+        await runGeneration();
+      } catch (error) {
+        if (mode === "foreground" && isCurrentSync()) {
+          const failure = toGenerationFailure(
+            error,
+            "Something went wrong. Please try again later.",
+          );
           setState((prev) => ({
             ...prev,
             status: "error",
-            error: "Something went wrong. Please try again later.",
+            error: failure.error,
+            errorCode: failure.errorCode,
           }));
         }
       } finally {
-        if (showLoading) {
-          setLoading(false);
+        if (foregroundOperationId !== null) {
+          finishForegroundOperation(foregroundOperationId);
         }
       }
     },
-    [applyStoredState, repo, runGeneration, setState, username],
+    [
+      applyStoredState,
+      beginBackgroundSync,
+      beginForegroundOperation,
+      finishForegroundOperation,
+      isActiveBackgroundSync,
+      isActiveForegroundOperation,
+      repo,
+      runGeneration,
+      setState,
+      username,
+    ],
   );
 
   const getDiagram = useCallback(async () => {
-    await syncDiagramState({
-      generateIfMissing: true,
-      showLoading: true,
-      clearError: true,
-    });
+    await syncDiagramState("foreground");
   }, [syncDiagramState]);
 
   const refreshStoredDiagram = useCallback(async () => {
-    await syncDiagramState({
-      generateIfMissing: false,
-      showLoading: false,
-      clearError: false,
-    });
+    await syncDiagramState("background");
   }, [syncDiagramState]);
+
+  const runGenerationOperation = useCallback(
+    async (failureMessage: string) => {
+      const operationId = beginForegroundOperation();
+      setState((prev) => ({
+        ...prev,
+        error: undefined,
+      }));
+
+      try {
+        await runGeneration();
+      } catch (error) {
+        if (isActiveForegroundOperation(operationId)) {
+          const failure = toGenerationFailure(error, failureMessage);
+          setState((prev) => ({
+            ...prev,
+            status: "error",
+            error: failure.error,
+            errorCode: failure.errorCode,
+          }));
+        }
+      } finally {
+        finishForegroundOperation(operationId);
+      }
+    },
+    [
+      beginForegroundOperation,
+      finishForegroundOperation,
+      isActiveForegroundOperation,
+      runGeneration,
+      setState,
+    ],
+  );
 
   const handleRegenerate = useCallback(async () => {
     if (isExampleRepo(username, repo)) {
       return;
     }
 
-    setLoading(true);
-    setState((prev) => ({
-      ...prev,
-      error: undefined,
-    }));
-
-    const githubPat = localStorage.getItem("github_pat");
-
-    try {
-      await runGeneration(githubPat ?? undefined);
-    } catch {
-      setState((prev) => ({
-        ...prev,
-        status: "error",
-        error: "Something went wrong. Please try again later.",
-      }));
-    } finally {
-      setLoading(false);
-    }
-  }, [repo, runGeneration, setState, username]);
+    await runGenerationOperation(
+      "Something went wrong. Please try again later.",
+    );
+  }, [repo, runGenerationOperation, username]);
 
   useEffect(() => {
     if (initialState?.diagram) {
-      void refreshStoredDiagram();
-      return;
+      if (!initialStateIsAuthoritative) {
+        void refreshStoredDiagram();
+        return;
+      }
+
+      // The secret itself is HttpOnly. Ask only whether a private credential
+      // exists so an authoritative public artifact is not downloaded twice.
+      let cancelled = false;
+      void getCredentialStatus()
+        .then((credentials) => {
+          if (!cancelled && credentials.githubPatConfigured) {
+            void refreshStoredDiagram();
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            // Preserve private-repository reloads if status is unavailable.
+            void refreshStoredDiagram();
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
     }
     void getDiagram();
-  }, [getDiagram, initialState?.diagram, refreshStoredDiagram]);
+  }, [
+    getDiagram,
+    initialState?.diagram,
+    initialStateIsAuthoritative,
+    refreshStoredDiagram,
+  ]);
 
   const diagram = state.diagram ?? "";
   const error = state.error ?? "";
   const { handleCopy, handleExportImage } = useDiagramExport(diagram);
 
-  const handleApiKeySubmit = async (apiKey: string) => {
-    setShowApiKeyDialog(false);
-    setLoading(true);
-    setState((prev) => ({
-      ...prev,
-      error: undefined,
-    }));
-
-    storeOpenAiKey(apiKey);
-
-    const githubPat = localStorage.getItem("github_pat");
-    try {
-      await runGeneration(githubPat ?? undefined);
-    } catch {
-      setState((prev) => ({
-        ...prev,
-        status: "error",
-        error: "Failed to generate diagram with provided API key.",
-      }));
-    } finally {
-      setLoading(false);
-    }
+  const handleApiKeySaved = async () => {
+    await runGenerationOperation(
+      "Failed to generate diagram with provided API key.",
+    );
   };
 
   const handleCloseApiKeyDialog = () => {
@@ -282,14 +368,7 @@ export function useDiagram(
   };
 
   const handleDiagramRenderError = useCallback(
-    async (renderMessage: string) => {
-      const githubPat = localStorage.getItem("github_pat");
-      await persistDiagramRenderError(
-        username,
-        repo,
-        renderMessage,
-        githubPat ?? undefined,
-      );
+    (renderMessage: string) => {
       setState((prev) => ({
         ...prev,
         status: "error",
@@ -298,7 +377,7 @@ export function useDiagram(
         validationError: renderMessage,
       }));
     },
-    [repo, setState, username],
+    [setState],
   );
 
   return {
@@ -308,12 +387,12 @@ export function useDiagram(
     lastGenerated,
     handleCopy,
     showApiKeyDialog,
-    handleApiKeySubmit,
+    handleApiKeySaved,
     handleCloseApiKeyDialog,
     handleOpenApiKeyDialog,
     handleExportImage,
     handleRegenerate,
     handleDiagramRenderError,
-    state: state as DiagramStreamState,
+    state,
   };
 }

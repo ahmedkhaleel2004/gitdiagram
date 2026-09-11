@@ -1,5 +1,1 @@
-export {
-  formatValidationFeedback,
-  validateMermaidSyntax,
-  type MermaidValidationResult,
-} from "./mermaid-validator";
+export { validateMermaidSyntax } from "./mermaid-validator";

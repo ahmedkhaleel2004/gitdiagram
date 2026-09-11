@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
-import type { DiagramStateResponse } from "~/features/diagram/types";
+import { SITE_URL } from "~/lib/site";
 import { getStoredDiagramState } from "~/server/storage/artifact-store";
 import { getPublicDiagramStateCacheTag } from "~/server/storage/repo-page-cache";
 import RepoPageClient from "./repo-page-client";
@@ -49,7 +49,7 @@ export async function generateMetadata({
     openGraph: {
       title,
       description,
-      url: `https://gitdiagram.com/${username}/${repo}`,
+      url: `${SITE_URL}/${username}/${repo}`,
       siteName: "GitDiagram",
       type: "website",
     },
@@ -64,16 +64,14 @@ export async function generateMetadata({
 
 export default async function Repo({ params }: RepoPageProps) {
   const { username, repo } = await params;
-  const initialState = (await getCachedPublicDiagramState(
-    username,
-    repo,
-  )) as DiagramStateResponse | null;
+  const initialState = await getCachedPublicDiagramState(username, repo);
 
   return (
     <RepoPageClient
       username={username}
       repo={repo}
       initialState={initialState?.diagram ? initialState : null}
+      initialStateIsAuthoritative={Boolean(initialState?.diagram)}
     />
   );
 }

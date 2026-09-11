@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   normalizeBrowseQuery,
@@ -11,7 +11,10 @@ import type {
   BrowseQuery,
   BrowseSort,
 } from "~/features/browse/catalog";
-import { loadBrowsePage } from "~/features/browse/index-client";
+import {
+  getBrowsePageUrl,
+  loadBrowsePage,
+} from "~/features/browse/index-client";
 import { BrowseCatalogControls } from "~/components/browse-catalog-controls";
 import { BrowseCatalogLoadingState } from "~/components/browse-catalog-loading-state";
 import { BrowseCatalogResults } from "~/components/browse-catalog-results";
@@ -30,6 +33,14 @@ interface BrowseCatalogProps {
 }
 
 const SLOW_RESULTS_INDICATOR_DELAY_MS = 5000;
+const SEARCH_DEBOUNCE_MS = 150;
+
+interface BrowseLoadState {
+  error: string | null;
+  isLoaded: boolean;
+  result: BrowsePageResult | null;
+  showSlowIndicator: boolean;
+}
 
 export function BrowseCatalog({
   initialResult,
@@ -37,20 +48,26 @@ export function BrowseCatalog({
   initialQuery,
 }: BrowseCatalogProps) {
   const normalizedInitialQuery = normalizeBrowseQuery(initialQuery);
-  const [result, setResult] = useState<BrowsePageResult | null>(
-    initialResult ?? null,
-  );
-  const [isQueryReady, setIsQueryReady] = useState(Boolean(initialResult));
-  const [isLoaded, setIsLoaded] = useState(Boolean(initialResult));
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [showSlowResultsIndicator, setShowSlowResultsIndicator] =
-    useState(false);
-  const [searchInput, setSearchInput] = useState(normalizedInitialQuery.q);
-  const [sort, setSort] = useState<BrowseSort>(normalizedInitialQuery.sort);
-  const [minStars, setMinStars] = useState(normalizedInitialQuery.minStars);
-  const [page, setPage] = useState(normalizedInitialQuery.page);
-  const deferredQuery = useDeferredValue(searchInput);
+  const [loadState, setLoadState] = useState<BrowseLoadState>({
+    error: null,
+    isLoaded: Boolean(initialResult),
+    result: initialResult ?? null,
+    showSlowIndicator: false,
+  });
+  const [isQueryReady, setIsQueryReady] = useState(false);
+  const [query, setQuery] = useState(normalizedInitialQuery);
+  const {
+    error: loadError,
+    isLoaded,
+    result,
+    showSlowIndicator: showSlowResultsIndicator,
+  } = loadState;
+  const { q: searchInput, sort, minStars, page } = query;
   const activeRequestId = useRef(0);
+  const settledSearchRef = useRef(normalizedInitialQuery.q);
+  const loadedQueryKeyRef = useRef<string | null>(
+    initialResult ? getBrowsePageUrl(initialQuery) : null,
+  );
   const {
     closeHoverPreview,
     desktopHoverEnabled,
@@ -70,10 +87,7 @@ export function BrowseCatalog({
     );
 
     if (window.location.search) {
-      setSearchInput(urlState.q);
-      setSort(urlState.sort);
-      setMinStars(urlState.minStars);
-      setPage(urlState.page);
+      setQuery(urlState);
       setIsQueryReady(true);
       return;
     }
@@ -89,22 +103,21 @@ export function BrowseCatalog({
       return;
     }
 
-    setSearchInput(restoredState.q);
-    setSort(restoredState.sort);
-    setMinStars(restoredState.minStars);
-    setPage(restoredState.page);
+    setQuery(restoredState);
     syncBrowseUrl(restoredState, "replace");
     setIsQueryReady(true);
   }, []);
 
   useEffect(() => {
+    if (!isQueryReady) {
+      return;
+    }
+
     persistBrowseState({
-      page,
-      q: searchInput.trim(),
-      sort,
-      minStars,
+      ...query,
+      q: query.q.trim(),
     });
-  }, [minStars, page, searchInput, sort]);
+  }, [isQueryReady, query]);
 
   useEffect(() => {
     if (!isQueryReady) {
@@ -114,57 +127,93 @@ export function BrowseCatalog({
     const requestId = activeRequestId.current + 1;
     activeRequestId.current = requestId;
     const abortController = new AbortController();
-    const query = {
-      page,
-      q: deferredQuery,
-      sort,
-      minStars,
-    };
+    let slowIndicatorTimeoutId: number | null = null;
+    const debounceDelay =
+      searchInput === settledSearchRef.current ? 0 : SEARCH_DEBOUNCE_MS;
+    const requestTimeoutId = window.setTimeout(() => {
+      settledSearchRef.current = searchInput;
+      const requestQuery = {
+        page,
+        q: searchInput,
+        sort,
+        minStars,
+      };
+      const queryKey = getBrowsePageUrl(requestQuery);
 
-    setIsLoaded(false);
-    setLoadError(null);
-    setShowSlowResultsIndicator(false);
-
-    const slowIndicatorTimeoutId = window.setTimeout(() => {
-      if (activeRequestId.current === requestId) {
-        setShowSlowResultsIndicator(true);
+      if (loadedQueryKeyRef.current === queryKey) {
+        setLoadState((current) => ({
+          ...current,
+          error: null,
+          isLoaded: true,
+          showSlowIndicator: false,
+        }));
+        return;
       }
-    }, SLOW_RESULTS_INDICATOR_DELAY_MS);
 
-    loadBrowsePage(query, abortController.signal)
-      .then((loadedResult) => {
-        if (activeRequestId.current !== requestId) {
-          return;
+      setLoadState((current) => ({
+        ...current,
+        error: null,
+        isLoaded: false,
+        showSlowIndicator: false,
+      }));
+
+      slowIndicatorTimeoutId = window.setTimeout(() => {
+        if (activeRequestId.current === requestId) {
+          setLoadState((current) => ({
+            ...current,
+            showSlowIndicator: true,
+          }));
         }
+      }, SLOW_RESULTS_INDICATOR_DELAY_MS);
 
-        window.clearTimeout(slowIndicatorTimeoutId);
-        setResult(loadedResult);
-        setIsLoaded(true);
-        setShowSlowResultsIndicator(false);
-      })
-      .catch((error: unknown) => {
-        if (
-          activeRequestId.current !== requestId ||
-          (error instanceof DOMException && error.name === "AbortError")
-        ) {
-          return;
-        }
+      loadBrowsePage(requestQuery, abortController.signal)
+        .then((loadedResult) => {
+          if (activeRequestId.current !== requestId) {
+            return;
+          }
 
-        window.clearTimeout(slowIndicatorTimeoutId);
-        setLoadError(
-          error instanceof Error
-            ? error.message
-            : "Failed to load browse index.",
-        );
-        setIsLoaded(true);
-        setShowSlowResultsIndicator(false);
-      });
+          if (slowIndicatorTimeoutId !== null) {
+            window.clearTimeout(slowIndicatorTimeoutId);
+          }
+          loadedQueryKeyRef.current = queryKey;
+          setLoadState({
+            error: null,
+            isLoaded: true,
+            result: loadedResult,
+            showSlowIndicator: false,
+          });
+        })
+        .catch((error: unknown) => {
+          if (
+            activeRequestId.current !== requestId ||
+            (error instanceof DOMException && error.name === "AbortError")
+          ) {
+            return;
+          }
+
+          if (slowIndicatorTimeoutId !== null) {
+            window.clearTimeout(slowIndicatorTimeoutId);
+          }
+          setLoadState((current) => ({
+            ...current,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to load browse index.",
+            isLoaded: true,
+            showSlowIndicator: false,
+          }));
+        });
+    }, debounceDelay);
 
     return () => {
-      window.clearTimeout(slowIndicatorTimeoutId);
+      window.clearTimeout(requestTimeoutId);
+      if (slowIndicatorTimeoutId !== null) {
+        window.clearTimeout(slowIndicatorTimeoutId);
+      }
       abortController.abort();
     };
-  }, [deferredQuery, isQueryReady, minStars, page, sort]);
+  }, [isQueryReady, minStars, page, searchInput, sort]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -172,10 +221,7 @@ export function BrowseCatalog({
         new URLSearchParams(window.location.search),
       );
 
-      setSearchInput(nextState.q);
-      setSort(nextState.sort);
-      setMinStars(nextState.minStars);
-      setPage(nextState.page);
+      setQuery(nextState);
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -184,62 +230,41 @@ export function BrowseCatalog({
     };
   }, []);
 
-  const handleSearchChange = (value: string) => {
-    setSearchInput(value);
-    setPage(1);
+  const updateQuery = (
+    patch: Partial<ReturnType<typeof normalizeBrowseQuery>>,
+    historyMode: "push" | "replace",
+  ) => {
+    const nextQuery = {
+      ...query,
+      ...patch,
+    };
+    setQuery(nextQuery);
     syncBrowseUrl(
       {
-        page: 1,
-        q: value.trim(),
-        sort,
-        minStars,
+        ...nextQuery,
+        q: nextQuery.q.trim(),
       },
-      "replace",
+      historyMode,
     );
+  };
+
+  const handleSearchChange = (value: string) => {
+    updateQuery({ page: 1, q: value }, "replace");
   };
 
   const handleSortChange = (value: BrowseSort) => {
-    setSort(value);
-    setPage(1);
-    syncBrowseUrl(
-      {
-        page: 1,
-        q: searchInput.trim(),
-        sort: value,
-        minStars,
-      },
-      "replace",
-    );
+    updateQuery({ page: 1, sort: value }, "replace");
   };
 
   const handleMinStarsChange = (value: number) => {
-    setMinStars(value);
-    setPage(1);
-    syncBrowseUrl(
-      {
-        page: 1,
-        q: searchInput.trim(),
-        sort,
-        minStars: value,
-      },
-      "replace",
-    );
+    updateQuery({ minStars: value, page: 1 }, "replace");
   };
 
   const handlePageChange = (nextPage: number) => {
-    setPage(nextPage);
-    syncBrowseUrl(
-      {
-        page: nextPage,
-        q: searchInput.trim(),
-        sort,
-        minStars,
-      },
-      "push",
-    );
+    updateQuery({ page: nextPage }, "push");
   };
 
-  if (loadError) {
+  if (loadError || (isLoaded && result === null)) {
     return (
       <div className="neo-panel p-8">
         <p className="text-sm font-semibold tracking-[0.2em] text-black/70 uppercase dark:text-[hsl(var(--foreground))]">
@@ -247,28 +272,14 @@ export function BrowseCatalog({
         </p>
         <h2 className="mt-3 text-3xl font-bold">Browse index unavailable</h2>
         <p className="mt-4 max-w-3xl text-base text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-          {loadError}
+          {loadError ??
+            "This page reads only the hosted browse index. The index is currently unavailable in storage."}
         </p>
       </div>
     );
   }
 
-  if (isLoaded && result === null) {
-    return (
-      <div className="neo-panel p-8">
-        <p className="text-sm font-semibold tracking-[0.2em] text-black/70 uppercase dark:text-[hsl(var(--foreground))]">
-          Browse
-        </p>
-        <h2 className="mt-3 text-3xl font-bold">Browse index unavailable</h2>
-        <p className="mt-4 max-w-3xl text-base text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-          This page reads only the hosted browse index. The index is currently
-          unavailable in storage.
-        </p>
-      </div>
-    );
-  }
-
-  if ((!isLoaded && result === null) || result === null) {
+  if (result === null) {
     return (
       <BrowseCatalogLoadingState
         minStars={minStars}

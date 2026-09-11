@@ -1,11 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { streamDiagramGeneration } from "~/features/diagram/api";
 import type {
   DiagramStreamMessage,
   DiagramStreamState,
 } from "~/features/diagram/types";
-import { getStoredOpenAiKey } from "~/lib/openai-key";
 
 interface UseDiagramStreamOptions {
   username: string;
@@ -19,7 +18,6 @@ interface UseDiagramStreamOptions {
     latestSessionAudit: DiagramStreamState["latestSessionAudit"];
     generatedAt?: string;
   }) => Promise<void>;
-  onError: (message: string) => void;
 }
 
 export function useDiagramStream({
@@ -28,10 +26,61 @@ export function useDiagramStream({
   localPath,
   initialState,
   onComplete,
-  onError,
 }: UseDiagramStreamOptions) {
   const [state, setState] = useState<DiagramStreamState>(
     initialState ?? { status: "idle" },
+  );
+  const activeGenerationRef = useRef<AbortController | null>(null);
+  const explanationFrameRef = useRef<number | null>(null);
+  const pendingExplanationRef = useRef<{
+    explanation: string;
+    message: DiagramStreamMessage;
+  } | null>(null);
+
+  const flushPendingExplanation = useCallback(() => {
+    if (explanationFrameRef.current !== null) {
+      cancelAnimationFrame(explanationFrameRef.current);
+      explanationFrameRef.current = null;
+    }
+
+    const pending = pendingExplanationRef.current;
+    pendingExplanationRef.current = null;
+    if (!pending) return;
+
+    setState((prev) => ({
+      ...prev,
+      status: "explanation_chunk",
+      sessionId: pending.message.session_id ?? prev.sessionId,
+      costSummary: pending.message.cost_summary ?? prev.costSummary,
+      quotaResetAt: pending.message.quota_reset_at ?? prev.quotaResetAt,
+      explanation: pending.explanation,
+    }));
+  }, []);
+
+  const scheduleExplanationUpdate = useCallback(
+    (explanation: string, message: DiagramStreamMessage) => {
+      pendingExplanationRef.current = { explanation, message };
+      if (explanationFrameRef.current !== null) return;
+
+      explanationFrameRef.current = requestAnimationFrame(() => {
+        explanationFrameRef.current = null;
+        flushPendingExplanation();
+      });
+    },
+    [flushPendingExplanation],
+  );
+
+  useEffect(
+    () => () => {
+      activeGenerationRef.current?.abort();
+      activeGenerationRef.current = null;
+      if (explanationFrameRef.current !== null) {
+        cancelAnimationFrame(explanationFrameRef.current);
+      }
+      explanationFrameRef.current = null;
+      pendingExplanationRef.current = null;
+    },
+    [],
   );
 
   const handleStreamMessage = useCallback(
@@ -42,6 +91,7 @@ export function useDiagramStream({
       },
     ) => {
       if (data.error) {
+        flushPendingExplanation();
         setState({
           status: "error",
           sessionId: data.session_id,
@@ -53,7 +103,6 @@ export function useDiagramStream({
           failureStage: data.failure_stage,
           latestSessionAudit: data.latest_session_audit,
         });
-        onError(data.error);
         return false;
       }
 
@@ -66,6 +115,7 @@ export function useDiagramStream({
         case "graph_retry":
         case "graph_validating":
         case "diagram_compiling":
+          flushPendingExplanation();
           setState((prev) => ({
             ...prev,
             status: data.status,
@@ -83,17 +133,11 @@ export function useDiagramStream({
         case "explanation_chunk":
           if (data.chunk) {
             buffers.explanation += data.chunk;
-            setState((prev) => ({
-              ...prev,
-              status: "explanation_chunk",
-              sessionId: data.session_id ?? prev.sessionId,
-              costSummary: data.cost_summary ?? prev.costSummary,
-              quotaResetAt: data.quota_reset_at ?? prev.quotaResetAt,
-              explanation: buffers.explanation,
-            }));
+            scheduleExplanationUpdate(buffers.explanation, data);
           }
           break;
         case "complete": {
+          flushPendingExplanation();
           const explanation = data.explanation ?? buffers.explanation;
           const diagram = data.diagram ?? "";
           setState({
@@ -106,6 +150,7 @@ export function useDiagramStream({
             graph: data.graph,
             graphAttempts: data.graph_attempts,
             latestSessionAudit: data.latest_session_audit,
+            persistenceWarning: data.persistence_warning,
           });
           await onComplete({
             explanation,
@@ -117,51 +162,69 @@ export function useDiagramStream({
           return false;
         }
         case "error":
+          flushPendingExplanation();
           setState({
             status: "error",
             sessionId: data.session_id,
             costSummary: data.cost_summary,
             quotaResetAt: data.quota_reset_at,
             error: data.error,
+            errorCode: data.error_code,
             validationError: data.validation_error,
             failureStage: data.failure_stage,
             latestSessionAudit: data.latest_session_audit,
           });
-          if (data.error) onError(data.error);
           return false;
       }
 
       return true;
     },
-    [onComplete, onError],
+    [flushPendingExplanation, onComplete, scheduleExplanationUpdate],
   );
 
-  const runGeneration = useCallback(
-    async (githubPat?: string) => {
-      setState({
-        status: "started",
-        message: "Starting generation process...",
-        costSummary: undefined,
-      });
-      const buffers = {
-        explanation: "",
-      };
+  const runGeneration = useCallback(async () => {
+    activeGenerationRef.current?.abort();
+    if (explanationFrameRef.current !== null) {
+      cancelAnimationFrame(explanationFrameRef.current);
+      explanationFrameRef.current = null;
+    }
+    pendingExplanationRef.current = null;
+    const abortController = new AbortController();
+    activeGenerationRef.current = abortController;
+    setState({
+      status: "started",
+      message: "Starting generation process...",
+      costSummary: undefined,
+    });
+    const buffers = {
+      explanation: "",
+    };
 
+    try {
       await streamDiagramGeneration(
         {
           username,
           repo,
           localPath,
-          apiKey: getStoredOpenAiKey(),
-          githubPat,
+          signal: abortController.signal,
         },
         {
-          onMessage: (message) => handleStreamMessage(message, buffers),
+          onMessage: (message) =>
+            activeGenerationRef.current === abortController
+              ? handleStreamMessage(message, buffers)
+              : false,
         },
       );
-    },
-    [handleStreamMessage, localPath, repo, username],
-  );
+    } catch (error) {
+      if (!abortController.signal.aborted) {
+        throw error;
+      }
+    } finally {
+      if (activeGenerationRef.current === abortController) {
+        activeGenerationRef.current = null;
+      }
+    }
+  }, [handleStreamMessage, localPath, repo, username]);
 
   return {
     state,

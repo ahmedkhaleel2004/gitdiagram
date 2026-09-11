@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MainCard from "~/components/main-card";
 
@@ -16,10 +16,17 @@ describe("MainCard", () => {
     push.mockReset();
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it("accepts owner/repo shorthand input", () => {
     render(<MainCard isHome={false} />);
 
-    fireEvent.change(screen.getByRole("textbox"), {
+    const input = screen.getByRole("textbox", {
+      name: "GitHub repository",
+    });
+    fireEvent.change(input, {
       target: { value: "facebook/react" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Diagram" }));
@@ -30,6 +37,21 @@ describe("MainCard", () => {
         "Please enter a valid GitHub repository URL or owner/repo",
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("associates invalid input feedback with the repository field", () => {
+    render(<MainCard isHome={false} />);
+
+    const input = screen.getByRole("textbox", {
+      name: "GitHub repository",
+    });
+    fireEvent.change(input, { target: { value: "not-a-repository" } });
+    fireEvent.click(screen.getByRole("button", { name: "Diagram" }));
+
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAccessibleDescription(
+      "Please enter a valid GitHub repository URL or owner/repo",
+    );
   });
 
   it("lets example repositories navigate without submitting the required input", () => {

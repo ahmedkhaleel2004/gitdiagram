@@ -22,16 +22,11 @@ export default function LocalPageClient({ localPath }: { localPath: string }) {
   const onComplete = useCallback(async () => {
     setLoading(false);
   }, []);
-  const onError = useCallback(() => {
-    setLoading(false);
-  }, []);
-
   const { state, runGeneration, setState } = useDiagramStream({
     username: "local",
     repo,
     localPath,
     onComplete,
-    onError,
   });
 
   const diagram = state.diagram ?? "";

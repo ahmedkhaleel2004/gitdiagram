@@ -3,21 +3,24 @@ import { zodTextFormat } from "openai/helpers/zod";
 import type { ZodType } from "zod";
 
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
-import { diagramNodeShapeSchema } from "~/features/diagram/graph";
-import { runCliCompletion } from "~/server/generate/cli";
+import {
+  rethrowAsUpstreamProviderError,
+  UpstreamProviderError,
+} from "~/server/generate/errors";
 import {
   getProviderLabel,
+  supportsTextVerbosity,
   type AIProvider,
 } from "~/server/generate/model-config";
 import { normalizeGenerationUsage } from "~/server/generate/pricing";
 
 export type ReasoningEffort = "low" | "medium" | "high";
+type TextVerbosity = "low" | "medium" | "high";
+
+const AI_REQUEST_TIMEOUT_MS = 150_000;
+const AI_MAX_RETRIES = 0;
 
 function getEnvApiKey(provider: AIProvider): string | undefined {
-  if (provider === "cli") {
-    return undefined;
-  }
-
   if (provider === "openrouter") {
     return process.env.OPENROUTER_API_KEY?.trim();
   }
@@ -42,39 +45,60 @@ function getOpenRouterHeaders(): Record<string, string> {
 }
 
 function createClient(provider: AIProvider, apiKey: string): OpenAI {
-  if (provider === "cli") {
-    throw new Error("CLI provider does not use the OpenAI client.");
-  }
-
   if (provider === "openrouter") {
     return new OpenAI({
       apiKey,
       baseURL: "https://openrouter.ai/api/v1",
       defaultHeaders: getOpenRouterHeaders(),
-      maxRetries: 0,
+      maxRetries: AI_MAX_RETRIES,
+      timeout: AI_REQUEST_TIMEOUT_MS,
     });
   }
 
   return new OpenAI({
     apiKey,
-    maxRetries: 0,
+    maxRetries: AI_MAX_RETRIES,
+    timeout: AI_REQUEST_TIMEOUT_MS,
   });
 }
 
-function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
-  if (provider === "cli") {
-    return "";
+function buildRequestOptions(params: {
+  provider: AIProvider;
+  signal?: AbortSignal;
+  clientRequestId?: string;
+}) {
+  const headers =
+    params.provider === "openai" && params.clientRequestId
+      ? { "X-Client-Request-Id": params.clientRequestId }
+      : undefined;
+
+  if (!params.signal && !headers) {
+    return undefined;
   }
 
+  return {
+    ...(params.signal ? { signal: params.signal } : {}),
+    ...(headers ? { headers } : {}),
+  };
+}
+
+function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
   const apiKey = overrideApiKey?.trim() || getEnvApiKey(provider);
   if (!apiKey) {
+    const envVarName =
+      provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
     throw new Error(
-      `Missing ${getProviderLabel(provider)} API key. Set ${
-        provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY"
-      } or provide api_key in request.`,
+      `Missing ${getProviderLabel(provider)} API key. Set ${envVarName} or provide api_key in request.`,
     );
   }
   return apiKey;
+}
+
+function buildMessages(systemPrompt: string, userPrompt: string) {
+  return [
+    { role: "system" as const, content: systemPrompt },
+    { role: "user" as const, content: userPrompt },
+  ];
 }
 
 export function estimateTokens(text: string): number {
@@ -89,8 +113,10 @@ interface StreamCompletionParams {
   userPrompt: string;
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
+  textVerbosity?: TextVerbosity;
   maxOutputTokens?: number;
   signal?: AbortSignal;
+  clientRequestId?: string;
 }
 
 interface StructuredCompletionParams<T> {
@@ -102,8 +128,10 @@ interface StructuredCompletionParams<T> {
   schemaName: string;
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
+  textVerbosity?: TextVerbosity;
   maxOutputTokens?: number;
   signal?: AbortSignal;
+  clientRequestId?: string;
 }
 
 interface StreamCompletionResult {
@@ -111,518 +139,36 @@ interface StreamCompletionResult {
   usagePromise: Promise<GenerationTokenUsage | null>;
 }
 
-function extractJsonObject(text: string): string {
-  const unfenced = text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-  const firstBrace = unfenced.indexOf("{");
-  const lastBrace = unfenced.lastIndexOf("}");
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-    return unfenced;
+const NO_PARSED_STRUCTURED_PAYLOAD_ERROR =
+  "Structured output parsing returned no parsed payload.";
+
+// OpenRouter fronts many models, and only some honor the strict json_schema
+// response format the graph stage requires. Only a request rejected over the
+// schema itself (a 4xx that names the response format) or a response that
+// ignored it entirely indicates a capability problem; rate limits, auth
+// failures, and transient network faults must keep their own meaning so
+// abort/timeout propagation and status-based handling stay intact.
+const STRUCTURED_OUTPUT_REJECTION_STATUSES = new Set([400, 404, 422]);
+const STRUCTURED_OUTPUT_REJECTION_PATTERN =
+  /structured outputs?|response_format|json_schema|text\.format/i;
+
+function isStructuredOutputRejection(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
   }
 
-  return unfenced.slice(firstBrace, lastBrace + 1);
-}
-
-function escapeLiteralNewlinesInJsonStrings(text: string): string {
-  let result = "";
-  let inString = false;
-  let escaping = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]!;
-
-    if (escaping) {
-      result += char;
-      escaping = false;
-      continue;
-    }
-
-    if (char === "\\") {
-      result += char;
-      escaping = true;
-      continue;
-    }
-
-    if (char === '"') {
-      inString = !inString;
-      result += char;
-      continue;
-    }
-
-    if (inString && char === "\r") {
-      if (text[index + 1] === "\n") {
-        index += 1;
-      }
-      result += "\\n";
-      continue;
-    }
-
-    if (inString && char === "\n") {
-      result += "\\n";
-      continue;
-    }
-
-    result += char;
+  if (error.message === NO_PARSED_STRUCTURED_PAYLOAD_ERROR) {
+    return true;
   }
 
-  return result;
-}
-
-function findNextSignificantChar(text: string, startIndex: number): string | null {
-  for (let index = startIndex; index < text.length; index += 1) {
-    const char = text[index];
-    if (!char) continue;
-    if (!/\s/.test(char)) {
-      return char;
-    }
-  }
-
-  return null;
-}
-
-function escapeLooseQuotesInJsonStrings(text: string): string {
-  let result = "";
-  let inString = false;
-  let escaping = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]!;
-
-    if (escaping) {
-      result += char;
-      escaping = false;
-      continue;
-    }
-
-    if (char === "\\") {
-      result += char;
-      escaping = true;
-      continue;
-    }
-
-    if (char === '"') {
-      if (!inString) {
-        inString = true;
-        result += char;
-        continue;
-      }
-
-      const nextSignificantChar = findNextSignificantChar(text, index + 1);
-      if (
-        nextSignificantChar === null ||
-        nextSignificantChar === "," ||
-        nextSignificantChar === ":" ||
-        nextSignificantChar === "}" ||
-        nextSignificantChar === "]"
-      ) {
-        inString = false;
-        result += char;
-        continue;
-      }
-
-      result += '\\"';
-      continue;
-    }
-
-    if (inString && char === "\t") {
-      result += "\\t";
-      continue;
-    }
-
-    if (inString && (char === "}" || char === "]")) {
-      const nextSignificantChar = findNextSignificantChar(text, index + 1);
-      if (
-        nextSignificantChar === null ||
-        nextSignificantChar === "," ||
-        nextSignificantChar === "}" ||
-        nextSignificantChar === "]"
-      ) {
-        result += `"${char}`;
-        inString = false;
-        continue;
-      }
-    }
-
-    if (inString) {
-      const codePoint = char.codePointAt(0);
-      if (codePoint !== undefined && codePoint < 0x20) {
-        result += `\\u${codePoint.toString(16).padStart(4, "0")}`;
-        continue;
-      }
-    }
-
-    result += char;
-  }
-
-  if (inString) {
-    result += '"';
-  }
-
-  return result;
-}
-
-function balanceJsonBrackets(text: string): string {
-  const stack: string[] = [];
-  let inString = false;
-  let escaping = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]!;
-
-    if (escaping) {
-      escaping = false;
-      continue;
-    }
-
-    if (char === "\\") {
-      escaping = true;
-      continue;
-    }
-
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-
-    if (inString) {
-      continue;
-    }
-
-    if (char === "{") {
-      stack.push("}");
-      continue;
-    }
-
-    if (char === "[") {
-      stack.push("]");
-      continue;
-    }
-
-    if ((char === "}" || char === "]") && stack.at(-1) === char) {
-      stack.pop();
-    }
-  }
-
-  if (stack.length === 0) {
-    return text;
-  }
-
-  return `${text}${stack.reverse().join("")}`;
-}
-
-function stripTrailingCommas(text: string): string {
-  let current = text;
-  let next = current.replace(/,\s*([}\]])/g, "$1");
-  while (next !== current) {
-    current = next;
-    next = current.replace(/,\s*([}\]])/g, "$1");
-  }
-  return current;
-}
-
-export function parseCliJsonObject(text: string): {
-  rawText: string;
-  parsed: unknown;
-} {
-  const rawText = extractJsonObject(text);
-
-  try {
-    return {
-      rawText,
-      parsed: JSON.parse(rawText) as unknown,
-    };
-  } catch (originalError) {
-    const repaired = balanceJsonBrackets(
-      stripTrailingCommas(
-        escapeLooseQuotesInJsonStrings(
-          escapeLiteralNewlinesInJsonStrings(rawText),
-        ),
-      ),
-    );
-
-    if (repaired !== rawText) {
-      try {
-        return {
-          rawText: repaired,
-          parsed: JSON.parse(repaired) as unknown,
-        };
-      } catch {
-        // Fall through to surface the original parse error below.
-      }
-    }
-
-    throw originalError;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function fillMissingNullableField(
-  value: Record<string, unknown>,
-  field: string,
-) {
-  if (!(field in value)) {
-    value[field] = null;
-  }
-}
-
-function readStringAlias(value: Record<string, unknown>, aliases: string[]) {
-  for (const alias of aliases) {
-    const aliasValue = value[alias];
-    if (typeof aliasValue === "string" && aliasValue.trim()) {
-      return aliasValue;
-    }
-  }
-
-  return undefined;
-}
-
-function readArrayAlias(value: Record<string, unknown>, aliases: string[]) {
-  for (const alias of aliases) {
-    const aliasValue = value[alias];
-    if (Array.isArray(aliasValue)) {
-      return aliasValue;
-    }
-  }
-
-  return undefined;
-}
-
-const cliDiagramKeyAliases = new Map<string, string>([
-  ["groups", "groups"],
-  ["nodes", "nodes"],
-  ["edges", "edges"],
-  ["relationships", "edges"],
-  ["relations", "edges"],
-  ["links", "edges"],
-  ["connections", "edges"],
-  ["id", "id"],
-  ["label", "label"],
-  ["name", "name"],
-  ["title", "title"],
-  ["description", "description"],
-  ["parent", "parent"],
-  ["group", "group"],
-  ["groupid", "groupId"],
-  ["type", "type"],
-  ["kind", "kind"],
-  ["category", "category"],
-  ["role", "role"],
-  ["path", "path"],
-  ["shape", "shape"],
-  ["from", "from"],
-  ["to", "to"],
-  ["source", "source"],
-  ["sourceid", "sourceId"],
-  ["source_id", "source_id"],
-  ["target", "target"],
-  ["targetid", "targetId"],
-  ["target_id", "target_id"],
-  ["style", "style"],
-]);
-
-function normalizeCliObjectKeys(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => normalizeCliObjectKeys(entry));
-  }
-
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const normalized: Record<string, unknown> = {};
-
-  for (const [rawKey, rawValue] of Object.entries(value)) {
-    const compactKey = rawKey.replace(/\s+/g, "").toLowerCase();
-    const nextKey = cliDiagramKeyAliases.get(compactKey) ?? rawKey;
-    if (!(nextKey in normalized)) {
-      normalized[nextKey] = normalizeCliObjectKeys(rawValue);
-    }
-  }
-
-  return normalized;
-}
-
-function fillMissingStringField(params: {
-  value: Record<string, unknown>;
-  field: string;
-  aliases?: string[];
-  fallback: string;
-}) {
-  const current = params.value[params.field];
-  if (typeof current === "string" && current.trim()) {
-    params.value[params.field] = current.trim();
-    return;
-  }
-
-  const aliasValue = params.aliases
-    ? readStringAlias(params.value, params.aliases)
-    : undefined;
-  params.value[params.field] = aliasValue?.trim() || params.fallback;
-}
-
-function slugId(value: unknown, fallback: string): string {
-  const raw = typeof value === "string" ? value : fallback;
-  const normalized = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  const withLeadingLetter = /^[a-z]/.test(normalized)
-    ? normalized
-    : `id_${normalized}`;
-
-  return /^[a-z][a-z0-9_]*$/.test(withLeadingLetter)
-    ? withLeadingLetter
-    : fallback;
-}
-
-function uniqueId(
-  value: unknown,
-  fallbackPrefix: string,
-  index: number,
-  usedIds: Set<string>,
-): string {
-  const base = slugId(value, `${fallbackPrefix}_${index + 1}`);
-  let candidate = base;
-  let suffix = 2;
-  while (usedIds.has(candidate)) {
-    candidate = `${base}_${suffix}`;
-    suffix += 1;
-  }
-  usedIds.add(candidate);
-  return candidate;
-}
-
-export function normalizeCliStructuredOutput(
-  schemaName: string,
-  value: unknown,
-): unknown {
-  if (schemaName !== "diagram_graph") {
-    return value;
-  }
-
-  const normalizedValue = normalizeCliObjectKeys(value);
-  if (!isRecord(normalizedValue)) {
-    return normalizedValue;
-  }
-
-  if (!Array.isArray(normalizedValue.groups)) {
-    normalizedValue.groups =
-      readArrayAlias(normalizedValue, ["groups", "sections", "clusters"]) ?? [];
-  }
-
-  if (!Array.isArray(normalizedValue.nodes)) {
-    normalizedValue.nodes =
-      readArrayAlias(normalizedValue, ["nodes", "components", "items"]) ?? [];
-  }
-
-  if (!Array.isArray(normalizedValue.edges)) {
-    normalizedValue.edges =
-      readArrayAlias(normalizedValue, [
-        "edges",
-        "relationships",
-        "relations",
-        "links",
-        "connections",
-      ]) ?? [];
-  }
-
-  const groupIds = new Map<string, string>();
-  if (Array.isArray(normalizedValue.groups)) {
-    const usedGroupIds = new Set<string>();
-    normalizedValue.groups.forEach((group, index) => {
-      if (!isRecord(group)) return;
-      const originalId = typeof group.id === "string" ? group.id : undefined;
-      const normalizedId = uniqueId(group.id, "group", index, usedGroupIds);
-      group.id = normalizedId;
-      if (originalId) {
-        groupIds.set(originalId, normalizedId);
-      }
-      fillMissingStringField({
-        value: group,
-        field: "label",
-        aliases: ["name", "title"],
-        fallback: originalId?.trim() || normalizedId,
-      });
-      fillMissingNullableField(group, "description");
-    });
-  }
-
-  const nodeIds = new Map<string, string>();
-  if (Array.isArray(normalizedValue.nodes)) {
-    const usedNodeIds = new Set<string>();
-    normalizedValue.nodes.forEach((node, index) => {
-      if (!isRecord(node)) return;
-      const originalId = typeof node.id === "string" ? node.id : undefined;
-      const normalizedId = uniqueId(node.id, "node", index, usedNodeIds);
-      node.id = normalizedId;
-      if (originalId) {
-        nodeIds.set(originalId, normalizedId);
-      }
-      fillMissingStringField({
-        value: node,
-        field: "label",
-        aliases: ["name", "title"],
-        fallback: originalId?.trim() || normalizedId,
-      });
-      fillMissingStringField({
-        value: node,
-        field: "type",
-        aliases: ["kind", "category", "role", "label"],
-        fallback: "component",
-      });
-      fillMissingNullableField(node, "description");
-      const aliasedGroupId = readStringAlias(node, ["groupId", "group"]);
-      if (aliasedGroupId) {
-        node.groupId = aliasedGroupId;
-      }
-      fillMissingNullableField(node, "groupId");
-      if (typeof node.groupId === "string") {
-        node.groupId =
-          groupIds.get(node.groupId) ?? slugId(node.groupId, node.groupId);
-      }
-      fillMissingNullableField(node, "path");
-      fillMissingNullableField(node, "shape");
-      if (!diagramNodeShapeSchema.safeParse(node.shape).success) {
-        node.shape = null;
-      }
-    });
-  }
-
-  if (Array.isArray(normalizedValue.edges)) {
-    for (const edge of normalizedValue.edges) {
-      if (!isRecord(edge)) continue;
-      edge.from =
-        typeof edge.from === "string"
-          ? edge.from
-          : readStringAlias(edge, ["source", "sourceId", "source_id"]);
-      edge.to =
-        typeof edge.to === "string"
-          ? edge.to
-          : readStringAlias(edge, ["target", "targetId", "target_id"]);
-      if (typeof edge.from === "string") {
-        edge.from = nodeIds.get(edge.from) ?? slugId(edge.from, edge.from);
-      }
-      if (typeof edge.to === "string") {
-        edge.to = nodeIds.get(edge.to) ?? slugId(edge.to, edge.to);
-      }
-      fillMissingNullableField(edge, "label");
-      fillMissingNullableField(edge, "description");
-      fillMissingNullableField(edge, "style");
-      if (edge.style !== "solid" && edge.style !== "dashed") {
-        edge.style = null;
-      }
-    }
-  }
-
-  return normalizedValue;
+  // Duck-typed rather than `instanceof OpenAI.APIError` so classification does
+  // not depend on which SDK error subclass (or mock) produced the failure.
+  const status = (error as { status?: unknown }).status;
+  return (
+    typeof status === "number" &&
+    STRUCTURED_OUTPUT_REJECTION_STATUSES.has(status) &&
+    STRUCTURED_OUTPUT_REJECTION_PATTERN.test(error.message)
+  );
 }
 
 function getResponseFailureMessage(response: {
@@ -640,22 +186,12 @@ function getResponseFailureMessage(response: {
   return "OpenAI response did not complete successfully.";
 }
 
-function isRecoverableMaxOutputIncomplete(params: {
-  response: {
-    incomplete_details?: { reason?: string | null } | null;
-  };
-  hasVisibleOutput: boolean;
-}): boolean {
-  return (
-    params.hasVisibleOutput &&
-    params.response.incomplete_details?.reason === "max_output_tokens"
-  );
-}
-
 async function retrieveUsageFromResponseId(
   client: OpenAI,
+  provider: AIProvider,
   responseId: string | undefined,
   signal?: AbortSignal,
+  clientRequestId?: string,
 ): Promise<GenerationTokenUsage | null> {
   if (!responseId) {
     return null;
@@ -664,7 +200,7 @@ async function retrieveUsageFromResponseId(
   const response = await client.responses.retrieve(
     responseId,
     undefined,
-    signal ? { signal } : undefined,
+    buildRequestOptions({ provider, signal, clientRequestId }),
   );
   return normalizeGenerationUsage(response.usage);
 }
@@ -676,41 +212,27 @@ export async function streamCompletion({
   userPrompt,
   apiKey,
   reasoningEffort,
+  textVerbosity,
   maxOutputTokens,
   signal,
+  clientRequestId,
 }: StreamCompletionParams): Promise<StreamCompletionResult> {
-  if (provider === "cli") {
-    const result = await runCliCompletion({
-      systemPrompt,
-      userPrompt,
-      reasoningEffort,
-      signal,
-    });
-
-    async function* outputStream(): AsyncGenerator<string, void, void> {
-      yield result.text;
-    }
-
-    return {
-      stream: outputStream(),
-      usagePromise: Promise.resolve(result.usage),
-    };
-  }
-
   const client = createClient(provider, resolveApiKey(provider, apiKey));
-  const stream = await client.responses.create(
-    {
-      model,
-      stream: true,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-      ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
-    },
-    signal ? { signal } : undefined,
-  );
+  const stream = await client.responses
+    .create(
+      {
+        model,
+        stream: true,
+        input: buildMessages(systemPrompt, userPrompt),
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+        ...(textVerbosity && supportsTextVerbosity(provider, model)
+          ? { text: { verbosity: textVerbosity } }
+          : {}),
+        ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
+      },
+      buildRequestOptions({ provider, signal, clientRequestId }),
+    )
+    .catch(rethrowAsUpstreamProviderError);
 
   let usageSettled = false;
   let resolveUsage!: (usage: GenerationTokenUsage | null) => void;
@@ -721,7 +243,7 @@ export async function streamCompletion({
   async function* outputStream(): AsyncGenerator<string, void, void> {
     let responseId: string | undefined;
     let finalUsage: GenerationTokenUsage | null = null;
-    let hasVisibleOutput = false;
+    let completed = false;
 
     try {
       for await (const event of stream) {
@@ -732,13 +254,13 @@ export async function streamCompletion({
 
         if (event.type === "response.output_text.delta") {
           if (event.delta) {
-            hasVisibleOutput = true;
             yield event.delta;
           }
           continue;
         }
 
         if (event.type === "response.completed") {
+          completed = true;
           finalUsage = normalizeGenerationUsage(event.response.usage);
           continue;
         }
@@ -748,17 +270,6 @@ export async function streamCompletion({
         }
 
         if (event.type === "response.incomplete") {
-          if (
-            isRecoverableMaxOutputIncomplete({
-              response: event.response,
-              hasVisibleOutput,
-            })
-          ) {
-            finalUsage =
-              normalizeGenerationUsage(event.response.usage) ?? finalUsage;
-            continue;
-          }
-
           throw new Error(getResponseFailureMessage(event.response));
         }
 
@@ -768,12 +279,18 @@ export async function streamCompletion({
         }
       }
 
+      if (!completed) {
+        throw new Error("OpenAI stream ended before response.completed.");
+      }
+
       if (!finalUsage) {
         try {
           finalUsage = await retrieveUsageFromResponseId(
             client,
+            provider,
             responseId,
             signal,
+            clientRequestId ? `${clientRequestId}:usage` : undefined,
           );
         } catch {
           finalUsage = null;
@@ -783,10 +300,12 @@ export async function streamCompletion({
       usageSettled = true;
       resolveUsage(finalUsage);
     } catch (error) {
-      usageSettled = true;
       resolveUsage(null);
-      throw error;
+      usageSettled = true;
+      rethrowAsUpstreamProviderError(error);
     } finally {
+      // Covers the generator being returned early (a consumer that stops
+      // iterating), which resolves neither branch above.
       if (!usageSettled) {
         resolveUsage(null);
       }
@@ -806,6 +325,8 @@ interface CountInputTokensParams {
   userPrompt: string;
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
+  signal?: AbortSignal;
+  clientRequestId?: string;
 }
 
 export async function countInputTokens({
@@ -815,21 +336,24 @@ export async function countInputTokens({
   userPrompt,
   apiKey,
   reasoningEffort,
+  signal,
+  clientRequestId,
 }: CountInputTokensParams): Promise<number> {
-  if (provider === "cli") {
-    return estimateTokens(`${systemPrompt}\n${userPrompt}`);
-  }
-
   const client = createClient(provider, resolveApiKey(provider, apiKey));
 
-  const response = await client.responses.inputTokens.count({
-    model,
-    input: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-  });
+  const response = await client.responses.inputTokens
+    .count(
+      {
+        model,
+        input: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+      },
+      buildRequestOptions({ provider, signal, clientRequestId }),
+    )
+    .catch(rethrowAsUpstreamProviderError);
 
   return response.input_tokens;
 }
@@ -843,60 +367,36 @@ export async function generateStructuredOutput<T>({
   schemaName,
   apiKey,
   reasoningEffort,
+  textVerbosity,
   maxOutputTokens,
   signal,
+  clientRequestId,
 }: StructuredCompletionParams<T>): Promise<{
   output: T;
   rawText: string;
   usage: GenerationTokenUsage | null;
 }> {
-  if (provider === "cli") {
-    const result = await runCliCompletion({
-      systemPrompt: `${systemPrompt}\n\nReturn only valid JSON for the ${schemaName} schema. Do not wrap it in markdown fences. Include nullable fields explicitly with null when there is no value. Do not include literal newlines inside JSON string values; escape them as \\n when needed. For diagram_graph ids, use lowercase snake_case matching /^[a-z][a-z0-9_]*$/. For diagram_graph edges, use from/to exactly, not source/target. For node shape, use only box, database, queue, document, circle, hexagon, or null.`,
-      userPrompt,
-      reasoningEffort,
-      signal,
-    });
-    const { rawText, parsed: parsedJson } = parseCliJsonObject(result.text);
-    const parsed = normalizeCliStructuredOutput(
-      schemaName,
-      parsedJson,
-    );
-    const schemaResult = schema.safeParse(parsed);
-    if (!schemaResult.success) {
-      throw new Error(
-        `CLI structured output failed validation: ${schemaResult.error.message}`,
-      );
-    }
-
-    return {
-      output: schemaResult.data,
-      rawText,
-      usage: result.usage,
-    };
-  }
-
   const client = createClient(provider, resolveApiKey(provider, apiKey));
 
   try {
     const response = await client.responses.parse(
       {
         model,
-        input: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
+        input: buildMessages(systemPrompt, userPrompt),
         text: {
           format: zodTextFormat(schema, schemaName),
+          ...(textVerbosity && supportsTextVerbosity(provider, model)
+            ? { verbosity: textVerbosity }
+            : {}),
         },
         ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
         ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
       },
-      signal ? { signal } : undefined,
+      buildRequestOptions({ provider, signal, clientRequestId }),
     );
 
     if (!response.output_parsed) {
-      throw new Error("Structured output parsing returned no parsed payload.");
+      throw new Error(NO_PARSED_STRUCTURED_PAYLOAD_ERROR);
     }
 
     const rawText =
@@ -909,15 +409,19 @@ export async function generateStructuredOutput<T>({
       usage: normalizeGenerationUsage(response.usage),
     };
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Structured output request failed.";
-    if (provider === "openrouter") {
-      throw new Error(
+    if (provider === "openrouter" && isStructuredOutputRejection(error)) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Structured output request failed.";
+      throw new UpstreamProviderError(
         `OpenRouter model does not support the required structured graph output: ${message}`,
+        { cause: error },
       );
     }
-    throw error;
+    // Everything else keeps its own identity: aborts and the route deadline
+    // propagate unchanged (see rethrowAsUpstreamProviderError), and other API
+    // failures surface as plain upstream provider errors.
+    rethrowAsUpstreamProviderError(error);
   }
 }

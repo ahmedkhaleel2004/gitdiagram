@@ -2,6 +2,16 @@ import type {
   GenerationCostSummary,
   GenerationTokenUsage,
 } from "~/features/diagram/cost";
+import {
+  EXPLANATION_MAX_OUTPUT_TOKENS,
+  GRAPH_MAX_OUTPUT_TOKENS,
+} from "~/server/generate/generation-policy";
+
+export {
+  EXPLANATION_MAX_OUTPUT_TOKENS,
+  GRAPH_MAX_OUTPUT_TOKENS,
+  GRAPH_RETRY_INPUT_BUFFER_TOKENS,
+} from "~/server/generate/generation-policy";
 
 export interface ModelPricing {
   inputPerMillionUsd: number;
@@ -20,16 +30,12 @@ interface RawResponseUsage {
   };
 }
 
-export const EXPLANATION_MAX_OUTPUT_TOKENS = 12000;
-export const GRAPH_MAX_OUTPUT_TOKENS = 6000;
-
-const DEFAULT_PRICING_MODEL = "gpt-5.4-mini";
-
 const MODEL_PRICING: Record<string, ModelPricing> = {
-  cli: { inputPerMillionUsd: 0, outputPerMillionUsd: 0 },
+  "gpt-5.6-sol": { inputPerMillionUsd: 5.0, outputPerMillionUsd: 30.0 },
+  "gpt-5.6-terra": { inputPerMillionUsd: 2.0, outputPerMillionUsd: 12.0 },
+  "gpt-5.6-luna": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 1.2 },
   "gpt-5.4": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
   "gpt-5.4-pro": { inputPerMillionUsd: 30.0, outputPerMillionUsd: 180.0 },
-  "gpt-5.4-mini": { inputPerMillionUsd: 0.75, outputPerMillionUsd: 4.5 },
   "gpt-5.4-nano": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 1.25 },
 
   // Retain pricing entries for older model ids that may still appear in stored data or requests.
@@ -47,7 +53,15 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5-nano": { inputPerMillionUsd: 0.05, outputPerMillionUsd: 0.4 },
   "o4-mini": { inputPerMillionUsd: 1.1, outputPerMillionUsd: 4.4 },
 };
-const DEFAULT_PRICING = MODEL_PRICING[DEFAULT_PRICING_MODEL] as ModelPricing;
+export const MODEL_PRICING_UNAVAILABLE_ERROR =
+  "Cost information is unavailable for the configured AI model.";
+
+export class ModelPricingUnavailableError extends Error {
+  constructor() {
+    super(MODEL_PRICING_UNAVAILABLE_ERROR);
+    this.name = "ModelPricingUnavailableError";
+  }
+}
 
 function normalizeModelId(model: string): string {
   return model.trim().toLowerCase();
@@ -61,15 +75,18 @@ function stripProviderPrefix(model: string): string {
   return model.includes("/") ? (model.split("/").at(-1) ?? model) : model;
 }
 
-export function resolvePricingModel(model: string): string {
+export function resolvePricingModel(model: string): string | null {
   const normalized = normalizeModelId(model);
   if (MODEL_PRICING[normalized]) return normalized;
 
   const withoutDate = stripDateSnapshotSuffix(stripProviderPrefix(normalized));
   if (MODEL_PRICING[withoutDate]) return withoutDate;
 
+  if (withoutDate === "gpt-5.6") return "gpt-5.6-sol";
+  if (withoutDate.startsWith("gpt-5.6-sol")) return "gpt-5.6-sol";
+  if (withoutDate.startsWith("gpt-5.6-terra")) return "gpt-5.6-terra";
+  if (withoutDate.startsWith("gpt-5.6-luna")) return "gpt-5.6-luna";
   if (withoutDate.startsWith("gpt-5.4-pro")) return "gpt-5.4-pro";
-  if (withoutDate.startsWith("gpt-5.4-mini")) return "gpt-5.4-mini";
   if (withoutDate.startsWith("gpt-5.4-nano")) return "gpt-5.4-nano";
   if (withoutDate.startsWith("gpt-5.4")) return "gpt-5.4";
   if (withoutDate.startsWith("gpt-5.2-pro")) return "gpt-5.2-pro";
@@ -82,7 +99,15 @@ export function resolvePricingModel(model: string): string {
   if (withoutDate.startsWith("gpt-5")) return "gpt-5";
   if (withoutDate.startsWith("o4-mini")) return "o4-mini";
 
-  return DEFAULT_PRICING_MODEL;
+  return null;
+}
+
+export function assertModelPricingAvailable(model: string): string {
+  const pricingModel = resolvePricingModel(model);
+  if (!pricingModel) {
+    throw new ModelPricingUnavailableError();
+  }
+  return pricingModel;
 }
 
 export function estimateTextTokenCostUsd(
@@ -90,8 +115,11 @@ export function estimateTextTokenCostUsd(
   inputTokens: number,
   outputTokens: number,
 ): { costUsd: number; pricingModel: string; pricing: ModelPricing } {
-  const pricingModel = resolvePricingModel(model);
-  const pricing = MODEL_PRICING[pricingModel] ?? DEFAULT_PRICING;
+  const pricingModel = assertModelPricingAvailable(model);
+  const pricing = MODEL_PRICING[pricingModel];
+  if (!pricing) {
+    throw new ModelPricingUnavailableError();
+  }
   const inputCost =
     (Math.max(inputTokens, 0) / 1_000_000) * pricing.inputPerMillionUsd;
   const outputCost =

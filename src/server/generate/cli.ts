@@ -57,7 +57,9 @@ export function getCliTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
 }
 
 function normalizeExecutableName(command: string): string {
-  return basename(command).replace(/\.exe$/i, "").toLowerCase();
+  return basename(command)
+    .replace(/\.exe$/i, "")
+    .toLowerCase();
 }
 
 function isCopilotCommand(command: string): boolean {

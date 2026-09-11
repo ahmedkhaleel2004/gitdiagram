@@ -1,8 +1,10 @@
-export type AIProvider = "openai" | "openrouter" | "cli";
+export type AIProvider = "openai" | "openrouter";
 
 const DEFAULT_PROVIDER: AIProvider = "openai";
-const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
-const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.4";
+const DEFAULT_OPENAI_MODEL = "gpt-5.6-terra";
+const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-terra";
+const GPT_56_MODEL_PATTERN =
+  /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/i;
 
 function readEnvValue(name: string): string | undefined {
   const value = process.env[name]?.trim();
@@ -11,10 +13,9 @@ function readEnvValue(name: string): string | undefined {
 
 function normalizeProvider(value?: string): AIProvider {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "openrouter" || normalized === "cli") {
-    return normalized;
+  if (normalized === "openrouter") {
+    return "openrouter";
   }
-
   return DEFAULT_PROVIDER;
 }
 
@@ -23,12 +24,18 @@ export function getProvider(overrideProvider?: string): AIProvider {
 }
 
 export function getProviderLabel(provider: AIProvider): string {
-  if (provider === "cli") return "CLI";
   return provider === "openrouter" ? "OpenRouter" : "OpenAI";
 }
 
 export function supportsExactInputTokenCount(provider: AIProvider): boolean {
   return provider === "openai";
+}
+
+export function supportsTextVerbosity(
+  provider: AIProvider,
+  model: string,
+): boolean {
+  return provider === "openai" && GPT_56_MODEL_PATTERN.test(model.trim());
 }
 
 export function shouldUseExactInputTokenCount(params: {
@@ -42,10 +49,6 @@ export function shouldUseExactInputTokenCount(params: {
 }
 
 export function getModel(provider = getProvider()): string {
-  if (provider === "cli") {
-    return readEnvValue("AI_CLI_MODEL_LABEL") ?? "cli";
-  }
-
   if (provider === "openrouter") {
     return readEnvValue("OPENROUTER_MODEL") ?? DEFAULT_OPENROUTER_MODEL;
   }
