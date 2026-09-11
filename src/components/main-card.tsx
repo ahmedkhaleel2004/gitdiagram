@@ -94,7 +94,11 @@ export default function MainCard({
           </label>
           <Input
             id="repository-input"
-            placeholder={localMode ? "C:\\path\\to\\repository" : "owner/repo or GitHub URL"}
+            placeholder={
+              localMode
+                ? "C:\\path\\to\\repository"
+                : "owner/repo or GitHub URL"
+            }
             className="neo-input h-14 min-w-0 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:h-10 sm:flex-1 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}

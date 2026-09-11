@@ -242,7 +242,9 @@ export function repairDiagramGraph(
   );
 
   repaired.edges.forEach((edge) => {
-    const repairedFrom = canonicalNodeIds.get(canonicalizeIdentifier(edge.from));
+    const repairedFrom = canonicalNodeIds.get(
+      canonicalizeIdentifier(edge.from),
+    );
     if (repairedFrom) {
       edge.from = repairedFrom;
     }
@@ -488,7 +490,14 @@ export function compileDiagramGraph(params: {
   pathTypes?: ReadonlyMap<string, RepositoryPathType>;
   includeGitHubLinks?: boolean;
 }): string {
-  const { graph, username, repo, branch, pathTypes, includeGitHubLinks = true } = params;
+  const {
+    graph,
+    username,
+    repo,
+    branch,
+    pathTypes,
+    includeGitHubLinks = true,
+  } = params;
   const lines: string[] = ["flowchart TD"];
   const groupedNodeIds = new Set<string>();
   const classAssignments = new Map<string, string[]>();
@@ -536,7 +545,9 @@ export function compileDiagramGraph(params: {
     }
   }
 
-  const nodesWithPaths = includeGitHubLinks ? graph.nodes.filter((node) => node.path) : [];
+  const nodesWithPaths = includeGitHubLinks
+    ? graph.nodes.filter((node) => node.path)
+    : [];
   if (nodesWithPaths.length) {
     lines.push("");
     for (const node of nodesWithPaths) {

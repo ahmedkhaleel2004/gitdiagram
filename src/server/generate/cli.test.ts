@@ -120,14 +120,14 @@ describe("createCliInvocation", () => {
 
 describe("getCliTimeoutMs", () => {
   it("defaults to a 15 minute timeout for slow CLI providers", () => {
-    expect(getCliTimeoutMs({ ...process.env, AI_CLI_TIMEOUT_MS: undefined })).toBe(
-      900_000,
-    );
+    expect(
+      getCliTimeoutMs({ ...process.env, AI_CLI_TIMEOUT_MS: undefined }),
+    ).toBe(900_000);
   });
 
   it("uses the configured timeout when provided", () => {
-    expect(getCliTimeoutMs({ ...process.env, AI_CLI_TIMEOUT_MS: "120000" })).toBe(
-      120_000,
-    );
+    expect(
+      getCliTimeoutMs({ ...process.env, AI_CLI_TIMEOUT_MS: "120000" }),
+    ).toBe(120_000);
   });
 });
