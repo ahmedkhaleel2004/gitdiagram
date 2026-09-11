@@ -34,6 +34,7 @@ export interface DiagramStreamState {
   validationError?: string;
   failureStage?: string;
   latestSessionAudit?: GenerationSessionAudit;
+  persistenceWarning?: string;
 }
 
 export interface DiagramStreamMessage {
@@ -53,30 +54,14 @@ export interface DiagramStreamMessage {
   failure_stage?: string;
   latest_session_audit?: GenerationSessionAudit;
   generated_at?: string;
-}
-
-export interface DiagramCostResponse {
-  cost?: string;
-  cost_summary?: GenerationCostSummary;
-  model?: string;
-  pricing_model?: string;
-  estimated_input_tokens?: number;
-  estimated_output_tokens?: number;
-  pricing?: {
-    input_per_million_usd: number;
-    output_per_million_usd: number;
-  };
-  error?: string;
-  error_code?: string;
-  ok?: boolean;
+  persistence_warning?: string;
 }
 
 export interface StreamGenerationParams {
   username: string;
   repo: string;
   localPath?: string;
-  apiKey?: string;
-  githubPat?: string;
+  signal?: AbortSignal;
 }
 
 export interface DiagramStateResponse {

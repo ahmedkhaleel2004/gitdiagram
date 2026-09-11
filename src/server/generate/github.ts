@@ -7,16 +7,19 @@ interface GitHubRepoResponse {
 }
 
 interface GitHubTreeItem {
-  path: string;
+  path?: unknown;
+  type?: unknown;
 }
 
 interface GitHubTreeResponse {
   tree?: GitHubTreeItem[];
+  truncated?: boolean;
 }
 
 interface GitHubReadmeResponse {
-  content?: string;
-  encoding?: string;
+  content?: unknown;
+  encoding?: unknown;
+  size?: unknown;
 }
 
 export interface GithubData {
@@ -25,13 +28,72 @@ export interface GithubData {
   readme: string;
   isPrivate: boolean;
   stargazerCount: number | null;
+  pathTypes: ReadonlyMap<string, RepositoryPathType>;
 }
 
-const EXCLUDED_PATTERNS = [
-  "node_modules/",
-  "vendor/",
-  "venv/",
-  ".min.",
+export type RepositoryPathType = "blob" | "tree";
+
+export const REPOSITORY_TOO_LARGE_ERROR =
+  "Repository is too large (>195k tokens) for analysis. Try a smaller repo.";
+// Messages this module authors itself. They describe the caller's own request
+// and carry no upstream response text, so `normalizeGenerationError` is willing
+// to show them verbatim.
+const GITHUB_REQUEST_TIMEOUT_ERROR = "GitHub request timed out. Please retry.";
+const REPOSITORY_NOT_FOUND_ERROR = "Repository not found.";
+const FILE_TREE_UNAVAILABLE_ERROR = "Could not fetch repository file tree.";
+const EMPTY_REPOSITORY_ERROR =
+  "Could not fetch repository file tree. Repository might be empty or inaccessible.";
+function buildGithubRequestFailedError(status: number): string {
+  return `GitHub request failed (${status}). Please retry.`;
+}
+const PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR =
+  "A GitHub token is required to analyze a private repository.";
+export const MAX_INCLUDED_FILE_TREE_CHARACTERS = 780_000;
+export const MAX_README_BYTES = 750_000;
+export const GITHUB_REQUEST_TIMEOUT_MS = 30_000;
+const MAX_PUBLIC_TREE_CACHE_ENTRIES = 8;
+const MAX_PUBLIC_TREE_CACHE_CHARACTERS = 4_000_000;
+
+interface PublicTreeCacheEntry {
+  etag: string;
+  fileTree: string;
+  pathTypes: ReadonlyMap<string, RepositoryPathType>;
+  characters: number;
+}
+
+type JsonFetchResult<T> =
+  { notModified: true } | { notModified: false; value: T; etag: string | null };
+
+// Fluid instances can reuse unchanged public trees without retaining private
+// repository data. Every reuse is revalidated with GitHub, so repository
+// changes remain visible immediately while 304 responses avoid the largest
+// response body and JSON parse in the ingestion path.
+const publicTreeCache = new Map<string, PublicTreeCacheEntry>();
+let publicTreeCacheCharacters = 0;
+
+function deletePublicTreeCacheEntry(key: string): void {
+  const entry = publicTreeCache.get(key);
+  if (entry && publicTreeCache.delete(key)) {
+    publicTreeCacheCharacters -= entry.characters;
+  }
+}
+
+// Directory segments are matched anywhere in the path.
+const EXCLUDED_DIRECTORY_SEGMENTS = [
+  "node_modules",
+  "vendor",
+  "venv",
+  "__pycache__",
+  ".cache",
+  ".tmp",
+  ".vscode",
+  ".idea",
+];
+
+// Suffixes are matched against the end of the path only. Substring matching
+// here silently drops real source files: ".ico" appears inside "ui.icons.ts",
+// ".so" inside "data.source.ts", and ".class" inside "model.classifier.py".
+const EXCLUDED_SUFFIXES = [
   ".pyc",
   ".pyo",
   ".pyd",
@@ -46,20 +108,92 @@ const EXCLUDED_PATTERNS = [
   ".svg",
   ".ttf",
   ".woff",
+  ".woff2",
   ".webp",
-  "__pycache__/",
-  ".cache/",
-  ".tmp/",
+  ".log",
   "yarn.lock",
   "poetry.lock",
-  "*.log",
-  ".vscode/",
-  ".idea/",
 ];
+
+// Minified bundles carry no architectural signal regardless of extension.
+const MINIFIED_INFIX = ".min.";
 
 function shouldIncludeFile(path: string): boolean {
   const lowerPath = path.toLowerCase();
-  return !EXCLUDED_PATTERNS.some((pattern) => lowerPath.includes(pattern));
+
+  if (lowerPath.includes(MINIFIED_INFIX)) {
+    return false;
+  }
+
+  if (EXCLUDED_SUFFIXES.some((suffix) => lowerPath.endsWith(suffix))) {
+    return false;
+  }
+
+  return !lowerPath
+    .split("/")
+    .some((segment) => EXCLUDED_DIRECTORY_SEGMENTS.includes(segment));
+}
+
+async function fetchJsonResult<T>(
+  url: string,
+  headers: HeadersInit,
+  notFoundMessage: string,
+  signal?: AbortSignal,
+  ifNoneMatch?: string,
+  conflictMessage?: string,
+): Promise<JsonFetchResult<T>> {
+  const timeoutSignal = AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS);
+  const requestHeaders = new Headers(headers);
+  if (ifNoneMatch) {
+    requestHeaders.set("If-None-Match", ifNoneMatch);
+  }
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: requestHeaders,
+      cache: "no-store",
+      signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
+    });
+  } catch (error) {
+    if (timeoutSignal.aborted && !signal?.aborted) {
+      throw new Error(GITHUB_REQUEST_TIMEOUT_ERROR);
+    }
+    throw error;
+  }
+
+  if (response.status === 304 && ifNoneMatch) {
+    return { notModified: true };
+  }
+
+  if (response.status === 404) {
+    throw new Error(notFoundMessage);
+  }
+
+  // GitHub answers 409 ("Git Repository is empty.") for zero-commit repos on
+  // the trees endpoint — a permanent condition, not a transient failure.
+  if (response.status === 409 && conflictMessage) {
+    throw new Error(conflictMessage);
+  }
+
+  if (!response.ok) {
+    // GitHub's error body describes *our* credential when the server key is the
+    // one being rejected or throttled, and this message reaches the client and
+    // the persisted audit. Keep the body in the server log only.
+    console.error(
+      JSON.stringify({
+        event: "generate.github.request_failed",
+        status: response.status,
+        body: (await response.text()).slice(0, 500),
+      }),
+    );
+    throw new Error(buildGithubRequestFailedError(response.status));
+  }
+
+  return {
+    notModified: false,
+    value: (await response.json()) as T,
+    etag: response.headers.get("etag"),
+  };
 }
 
 async function fetchJson<T>(
@@ -68,23 +202,16 @@ async function fetchJson<T>(
   notFoundMessage: string,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(url, {
+  const result = await fetchJsonResult<T>(
+    url,
     headers,
-    cache: "no-store",
+    notFoundMessage,
     signal,
-  });
-
-  if (response.status === 404) {
-    throw new Error(notFoundMessage);
+  );
+  if (result.notModified) {
+    throw new Error("GitHub returned an unexpected not-modified response.");
   }
-
-  if (!response.ok) {
-    throw new Error(
-      `GitHub request failed (${response.status}): ${await response.text()}`,
-    );
-  }
-
-  return (await response.json()) as T;
+  return result.value;
 }
 
 async function getRepoMetadata(
@@ -100,7 +227,7 @@ async function getRepoMetadata(
   const data = await fetchJson<GitHubRepoResponse>(
     `https://api.github.com/repos/${username}/${repo}`,
     headers,
-    "Repository not found.",
+    REPOSITORY_NOT_FOUND_ERROR,
     signal,
   );
 
@@ -117,28 +244,93 @@ async function getFileTree(
   repo: string,
   branch: string,
   headers: HeadersInit,
+  usePublicConditionalCache: boolean,
   signal?: AbortSignal,
-): Promise<string> {
-  const data = await fetchJson<GitHubTreeResponse>(
-    `https://api.github.com/repos/${username}/${repo}/git/trees/${branch}?recursive=1`,
+): Promise<{
+  fileTree: string;
+  pathTypes: ReadonlyMap<string, RepositoryPathType>;
+}> {
+  // Branch names may contain URL-significant characters ("#", "?", …).
+  // encodeURIComponent also encodes "/" as %2F, which the trees API accepts
+  // in the {tree_sha} position; plain branch names are unchanged.
+  const url = `https://api.github.com/repos/${username}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
+  const cached = usePublicConditionalCache
+    ? publicTreeCache.get(url)
+    : undefined;
+  if (cached) {
+    publicTreeCache.delete(url);
+    publicTreeCache.set(url, cached);
+  }
+  const result = await fetchJsonResult<GitHubTreeResponse>(
+    url,
     headers,
-    "Could not fetch repository file tree.",
+    FILE_TREE_UNAVAILABLE_ERROR,
     signal,
+    cached?.etag,
+    EMPTY_REPOSITORY_ERROR,
   );
+  if (result.notModified && cached) {
+    return { fileTree: cached.fileTree, pathTypes: cached.pathTypes };
+  }
+  if (result.notModified) {
+    throw new Error("GitHub returned an unexpected not-modified response.");
+  }
+  const data = result.value;
 
-  const paths = (data.tree ?? [])
-    .map((item) => item.path)
-    .filter((path): path is string => Boolean(path))
-    .filter(shouldIncludeFile);
-
-  if (!paths.length) {
-    throw new Error(
-      "Could not fetch repository file tree. Repository might be empty or inaccessible.",
-    );
+  if (data.truncated === true) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
   }
 
-  return paths.join("\n");
+  const paths: string[] = [];
+  const pathTypes = new Map<string, RepositoryPathType>();
+  for (const item of data.tree ?? []) {
+    if (typeof item.path === "string" && shouldIncludeFile(item.path)) {
+      paths.push(item.path);
+      if (item.type === "blob" || item.type === "tree") {
+        pathTypes.set(item.path, item.type);
+      }
+    }
+  }
+
+  if (!paths.length) {
+    throw new Error(EMPTY_REPOSITORY_ERROR);
+  }
+
+  const fileTree = paths.join("\n");
+  if (fileTree.length > MAX_INCLUDED_FILE_TREE_CHARACTERS) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
+  }
+
+  if (usePublicConditionalCache) {
+    deletePublicTreeCacheEntry(url);
+    if (result.etag) {
+      while (
+        publicTreeCache.size >= MAX_PUBLIC_TREE_CACHE_ENTRIES ||
+        publicTreeCacheCharacters + fileTree.length >
+          MAX_PUBLIC_TREE_CACHE_CHARACTERS
+      ) {
+        const oldestKey = publicTreeCache.keys().next().value;
+        if (typeof oldestKey !== "string") {
+          break;
+        }
+        deletePublicTreeCacheEntry(oldestKey);
+      }
+      publicTreeCache.set(url, {
+        etag: result.etag,
+        fileTree,
+        pathTypes,
+        characters: fileTree.length,
+      });
+      publicTreeCacheCharacters += fileTree.length;
+    }
+  }
+
+  return { fileTree, pathTypes };
 }
+
+class MissingReadmeError extends Error {}
+
+const MISSING_README_MESSAGE = "No README found for the specified repository.";
 
 async function getReadme(
   username: string,
@@ -146,22 +338,47 @@ async function getReadme(
   headers: HeadersInit,
   signal?: AbortSignal,
 ): Promise<string> {
-  const data = await fetchJson<GitHubReadmeResponse>(
-    `https://api.github.com/repos/${username}/${repo}/readme`,
-    headers,
-    "No README found for the specified repository.",
-    signal,
-  );
-
-  if (!data.content) {
-    throw new Error("No README found for the specified repository.");
+  let data: GitHubReadmeResponse;
+  try {
+    data = await fetchJson<GitHubReadmeResponse>(
+      `https://api.github.com/repos/${username}/${repo}/readme`,
+      headers,
+      MISSING_README_MESSAGE,
+      signal,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message === MISSING_README_MESSAGE) {
+      throw new MissingReadmeError(MISSING_README_MESSAGE);
+    }
+    throw error;
   }
 
+  if (typeof data.size === "number" && data.size > MAX_README_BYTES) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
+  }
+
+  if (typeof data.content !== "string" || !data.content) {
+    throw new MissingReadmeError(MISSING_README_MESSAGE);
+  }
+
+  // GitHub's contents API returns base64 with line breaks. Bound the encoded
+  // payload too, so malformed metadata cannot bypass the decoded byte limit.
+  if (data.content.length > MAX_README_BYTES * 2) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
+  }
+
+  let readme: string;
   if (data.encoding === "base64") {
-    return Buffer.from(data.content, "base64").toString("utf-8");
+    readme = Buffer.from(data.content, "base64").toString("utf-8");
+  } else {
+    readme = data.content;
   }
 
-  return data.content;
+  if (Buffer.byteLength(readme, "utf-8") > MAX_README_BYTES) {
+    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
+  }
+
+  return readme;
 }
 
 export async function getGithubData(
@@ -170,6 +387,7 @@ export async function getGithubData(
   githubPat?: string,
   signal?: AbortSignal,
 ): Promise<GithubData> {
+  const hasCallerGithubPat = Boolean(githubPat?.trim());
   const headers = await getGitHubApiHeaders({ githubPat });
   const { defaultBranch, isPrivate, stargazerCount } = await getRepoMetadata(
     username,
@@ -177,16 +395,40 @@ export async function getGithubData(
     headers,
     signal,
   );
-  const [fileTree, readme] = await Promise.all([
-    getFileTree(username, repo, defaultBranch, headers, signal),
-    getReadme(username, repo, headers, signal),
+
+  // GitHub App installation tokens and the server PAT pool may be able to read
+  // private repositories. They improve public API rate limits, but they must
+  // never become authorization for an anonymous caller.
+  if (isPrivate && !hasCallerGithubPat) {
+    throw new Error(PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR);
+  }
+
+  const [tree, readmeResult] = await Promise.all([
+    getFileTree(
+      username,
+      repo,
+      defaultBranch,
+      headers,
+      !hasCallerGithubPat && !isPrivate,
+      signal,
+    ),
+    getReadme(username, repo, headers, signal).then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error }),
+    ),
   ]);
+  // A repository without a README is still perfectly diagrammable from its file
+  // tree, so only a genuine fetch failure should abort the run.
+  if (!readmeResult.ok && !(readmeResult.error instanceof MissingReadmeError)) {
+    throw readmeResult.error;
+  }
 
   return {
     defaultBranch,
-    fileTree,
-    readme,
+    fileTree: tree.fileTree,
+    readme: readmeResult.ok ? readmeResult.value : "",
     isPrivate,
     stargazerCount,
+    pathTypes: tree.pathTypes,
   };
 }

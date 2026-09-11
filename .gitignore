@@ -2,7 +2,6 @@
 
 # dependencies
 /node_modules
-/backend/node_modules
 /.pnp
 .pnp.js
 
@@ -23,6 +22,7 @@ next-env.d.ts
 
 # debug
 .bun-debug.log*
+*.log
 
 # local env files
 # do not commit any .env files to git, except for the .env.example file. https://create.t3.gg/en/usage/env-variables#using-environment-variables
@@ -36,6 +36,11 @@ next-env.d.ts
 # cloudflare wrangler local state
 .wrangler/
 
+# local tool state
+/.agents/
+/.railway/
+/.ruff_cache/
+
 # typescript
 *.tsbuildinfo
 
@@ -45,9 +50,20 @@ next-env.d.ts
 # Claude Code worktrees
 .claude/
 
+# Playwright MCP local artifacts
+.playwright-mcp/
+
+# temporary files
+/tmp/
+/animation-plans/
+/animation-audits/
+/example-previews/
+/example-generation-previews/
+/migration-backups/
+/scripts/local/
+
 __pycache__/
 venv
-backend/.venv
 .venv
 
 # vscode

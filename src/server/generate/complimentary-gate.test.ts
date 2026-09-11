@@ -1,19 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { checkQuotaInUpstash, commitQuotaUsageInUpstash } = vi.hoisted(() => ({
+const {
+  checkQuotaInUpstash,
+  commitQuotaUsageInUpstash,
+  markQuotaReservationStartedInUpstash,
+} = vi.hoisted(() => ({
   checkQuotaInUpstash: vi.fn(),
   commitQuotaUsageInUpstash: vi.fn(),
+  markQuotaReservationStartedInUpstash: vi.fn(),
 }));
 
 vi.mock("~/server/storage/quota-store", () => ({
   checkQuotaInUpstash,
   commitQuotaUsageInUpstash,
+  markQuotaReservationStartedInUpstash,
 }));
 
 import {
   admitComplimentaryQuota,
   buildComplimentaryAdmissionTokens,
+  buildComplimentaryStageTokenBound,
   finalizeComplimentaryQuota,
+  markComplimentaryQuotaStarted,
   modelMatchesComplimentaryFamily,
   shouldApplyComplimentaryGate,
 } from "~/server/generate/complimentary-gate";
@@ -32,44 +40,60 @@ describe("complimentary gate", () => {
     expect(
       shouldApplyComplimentaryGate({
         provider: "openai",
-        model: "gpt-5.4-mini",
       }),
     ).toBe(true);
     expect(
       shouldApplyComplimentaryGate({
         provider: "openai",
-        model: "gpt-5.4-mini",
         apiKey: "sk-user",
       }),
     ).toBe(false);
     expect(
       shouldApplyComplimentaryGate({
         provider: "openrouter",
-        model: "openai/gpt-5.4",
       }),
     ).toBe(false);
   });
 
   it("matches the complimentary family by resolved pricing model", () => {
-    process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.4-mini";
+    process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.6-terra";
 
-    expect(modelMatchesComplimentaryFamily("gpt-5.4-mini-2026-03-17")).toBe(true);
+    expect(modelMatchesComplimentaryFamily("gpt-5.6-terra-2026-07-09")).toBe(
+      true,
+    );
     expect(modelMatchesComplimentaryFamily("gpt-5.4")).toBe(false);
+    expect(modelMatchesComplimentaryFamily("not-a-real-model")).toBe(false);
   });
 
   it("normalizes the configured complimentary family before matching", () => {
-    process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.4-mini-2026-03-17";
+    process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.6-terra-2026-07-09";
 
-    expect(modelMatchesComplimentaryFamily("gpt-5.4-mini")).toBe(true);
+    expect(modelMatchesComplimentaryFamily("gpt-5.6-terra")).toBe(true);
   });
 
-  it("builds a conservative whole-run admission estimate", () => {
+  it("uses repair-static input only for graph retry admission estimates", () => {
+    const estimate = {
+      explanationInputTokens: 100,
+      graphStaticInputTokens: 200,
+      graphRepairStaticInputTokens: 300,
+    };
+
+    expect(buildComplimentaryAdmissionTokens(estimate)).toBe(58_900);
     expect(
-      buildComplimentaryAdmissionTokens({
-        explanationInputTokens: 100,
-        graphStaticInputTokens: 200,
+      buildComplimentaryStageTokenBound(estimate, { stage: "explanation" }),
+    ).toBe(6_100);
+    expect(
+      buildComplimentaryStageTokenBound(estimate, {
+        stage: "graph",
+        attempt: 1,
       }),
-    ).toBe(82_700);
+    ).toBe(12_200);
+    expect(
+      buildComplimentaryStageTokenBound(estimate, {
+        stage: "graph",
+        attempt: 2,
+      }),
+    ).toBe(20_300);
   });
 
   it("returns a denial payload with the next UTC reset time", async () => {
@@ -79,7 +103,7 @@ describe("complimentary gate", () => {
     });
 
     const result = await admitComplimentaryQuota({
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-terra",
       requestedTokens: 82_700,
       now: new Date("2026-03-28T12:34:56.000Z"),
     });
@@ -92,9 +116,10 @@ describe("complimentary gate", () => {
     });
     expect(checkQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
-      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      quotaBucket: "openai-complimentary-small-models",
       requestedTokens: 82_700,
       tokenLimit: 10_000_000,
+      reservationId: expect.any(String),
     });
   });
 
@@ -105,17 +130,39 @@ describe("complimentary gate", () => {
 
     await finalizeComplimentaryQuota({
       reservation: {
-        quotaBucket: "openai:gpt-5.4-mini:complimentary",
+        reservationId: "reservation-a",
+        quotaBucket: "openai-complimentary-small-models",
         quotaDateUtc: "2026-03-28",
         quotaResetAt: "2026-03-29T00:00:00.000Z",
+        reservedTokens: 1_000,
       },
       committedTokens: 345,
     });
 
     expect(commitQuotaUsageInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
-      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      quotaBucket: "openai-complimentary-small-models",
       committedTokens: 345,
+      reservationId: "reservation-a",
+    });
+  });
+
+  it("marks a reservation before the first provider request", async () => {
+    markQuotaReservationStartedInUpstash.mockResolvedValue(undefined);
+    const reservation = {
+      reservationId: "reservation-a",
+      quotaBucket: "openai-complimentary-small-models",
+      quotaDateUtc: "2026-03-28",
+      quotaResetAt: "2026-03-29T00:00:00.000Z",
+      reservedTokens: 1_000,
+    };
+
+    await markComplimentaryQuotaStarted(reservation);
+
+    expect(markQuotaReservationStartedInUpstash).toHaveBeenCalledWith({
+      quotaDateUtc: "2026-03-28",
+      quotaBucket: "openai-complimentary-small-models",
+      reservationId: "reservation-a",
     });
   });
 
@@ -129,22 +176,26 @@ describe("complimentary gate", () => {
     });
 
     const reservation = await admitComplimentaryQuota({
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-terra",
       requestedTokens: 1_000,
       now: new Date("2026-03-28T12:34:56.000Z"),
     });
 
     expect(checkQuotaInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
-      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      quotaBucket: "openai-complimentary-small-models",
       requestedTokens: 1_000,
       tokenLimit: 10_000_000,
+      reservationId: expect.any(String),
     });
     expect(reservation.admitted).toBe(true);
 
     if (!reservation.admitted) {
       throw new Error("expected admitted reservation");
     }
+
+    expect(reservation.reservation.reservedTokens).toBe(1_000);
+    expect(reservation.reservation.reservationId).toEqual(expect.any(String));
 
     await finalizeComplimentaryQuota({
       reservation: reservation.reservation,
@@ -153,8 +204,34 @@ describe("complimentary gate", () => {
 
     expect(commitQuotaUsageInUpstash).toHaveBeenCalledWith({
       quotaDateUtc: "2026-03-28",
-      quotaBucket: "openai:gpt-5.4-mini:complimentary",
+      quotaBucket: "openai-complimentary-small-models",
       committedTokens: 345,
+      reservationId: reservation.reservation.reservationId,
+    });
+  });
+
+  it("safely retries an ambiguous finalization once", async () => {
+    commitQuotaUsageInUpstash
+      .mockRejectedValueOnce(new Error("request timed out"))
+      .mockResolvedValueOnce({ usedTokens: 345 });
+
+    await finalizeComplimentaryQuota({
+      reservation: {
+        reservationId: "reservation-a",
+        quotaBucket: "openai-complimentary-small-models",
+        quotaDateUtc: "2026-03-28",
+        quotaResetAt: "2026-03-29T00:00:00.000Z",
+        reservedTokens: 1_000,
+      },
+      committedTokens: 345,
+    });
+
+    expect(commitQuotaUsageInUpstash).toHaveBeenCalledTimes(2);
+    expect(commitQuotaUsageInUpstash).toHaveBeenNthCalledWith(2, {
+      quotaDateUtc: "2026-03-28",
+      quotaBucket: "openai-complimentary-small-models",
+      committedTokens: 345,
+      reservationId: "reservation-a",
     });
   });
 });

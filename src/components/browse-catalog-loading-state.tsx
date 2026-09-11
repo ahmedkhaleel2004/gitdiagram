@@ -5,16 +5,15 @@ import {
   BrowseCatalogControls,
   type BrowseCatalogControlsProps,
 } from "~/components/browse-catalog-controls";
-import { browseSkeletonRows } from "~/components/browse-catalog-shared";
+
+const browseSkeletonRows = Array.from({ length: 6 }, (_, index) => index);
 
 export function BrowseCatalogLoadingState(props: BrowseCatalogControlsProps) {
   return (
     <div className="space-y-6" aria-busy="true" aria-live="polite">
       <BrowseCatalogControls {...props} />
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <Skeleton className="h-8 w-72" />
-      </div>
+      <Skeleton className="h-8 w-72" />
 
       <div className="neo-panel overflow-hidden rounded-lg">
         <div className="border-b-[3px] border-black bg-[hsl(var(--neo-panel-muted))] px-4 py-3 text-left text-xs font-semibold tracking-[0.18em] uppercase lg:hidden dark:border-[#0d0a19] dark:bg-[hsl(var(--neo-panel-muted))]">

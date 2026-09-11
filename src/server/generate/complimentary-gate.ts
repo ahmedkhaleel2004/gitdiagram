@@ -1,35 +1,45 @@
+import { randomUUID } from "node:crypto";
+
 import { MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
 import {
   checkQuotaInUpstash,
   commitQuotaUsageInUpstash,
+  markQuotaReservationStartedInUpstash,
 } from "~/server/storage/quota-store";
 import type { AIProvider } from "~/server/generate/model-config";
 import {
   EXPLANATION_MAX_OUTPUT_TOKENS,
   GRAPH_MAX_OUTPUT_TOKENS,
-  resolvePricingModel,
+  GRAPH_RETRY_INPUT_BUFFER_TOKENS,
 } from "~/server/generate/pricing";
 
 const DEFAULT_DAILY_LIMIT_TOKENS = 10_000_000;
-const DEFAULT_MODEL_FAMILY = "gpt-5.4-mini";
-const RETRY_INPUT_BUFFER_TOKENS = 2_000;
+const DEFAULT_MODEL_FAMILY = "gpt-5.6-terra";
+const COMPLIMENTARY_QUOTA_BUCKET = "openai-complimentary-small-models";
+const QUOTA_FINALIZATION_ATTEMPTS = 2;
 const DEFAULT_DENIAL_MESSAGE =
   "GitDiagram's free daily OpenAI capacity is used up for now. I'm a solo student engineer running this free and open source, so please try again after 00:00 UTC or use your own OpenAI API key.";
 const DEFAULT_PROVIDER_MISMATCH_MESSAGE =
-  "GitDiagram's complimentary-only mode requires AI_PROVIDER=openai on the default server key. I'm a solo student engineer running this free and open source, so please either switch the server back to OpenAI mini or use your own API key.";
+  "GitDiagram's complimentary-only mode requires AI_PROVIDER=openai on the default server key. I'm a solo student engineer running this free and open source, so please switch the server back to OpenAI or use your own API key.";
 const DEFAULT_MODEL_MISMATCH_MESSAGE =
-  "GitDiagram's complimentary-only mode requires the gpt-5.4-mini model family on the default server key. I'm a solo student engineer running this free and open source, so please switch the server back to OpenAI mini or use your own API key.";
+  "GitDiagram's complimentary-only mode requires the gpt-5.6-terra model family on the default server key. I'm a solo student engineer running this free and open source, so please switch the server back to GPT-5.6 Terra or use your own API key.";
 
 export interface ComplimentaryQuotaReservation {
+  reservationId: string;
   quotaBucket: string;
   quotaDateUtc: string;
   quotaResetAt: string;
+  reservedTokens: number;
 }
 
 export interface ComplimentaryAdmissionEstimate {
   explanationInputTokens: number;
   graphStaticInputTokens: number;
+  graphRepairStaticInputTokens: number;
 }
+
+export type ComplimentaryGenerationStage =
+  { stage: "explanation" } | { stage: "graph"; attempt: number };
 
 function readEnvFlag(name: string): boolean {
   const value = process.env[name]?.trim().toLowerCase();
@@ -50,6 +60,14 @@ function readEnvString(name: string, fallback: string): string {
   return process.env[name]?.trim().toLowerCase() || fallback;
 }
 
+function normalizeModelFamily(model: string): string {
+  const normalized = model.trim().toLowerCase();
+  const withoutProvider = normalized.includes("/")
+    ? (normalized.split("/").at(-1) ?? normalized)
+    : normalized;
+  return withoutProvider.replace(/-\d{4}-\d{2}-\d{2}$/i, "");
+}
+
 export function isComplimentaryGateEnabled(): boolean {
   return readEnvFlag("OPENAI_COMPLIMENTARY_GATE_ENABLED");
 }
@@ -61,17 +79,17 @@ export function getComplimentaryDailyLimitTokens(): number {
   );
 }
 
-export function getComplimentaryModelFamily(): string {
-  return resolvePricingModel(
+function getComplimentaryModelFamily(): string {
+  return normalizeModelFamily(
     readEnvString("OPENAI_COMPLIMENTARY_MODEL_FAMILY", DEFAULT_MODEL_FAMILY),
   );
 }
 
-export function getComplimentaryQuotaDateUtc(now = new Date()): string {
+function getComplimentaryQuotaDateUtc(now = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
 
-export function getComplimentaryQuotaResetAt(now = new Date()): string {
+function getComplimentaryQuotaResetAt(now = new Date()): string {
   return new Date(
     Date.UTC(
       now.getUTCFullYear(),
@@ -87,7 +105,6 @@ export function getComplimentaryQuotaResetAt(now = new Date()): string {
 
 export function shouldApplyComplimentaryGate(params: {
   provider: AIProvider;
-  model: string;
   apiKey?: string;
 }): boolean {
   if (!isComplimentaryGateEnabled()) {
@@ -102,33 +119,62 @@ export function shouldApplyComplimentaryGate(params: {
 }
 
 export function modelMatchesComplimentaryFamily(model: string): boolean {
-  return resolvePricingModel(model) === getComplimentaryModelFamily();
+  return normalizeModelFamily(model) === getComplimentaryModelFamily();
 }
 
-export function getComplimentaryQuotaBucket(model: string): string {
-  return `openai:${resolvePricingModel(model)}:complimentary`;
+export function getComplimentaryQuotaBucket(): string {
+  return COMPLIMENTARY_QUOTA_BUCKET;
 }
 
 export function buildComplimentaryAdmissionTokens(
   estimate: ComplimentaryAdmissionEstimate,
 ): number {
-  const explanationStageTokens =
-    estimate.explanationInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS;
-  const firstGraphAttemptTokens =
-    estimate.graphStaticInputTokens +
-    EXPLANATION_MAX_OUTPUT_TOKENS +
-    GRAPH_MAX_OUTPUT_TOKENS;
-  const retryGraphAttemptTokens =
-    estimate.graphStaticInputTokens +
-    EXPLANATION_MAX_OUTPUT_TOKENS +
-    GRAPH_MAX_OUTPUT_TOKENS +
-    RETRY_INPUT_BUFFER_TOKENS +
-    GRAPH_MAX_OUTPUT_TOKENS;
+  const explanationStageTokens = buildComplimentaryStageTokenBound(estimate, {
+    stage: "explanation",
+  });
+  const firstGraphAttemptTokens = buildComplimentaryStageTokenBound(estimate, {
+    stage: "graph",
+    attempt: 1,
+  });
+  const retryGraphAttemptTokens = buildComplimentaryStageTokenBound(estimate, {
+    stage: "graph",
+    attempt: 2,
+  });
 
   return (
     explanationStageTokens +
     firstGraphAttemptTokens +
     retryGraphAttemptTokens * Math.max(MAX_GRAPH_ATTEMPTS - 1, 0)
+  );
+}
+
+/**
+ * Returns the conservative token bound for the one provider request that is
+ * currently in flight. This lets interrupted generations commit the current
+ * stage without charging every graph retry that never ran.
+ */
+export function buildComplimentaryStageTokenBound(
+  estimate: ComplimentaryAdmissionEstimate,
+  stage: ComplimentaryGenerationStage,
+): number {
+  if (stage.stage === "explanation") {
+    return estimate.explanationInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS;
+  }
+
+  if (stage.attempt <= 1) {
+    return (
+      estimate.graphStaticInputTokens +
+      EXPLANATION_MAX_OUTPUT_TOKENS +
+      GRAPH_MAX_OUTPUT_TOKENS
+    );
+  }
+
+  return (
+    estimate.graphRepairStaticInputTokens +
+    EXPLANATION_MAX_OUTPUT_TOKENS +
+    GRAPH_MAX_OUTPUT_TOKENS +
+    GRAPH_RETRY_INPUT_BUFFER_TOKENS +
+    GRAPH_MAX_OUTPUT_TOKENS
   );
 }
 
@@ -154,12 +200,14 @@ export async function admitComplimentaryQuota(params: {
   const now = params.now ?? new Date();
   const quotaDateUtc = getComplimentaryQuotaDateUtc(now);
   const quotaResetAt = getComplimentaryQuotaResetAt(now);
-  const quotaBucket = getComplimentaryQuotaBucket(params.model);
+  const quotaBucket = getComplimentaryQuotaBucket();
+  const reservationId = randomUUID();
   const result = await checkQuotaInUpstash({
     quotaDateUtc,
     quotaBucket,
     tokenLimit: getComplimentaryDailyLimitTokens(),
     requestedTokens: params.requestedTokens,
+    reservationId,
   });
 
   if (!result.admitted) {
@@ -173,9 +221,11 @@ export async function admitComplimentaryQuota(params: {
   return {
     admitted: true,
     reservation: {
+      reservationId,
       quotaBucket,
       quotaDateUtc,
       quotaResetAt,
+      reservedTokens: params.requestedTokens,
     },
   };
 }
@@ -184,9 +234,29 @@ export async function finalizeComplimentaryQuota(params: {
   reservation: ComplimentaryQuotaReservation;
   committedTokens: number;
 }): Promise<void> {
-  await commitQuotaUsageInUpstash({
-    quotaDateUtc: params.reservation.quotaDateUtc,
-    quotaBucket: params.reservation.quotaBucket,
-    committedTokens: params.committedTokens,
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= QUOTA_FINALIZATION_ATTEMPTS; attempt++) {
+    try {
+      await commitQuotaUsageInUpstash({
+        quotaDateUtc: params.reservation.quotaDateUtc,
+        quotaBucket: params.reservation.quotaBucket,
+        committedTokens: params.committedTokens,
+        reservationId: params.reservation.reservationId,
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+export async function markComplimentaryQuotaStarted(
+  reservation: ComplimentaryQuotaReservation,
+): Promise<void> {
+  await markQuotaReservationStartedInUpstash({
+    quotaDateUtc: reservation.quotaDateUtc,
+    quotaBucket: reservation.quotaBucket,
+    reservationId: reservation.reservationId,
   });
 }

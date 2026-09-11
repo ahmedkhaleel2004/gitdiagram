@@ -26,6 +26,7 @@ vi.mock("~/server/storage/browse-diagrams", () => ({
 }));
 
 import {
+  clearSuccessfulDiagramFailureSummary,
   saveSuccessfulDiagramState,
   updatePublicBrowseIndexForSuccessfulDiagram,
 } from "~/server/storage/diagram-state";
@@ -35,7 +36,7 @@ const baseAudit = {
   status: "succeeded" as const,
   stage: "complete",
   provider: "openai",
-  model: "gpt-5.4-mini",
+  model: "gpt-5.6-terra",
   graph: {
     groups: [],
     nodes: [],
@@ -51,6 +52,7 @@ const baseAudit = {
 describe("saveSuccessfulDiagramState", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    writeDiagramArtifact.mockResolvedValue(true);
   });
 
   it("persists the public artifact without updating the browse index inline", async () => {
@@ -113,5 +115,43 @@ describe("saveSuccessfulDiagramState", () => {
     });
 
     expect(upsertBrowseIndexEntry).not.toHaveBeenCalled();
+  });
+
+  it("does not clear a newer failure when an older success loses artifact ordering", async () => {
+    writeDiagramArtifact.mockResolvedValue(false);
+
+    await saveSuccessfulDiagramState({
+      username: "Acme",
+      repo: "Demo",
+      visibility: "public",
+      stargazerCount: 42,
+      explanation: "Stale explanation",
+      graph: {
+        groups: [],
+        nodes: [],
+        edges: [],
+      },
+      diagram: "flowchart TD\nStale-->Result",
+      audit: baseAudit,
+      usedOwnKey: false,
+    });
+
+    expect(clearFailureSummary).not.toHaveBeenCalled();
+  });
+
+  it("clears a stale failure only when post-response cleanup runs", async () => {
+    await expect(
+      clearSuccessfulDiagramFailureSummary({
+        username: "Acme",
+        repo: "Demo",
+        visibility: "public",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(clearFailureSummary).toHaveBeenCalledWith({
+      username: "Acme",
+      repo: "Demo",
+      visibility: "public",
+    });
   });
 });

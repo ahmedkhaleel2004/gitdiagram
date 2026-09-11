@@ -14,9 +14,7 @@ describe("BrowseDiagramPreview", () => {
     );
 
     expect(
-      screen
-        .getByTestId("mermaid-preview")
-        .querySelector(".h-\\[248px\\]"),
+      screen.getByTestId("mermaid-preview").querySelector(".h-\\[248px\\]"),
     ).toBeInTheDocument();
   });
 });

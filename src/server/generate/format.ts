@@ -1,10 +1,13 @@
 type TaggedValues = Record<string, string | undefined>;
 
 export function toTaggedMessage(values: TaggedValues): string {
-  return Object.entries(values)
-    .filter(([, value]) => typeof value === "string")
-    .map(([key, value]) => `<${key}>\n${value}\n</${key}>`)
-    .join("\n");
+  const sections: string[] = [];
+  for (const [key, value] of Object.entries(values)) {
+    if (typeof value === "string") {
+      sections.push(`<${key}>\n${value}\n</${key}>`);
+    }
+  }
+  return sections.join("\n");
 }
 
 export function extractTaggedSection(text: string, tag: string): string {

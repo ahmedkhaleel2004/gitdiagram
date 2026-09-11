@@ -1,6 +1,6 @@
 export const BROWSE_PAGE_SIZE = 20;
-export const MIN_STAR_FILTER_VALUES = [0, 10, 100, 1000] as const;
-export const BROWSE_SORTS = [
+const MIN_STAR_FILTER_VALUES = [0, 10, 100, 1000] as const;
+const BROWSE_SORTS = [
   "recent_desc",
   "recent_asc",
   "stars_desc",
@@ -35,6 +35,11 @@ export interface BrowsePageResult {
   minStars: number;
 }
 
+export interface RecentBrowseIndex {
+  entries: BrowseIndexEntry[];
+  total: number;
+}
+
 interface NormalizedBrowseQuery {
   page: number;
   sort: BrowseSort;
@@ -42,20 +47,26 @@ interface NormalizedBrowseQuery {
   minStars: number;
 }
 
-function compareIsoDatesDescending(left: string, right: string) {
-  return Date.parse(right) - Date.parse(left);
+interface PreparedBrowseEntry {
+  entry: BrowseIndexEntry;
+  lastSuccessfulAtTimestamp: number;
+  repoKey: string;
 }
 
-function compareIsoDatesAscending(left: string, right: string) {
-  return Date.parse(left) - Date.parse(right);
+export interface PreparedBrowseIndex {
+  preparedEntries: PreparedBrowseEntry[];
+  sortedEntries: Map<BrowseSort, PreparedBrowseEntry[]>;
 }
 
 export function toRepoKey(entry: Pick<BrowseIndexEntry, "username" | "repo">) {
   return `${entry.username.trim().toLowerCase()}/${entry.repo.trim().toLowerCase()}`;
 }
 
-function compareNamesAscending(left: BrowseIndexEntry, right: BrowseIndexEntry) {
-  return toRepoKey(left).localeCompare(toRepoKey(right));
+function comparePreparedNamesAscending(
+  left: PreparedBrowseEntry,
+  right: PreparedBrowseEntry,
+) {
+  return left.repoKey.localeCompare(right.repoKey);
 }
 
 function compareNullableStars(
@@ -75,15 +86,13 @@ function compareNullableStars(
   return direction === "asc" ? left - right : right - left;
 }
 
-export function parseBrowseSort(sort: string | null | undefined): BrowseSort {
+function parseBrowseSort(sort: string | null | undefined): BrowseSort {
   return BROWSE_SORTS.includes(sort as BrowseSort)
     ? (sort as BrowseSort)
     : "recent_desc";
 }
 
-export function parseMinStars(
-  minStars: string | number | null | undefined,
-): number {
+function parseMinStars(minStars: string | number | null | undefined): number {
   const numericValue =
     typeof minStars === "number"
       ? minStars
@@ -96,9 +105,7 @@ export function parseMinStars(
     : 0;
 }
 
-export function parsePageNumber(
-  page: string | number | null | undefined,
-): number {
+function parsePageNumber(page: string | number | null | undefined): number {
   const numericPage =
     typeof page === "number" ? page : Number.parseInt(page ?? "1", 10);
 
@@ -109,7 +116,9 @@ export function parsePageNumber(
   return Math.floor(numericPage);
 }
 
-export function normalizeBrowseQuery(query: BrowseQuery): NormalizedBrowseQuery {
+export function normalizeBrowseQuery(
+  query: BrowseQuery,
+): NormalizedBrowseQuery {
   return {
     sort: parseBrowseSort(query.sort),
     q: (query.q ?? "").trim(),
@@ -118,76 +127,102 @@ export function normalizeBrowseQuery(query: BrowseQuery): NormalizedBrowseQuery 
   };
 }
 
-export function applyBrowseSort(
+export function prepareBrowseIndex(
   entries: BrowseIndexEntry[],
-  sort: BrowseSort,
-): BrowseIndexEntry[] {
-  const sortedEntries = [...entries];
+  initialSort?: BrowseSort,
+): PreparedBrowseIndex {
+  const preparedEntries = entries.map((entry) => ({
+    entry,
+    lastSuccessfulAtTimestamp: Date.parse(entry.lastSuccessfulAt),
+    repoKey: toRepoKey(entry),
+  }));
 
-  switch (sort) {
-    case "recent_asc":
-      return sortedEntries.sort((left, right) => {
-        const result = compareIsoDatesAscending(
-          left.lastSuccessfulAt,
-          right.lastSuccessfulAt,
-        );
-        return result || compareNamesAscending(left, right);
-      });
-    case "stars_desc":
-      return sortedEntries.sort((left, right) => {
-        const result = compareNullableStars(
-          left.stargazerCount,
-          right.stargazerCount,
-          "desc",
-        );
-        return result || compareNamesAscending(left, right);
-      });
-    case "stars_asc":
-      return sortedEntries.sort((left, right) => {
-        const result = compareNullableStars(
-          left.stargazerCount,
-          right.stargazerCount,
-          "asc",
-        );
-        return result || compareNamesAscending(left, right);
-      });
-    case "name_asc":
-      return sortedEntries.sort(compareNamesAscending);
-    case "recent_desc":
-    default:
-      return sortedEntries.sort((left, right) => {
-        const result = compareIsoDatesDescending(
-          left.lastSuccessfulAt,
-          right.lastSuccessfulAt,
-        );
-        return result || compareNamesAscending(left, right);
-      });
-  }
+  return {
+    preparedEntries,
+    sortedEntries: initialSort
+      ? new Map([[initialSort, preparedEntries]])
+      : new Map(),
+  };
 }
 
-export function getBrowsePageFromEntries(
-  entries: BrowseIndexEntry[],
-  query: BrowseQuery,
-): BrowsePageResult {
-  const { sort, q, minStars, page: requestedPage } = normalizeBrowseQuery(query);
-  const normalizedQuery = q.toLowerCase();
-  const filteredEntries = entries.filter((entry) => {
-    const matchesQuery = normalizedQuery
-      ? toRepoKey(entry).includes(normalizedQuery)
-      : true;
-    const matchesStarFilter =
-      minStars === 0 ? true : (entry.stargazerCount ?? -1) >= minStars;
-    return matchesQuery && matchesStarFilter;
+function getSortedPreparedEntries(
+  index: PreparedBrowseIndex,
+  sort: BrowseSort,
+): PreparedBrowseEntry[] {
+  const cachedEntries = index.sortedEntries.get(sort);
+  if (cachedEntries) {
+    return cachedEntries;
+  }
+
+  const sortedEntries = [...index.preparedEntries].sort((left, right) => {
+    let result = 0;
+
+    switch (sort) {
+      case "recent_asc":
+        result =
+          left.lastSuccessfulAtTimestamp - right.lastSuccessfulAtTimestamp;
+        break;
+      case "stars_desc":
+        result = compareNullableStars(
+          left.entry.stargazerCount,
+          right.entry.stargazerCount,
+          "desc",
+        );
+        break;
+      case "stars_asc":
+        result = compareNullableStars(
+          left.entry.stargazerCount,
+          right.entry.stargazerCount,
+          "asc",
+        );
+        break;
+      case "name_asc":
+        return comparePreparedNamesAscending(left, right);
+      case "recent_desc":
+      default:
+        result =
+          right.lastSuccessfulAtTimestamp - left.lastSuccessfulAtTimestamp;
+        break;
+    }
+
+    return result || comparePreparedNamesAscending(left, right);
   });
 
-  const sortedEntries = applyBrowseSort(filteredEntries, sort);
-  const total = sortedEntries.length;
+  index.sortedEntries.set(sort, sortedEntries);
+  return sortedEntries;
+}
+
+export function getBrowsePageFromPreparedIndex(
+  index: PreparedBrowseIndex,
+  query: BrowseQuery,
+): BrowsePageResult {
+  const {
+    sort,
+    q,
+    minStars,
+    page: requestedPage,
+  } = normalizeBrowseQuery(query);
+  const normalizedQuery = q.toLowerCase();
+  const filteredEntries = getSortedPreparedEntries(index, sort).filter(
+    ({ entry, repoKey }) => {
+      const matchesQuery = normalizedQuery
+        ? repoKey.includes(normalizedQuery)
+        : true;
+      const matchesStarFilter =
+        minStars === 0 ? true : (entry.stargazerCount ?? -1) >= minStars;
+      return matchesQuery && matchesStarFilter;
+    },
+  );
+
+  const total = filteredEntries.length;
   const totalPages = Math.max(1, Math.ceil(total / BROWSE_PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);
   const startIndex = (page - 1) * BROWSE_PAGE_SIZE;
 
   return {
-    items: sortedEntries.slice(startIndex, startIndex + BROWSE_PAGE_SIZE),
+    items: filteredEntries
+      .slice(startIndex, startIndex + BROWSE_PAGE_SIZE)
+      .map(({ entry }) => entry),
     total,
     page,
     pageSize: BROWSE_PAGE_SIZE,
@@ -195,6 +230,46 @@ export function getBrowsePageFromEntries(
     sort,
     q,
     minStars,
+  };
+}
+
+export function getBrowsePageFromEntries(
+  entries: BrowseIndexEntry[],
+  query: BrowseQuery,
+): BrowsePageResult {
+  return getBrowsePageFromPreparedIndex(prepareBrowseIndex(entries), query);
+}
+
+export function getBrowsePageFromRecentIndex(
+  index: RecentBrowseIndex,
+  query: BrowseQuery,
+): BrowsePageResult | null {
+  const normalized = normalizeBrowseQuery(query);
+  if (
+    normalized.q ||
+    normalized.sort !== "recent_desc" ||
+    normalized.minStars !== 0
+  ) {
+    return null;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(index.total / BROWSE_PAGE_SIZE));
+  const page = Math.min(normalized.page, totalPages);
+  const startIndex = (page - 1) * BROWSE_PAGE_SIZE;
+  const endIndex = Math.min(startIndex + BROWSE_PAGE_SIZE, index.total);
+  if (endIndex > index.entries.length) {
+    return null;
+  }
+
+  return {
+    items: index.entries.slice(startIndex, endIndex),
+    total: index.total,
+    page,
+    pageSize: BROWSE_PAGE_SIZE,
+    totalPages,
+    sort: normalized.sort,
+    q: normalized.q,
+    minStars: normalized.minStars,
   };
 }
 

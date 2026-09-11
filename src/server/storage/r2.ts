@@ -1,24 +1,34 @@
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  HeadObjectCommand,
-  ListObjectsV2Command,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
+import type * as S3Sdk from "@aws-sdk/client-s3";
+import { promisify } from "node:util";
+import { gunzip, gzip } from "node:zlib";
 
 import { assertLiveStorageAllowedForTests, readRequiredEnv } from "./config";
 
-let client: S3Client | null = null;
+let client: S3Sdk.S3Client | null = null;
+let s3ModulePromise: Promise<typeof S3Sdk> | null = null;
+export const R2_REQUEST_TIMEOUT_MS = 10_000;
 
-function getClient(): S3Client {
+const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
+
+export interface ObjectReadResult<T> {
+  value: T;
+  etag: string;
+}
+
+export type ObjectWriteCondition = { ifMatch: string } | { ifNoneMatch: true };
+
+function requestOptions() {
+  return { abortSignal: AbortSignal.timeout(R2_REQUEST_TIMEOUT_MS) };
+}
+
+async function getClient() {
   assertLiveStorageAllowedForTests("R2");
 
-  if (client) {
-    return client;
-  }
+  s3ModulePromise ??= import("@aws-sdk/client-s3");
+  const s3 = await s3ModulePromise;
 
-  client = new S3Client({
+  client ??= new s3.S3Client({
     region: "auto",
     endpoint: `https://${readRequiredEnv("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`,
     credentials: {
@@ -27,7 +37,7 @@ function getClient(): S3Client {
     },
   });
 
-  return client;
+  return { client, s3 };
 }
 
 function isNotFoundError(error: unknown): boolean {
@@ -48,11 +58,13 @@ export async function getJsonObject<T>(
   key: string,
 ): Promise<T | null> {
   try {
-    const response = await getClient().send(
-      new GetObjectCommand({
+    const { client: storageClient, s3 } = await getClient();
+    const response = await storageClient.send(
+      new s3.GetObjectCommand({
         Bucket: bucket,
         Key: key,
       }),
+      requestOptions(),
     );
 
     const body = await response.Body?.transformToString();
@@ -74,83 +86,126 @@ export async function putJsonObject(
   key: string,
   payload: unknown,
 ): Promise<void> {
-  await getClient().send(
-    new PutObjectCommand({
+  const { client: storageClient, s3 } = await getClient();
+  await storageClient.send(
+    new s3.PutObjectCommand({
       Bucket: bucket,
       Key: key,
       Body: JSON.stringify(payload),
       ContentType: "application/json",
     }),
+    requestOptions(),
   );
 }
 
-export async function deleteObject(bucket: string, key: string): Promise<void> {
-  await getClient().send(
-    new DeleteObjectCommand({
-      Bucket: bucket,
-      Key: key,
-    }),
-  );
-}
-
-export async function objectExists(
+export async function getGzipJsonObject<T>(
   bucket: string,
   key: string,
-): Promise<boolean> {
+): Promise<T | null> {
   try {
-    await getClient().send(
-      new HeadObjectCommand({
+    const { client: storageClient, s3 } = await getClient();
+    const response = await storageClient.send(
+      new s3.GetObjectCommand({
         Bucket: bucket,
         Key: key,
       }),
+      requestOptions(),
     );
-    return true;
+
+    const body = await response.Body?.transformToByteArray();
+    if (!body?.byteLength) {
+      return null;
+    }
+
+    const decompressed = await gunzipAsync(body);
+    return JSON.parse(decompressed.toString("utf8")) as T;
   } catch (error) {
     if (isNotFoundError(error)) {
-      return false;
+      return null;
     }
     throw error;
   }
 }
 
-export interface ListedBucketObject {
-  key: string;
-  lastModified: string | null;
-  size: number | null;
-}
-
-export async function listObjects(
+export async function getGzipJsonObjectWithEtag<T>(
   bucket: string,
-  prefix: string,
-): Promise<ListedBucketObject[]> {
-  const objects: ListedBucketObject[] = [];
-  let continuationToken: string | undefined;
-
-  do {
-    const response = await getClient().send(
-      new ListObjectsV2Command({
+  key: string,
+): Promise<ObjectReadResult<T> | null> {
+  try {
+    const { client: storageClient, s3 } = await getClient();
+    const response = await storageClient.send(
+      new s3.GetObjectCommand({
         Bucket: bucket,
-        Prefix: prefix,
-        ContinuationToken: continuationToken,
+        Key: key,
       }),
+      requestOptions(),
     );
 
-    for (const entry of response.Contents ?? []) {
-      if (!entry.Key) {
-        continue;
-      }
-
-      objects.push({
-        key: entry.Key,
-        lastModified: entry.LastModified?.toISOString() ?? null,
-        size: typeof entry.Size === "number" ? entry.Size : null,
-      });
+    const body = await response.Body?.transformToByteArray();
+    if (!body?.byteLength) {
+      return null;
+    }
+    if (!response.ETag) {
+      throw new Error(`R2 object ${key} did not include an ETag.`);
     }
 
-    continuationToken = response.IsTruncated
-      ? response.NextContinuationToken
-      : undefined;
-  } while (continuationToken);
+    const decompressed = await gunzipAsync(body);
+    return {
+      value: JSON.parse(decompressed.toString("utf8")) as T,
+      etag: response.ETag,
+    };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
 
-  return objects;
+export async function putGzipJsonObject(
+  bucket: string,
+  key: string,
+  payload: unknown,
+  condition?: ObjectWriteCondition,
+): Promise<void> {
+  const [body, { client: storageClient, s3 }] = await Promise.all([
+    gzipAsync(JSON.stringify(payload)),
+    getClient(),
+  ]);
+
+  await storageClient.send(
+    new s3.PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentEncoding: "gzip",
+      ContentType: "application/json",
+      ...(condition && "ifMatch" in condition
+        ? { IfMatch: condition.ifMatch }
+        : {}),
+      ...(condition && "ifNoneMatch" in condition ? { IfNoneMatch: "*" } : {}),
+    }),
+    requestOptions(),
+  );
+}
+
+export async function deleteObject(bucket: string, key: string): Promise<void> {
+  const { client: storageClient, s3 } = await getClient();
+  await storageClient.send(
+    new s3.DeleteObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }),
+    requestOptions(),
+  );
+}
+
+export async function checkR2Bucket(bucket: string): Promise<void> {
+  // Exercise the same authenticated GetObject path used by the application.
+  // A missing sentinel is a successful readiness result; permission failures
+  // and transport errors still propagate.
+  await getJsonObject(
+    bucket,
+    "_meta/gitdiagram-readiness-sentinel-does-not-exist.json",
+  );
 }

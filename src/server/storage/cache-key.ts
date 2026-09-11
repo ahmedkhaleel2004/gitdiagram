@@ -8,8 +8,19 @@ function normalizeSegment(value: string): string {
 }
 
 function createPatNamespace(githubPat: string): string {
+  const trimmedPat = githubPat.trim();
+  // An empty token would hash to one fixed namespace shared by every caller,
+  // and no read path ever consults it (getReadLocations only reaches the
+  // private bucket when a token is present). Fail loudly instead of writing
+  // artifacts nobody can read back.
+  if (!trimmedPat) {
+    throw new Error(
+      "A private storage location requires a non-empty GitHub token.",
+    );
+  }
+
   const secret = readRequiredEnv("CACHE_KEY_SECRET");
-  return createHmac("sha256", secret).update(githubPat.trim()).digest("hex");
+  return createHmac("sha256", secret).update(trimmedPat).digest("hex");
 }
 
 export interface StorageLocation {
@@ -19,7 +30,18 @@ export interface StorageLocation {
   statusKey: string;
 }
 
-export function getPublicLocation(username: string, repo: string): StorageLocation {
+export function getPublicPreviewKey(username: string, repo: string): string {
+  // The sidecar lives under its own prefix rather than a ".preview" suffix on
+  // the repo segment: normalizeSegment leaves "." unescaped, so a suffix would
+  // let the sidecar for repo "app" collide with the artifact for the legal
+  // repo name "app.preview" and silently overwrite it.
+  return `public-preview/v1/${normalizeSegment(username)}/${normalizeSegment(repo)}.json`;
+}
+
+export function getPublicLocation(
+  username: string,
+  repo: string,
+): StorageLocation {
   const normalizedUsername = normalizeSegment(username);
   const normalizedRepo = normalizeSegment(repo);
 
@@ -46,6 +68,39 @@ export function getPrivateLocation(
     artifactKey: `private/v1/${namespace}/${normalizedUsername}/${normalizedRepo}.json`,
     statusKey: `status:v1:private:${namespace}:${normalizedUsername}:${normalizedRepo}`,
   };
+}
+
+/**
+ * Resolves where a generation result should be written.
+ *
+ * A private artifact is namespaced by the caller's own token, so there is no
+ * safe destination for a private repository the caller did not authenticate
+ * for: the public bucket would expose it, and the empty-token namespace is
+ * unreadable. Callers must handle that case before reaching storage —
+ * `canPersistVisibility` answers the same question without throwing.
+ */
+export function getWriteLocation(params: {
+  username: string;
+  repo: string;
+  visibility: ArtifactVisibility;
+  githubPat?: string;
+}): StorageLocation {
+  if (params.visibility !== "private") {
+    return getPublicLocation(params.username, params.repo);
+  }
+
+  return getPrivateLocation(
+    params.username,
+    params.repo,
+    params.githubPat ?? "",
+  );
+}
+
+export function canPersistVisibility(params: {
+  visibility: ArtifactVisibility;
+  githubPat?: string;
+}): boolean {
+  return params.visibility !== "private" || Boolean(params.githubPat?.trim());
 }
 
 export function getReadLocations(params: {

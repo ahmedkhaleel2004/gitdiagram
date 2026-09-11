@@ -1,10 +1,21 @@
 "use client";
 
 import type { BrowseSort } from "~/features/browse/catalog";
-import {
-  minStarOptions,
-  sortOptions,
-} from "~/components/browse-catalog-shared";
+
+const sortOptions: Array<{ value: BrowseSort; label: string }> = [
+  { value: "recent_desc", label: "Most Recent" },
+  { value: "recent_asc", label: "Oldest First" },
+  { value: "stars_desc", label: "Most Stars" },
+  { value: "stars_asc", label: "Fewest Stars" },
+  { value: "name_asc", label: "Name (A-Z)" },
+];
+
+const minStarOptions = [
+  { value: 0, label: "Any Stars" },
+  { value: 10, label: "10+" },
+  { value: 100, label: "100+" },
+  { value: 1000, label: "1,000+" },
+];
 
 export interface BrowseCatalogControlsProps {
   minStars: number;
@@ -34,7 +45,7 @@ export function BrowseCatalogControls({
           value={searchInput}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="owner/repo"
-          className="neo-input w-full rounded-md bg-[hsl(var(--background))] px-4 py-3 text-base placeholder:text-gray-700 focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none dark:placeholder:text-[hsl(var(--foreground))]"
+          className="neo-input w-full rounded-md bg-[hsl(var(--background))] px-4 py-3 text-base placeholder:text-gray-700 dark:placeholder:text-[hsl(var(--foreground))]"
         />
       </label>
 
@@ -45,7 +56,7 @@ export function BrowseCatalogControls({
         <select
           value={sort}
           onChange={(event) => onSortChange(event.target.value as BrowseSort)}
-          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none"
+          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base"
         >
           {sortOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -64,7 +75,7 @@ export function BrowseCatalogControls({
           onChange={(event) =>
             onMinStarsChange(Number.parseInt(event.target.value, 10))
           }
-          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none"
+          className="neo-input h-[54px] w-full rounded-md bg-[hsl(var(--background))] px-4 text-base"
         >
           {minStarOptions.map((option) => (
             <option key={option.value} value={option.value}>

@@ -4,16 +4,35 @@ import type {
   GenerationStageUsage,
 } from "~/features/diagram/cost";
 
-export const MAX_GRAPH_GROUPS = 10;
-export const MAX_GRAPH_NODES = 34;
-export const MAX_GRAPH_EDGES = 48;
-export const MAX_GRAPH_LABEL_LENGTH = 72;
-export const MAX_GRAPH_TYPE_LENGTH = 72;
-export const MAX_GRAPH_DESCRIPTION_LENGTH = 240;
-export const MAX_GRAPH_PATH_LENGTH = 512;
+const MAX_GRAPH_GROUPS = 10;
+const MAX_GRAPH_NODES = 34;
+const MAX_GRAPH_EDGES = 48;
+const MAX_GRAPH_LABEL_LENGTH = 72;
+const MAX_GRAPH_TYPE_LENGTH = 72;
+const MAX_GRAPH_DESCRIPTION_LENGTH = 240;
+const MAX_GRAPH_PATH_LENGTH = 512;
 export const MAX_GRAPH_ATTEMPTS = 3;
 
-export const diagramNodeShapeSchema = z.enum([
+export function normalizeDiagramText(value: string): string {
+  return value
+    .normalize("NFC")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function renderableDiagramTextSchema(maxLength: number) {
+  return z
+    .string()
+    .trim()
+    .min(1)
+    .max(maxLength)
+    .refine((value) => normalizeDiagramText(value).length > 0, {
+      message: "Must contain visible text.",
+    });
+}
+
+const diagramNodeShapeSchema = z.enum([
   "box",
   "database",
   "queue",
@@ -22,41 +41,45 @@ export const diagramNodeShapeSchema = z.enum([
   "hexagon",
 ]);
 
-export const diagramEdgeStyleSchema = z.enum(["solid", "dashed"]);
+const diagramEdgeStyleSchema = z.enum(["solid", "dashed"]);
 
-export const diagramGroupSchema = z.object({
-  id: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
-  label: z.string().trim().min(1).max(MAX_GRAPH_LABEL_LENGTH),
-  description: z
+const diagramGroupSchema = z.object({
+  id: z
     .string()
     .trim()
-    .max(MAX_GRAPH_DESCRIPTION_LENGTH)
-    .nullable(),
+    .regex(/^[a-z][a-z0-9_]*$/),
+  label: renderableDiagramTextSchema(MAX_GRAPH_LABEL_LENGTH),
+  description: z.string().trim().max(MAX_GRAPH_DESCRIPTION_LENGTH).nullable(),
 });
 
-export const diagramNodeSchema = z.object({
-  id: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
-  label: z.string().trim().min(1).max(MAX_GRAPH_LABEL_LENGTH),
-  type: z.string().trim().min(1).max(MAX_GRAPH_TYPE_LENGTH),
-  description: z
+const diagramNodeSchema = z.object({
+  id: z
     .string()
     .trim()
-    .max(MAX_GRAPH_DESCRIPTION_LENGTH)
+    .regex(/^[a-z][a-z0-9_]*$/),
+  label: renderableDiagramTextSchema(MAX_GRAPH_LABEL_LENGTH),
+  type: renderableDiagramTextSchema(MAX_GRAPH_TYPE_LENGTH),
+  description: z.string().trim().max(MAX_GRAPH_DESCRIPTION_LENGTH).nullable(),
+  groupId: z
+    .string()
+    .trim()
+    .regex(/^[a-z][a-z0-9_]*$/)
     .nullable(),
-  groupId: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).nullable(),
   path: z.string().trim().min(1).max(MAX_GRAPH_PATH_LENGTH).nullable(),
   shape: diagramNodeShapeSchema.nullable(),
 });
 
-export const diagramEdgeSchema = z.object({
-  from: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
-  to: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
-  label: z.string().trim().min(1).max(MAX_GRAPH_LABEL_LENGTH).nullable(),
-  description: z
+const diagramEdgeSchema = z.object({
+  from: z
     .string()
     .trim()
-    .max(MAX_GRAPH_DESCRIPTION_LENGTH)
-    .nullable(),
+    .regex(/^[a-z][a-z0-9_]*$/),
+  to: z
+    .string()
+    .trim()
+    .regex(/^[a-z][a-z0-9_]*$/),
+  label: renderableDiagramTextSchema(MAX_GRAPH_LABEL_LENGTH).nullable(),
+  description: z.string().trim().max(MAX_GRAPH_DESCRIPTION_LENGTH).nullable(),
   style: diagramEdgeStyleSchema.nullable(),
 });
 
@@ -66,9 +89,6 @@ export const diagramGraphSchema = z.object({
   edges: z.array(diagramEdgeSchema).max(MAX_GRAPH_EDGES),
 });
 
-export type DiagramNodeShape = z.infer<typeof diagramNodeShapeSchema>;
-export type DiagramEdgeStyle = z.infer<typeof diagramEdgeStyleSchema>;
-export type DiagramGraphGroup = z.infer<typeof diagramGroupSchema>;
 export type DiagramGraphNode = z.infer<typeof diagramNodeSchema>;
 export type DiagramGraphEdge = z.infer<typeof diagramEdgeSchema>;
 export type DiagramGraph = z.infer<typeof diagramGraphSchema>;
@@ -78,17 +98,20 @@ export interface GraphAttemptAudit {
   rawOutput: string;
   graph: DiagramGraph | null;
   validationFeedback?: string;
+  validationCategories?: string[];
+  /** Node paths dropped because they did not resolve in the repository tree. */
+  strippedPathCount?: number;
   status: "failed" | "succeeded";
   createdAt: string;
 }
 
-export interface GenerationTimelineEvent {
+interface GenerationTimelineEvent {
   stage: string;
   message?: string;
   createdAt: string;
 }
 
-export type DiagramSessionStatus = "idle" | "running" | "succeeded" | "failed";
+type DiagramSessionStatus = "idle" | "running" | "succeeded" | "failed";
 
 export interface GenerationSessionAudit {
   sessionId: string;

@@ -5,13 +5,23 @@ import {
   type ReasoningEffort,
 } from "~/server/generate/openai";
 import {
-  createEstimateCostSummary,
   EXPLANATION_MAX_OUTPUT_TOKENS,
+  EXPLANATION_REASONING_EFFORT,
   GRAPH_MAX_OUTPUT_TOKENS,
+  GRAPH_REASONING_EFFORT,
+} from "~/server/generate/generation-policy";
+import {
+  createEstimateCostSummary,
   estimateTextTokenCostUsd,
 } from "~/server/generate/pricing";
-import { SYSTEM_FIRST_PROMPT, SYSTEM_GRAPH_PROMPT } from "~/server/generate/prompts";
-import { type AIProvider, supportsExactInputTokenCount } from "~/server/generate/model-config";
+import {
+  SYSTEM_FIRST_PROMPT,
+  SYSTEM_GRAPH_PROMPT,
+} from "~/server/generate/prompts";
+import {
+  type AIProvider,
+  supportsExactInputTokenCount,
+} from "~/server/generate/model-config";
 
 interface CountPromptInputTokensParams {
   provider: AIProvider;
@@ -21,6 +31,8 @@ interface CountPromptInputTokensParams {
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
   preferExactInputTokenCount?: boolean;
+  signal?: AbortSignal;
+  clientRequestId?: string;
 }
 
 interface CountPromptInputTokensResult {
@@ -36,6 +48,7 @@ export interface GenerationEstimateResult {
   pricing: ReturnType<typeof estimateTextTokenCostUsd>["pricing"];
   explanationInputTokens: number;
   graphStaticInputTokens: number;
+  graphRepairStaticInputTokens: number | null;
 }
 
 async function countPromptInputTokens({
@@ -46,7 +59,11 @@ async function countPromptInputTokens({
   apiKey,
   reasoningEffort,
   preferExactInputTokenCount = true,
+  signal,
+  clientRequestId,
 }: CountPromptInputTokensParams): Promise<CountPromptInputTokensResult> {
+  signal?.throwIfAborted();
+
   if (!preferExactInputTokenCount || !supportsExactInputTokenCount(provider)) {
     return {
       inputTokens: estimateTokens(`${systemPrompt}\n${userPrompt}`),
@@ -62,6 +79,8 @@ async function countPromptInputTokens({
       userPrompt,
       apiKey,
       reasoningEffort,
+      signal,
+      clientRequestId,
     });
 
     return {
@@ -69,6 +88,11 @@ async function countPromptInputTokens({
       usedFallback: false,
     };
   } catch {
+    // Provider failures can safely fall back to the local estimate, but an
+    // aborted request must stop all parallel token-count calls immediately.
+    // Swallowing the abort here would let the cost route overrun its deadline.
+    signal?.throwIfAborted();
+
     return {
       inputTokens: estimateTokens(`${systemPrompt}\n${userPrompt}`),
       usedFallback: true,
@@ -85,6 +109,9 @@ export async function estimateGenerationCost(params: {
   repo: string;
   apiKey?: string;
   preferExactInputTokenCount?: boolean;
+  includeGraphRepairInputTokens?: boolean;
+  signal?: AbortSignal;
+  clientRequestId?: string;
 }): Promise<GenerationEstimateResult> {
   const explanationPrompt = toTaggedMessage({
     file_tree: params.fileTree,
@@ -92,39 +119,70 @@ export async function estimateGenerationCost(params: {
   });
   const graphPromptWithoutExplanation = toTaggedMessage({
     explanation: "",
+  });
+  const graphRepairPromptWithoutExplanation = toTaggedMessage({
+    explanation: "",
     file_tree: params.fileTree,
-    repo_owner: params.username,
-    repo_name: params.repo,
     previous_graph: "",
     validation_feedback: "",
   });
 
-  const [explanationCount, graphStaticCount] = await Promise.all([
-    countPromptInputTokens({
-      provider: params.provider,
-      model: params.model,
-      systemPrompt: SYSTEM_FIRST_PROMPT,
-      userPrompt: explanationPrompt,
-      apiKey: params.apiKey,
-      reasoningEffort: "medium",
-      preferExactInputTokenCount: params.preferExactInputTokenCount,
-    }),
-    countPromptInputTokens({
-      provider: params.provider,
-      model: params.model,
-      systemPrompt: SYSTEM_GRAPH_PROMPT,
-      userPrompt: graphPromptWithoutExplanation,
-      apiKey: params.apiKey,
-      reasoningEffort: "low",
-      preferExactInputTokenCount: params.preferExactInputTokenCount,
-    }),
-  ]);
+  const [explanationCount, graphStaticCount, graphRepairStaticCount] =
+    await Promise.all([
+      countPromptInputTokens({
+        provider: params.provider,
+        model: params.model,
+        systemPrompt: SYSTEM_FIRST_PROMPT,
+        userPrompt: explanationPrompt,
+        apiKey: params.apiKey,
+        reasoningEffort: EXPLANATION_REASONING_EFFORT,
+        preferExactInputTokenCount: params.preferExactInputTokenCount,
+        signal: params.signal,
+        clientRequestId: params.clientRequestId
+          ? `${params.clientRequestId}:explanation`
+          : undefined,
+      }),
+      countPromptInputTokens({
+        provider: params.provider,
+        model: params.model,
+        systemPrompt: SYSTEM_GRAPH_PROMPT,
+        userPrompt: graphPromptWithoutExplanation,
+        apiKey: params.apiKey,
+        reasoningEffort: GRAPH_REASONING_EFFORT,
+        preferExactInputTokenCount: params.preferExactInputTokenCount,
+        signal: params.signal,
+        clientRequestId: params.clientRequestId
+          ? `${params.clientRequestId}:graph`
+          : undefined,
+      }),
+      params.includeGraphRepairInputTokens
+        ? countPromptInputTokens({
+            provider: params.provider,
+            model: params.model,
+            systemPrompt: SYSTEM_GRAPH_PROMPT,
+            userPrompt: graphRepairPromptWithoutExplanation,
+            apiKey: params.apiKey,
+            reasoningEffort: GRAPH_REASONING_EFFORT,
+            preferExactInputTokenCount: params.preferExactInputTokenCount,
+            signal: params.signal,
+            clientRequestId: params.clientRequestId
+              ? `${params.clientRequestId}:graph-repair`
+              : undefined,
+          })
+        : Promise.resolve(null),
+    ]);
 
   const noteParts = [
     "Estimate assumes one graph-planning attempt and the configured output caps.",
   ];
-  if (explanationCount.usedFallback || graphStaticCount.usedFallback) {
-    noteParts.push("Some input tokens were approximated with a conservative local fallback.");
+  if (
+    explanationCount.usedFallback ||
+    graphStaticCount.usedFallback ||
+    graphRepairStaticCount?.usedFallback
+  ) {
+    noteParts.push(
+      "Some input tokens were approximated with a conservative local fallback.",
+    );
   }
 
   const costSummary = createEstimateCostSummary({
@@ -150,5 +208,6 @@ export async function estimateGenerationCost(params: {
     pricing,
     explanationInputTokens: explanationCount.inputTokens,
     graphStaticInputTokens: graphStaticCount.inputTokens,
+    graphRepairStaticInputTokens: graphRepairStaticCount?.inputTokens ?? null,
   };
 }

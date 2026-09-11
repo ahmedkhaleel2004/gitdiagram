@@ -3,6 +3,8 @@ import {
   readRequiredEnv,
 } from "~/server/storage/config";
 
+const UPSTASH_REQUEST_TIMEOUT_MS = 5_000;
+
 function getBaseUrl() {
   return readRequiredEnv("UPSTASH_REDIS_REST_URL").replace(/\/$/, "");
 }
@@ -17,11 +19,21 @@ function getHeaders(): HeadersInit {
 async function execute<T>(path: string, body: unknown): Promise<T> {
   assertLiveStorageAllowedForTests("Upstash");
 
-  const response = await fetch(`${getBaseUrl()}${path}`, {
-    method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify(body),
-  });
+  const timeoutSignal = AbortSignal.timeout(UPSTASH_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${getBaseUrl()}${path}`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(body),
+      signal: timeoutSignal,
+    });
+  } catch (error) {
+    if (timeoutSignal.aborted) {
+      throw new Error("Upstash request timed out. Please retry.");
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -49,4 +61,11 @@ export async function upstashEval<T>(params: {
   const keys = params.keys ?? [];
   const args = params.args ?? [];
   return execute<T>("", ["EVAL", params.script, keys.length, ...keys, ...args]);
+}
+
+export async function checkUpstashConnection(): Promise<void> {
+  const response = await upstashCommand<string>(["PING"]);
+  if (response !== "PONG") {
+    throw new Error("Upstash did not return PONG.");
+  }
 }

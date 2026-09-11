@@ -4,9 +4,104 @@ import { describe, expect, it } from "vitest";
 import {
   buildFileTreeLookup,
   compileDiagramGraph,
+  isRepairableWithoutRetry,
+  parseDiagramGraph,
+  stripUnknownNodePaths,
   validateDiagramGraph,
 } from "~/server/generate/graph";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
+
+function nodeFixture(id: string, path: string | null) {
+  return {
+    id,
+    label: id.toUpperCase(),
+    type: "service",
+    description: null,
+    groupId: null,
+    path,
+    shape: null,
+  };
+}
+
+describe("in-place graph repair", () => {
+  it("treats a graph whose only faults are unresolvable paths as repairable", () => {
+    const fileTreeLookup = buildFileTreeLookup("src/index.ts");
+    const graph = {
+      groups: [],
+      nodes: [nodeFixture("api", "src/missing.ts")],
+      edges: [],
+    };
+
+    const { issues } = validateDiagramGraph(graph, fileTreeLookup);
+    expect(isRepairableWithoutRetry(issues)).toBe(true);
+
+    const repaired = stripUnknownNodePaths(graph, fileTreeLookup);
+    expect(repaired.strippedPathCount).toBe(1);
+    expect(repaired.graph.nodes[0]?.path).toBeNull();
+    expect(validateDiagramGraph(repaired.graph, fileTreeLookup).valid).toBe(
+      true,
+    );
+  });
+
+  it("keeps paths that do resolve while dropping only the broken ones", () => {
+    const fileTreeLookup = buildFileTreeLookup("src/index.ts\nsrc/api.ts");
+    const repaired = stripUnknownNodePaths(
+      {
+        groups: [],
+        nodes: [
+          nodeFixture("api", "src/api.ts"),
+          nodeFixture("gone", "src/missing.ts"),
+          nodeFixture("bare", null),
+        ],
+        edges: [],
+      },
+      fileTreeLookup,
+    );
+
+    expect(repaired.strippedPathCount).toBe(1);
+    expect(repaired.graph.nodes.map((node) => node.path)).toEqual([
+      "src/api.ts",
+      null,
+      null,
+    ]);
+  });
+
+  it("does not treat structural faults as repairable", () => {
+    const fileTreeLookup = buildFileTreeLookup("src/index.ts");
+    const { issues } = validateDiagramGraph(
+      {
+        groups: [],
+        nodes: [nodeFixture("api", "src/missing.ts")],
+        edges: [
+          {
+            from: "api",
+            to: "ghost",
+            label: null,
+            description: null,
+            style: null,
+          },
+        ],
+      },
+      fileTreeLookup,
+    );
+
+    expect(
+      issues.some((issue) => issue.category === "unknown_edge_target"),
+    ).toBe(true);
+    expect(isRepairableWithoutRetry(issues)).toBe(false);
+  });
+
+  it("reports a fully valid graph as needing no repair", () => {
+    const fileTreeLookup = buildFileTreeLookup("src/index.ts");
+    expect(isRepairableWithoutRetry([])).toBe(false);
+    expect(
+      stripUnknownNodePaths(
+        { groups: [], nodes: [nodeFixture("api", "src/index.ts")], edges: [] },
+        fileTreeLookup,
+      ).strippedPathCount,
+    ).toBe(0);
+  });
+});
 
 describe("validateDiagramGraph", () => {
   it("rejects paths that are not in the repo file tree", () => {
@@ -31,10 +126,326 @@ describe("validateDiagramGraph", () => {
 
     expect(result.valid).toBe(false);
     expect(result.issues[0]?.path).toBe("nodes.0.path");
+    expect(result.issues[0]?.category).toBe("missing_repository_path");
+  });
+
+  it("classifies structural failures without logging repository data", () => {
+    const result = validateDiagramGraph(
+      {
+        groups: [
+          { id: "runtime", label: "Runtime", description: null },
+          { id: "runtime", label: "Duplicate", description: null },
+        ],
+        nodes: [
+          {
+            id: "api",
+            label: "API",
+            type: "service",
+            description: null,
+            groupId: "missing",
+            path: null,
+            shape: null,
+          },
+        ],
+        edges: [
+          {
+            from: "missing_source",
+            to: "missing_target",
+            label: null,
+            description: null,
+            style: null,
+          },
+        ],
+      },
+      new Set(),
+    );
+
+    expect(result.issues.map((issue) => issue.category)).toEqual([
+      "duplicate_group_id",
+      "unknown_group_id",
+      "unknown_edge_source",
+      "unknown_edge_target",
+    ]);
+  });
+
+  it("rejects graph text that becomes empty after safety normalization", () => {
+    const result = parseDiagramGraph(
+      JSON.stringify({
+        groups: [{ id: "runtime", label: "\u0000\u001f", description: null }],
+        nodes: [
+          {
+            id: "api",
+            label: "\u2028",
+            type: "\u0000",
+            description: null,
+            groupId: "runtime",
+            path: null,
+            shape: "box",
+          },
+        ],
+        edges: [
+          {
+            from: "api",
+            to: "api",
+            label: "\u2029",
+            description: null,
+            style: "solid",
+          },
+        ],
+      }),
+    );
+
+    expect(result.graph).toBeNull();
+    expect(result.issues.map((issue) => issue.path)).toEqual(
+      expect.arrayContaining([
+        "groups.0.label",
+        "nodes.0.label",
+        "nodes.0.type",
+        "edges.0.label",
+      ]),
+    );
   });
 });
 
 describe("compileDiagramGraph", () => {
+  it("escapes untrusted labels and URL-encodes repository paths", () => {
+    const diagram = compileDiagramGraph({
+      username: "acme",
+      repo: "demo",
+      branch: "feature/security",
+      graph: {
+        groups: [
+          {
+            id: "runtime",
+            label: '<img src=x onerror="alert(1)"> & runtime',
+            description: null,
+          },
+        ],
+        nodes: [
+          {
+            id: "api",
+            label: '<script>alert("x")</script>',
+            type: "HTTP & worker",
+            description: null,
+            groupId: "runtime",
+            path: 'src/a "quoted" file.ts',
+            shape: "box",
+          },
+        ],
+        edges: [],
+      },
+    });
+
+    expect(diagram).not.toContain("<script>");
+    expect(diagram).not.toContain("<img");
+    expect(diagram).toContain(
+      "&lt;script&gt;alert&#40;&quot;x&quot;&#41;&lt;/script&gt;",
+    );
+    expect(diagram).toContain(
+      "&lt;img src=x onerror=&quot;alert&#40;1&#41;&quot;&gt; &amp; runtime",
+    );
+    expect(diagram).toContain(
+      'click node_api "https://github.com/acme/demo/blob/feature/security/src/a%20%22quoted%22%20file.ts"',
+    );
+  });
+
+  it("collapses line and control characters before compiling labels", async () => {
+    const diagram = compileDiagramGraph({
+      username: "acme",
+      repo: "demo",
+      branch: "main",
+      graph: {
+        groups: [],
+        nodes: [
+          {
+            id: "api",
+            label: "API\nclick node_api call alert()\u0000",
+            type: "HTTP\r\nworker",
+            description: null,
+            groupId: null,
+            path: null,
+            shape: "box",
+          },
+        ],
+        edges: [],
+      },
+    });
+
+    expect(diagram).toContain(
+      'node_api["API click node_api call alert&#40;&#41;<br/>HTTP worker"]',
+    );
+    expect(
+      diagram.split("\n").filter((line) => line.startsWith("click ")),
+    ).toEqual([]);
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
+  });
+
+  it("uses a parseable fallback if invalid empty text bypasses the schema", async () => {
+    const diagram = compileDiagramGraph({
+      username: "acme",
+      repo: "demo",
+      branch: "main",
+      graph: {
+        groups: [{ id: "runtime", label: "\u0000", description: null }],
+        nodes: [
+          {
+            id: "api",
+            label: "\u001f",
+            type: "\u0000",
+            description: null,
+            groupId: "runtime",
+            path: null,
+            shape: "box",
+          },
+        ],
+        edges: [
+          {
+            from: "api",
+            to: "api",
+            label: "\u2029",
+            description: null,
+            style: "solid",
+          },
+        ],
+      },
+    });
+
+    expect(diagram).toContain('subgraph group_runtime["Unnamed"]');
+    expect(diagram).toContain('node_api["Unnamed<br/>Unnamed"]');
+    expect(diagram).toContain('node_api -->|"Unnamed"| node_api');
+    await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+      valid: true,
+    });
+  });
+
+  it("parses adversarial text across every supported node shape", async () => {
+    const shapes = [
+      "box",
+      "database",
+      "queue",
+      "document",
+      "circle",
+      "hexagon",
+    ] as const;
+    const adversarialLabels = [
+      'quote " slash \\',
+      '\\\\"quoted after slashes"',
+      "pipes | brackets []{}()",
+      "comment %%{init: bad}%%",
+      "unicode 🧭 café 漢字",
+      "line\nbreak\tand\u0000control",
+    ];
+
+    for (const [index, shape] of shapes.entries()) {
+      const diagram = compileDiagramGraph({
+        username: "acme",
+        repo: "demo",
+        branch: "main",
+        graph: {
+          groups: [
+            {
+              id: `group_${index}`,
+              label: adversarialLabels[(index + 2) % adversarialLabels.length]!,
+              description: null,
+            },
+          ],
+          nodes: [
+            {
+              id: `node_${index}`,
+              label: adversarialLabels[index]!,
+              type: 'type " with \\ slash',
+              description: null,
+              groupId: `group_${index}`,
+              path: null,
+              shape,
+            },
+            {
+              id: `target_${index}`,
+              label: "Target",
+              type: "component",
+              description: null,
+              groupId: null,
+              path: null,
+              shape: "box",
+            },
+          ],
+          edges: [
+            {
+              from: `node_${index}`,
+              to: `target_${index}`,
+              label: adversarialLabels[(index + 1) % adversarialLabels.length]!,
+              description: null,
+              style: index % 2 === 0 ? "solid" : "dashed",
+            },
+          ],
+        },
+      });
+
+      await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+        valid: true,
+      });
+    }
+  });
+
+  it("neutralizes backticks so a label cannot become a markdown string", async () => {
+    // A leading backtick makes Mermaid read the quoted label as a markdown
+    // string, which fails to lex and takes the whole diagram down. Labels like
+    // "`pnpm` runner" are ordinary model output, so they must stay inert.
+    const backtickLabels = [
+      "`pnpm` runner",
+      "`**bold**`",
+      "single ` tick",
+      "a`b`c",
+    ];
+
+    for (const [index, label] of backtickLabels.entries()) {
+      const diagram = compileDiagramGraph({
+        username: "acme",
+        repo: "demo",
+        branch: "main",
+        graph: {
+          groups: [{ id: `group_${index}`, label, description: null }],
+          nodes: [
+            {
+              id: `node_${index}`,
+              label,
+              type: "service",
+              description: null,
+              groupId: `group_${index}`,
+              path: null,
+              shape: "box",
+            },
+            {
+              id: `target_${index}`,
+              label: "Target",
+              type: "component",
+              description: null,
+              groupId: null,
+              path: null,
+              shape: "box",
+            },
+          ],
+          edges: [
+            {
+              from: `node_${index}`,
+              to: `target_${index}`,
+              label,
+              description: null,
+              style: "solid",
+            },
+          ],
+        },
+      });
+
+      expect(diagram).not.toContain("`");
+      await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
+        valid: true,
+      });
+    }
+  });
+
   it("builds deterministic Mermaid with click urls", async () => {
     const diagram = compileDiagramGraph({
       graph: {
@@ -89,6 +500,49 @@ describe("compileDiagramGraph", () => {
     });
   });
 
+  it("uses GitHub tree metadata for extensionless files and dotted directories", () => {
+    const diagram = compileDiagramGraph({
+      graph: {
+        groups: [],
+        nodes: [
+          {
+            id: "dockerfile",
+            label: "Dockerfile",
+            type: "build config",
+            description: null,
+            groupId: null,
+            path: "Dockerfile",
+            shape: null,
+          },
+          {
+            id: "github",
+            label: "GitHub config",
+            type: "directory",
+            description: null,
+            groupId: null,
+            path: ".github",
+            shape: null,
+          },
+        ],
+        edges: [],
+      },
+      username: "acme",
+      repo: "demo",
+      branch: "feature/links",
+      pathTypes: new Map([
+        ["Dockerfile", "blob"],
+        [".github", "tree"],
+      ]),
+    });
+
+    expect(diagram).toContain(
+      'click node_dockerfile "https://github.com/acme/demo/blob/feature/links/Dockerfile"',
+    );
+    expect(diagram).toContain(
+      'click node_github "https://github.com/acme/demo/tree/feature/links/.github"',
+    );
+  });
+
   it("maps reserved graph ids to Mermaid-safe ids", async () => {
     const diagram = compileDiagramGraph({
       graph: {
@@ -137,31 +591,5 @@ describe("compileDiagramGraph", () => {
     await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
       valid: true,
     });
-  });
-
-  it("omits click urls for local diagrams", () => {
-    const diagram = compileDiagramGraph({
-      graph: {
-        groups: [],
-        nodes: [
-          {
-            id: "app",
-            label: "App",
-            type: "Application",
-            description: null,
-            groupId: null,
-            path: "src/index.ts",
-            shape: "box",
-          },
-        ],
-        edges: [],
-      },
-      username: "local",
-      repo: "demo",
-      branch: "local",
-      includeGitHubLinks: false,
-    });
-
-    expect(diagram).not.toContain("click ");
   });
 });

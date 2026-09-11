@@ -8,25 +8,42 @@ import {
 } from "~/server/generate/pricing";
 
 describe("resolvePricingModel", () => {
-  it("keeps gpt-5.4-mini on its own pricing tier", () => {
-    expect(resolvePricingModel("gpt-5.4-mini")).toBe("gpt-5.4-mini");
-    expect(resolvePricingModel("gpt-5.4-mini-2026-03-17")).toBe("gpt-5.4-mini");
+  it("keeps GPT-5.6 Terra on its own pricing tier", () => {
+    expect(resolvePricingModel("gpt-5.6-terra")).toBe("gpt-5.6-terra");
+    expect(resolvePricingModel("gpt-5.6-terra-2026-07-09")).toBe(
+      "gpt-5.6-terra",
+    );
+  });
+
+  it("prices the GPT-5.6 alias as Sol", () => {
+    expect(resolvePricingModel("gpt-5.6")).toBe("gpt-5.6-sol");
   });
 
   it("maps OpenRouter model ids onto their underlying pricing tier", () => {
     expect(resolvePricingModel("openai/gpt-5.4")).toBe("gpt-5.4");
-    expect(resolvePricingModel("openai/gpt-5.4-mini")).toBe("gpt-5.4-mini");
+    expect(resolvePricingModel("openai/gpt-5.6-terra")).toBe("gpt-5.6-terra");
+  });
+
+  it("does not substitute unrelated pricing for an unknown provider model", () => {
+    expect(resolvePricingModel("anthropic/claude-opus-5")).toBeNull();
+    expect(() =>
+      estimateTextTokenCostUsd("anthropic/claude-opus-5", 1_000_000, 1_000_000),
+    ).toThrow("Cost information is unavailable");
   });
 });
 
 describe("estimateTextTokenCostUsd", () => {
-  it("uses gpt-5.4-mini pricing for cost estimates", () => {
-    const result = estimateTextTokenCostUsd("gpt-5.4-mini", 1_000_000, 1_000_000);
+  it("uses GPT-5.6 Terra pricing for cost estimates", () => {
+    const result = estimateTextTokenCostUsd(
+      "gpt-5.6-terra",
+      1_000_000,
+      1_000_000,
+    );
 
-    expect(result.pricingModel).toBe("gpt-5.4-mini");
-    expect(result.pricing.inputPerMillionUsd).toBe(0.75);
-    expect(result.pricing.outputPerMillionUsd).toBe(4.5);
-    expect(result.costUsd).toBe(5.25);
+    expect(result.pricingModel).toBe("gpt-5.6-terra");
+    expect(result.pricing.inputPerMillionUsd).toBe(2);
+    expect(result.pricing.outputPerMillionUsd).toBe(12);
+    expect(result.costUsd).toBe(14);
   });
 });
 
@@ -57,7 +74,7 @@ describe("normalizeGenerationUsage", () => {
 describe("createEstimateCostSummary", () => {
   it("returns an approximate estimate without multiplier-based math", () => {
     const result = createEstimateCostSummary({
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-terra",
       explanationInputTokens: 100,
       graphStaticInputTokens: 200,
       approximate: true,
@@ -65,8 +82,8 @@ describe("createEstimateCostSummary", () => {
 
     expect(result.kind).toBe("estimate");
     expect(result.approximate).toBe(true);
-    expect(result.usage.inputTokens).toBe(12300);
-    expect(result.usage.outputTokens).toBe(18000);
+    expect(result.usage.inputTokens).toBe(6_300);
+    expect(result.usage.outputTokens).toBe(12_000);
     expect(result.note).toContain("configured output caps");
   });
 });

@@ -1,64 +1,46 @@
 import { config } from "dotenv";
 import {
   getComplimentaryDailyLimitTokens,
-  getComplimentaryModelFamily,
+  getComplimentaryQuotaBucket,
 } from "../src/server/generate/complimentary-gate";
-import { buildQuotaKey } from "../src/server/storage/quota-store";
+import {
+  buildQuotaKey,
+  buildQuotaLeaseKey,
+} from "../src/server/storage/quota-store";
+import { upstashCommand } from "../src/server/storage/upstash";
 
 config({ path: ".env" });
 
-function readEnv(name) {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
-}
-
-async function fetchUpstashResult(body) {
-  const baseUrl = readEnv("UPSTASH_REDIS_REST_URL");
-  const token = readEnv("UPSTASH_REDIS_REST_TOKEN");
-  if (!baseUrl || !token) {
-    throw new Error("Missing Upstash Redis REST configuration in .env");
-  }
-
-  const response = await fetch(baseUrl.replace(/\/$/, ""), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Upstash request failed (${response.status}): ${await response.text()}`,
-    );
-  }
-
-  const payload = await response.json();
-  if (payload.error) {
-    throw new Error(`Upstash command failed: ${payload.error}`);
-  }
-
-  return payload.result;
-}
-
 const tokenLimit = getComplimentaryDailyLimitTokens();
-const modelFamily = getComplimentaryModelFamily();
 const quotaDateUtc = new Date().toISOString().slice(0, 10);
-const quotaBucket = `openai:${modelFamily}:complimentary`;
+const quotaBucket = getComplimentaryQuotaBucket();
+const nowMs = Date.now();
 
-const result = await fetchUpstashResult([
+const result = await upstashCommand([
   "HMGET",
   buildQuotaKey(quotaDateUtc, quotaBucket),
   "used_tokens",
+  "reserved_tokens",
+]);
+
+const leaseKey = buildQuotaLeaseKey(quotaDateUtc, quotaBucket);
+const [liveLeases, staleLeases] = await Promise.all([
+  upstashCommand(["ZCOUNT", leaseKey, String(nowMs), "+inf"]),
+  upstashCommand(["ZCOUNT", leaseKey, "-inf", String(nowMs)]),
 ]);
 
 const usedTokens = Number.parseInt(result?.[0] ?? "0", 10) || 0;
-const remainingTokens = Math.max(tokenLimit - usedTokens, 0);
+const reservedTokens = Number.parseInt(result?.[1] ?? "0", 10) || 0;
+const remainingTokens = Math.max(tokenLimit - usedTokens - reservedTokens, 0);
 
 console.log("Backend:         upstash");
 console.log(`UTC date:        ${quotaDateUtc}`);
 console.log(`Bucket:          ${quotaBucket}`);
 console.log(`Daily limit:     ${tokenLimit.toLocaleString()}`);
 console.log(`Used exact:      ${usedTokens.toLocaleString()}`);
-console.log(`Remaining exact: ${remainingTokens.toLocaleString()}`);
+console.log(`Reserved now:    ${reservedTokens.toLocaleString()}`);
+console.log(`Available now:   ${remainingTokens.toLocaleString()}`);
+console.log(`Live leases:     ${Number(liveLeases ?? 0).toLocaleString()}`);
+// Stale leases are reclaimed by the next admission; a non-zero count here just
+// means no generation has started since they expired.
+console.log(`Stale leases:    ${Number(staleLeases ?? 0).toLocaleString()}`);

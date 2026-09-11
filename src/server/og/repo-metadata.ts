@@ -1,13 +1,10 @@
 import "server-only";
 
-import { getGitHubApiHeaders } from "~/server/github-auth";
-
-type RepoMetadataResponse = {
-  default_branch?: string;
-  private?: boolean;
-  stargazers_count?: number;
-  language?: string | null;
-};
+import {
+  githubRepoSchema,
+  githubUsernameSchema,
+} from "~/server/generate/types";
+import { getStoredDiagramArtifact } from "~/server/storage/artifact-store";
 
 export type RepoSocialMetadata = {
   defaultBranch: string | null;
@@ -16,42 +13,39 @@ export type RepoSocialMetadata = {
   stargazerCount: number | null;
 };
 
-const REVALIDATE_SECONDS = 60 * 30;
-
 export async function getRepoSocialMetadata(
   username: string,
   repo: string,
-): Promise<RepoSocialMetadata> {
+): Promise<RepoSocialMetadata | null> {
+  const parsedUsername = githubUsernameSchema.safeParse(username);
+  const parsedRepo = githubRepoSchema.safeParse(repo);
+  if (!parsedUsername.success || !parsedRepo.success) {
+    return null;
+  }
+
   try {
-    const response = await fetch(`https://api.github.com/repos/${username}/${repo}`, {
-      headers: await getGitHubApiHeaders(),
-      next: {
-        revalidate: REVALIDATE_SECONDS,
-      },
+    const stored = await getStoredDiagramArtifact({
+      username: parsedUsername.data,
+      repo: parsedRepo.data,
     });
-
-    if (!response.ok) {
-      throw new Error(`GitHub request failed (${response.status})`);
+    if (!stored || stored.artifact.visibility !== "public") {
+      return null;
     }
-
-    const data = (await response.json()) as RepoMetadataResponse;
-
-    return {
-      defaultBranch:
-        typeof data.default_branch === "string" ? data.default_branch : null,
-      isPrivate: typeof data.private === "boolean" ? data.private : null,
-      language: typeof data.language === "string" ? data.language : null,
-      stargazerCount:
-        typeof data.stargazers_count === "number" ? data.stargazers_count : null,
-    };
-  } catch (error) {
-    console.error("Failed to fetch repo social metadata:", error);
 
     return {
       defaultBranch: null,
-      isPrivate: null,
+      isPrivate: false,
       language: null,
-      stargazerCount: null,
+      stargazerCount: stored.artifact.stargazerCount,
     };
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "og.repo_metadata.fetch_failed",
+        error: error instanceof Error ? error.message : "Unknown error",
+      }),
+    );
+
+    return null;
   }
 }

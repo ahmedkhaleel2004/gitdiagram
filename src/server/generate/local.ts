@@ -151,6 +151,7 @@ export async function getLocalData(localPath: string): Promise<GithubData> {
     defaultBranch: "local",
     fileTree: files.join("\n"),
     readme: await readReadme(resolvedPath),
+    pathTypes: new Map(),
     isPrivate: true,
     stargazerCount: null,
   };

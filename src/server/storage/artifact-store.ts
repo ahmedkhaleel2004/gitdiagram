@@ -1,16 +1,32 @@
+import { createHash } from "node:crypto";
+
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import type { GenerationSessionAudit } from "~/features/diagram/graph";
+import { redactUpstreamProviderTextForSharedRecord } from "~/server/generate/errors";
 import {
-  getPrivateLocation,
+  getPublicPreviewKey,
   getReadLocations,
   getPublicLocation,
+  getWriteLocation,
   type StorageLocation,
 } from "~/server/storage/cache-key";
-import { getJsonObject, putJsonObject } from "~/server/storage/r2";
+import {
+  getJsonObject,
+  putJsonObject,
+  R2_REQUEST_TIMEOUT_MS,
+} from "~/server/storage/r2";
+import { withDistributedLock } from "~/server/storage/distributed-lock";
 import type {
   ArtifactVisibility,
   DiagramArtifact,
+  PublicDiagramPreview,
 } from "~/server/storage/types";
+
+// Artifact replacement performs a serialized R2 read and write. Keep the
+// lease comfortably above both request timeout budgets, and let contenders
+// wait long enough for one normal replacement to finish.
+const ARTIFACT_LOCK_TTL_MS = R2_REQUEST_TIMEOUT_MS * 2 + 25_000;
+const ARTIFACT_LOCK_WAIT_MS = R2_REQUEST_TIMEOUT_MS * 2 + 10_000;
 
 export function toStoredSessionSummary(
   audit: GenerationSessionAudit,
@@ -28,10 +44,19 @@ export function toStoredSessionSummary(
     quotaResetAt: audit.quotaResetAt,
     estimatedCost: audit.estimatedCost,
     finalCost: audit.finalCost,
-    graph: audit.graph,
+    // Successful artifacts already carry the canonical graph at the top level.
+    // Keep failed-session context, but avoid serializing the same successful
+    // graph twice. Older version-1 artifacts with both copies remain readable.
+    graph: audit.status === "failed" ? audit.graph : null,
     graphAttempts: audit.status === "failed" ? audit.graphAttempts : [],
     stageUsages: [],
-    validationError: audit.validationError,
+    // The live SSE audit may show a caller their own provider's raw error, but
+    // this summary is written to shared storage (the public failure record and
+    // the artifact's latest session summary) and served to later visitors, so
+    // raw upstream provider text must never survive into it.
+    validationError: redactUpstreamProviderTextForSharedRecord(
+      audit.validationError,
+    ),
     failureStage: audit.failureStage,
     compilerError: audit.compilerError,
     renderError: audit.renderError,
@@ -39,6 +64,38 @@ export function toStoredSessionSummary(
     createdAt: audit.createdAt,
     updatedAt: audit.updatedAt,
   };
+}
+
+function getArtifactLockKey(location: StorageLocation): string {
+  const digest = createHash("sha256")
+    .update(`${location.bucket}:${location.artifactKey}`)
+    .digest("hex");
+  return `lock:v1:artifact:${digest}`;
+}
+
+function shouldReplaceSessionSummary(
+  current: GenerationSessionAudit,
+  incoming: GenerationSessionAudit,
+): boolean {
+  const sameSession = current.sessionId === incoming.sessionId;
+  const currentTimestamp = Date.parse(
+    sameSession ? current.updatedAt : current.createdAt,
+  );
+  const incomingTimestamp = Date.parse(
+    sameSession ? incoming.updatedAt : incoming.createdAt,
+  );
+
+  if (!Number.isFinite(incomingTimestamp)) {
+    return false;
+  }
+  if (!Number.isFinite(currentTimestamp)) {
+    return true;
+  }
+  if (incomingTimestamp !== currentTimestamp) {
+    return incomingTimestamp > currentTimestamp;
+  }
+
+  return sameSession || incoming.sessionId > current.sessionId;
 }
 
 function toDiagramStateResponse(
@@ -93,13 +150,31 @@ export async function getStoredDiagramState(params: {
 export async function getPublicDiagramPreview(params: {
   username: string;
   repo: string;
+  expectedLastSuccessfulAt?: string;
 }): Promise<{
   diagram: string;
   lastSuccessfulAt: string;
+  source: "artifact" | "sidecar";
 } | null> {
-  const artifact = await getArtifactForLocation(
-    getPublicLocation(params.username, params.repo),
-  );
+  const location = getPublicLocation(params.username, params.repo);
+  if (params.expectedLastSuccessfulAt) {
+    const preview = await getJsonObject<PublicDiagramPreview>(
+      location.bucket,
+      getPublicPreviewKey(params.username, params.repo),
+    );
+    if (
+      preview?.diagram &&
+      preview.lastSuccessfulAt === params.expectedLastSuccessfulAt
+    ) {
+      return {
+        diagram: preview.diagram,
+        lastSuccessfulAt: preview.lastSuccessfulAt,
+        source: "sidecar",
+      };
+    }
+  }
+
+  const artifact = await getArtifactForLocation(location);
   if (!artifact?.diagram) {
     return null;
   }
@@ -107,7 +182,51 @@ export async function getPublicDiagramPreview(params: {
   return {
     diagram: artifact.diagram,
     lastSuccessfulAt: artifact.lastSuccessfulAt,
+    source: "artifact",
   };
+}
+
+export async function writePublicDiagramPreview(params: {
+  username: string;
+  repo: string;
+  diagram: string;
+  lastSuccessfulAt: string;
+}): Promise<boolean> {
+  const location = getPublicLocation(params.username, params.repo);
+
+  // Deliberately reuses the canonical artifact's lock: the sidecar is only
+  // valid while its artifact is canonical, so the read-check-write below must
+  // serialize against writeDiagramArtifact for the same repo. The sidecar key
+  // itself lives in a separate namespace (see getPublicPreviewKey) and is
+  // never written under any other lock.
+  return withDistributedLock({
+    key: getArtifactLockKey(location),
+    ttlMs: ARTIFACT_LOCK_TTL_MS,
+    waitMs: ARTIFACT_LOCK_WAIT_MS,
+    callback: async () => {
+      const artifact = await getArtifactForLocation(location);
+      if (
+        !artifact ||
+        artifact.lastSuccessfulAt !== params.lastSuccessfulAt ||
+        artifact.diagram !== params.diagram
+      ) {
+        return false;
+      }
+
+      await putJsonObject(
+        location.bucket,
+        getPublicPreviewKey(params.username, params.repo),
+        {
+          version: 1,
+          username: params.username.trim().toLowerCase(),
+          repo: params.repo.trim().toLowerCase(),
+          diagram: params.diagram,
+          lastSuccessfulAt: params.lastSuccessfulAt,
+        } satisfies PublicDiagramPreview,
+      );
+      return true;
+    },
+  });
 }
 
 export async function writeDiagramArtifact(params: {
@@ -123,11 +242,8 @@ export async function writeDiagramArtifact(params: {
   usedOwnKey: boolean;
   latestSessionSummary: GenerationSessionAudit;
   lastSuccessfulAt: string;
-}): Promise<void> {
-  const location =
-    params.visibility === "private"
-      ? getPrivateLocation(params.username, params.repo, params.githubPat ?? "")
-      : getPublicLocation(params.username, params.repo);
+}): Promise<boolean> {
+  const location = getWriteLocation(params);
 
   const artifact: DiagramArtifact = {
     version: 1,
@@ -144,7 +260,26 @@ export async function writeDiagramArtifact(params: {
     lastSuccessfulAt: params.lastSuccessfulAt,
   };
 
-  await putJsonObject(location.bucket, location.artifactKey, artifact);
+  return withDistributedLock({
+    key: getArtifactLockKey(location),
+    ttlMs: ARTIFACT_LOCK_TTL_MS,
+    waitMs: ARTIFACT_LOCK_WAIT_MS,
+    callback: async () => {
+      const currentArtifact = await getArtifactForLocation(location);
+      if (
+        currentArtifact &&
+        !shouldReplaceSessionSummary(
+          currentArtifact.latestSessionSummary,
+          artifact.latestSessionSummary,
+        )
+      ) {
+        return false;
+      }
+
+      await putJsonObject(location.bucket, location.artifactKey, artifact);
+      return true;
+    },
+  });
 }
 
 export async function updateArtifactLatestSessionSummary(params: {
@@ -154,19 +289,32 @@ export async function updateArtifactLatestSessionSummary(params: {
   visibility: ArtifactVisibility;
   latestSessionSummary: GenerationSessionAudit;
 }): Promise<boolean> {
-  const location =
-    params.visibility === "private"
-      ? getPrivateLocation(params.username, params.repo, params.githubPat ?? "")
-      : getPublicLocation(params.username, params.repo);
+  const location = getWriteLocation(params);
 
-  const artifact = await getArtifactForLocation(location);
-  if (!artifact) {
-    return false;
-  }
+  return withDistributedLock({
+    key: getArtifactLockKey(location),
+    ttlMs: ARTIFACT_LOCK_TTL_MS,
+    waitMs: ARTIFACT_LOCK_WAIT_MS,
+    callback: async () => {
+      const artifact = await getArtifactForLocation(location);
+      if (!artifact) {
+        return false;
+      }
 
-  await putJsonObject(location.bucket, location.artifactKey, {
-    ...artifact,
-    latestSessionSummary: params.latestSessionSummary,
-  } satisfies DiagramArtifact);
-  return true;
+      if (
+        !shouldReplaceSessionSummary(
+          artifact.latestSessionSummary,
+          params.latestSessionSummary,
+        )
+      ) {
+        return true;
+      }
+
+      await putJsonObject(location.bucket, location.artifactKey, {
+        ...artifact,
+        latestSessionSummary: params.latestSessionSummary,
+      } satisfies DiagramArtifact);
+      return true;
+    },
+  });
 }
