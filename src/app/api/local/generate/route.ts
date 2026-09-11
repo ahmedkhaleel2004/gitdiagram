@@ -9,6 +9,7 @@ import {
   compileDiagramGraph,
   formatGraphValidationFeedback,
   parseDiagramGraph,
+  repairDiagramGraph,
   stripUnknownNodePaths,
   validateDiagramGraph,
 } from "~/server/generate/graph";
@@ -191,7 +192,10 @@ export async function POST(request: Request) {
             ),
           );
           if (parsed.graph) {
-            const graph = stripUnknownNodePaths(parsed.graph, lookup).graph;
+            const graph = stripUnknownNodePaths(
+              repairDiagramGraph(parsed.graph, lookup),
+              lookup,
+            ).graph;
             const validation = validateDiagramGraph(graph, lookup);
             if (validation.valid) {
               const diagram = compileDiagramGraph({
