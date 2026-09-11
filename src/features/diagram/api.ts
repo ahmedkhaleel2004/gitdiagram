@@ -110,7 +110,10 @@ export async function streamDiagramGeneration(
   }
 
   try {
-    const response = await fetch(`${GENERATE_BASE_PATH}/stream`, {
+    const endpoint = params.localPath
+      ? "/api/local/generate"
+      : `${GENERATE_BASE_PATH}/stream`;
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -119,6 +122,7 @@ export async function streamDiagramGeneration(
       body: JSON.stringify({
         username: params.username,
         repo: params.repo,
+        ...(params.localPath ? { local_path: params.localPath } : {}),
         session_id: sessionId,
         cancel_token: cancelToken,
       }),

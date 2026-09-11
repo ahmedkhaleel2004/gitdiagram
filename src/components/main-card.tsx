@@ -13,6 +13,7 @@ import { SponsorSlot } from "~/components/sponsor-slot";
 import type { GenerationCostSummary } from "~/features/diagram/cost";
 
 interface MainCardProps {
+  localMode?: boolean;
   isHome?: boolean;
   username?: string;
   repo?: string;
@@ -28,6 +29,7 @@ interface MainCardProps {
 }
 
 export default function MainCard({
+  localMode = false,
   isHome = true,
   username,
   repo,
@@ -58,6 +60,10 @@ export default function MainCard({
     e.preventDefault();
     setError("");
 
+    if (localMode) {
+      router.push(`/local?path=${encodeURIComponent(repoUrl.trim())}`);
+      return;
+    }
     const parsed = parseGitHubRepoUrl(repoUrl);
     if (!parsed) {
       setError("Please enter a valid GitHub repository URL or owner/repo");
@@ -84,11 +90,15 @@ export default function MainCard({
       <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <label htmlFor="repository-input" className="sr-only">
-            GitHub repository
+            {localMode ? "Local repository folder" : "GitHub repository"}
           </label>
           <Input
             id="repository-input"
-            placeholder="owner/repo or GitHub URL"
+            placeholder={
+              localMode
+                ? "C:\\path\\to\\repository"
+                : "owner/repo or GitHub URL"
+            }
             className="neo-input h-14 min-w-0 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:h-10 sm:flex-1 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}

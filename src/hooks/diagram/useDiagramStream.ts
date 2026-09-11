@@ -9,6 +9,7 @@ import type {
 interface UseDiagramStreamOptions {
   username: string;
   repo: string;
+  localPath?: string;
   initialState?: DiagramStreamState;
   onComplete: (result: {
     diagram: string;
@@ -22,6 +23,7 @@ interface UseDiagramStreamOptions {
 export function useDiagramStream({
   username,
   repo,
+  localPath,
   initialState,
   onComplete,
 }: UseDiagramStreamOptions) {
@@ -203,6 +205,7 @@ export function useDiagramStream({
         {
           username,
           repo,
+          localPath,
           signal: abortController.signal,
         },
         {
@@ -221,7 +224,7 @@ export function useDiagramStream({
         activeGenerationRef.current = null;
       }
     }
-  }, [handleStreamMessage, repo, username]);
+  }, [handleStreamMessage, localPath, repo, username]);
 
   return {
     state,
