@@ -1,6 +1,8 @@
 import { renderRepoSocialImage } from "./social-image";
 
 export const runtime = "nodejs";
+export const dynamic = "force-static";
+export const revalidate = 86400;
 export const alt = "GitDiagram repository preview";
 export const size = {
   width: 1200,

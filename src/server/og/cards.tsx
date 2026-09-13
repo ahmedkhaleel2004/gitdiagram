@@ -9,9 +9,9 @@ const socialImageSize = {
 
 const SOCIAL_IMAGE_CACHE_HEADERS = {
   "Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
-  "CDN-Cache-Control": "public, max-age=1800, stale-while-revalidate=86400",
+  "CDN-Cache-Control": "public, max-age=86400, stale-while-revalidate=86400",
   "Vercel-CDN-Cache-Control":
-    "public, max-age=1800, stale-while-revalidate=86400",
+    "public, max-age=86400, stale-while-revalidate=86400",
 } as const;
 
 type RepoCardData = {

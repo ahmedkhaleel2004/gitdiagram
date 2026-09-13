@@ -6,7 +6,7 @@ COPY package.json bun.lock ./
 COPY patches ./patches
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:1.3.14-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,9 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV RAILWAY_DOCKER_BUILD=1
 
-RUN bun run build
+# Match the standalone runtime. Bun's Linux ARM64 worker can crash while Next
+# runs its TypeScript build; Bun still handles the frozen dependency install.
+RUN node node_modules/next/dist/bin/next build
 
 FROM node:22-alpine AS runner
 

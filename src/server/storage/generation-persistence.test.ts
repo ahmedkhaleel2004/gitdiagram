@@ -100,7 +100,7 @@ describe("persistGenerationResult", () => {
     );
   });
 
-  it("revalidates both the normalized and the requested page path", async () => {
+  it("revalidates pages and social images for both URL casings", async () => {
     const params = { ...baseParams(), visibility: "public" as const };
 
     await persistGenerationResult(params);
@@ -112,9 +112,25 @@ describe("persistGenerationResult", () => {
     // requested, so a visitor at /Acme/Demo would otherwise hold stale HTML.
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/acme/demo");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/Acme/Demo");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(
+      "/acme/demo/opengraph-image",
+    );
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(
+      "/acme/demo/twitter-image",
+    );
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(
+      "/Acme/Demo/opengraph-image",
+    );
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(
+      "/Acme/Demo/twitter-image",
+    );
+    expect(mocks.revalidateTag).toHaveBeenCalledWith(
+      "public-diagram-state:acme:demo",
+      "max",
+    );
   });
 
-  it("revalidates a single path when the request was already normalized", async () => {
+  it("revalidates each route once when the request was already normalized", async () => {
     const params = {
       ...baseParams(),
       username: "acme",
@@ -127,7 +143,13 @@ describe("persistGenerationResult", () => {
       await task();
     }
 
-    expect(mocks.revalidatePath).toHaveBeenCalledTimes(1);
+    expect(mocks.revalidatePath).toHaveBeenCalledTimes(3);
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/acme/demo");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(
+      "/acme/demo/opengraph-image",
+    );
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(
+      "/acme/demo/twitter-image",
+    );
   });
 });

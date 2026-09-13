@@ -150,6 +150,7 @@ export function BrowseCatalogResults({
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-center xl:flex xl:gap-3 xl:whitespace-nowrap">
                         <Link
                           href={diagramPath}
+                          prefetch={false}
                           className="neo-button inline-flex min-h-[52px] w-full items-center justify-center rounded-md px-4 py-3 text-base font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[148px] xl:px-4"
                         >
                           Open Diagram

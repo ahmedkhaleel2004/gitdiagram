@@ -9,7 +9,9 @@ type RepoPageProps = {
   params: Promise<{ username: string; repo: string }>;
 };
 
-export const revalidate = 300;
+// Successful generations invalidate the page and data tag on demand. Keep
+// unchanged diagrams warm between crawls instead of rebuilding every 5 minutes.
+export const revalidate = 1800;
 export const dynamicParams = true;
 
 export function generateStaticParams() {
