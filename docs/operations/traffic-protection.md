@@ -12,16 +12,13 @@ deployments:
 | Rule | Conditions (all must match) | Action |
 | --- | --- | --- |
 | Amazonbot repository crawl | User agent contains `Amazonbot`; route is `/[username]/[repo]`, `/[username]/[repo]/opengraph-image`, or `/[username]/[repo]/twitter-image` | Deny |
-| Hetzner Safari repository scrape | Route is `/[username]/[repo]`; ASN is `212317` or `213230`; user agent exactly matches the signature below | Challenge |
-
-The hosting-network rule uses this exact user agent:
-
-```text
-Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Safari/605.1.15
-```
+| Hetzner repository scrape | Route is `/[username]/[repo]`; ASN is `212317` or `213230` | Challenge |
 
 These conditions were selected after observing repeated bulk repository crawls.
-They do not apply to ordinary Safari traffic outside those hosting networks,
+The hosting-network crawler rotated Safari and Chrome user-agent signatures,
+so that rule deliberately matches the source networks rather than a browser
+label. Browsers using those networks must complete a verification challenge.
+These rules do not apply to ordinary traffic outside those hosting networks,
 Googlebot, Bingbot, or social link preview clients. The Amazonbot robots policy
 also discourages future repository crawls. Existing API rate limits and alert
 notifications remain enabled.
