@@ -73,3 +73,39 @@ describe("parseGitHubRepoUrl", () => {
     expect(parseGitHubRepoUrl("not-a-url")).toBeNull();
   });
 });
+
+describe("parseGitHubRepoUrl deep links", () => {
+  it.each([
+    "https://github.com/vercel/next.js/",
+    "https://github.com/vercel/next.js/tree/canary/packages/next",
+    "https://github.com/vercel/next.js/blob/canary/README.md",
+    "https://github.com/vercel/next.js/issues/123",
+    "https://github.com/vercel/next.js/pull/456/files",
+    "https://github.com/vercel/next.js?tab=readme-ov-file",
+    "https://github.com/vercel/next.js#readme",
+    "https://github.com/vercel/next.js.git/tree/canary",
+    "https://www.github.com/vercel/next.js",
+  ])("resolves %s to the repository", (input) => {
+    expect(parseGitHubRepoUrl(input)).toEqual({
+      username: "vercel",
+      repo: "next.js",
+    });
+  });
+
+  it("parses ssh clone urls", () => {
+    expect(parseGitHubRepoUrl("git@github.com:vercel/next.js.git")).toEqual({
+      username: "vercel",
+      repo: "next.js",
+    });
+    expect(parseGitHubRepoUrl("ssh://git@github.com/vercel/next.js")).toEqual({
+      username: "vercel",
+      repo: "next.js",
+    });
+  });
+
+  it("still rejects urls without a repository segment", () => {
+    expect(parseGitHubRepoUrl("https://github.com/vercel")).toBeNull();
+    expect(parseGitHubRepoUrl("https://github.com/")).toBeNull();
+    expect(parseGitHubRepoUrl("https://github.com/vercel//next.js")).toBeNull();
+  });
+});
