@@ -1,33 +1,29 @@
 # Generation preview
 
 Run `bun run dev`, then open <http://localhost:3000/dev/generation>.
+Use `?focus=1` for the quiet view; **Preview controls** reveals the simulator controls.
 
-The preview plays automatically. Use **Scenario**, **Jump to**, and playback controls to inspect normal generation, a slow first response, missing connection updates, automatic refinement, and errors. **Stop** and **Try again** exercise recovery. The finished sample uses the actual Mermaid renderer.
+The fixtures use the production components without generation requests or credits. The page returns **404 outside development**. Remove this directory when the temporary preview is no longer needed.
 
-Fixtures run locally without generation API calls or credits. The page shares the production components and returns **404 outside development**. Remove this directory when the temporary preview is no longer needed.
+## Design direction
 
-## Design review
+The generation view follows the user's September 17 correction: soft colour, fluid motion, very little text, and no card or visible progress checklist. A small translucent form moves gently above one phase label. The repository name, elapsed time, and Cancel remain available. The repository form returns when generation ends.
 
-[Generative Loaders](https://generativeloaders.com/), [muload](https://muload.dev/), and [loaders.wtf](https://www.loaders.wtf/) informed the compact motion direction. The user liked the first reference's style, but their exact remembered site has not been identified. No library, purchased component, or new dependency was added.
+The short phase labels follow actual server events. After 20 seconds with server activity the view says **Still working**. After 25 seconds without activity it says **Waiting for updates** and pauses the moving form. Local diagram rendering is not mistaken for a disconnected stream. No percentage, intermediate graph, or connection claim is invented.
 
-| Before                                              | After                                                                            | Why                                                                                |
-| --------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Large decorative generation panels                  | One compact card, a small animated glyph, restrained typography                  | Keeps the requested minimal style while retaining GitDiagram's purple palette.     |
-| No visible evidence during the model's initial wait | Immediate status, elapsed time, actual source count, server activity indicator   | Confirms receipt and distinguishes model thinking from missing connection updates. |
-| Keep-alives discarded by the UI                     | Every nonempty stream chunk records activity, throttled to one update per second | The server already sends heartbeats during the quiet analysis period.              |
-| Generic loading messages                            | Read source, Analyze, Build diagram follow server events                         | No invented progress percentages or fabricated intermediate diagrams.              |
-| Streamed text dominates the page                    | Optional architecture overview, collapsed by default                             | Gives curious readers detail while keeping the diagram primary.                    |
-| Stream updates pull the whole page                  | Only the expanded overview follows new text; manual scrolling pauses following   | Preserves the reader's place. Completed overviews start at the beginning.          |
-| Blank interval before Mermaid renders               | Keep loading feedback until successful rendering                                 | A completed API stream is not yet a visible diagram.                               |
-| No clear interruption control                       | Stop aborts the stream and invalidates a pending cache lookup                    | A stopped cache lookup cannot silently start a paid generation later.              |
-| Chunky repository toolbar                           | Thin input borders and quiet action controls                                     | Aligns the repository page with the loading experience.                            |
+Streamed prose stays off the generation canvas. The completed architecture overview remains available beside the finished diagram, and failed generations preserve their overview. Loading feedback remains visible until Mermaid reports a successful render.
 
-Connection status is evidence of server traffic, not a claim that the model has produced text. After 25 seconds without updates it reads **Waiting for updates**, pauses the activity treatment, and offers wait/stop guidance. This change does not alter model quality, reasoning settings, or token generation speed.
+Motion uses small transforms on the decorative shape, with no full-screen moving background. Phase labels and the completed result enter with short transitions. Reduced motion removes animation while keeping status and connection feedback. Light and dark colours are tuned separately; small text has a higher-contrast alternative.
 
-## Verification
+## Review scenarios
 
-- 506 tests across 75 files pass, including keep-alives before text, phase/source retention, cancellation races, preserved error context, escaped Markdown, scroll following, delayed rendering, and failed rendering.
-- ESLint, TypeScript, formatting, production build, performance budgets, dependency audit, and unused-code checks are part of the release verification.
-- React Doctor remains 90/100 with no bug diagnostics; remaining warnings concern component control-flow size.
-- Browser review covers desktop, 390 px and 320 px layouts, light/dark, reduced motion, keyboard disclosure, missing updates, stop/retry, and real generation through rendered output.
-- A real `mahadahmed25/devpulse-ai` regeneration completed with 22 components and 27 connections. Initial analysis remained visibly connected while waiting for model text.
+Use **Scenario**, **Jump to**, and playback controls to inspect:
+
+- Normal generation and the actual Mermaid result.
+- A slow first response with healthy server keep-alives.
+- Missing updates and recovery after a connection error.
+- Automatic diagram refinement.
+- Immediate Cancel and Try again.
+- Light/dark, 320 px / 390 px screens, and reduced motion.
+
+The Apple design skill informed the new direction. No component library or animation dependency was added, and the model/quality configuration is unchanged.

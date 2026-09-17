@@ -27,24 +27,24 @@ export function generationCopy(status: DiagramStreamStatus) {
   switch (status) {
     case "idle":
       return {
-        title: "Opening diagram",
+        title: "Opening your diagram",
         description: "Checking for a saved diagram.",
       };
     case "started":
       return {
-        title: "Reading repository",
+        title: "Reading the source",
         description: "Gathering the README, file tree, and source files.",
       };
     case "explanation_sent":
     case "explanation":
     case "explanation_chunk":
       return {
-        title: "Analyzing repository",
+        title: "Finding the connections",
         description: "Understanding the components and how they connect.",
       };
     case "graph_retry":
       return {
-        title: "Refining the diagram",
+        title: "A few finishing touches",
         description: "Checking the connections and resolving inconsistencies.",
       };
     case "graph_validating":
@@ -57,7 +57,7 @@ export function generationCopy(status: DiagramStreamStatus) {
       };
     default:
       return {
-        title: "Building your diagram",
+        title: "Bringing it together",
         description:
           "Turning the architecture into components and connections.",
       };

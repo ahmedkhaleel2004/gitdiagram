@@ -7,7 +7,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function GenerationPlaygroundPage() {
+export default async function GenerationPlaygroundPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ focus?: string }>;
+}) {
   if (process.env.NODE_ENV !== "development") notFound();
-  return <GenerationPlayground />;
+  const { focus } = await searchParams;
+  return <GenerationPlayground focused={focus === "1"} />;
 }

@@ -73,6 +73,7 @@ export default function RepoPageClient({
 
   const hasDiagram = Boolean(diagram);
   const hasError = Boolean(error || state.error);
+  const generating = loading || (hasDiagram && !diagramRendered && !hasError);
   // Offer the personal-key escape hatch on any rate-limited generation, not
   // only when the error text happens to mention an API key.
   const showApiKeyCta =
@@ -141,24 +142,30 @@ export default function RepoPageClient({
 
   return (
     <TooltipProvider delayDuration={500} skipDelayDuration={300}>
-      <main className="flex flex-col items-center p-4">
-        <div className="flex w-full justify-center pt-8">
-          <MainCard
-            isHome={false}
-            username={normalizedUsername}
-            repo={normalizedRepo}
-            hasDiagram={hasDiagram}
-            onCopy={handleCopy}
-            lastGenerated={lastGenerated}
-            costSummary={state.costSummary}
-            onExportImage={handleExportImage}
-            onRegenerate={handleRegenerate}
-            zoomingEnabled={zoomingEnabled}
-            onZoomToggle={() => setZoomingEnabled((prev) => !prev)}
-            loading={loading}
-          />
-        </div>
-        <div className="mt-8 flex w-full flex-col items-center gap-8">
+      <main
+        className={`flex flex-col items-center p-4 ${generating ? "min-h-[calc(100svh-142px)] justify-center" : ""}`}
+      >
+        {!generating && (
+          <div className="flex w-full justify-center pt-8">
+            <MainCard
+              isHome={false}
+              username={normalizedUsername}
+              repo={normalizedRepo}
+              hasDiagram={hasDiagram}
+              onCopy={handleCopy}
+              lastGenerated={lastGenerated}
+              costSummary={state.costSummary}
+              onExportImage={handleExportImage}
+              onRegenerate={handleRegenerate}
+              zoomingEnabled={zoomingEnabled}
+              onZoomToggle={() => setZoomingEnabled((prev) => !prev)}
+              loading={loading}
+            />
+          </div>
+        )}
+        <div
+          className={`flex w-full flex-col items-center gap-8 ${generating ? "" : "mt-8"}`}
+        >
           {loading ? (
             <Loading
               repository={`${normalizedUsername}/${normalizedRepo}`}

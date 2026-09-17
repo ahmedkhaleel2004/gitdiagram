@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Loading from "~/components/loading";
+import { ArchitectureNotes } from "~/components/generation/architecture-notes";
 
 afterEach(() => {
   cleanup();
@@ -26,7 +27,7 @@ describe("generation experience", () => {
     render(
       <Loading status="started" repository="acme/demo" onCancel={vi.fn()} />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("Reading repository");
+    expect(screen.getByRole("status")).toHaveTextContent("Reading the source");
     expect(screen.getByText("Connecting")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Stop generation" }),
@@ -59,18 +60,15 @@ describe("generation experience", () => {
         sourceFileCount={12}
       />,
     );
-    expect(screen.getByText("Connected")).toBeInTheDocument();
+    expect(screen.getByText("Still working")).toBeInTheDocument();
     expect(screen.getByLabelText("40 seconds elapsed")).toHaveTextContent(
       "0:40",
     );
     expect(
-      screen.getByText("Analysis can take about a minute"),
-    ).toBeInTheDocument();
-    expect(
       screen.getByText("12 source files · README and file tree"),
     ).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Analyzing repository",
+      "Finding the connections",
     );
   });
 
@@ -81,15 +79,42 @@ describe("generation experience", () => {
       "step",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Refining the diagram",
+      "A few finishing touches",
     );
   });
 
-  it("keeps notes optional and escapes streamed markup", () => {
+  it("reports a connection that never starts, but not a local rendering delay", () => {
+    const { rerender } = render(
+      <Loading status="started" elapsedSeconds={30} />,
+    );
+    expect(screen.getByText("Waiting for updates")).toBeInTheDocument();
+    rerender(<Loading status="diagram_compiling" elapsedSeconds={30} />);
+    expect(screen.queryByText("Waiting for updates")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Drawing your diagram",
+    );
+  });
+
+  it("keeps streamed details out of the generation canvas", () => {
     render(
       <Loading
         status="explanation_chunk"
-        explanation={
+        explanation="A long architecture overview"
+      />,
+    );
+    expect(
+      screen.queryByText("A long architecture overview"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Architecture overview" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the saved overview optional and escapes markup", () => {
+    render(
+      <ArchitectureNotes
+        streaming={false}
+        text={
           "## Architecture\n<script>alert(1)</script>\n**Important and `src/app`**"
         }
       />,
@@ -107,7 +132,7 @@ describe("generation experience", () => {
     const pageScroll = vi.fn();
     HTMLElement.prototype.scrollIntoView = pageScroll;
     const { rerender } = render(
-      <Loading status="explanation_chunk" explanation="Earlier architecture" />,
+      <ArchitectureNotes streaming text="Earlier architecture" />,
     );
     openOverview();
     const pane = screen.getByTestId("generation-stream");
@@ -116,18 +141,15 @@ describe("generation experience", () => {
       clientHeight: { configurable: true, value: 200 },
     });
     rerender(
-      <Loading
-        status="explanation_chunk"
-        explanation="Earlier architecture\nMore notes"
-      />,
+      <ArchitectureNotes streaming text="Earlier architecture\nMore notes" />,
     );
     await waitFor(() => expect(pane.scrollTop).toBe(1000));
     pane.scrollTop = 250;
     fireEvent.scroll(pane);
     rerender(
-      <Loading
-        status="explanation_chunk"
-        explanation="Earlier architecture\nMore notes\nLatest notes"
+      <ArchitectureNotes
+        streaming
+        text="Earlier architecture\nMore notes\nLatest notes"
       />,
     );
     expect(pane.scrollTop).toBe(250);

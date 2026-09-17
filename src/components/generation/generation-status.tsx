@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
 import { GENERATION_STEPS } from "./progress";
-import styles from "./generation.module.css";
 
 export function useGenerationClock({
   running,
@@ -34,7 +32,7 @@ export function useGenerationClock({
 
 export function GenerationSteps({ step }: { step: number }) {
   return (
-    <ol className={styles.steps} aria-label="Generation progress">
+    <ol aria-label="Generation progress">
       {GENERATION_STEPS.map((label, index) => (
         <li
           key={label}
@@ -43,11 +41,6 @@ export function GenerationSteps({ step }: { step: number }) {
           }
           aria-current={index === step ? "step" : undefined}
         >
-          {index < step ? (
-            <Check size={12} aria-hidden="true" />
-          ) : (
-            <span className={styles.stepDot} aria-hidden="true" />
-          )}
           {label}
           <span className="sr-only">
             {index < step

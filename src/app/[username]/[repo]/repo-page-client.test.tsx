@@ -31,8 +31,17 @@ vi.mock("~/components/main-card", () => ({
 }));
 
 vi.mock("~/components/mermaid-diagram", () => ({
-  default: ({ chart }: { chart: string }) => (
-    <div data-testid="diagram">{chart}</div>
+  default: ({
+    chart,
+    onRenderComplete,
+  }: {
+    chart: string;
+    onRenderComplete?: () => void;
+  }) => (
+    <div data-testid="diagram">
+      {chart}
+      <button onClick={onRenderComplete}>Finish rendering</button>
+    </div>
   ),
 }));
 
@@ -177,7 +186,7 @@ describe("RepoPageClient", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("preserves a final estimated cost after generation completes", () => {
+  it("restores the toolbar and final cost once the diagram is visible", async () => {
     const costSummary = {
       kind: "estimate",
       approximate: true,
@@ -207,6 +216,13 @@ describe("RepoPageClient", () => {
 
     render(<RepoPageClient username="Acme" repo="Demo" />);
 
+    expect(screen.queryByTestId("main-card")).not.toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Finish rendering",
+        hidden: true,
+      }),
+    );
     expect(mainCardProps).toHaveBeenCalledWith(
       expect.objectContaining({ costSummary }),
     );

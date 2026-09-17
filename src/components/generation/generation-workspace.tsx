@@ -1,7 +1,7 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
-import { CircleAlert, GitBranch, Pause, Square } from "lucide-react";
+import type { ReactNode } from "react";
+import { CircleAlert, Pause } from "lucide-react";
 import type { DiagramStreamStatus } from "~/features/diagram/types";
 import type { DiagramGraph } from "~/features/diagram/graph";
 import { ArchitectureNotes } from "./architecture-notes";
@@ -52,24 +52,26 @@ export function GenerationWorkspace({
     elapsedSeconds !== undefined && startedAt !== undefined
       ? startedAt + seconds * 1000
       : now;
+  const rendering = status === "diagram_compiling" || status === "complete";
   const quiet =
-    lastActivityAt !== undefined && activityClock - lastActivityAt > 25_000;
-  const connecting =
-    lastActivityAt === undefined &&
-    status !== "diagram_compiling" &&
-    status !== "complete";
+    !rendering &&
+    (lastActivityAt !== undefined
+      ? activityClock - lastActivityAt > 25_000
+      : seconds > 25);
+  const connecting = lastActivityAt === undefined && !rendering;
   const copy = generationCopy(status);
   const title = failed
     ? cancelled
       ? "Generation stopped"
-      : "Couldn’t complete the diagram"
+      : "Let’s try that again"
     : copy.title;
-  const streaming = step === 1 && !failed;
-  const detail = failed
-    ? error
-    : quiet
-      ? "No updates have arrived recently. You can wait a little longer or stop and retry."
-      : copy.description;
+  const connection = quiet
+    ? "Waiting for updates"
+    : connecting
+      ? "Connecting"
+      : seconds >= 20 && !rendering
+        ? "Still working"
+        : undefined;
   const duration = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
@@ -77,113 +79,75 @@ export function GenerationWorkspace({
       className={styles.workspace}
       aria-label="Diagram generation"
       data-state={failed ? "error" : quiet ? "quiet" : "running"}
+      data-stage={step}
       data-paused={paused}
     >
-      {repository && (
-        <div className={styles.repository}>
-          <GitBranch size={13} aria-hidden="true" />
-          <span>{repository}</span>
-        </div>
-      )}
-      <div className={styles.statusRow}>
-        <div className={styles.indicator} aria-hidden="true">
-          {failed ? (
-            cancelled ? (
-              <Pause size={22} />
-            ) : (
-              <CircleAlert size={22} />
-            )
-          ) : (
-            <span className={styles.glyph}>
-              {Array.from({ length: 9 }, (_, index) => (
-                <i key={index} style={{ "--dot": index } as CSSProperties} />
-              ))}
-            </span>
-          )}
-        </div>
+      <div className={styles.atmosphere} aria-hidden="true">
+        <div className={styles.halo} />
+        {failed ? (
+          <div className={styles.errorSymbol}>
+            {cancelled ? <Pause size={28} /> : <CircleAlert size={28} />}
+          </div>
+        ) : (
+          <div className={styles.bloom}>
+            <i className={styles.petalOne} />
+            <i className={styles.petalTwo} />
+            <i className={styles.petalThree} />
+            <i className={styles.glint} />
+          </div>
+        )}
+      </div>
+      <div className={styles.message}>
         <div
           className={styles.heading}
           role={failed ? "alert" : "status"}
           aria-live="polite"
           aria-atomic="true"
         >
-          <h2 className={!failed && !quiet ? styles.shimmer : undefined}>
-            {title}
-          </h2>
-          <p>{detail}</p>
+          <h2 key={title}>{title}</h2>
+          {failed ? <p className={styles.errorDetail}>{error}</p> : null}
+          {!failed && <span className="sr-only">{copy.description}</span>}
         </div>
-        {!failed && (
-          <div className={styles.controls}>
+        {repository && <p className={styles.repository}>{repository}</p>}
+        {!failed ? (
+          <div className={styles.activity}>
+            <span className={styles.connection} aria-live="polite">
+              {connection}
+            </span>
             <span
               className={styles.elapsed}
               aria-label={`${seconds} seconds elapsed`}
             >
               {duration}
             </span>
-            {onCancel && (
-              <button
-                className={styles.stopButton}
-                type="button"
-                aria-label="Stop generation"
-                title="Stop generation"
-                onClick={onCancel}
-              >
-                <Square size={11} fill="currentColor" aria-hidden="true" />
-              </button>
-            )}
           </div>
-        )}
+        ) : null}
       </div>
       {!failed && (
-        <div className={styles.context}>
-          {graph
-            ? `${graph.nodes.length} components · ${graph.edges.length} connections`
-            : sourceFileCount !== undefined
-              ? `${sourceFileCount ? `${sourceFileCount} source files · ` : ""}README and file tree`
-              : status === "idle"
-                ? "Your diagram will open here."
-                : "Preparing repository context"}
+        <div className="sr-only">
+          {graph ? (
+            <p>
+              {graph.nodes.length} components · {graph.edges.length} connections
+            </p>
+          ) : sourceFileCount !== undefined ? (
+            <p>{sourceFileCount} source files · README and file tree</p>
+          ) : null}
+          <GenerationSteps step={step} />
         </div>
       )}
-      {!failed && <GenerationSteps step={step} />}
+      {!failed && onCancel && (
+        <button
+          className={styles.stopButton}
+          type="button"
+          aria-label="Stop generation"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      )}
       {failed && recovery && <div className={styles.recovery}>{recovery}</div>}
-      {!failed && (
-        <div className={styles.connectionRow}>
-          <span
-            className={styles.connection}
-            data-connected={!connecting && !quiet}
-            data-quiet={quiet}
-          >
-            <i aria-hidden="true" />
-            {quiet
-              ? "Waiting for updates"
-              : connecting
-                ? "Connecting"
-                : status === "diagram_compiling" || status === "complete"
-                  ? "Rendering diagram"
-                  : "Connected"}
-          </span>
-          <span className={styles.waiting}>
-            {quiet
-              ? ""
-              : streaming && !explanation
-                ? seconds >= 20
-                  ? "Analysis can take about a minute"
-                  : "The overview will appear when it’s ready"
-                : streaming
-                  ? "Receiving architecture overview"
-                  : step === 2
-                    ? "Preparing the interactive view"
-                    : ""}
-          </span>
-        </div>
-      )}
-      {explanation && (
-        <ArchitectureNotes
-          text={explanation}
-          streaming={streaming}
-          initiallyExpanded={false}
-        />
+      {failed && explanation && (
+        <ArchitectureNotes text={explanation} streaming={false} />
       )}
     </section>
   );
