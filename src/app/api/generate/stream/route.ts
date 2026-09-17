@@ -52,7 +52,6 @@ import {
 import {
   getModel,
   getProvider,
-  getProviderLabel,
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
 import { streamCompletion } from "~/server/generate/openai";
@@ -89,7 +88,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const FREE_GENERATION_INPUT_TOKEN_LIMIT = 100_000;
 const HARD_GENERATION_INPUT_TOKEN_LIMIT = 195_000;
 // Reserve enough of Vercel's 300s budget for quota reconciliation and a
 // contention-safe R2 write even when an upstream generation runs unusually long.
@@ -271,7 +269,6 @@ export async function POST(request: Request) {
             message: "Fetching repository data...",
           });
           const provider = getProvider();
-          const providerLabel = getProviderLabel(provider);
           const model = getModel(provider);
           assertModelPricingAvailable(model);
 
@@ -412,25 +409,6 @@ export async function POST(request: Request) {
               session_id: audit.sessionId,
               error,
               error_code: "TOKEN_LIMIT_EXCEEDED",
-              validation_error: error,
-              failure_stage: "started",
-              cost_summary: audit.finalCost ?? audit.estimatedCost,
-              latest_session_audit: audit,
-            });
-            return;
-          }
-
-          if (tokenCount > FREE_GENERATION_INPUT_TOKEN_LIMIT && !apiKey) {
-            const error = `File tree and README combined exceeds token limit (${FREE_GENERATION_INPUT_TOKEN_LIMIT.toLocaleString("en-US")}). This repository is too large for free generation. Provide your own ${providerLabel} API key to continue.`;
-            audit = withFailure(audit, {
-              failureStage: "started",
-              validationError: error,
-            });
-            queueTerminal({
-              status: "error",
-              session_id: audit.sessionId,
-              error,
-              error_code: "API_KEY_REQUIRED",
               validation_error: error,
               failure_stage: "started",
               cost_summary: audit.finalCost ?? audit.estimatedCost,

@@ -55,6 +55,12 @@ describe("complimentary gate", () => {
     ).toBe(false);
   });
 
+  it("does not apply the daily quota when explicitly disabled", () => {
+    process.env.OPENAI_COMPLIMENTARY_GATE_ENABLED = "false";
+
+    expect(shouldApplyComplimentaryGate({ provider: "openai" })).toBe(false);
+  });
+
   it("matches the complimentary family by resolved pricing model", () => {
     process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.6-terra";
 

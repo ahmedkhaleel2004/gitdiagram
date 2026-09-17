@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   finalizeQuota: vi.fn(),
   generateStructuredOutput: vi.fn(),
   getGithubData: vi.fn(),
+  isComplimentaryGateEnabled: vi.fn(),
+  shouldApplyComplimentaryGate: vi.fn(),
   persistAudit: vi.fn(),
   consumeInfrastructureRateLimit: vi.fn(),
   consumeRateLimit: vi.fn(),
@@ -54,9 +56,9 @@ vi.mock("~/server/generate/complimentary-gate", () => ({
   getComplimentaryDenialMessage: vi.fn(() => "Daily limit reached."),
   getComplimentaryModelMismatchMessage: vi.fn(() => "Model mismatch."),
   getComplimentaryProviderMismatchMessage: vi.fn(() => "Provider mismatch."),
-  isComplimentaryGateEnabled: vi.fn(() => true),
+  isComplimentaryGateEnabled: mocks.isComplimentaryGateEnabled,
   modelMatchesComplimentaryFamily: vi.fn(() => true),
-  shouldApplyComplimentaryGate: vi.fn(() => true),
+  shouldApplyComplimentaryGate: mocks.shouldApplyComplimentaryGate,
 }));
 vi.mock("~/server/generate/cost-estimate", () => ({
   estimateGenerationCost: mocks.estimateCost,
@@ -137,6 +139,8 @@ function readSseEvents(body: string): Array<Record<string, unknown>> {
 describe("POST /api/generate/stream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isComplimentaryGateEnabled.mockReturnValue(true);
+    mocks.shouldApplyComplimentaryGate.mockReturnValue(true);
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.getGithubData.mockResolvedValue({
@@ -294,15 +298,28 @@ describe("POST /api/generate/stream", () => {
     expect(mocks.streamCompletion).not.toHaveBeenCalled();
   });
 
-  it("requires an API key between the free and hard token limits", async () => {
+  it("allows a large repository on the server key when the daily gate is disabled", async () => {
     mockEstimate(150_000);
+    mocks.isComplimentaryGateEnabled.mockReturnValue(false);
+    mocks.shouldApplyComplimentaryGate.mockReturnValue(false);
+    mocks.admitQuota.mockResolvedValue({ admitted: false });
+    mocks.streamCompletion.mockRejectedValue(new Error("Provider unavailable"));
 
     const response = await POST(request());
     const body = await response.text();
 
-    expect(body).toContain('"error_code":"API_KEY_REQUIRED"');
+    expect(body).not.toContain('"error_code":"API_KEY_REQUIRED"');
+    expect(body).not.toContain('"error_code":"DAILY_FREE_TOKEN_LIMIT_REACHED"');
+    expect(body).toContain('"error_code":"STREAM_FAILED"');
     expect(mocks.admitQuota).not.toHaveBeenCalled();
-    expect(mocks.streamCompletion).not.toHaveBeenCalled();
+    expect(mocks.streamCompletion).toHaveBeenCalledTimes(1);
+    expect(mocks.finalizeQuota).not.toHaveBeenCalled();
+    expect(mocks.estimateCost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: undefined,
+        includeGraphRepairInputTokens: false,
+      }),
+    );
   });
 
   it("uses same-origin stored credentials resolved at the request boundary", async () => {
