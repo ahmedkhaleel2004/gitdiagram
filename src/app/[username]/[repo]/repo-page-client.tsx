@@ -114,17 +114,11 @@ export default function RepoPageClient({
 
   const recoveryActions = (
     <>
-      <Button
-        onClick={() => void handleRegenerate()}
-        className="neo-button px-4 py-2"
-      >
+      <Button onClick={() => void handleRegenerate()} className="px-4 py-2">
         Try again
       </Button>
       {showGithubAccessCta && (
-        <Button
-          onClick={() => setShowGithubAccess(true)}
-          className="neo-button px-4 py-2"
-        >
+        <Button onClick={() => setShowGithubAccess(true)} className="px-4 py-2">
           GitHub Access
         </Button>
       )}
@@ -137,10 +131,7 @@ export default function RepoPageClient({
         Open repository on GitHub
       </a>
       {showApiKeyCta && (
-        <Button
-          onClick={handleOpenApiKeyDialog}
-          className="neo-button px-4 py-2"
-        >
+        <Button onClick={handleOpenApiKeyDialog} className="px-4 py-2">
           <Key className="mr-2 h-5 w-5" />
           Use Your AI Key
         </Button>

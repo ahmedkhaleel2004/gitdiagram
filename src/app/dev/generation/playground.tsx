@@ -197,7 +197,7 @@ export default function GenerationPlayground() {
           recovery={
             <button
               type="button"
-              className="neo-button rounded-md px-4 py-2 text-xs font-semibold"
+              className="rounded-md px-4 py-2 text-xs font-medium"
               onClick={() => restart(true)}
             >
               Try again
