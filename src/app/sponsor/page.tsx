@@ -23,12 +23,12 @@ type Stat = {
 const lifetimeStats: Stat[] = [
   {
     label: "Tracked unique visitors",
-    value: "366,237",
+    value: "366,235",
     detail: "Tracked since Dec 26, 2024",
   },
   {
     label: "Pageviews",
-    value: "846,735",
+    value: "846,732",
     detail: "Across GitDiagram",
   },
   {
@@ -41,17 +41,17 @@ const lifetimeStats: Stat[] = [
 const monthlyStats: Stat[] = [
   {
     label: "Tracked unique visitors",
-    value: "31,643",
+    value: "31,666",
     detail: "Unique, across GitDiagram",
   },
   {
     label: "Pageviews",
-    value: "81,298",
+    value: "81,385",
     detail: "Across GitDiagram",
   },
   {
     label: "Repo page visitors",
-    value: "27,713",
+    value: "27,731",
     detail: "Unique visitors to repository pages",
   },
 ];
@@ -59,19 +59,19 @@ const monthlyStats: Stat[] = [
 const surfaces = [
   {
     name: "Repo diagram pages",
-    pageviews: "57,496",
+    pageviews: "57,536",
     description:
       "Sponsor line placed on generated repository diagram pages, right after the primary diagram experience.",
   },
   {
     name: "Homepage",
-    pageviews: "11,587",
+    pageviews: "11,605",
     description:
       "Native sponsor line near the repository input, in front of developers as they start a lookup.",
   },
   {
     name: "Browse catalog",
-    pageviews: "8,329",
+    pageviews: "8,350",
     description:
       "Placement on the catalog where developers explore public repositories.",
   },
