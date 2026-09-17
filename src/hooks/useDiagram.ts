@@ -351,7 +351,8 @@ export function useDiagram(
 
   const diagram = state.diagram ?? "";
   const error = state.error ?? "";
-  const { handleCopy, handleExportImage } = useDiagramExport(diagram);
+  const { handleCopy, handleExportImage, handleExportPdf } =
+    useDiagramExport(diagram);
 
   const handleApiKeySaved = async () => {
     await runGenerationOperation(
@@ -391,6 +392,7 @@ export function useDiagram(
     handleCloseApiKeyDialog,
     handleOpenApiKeyDialog,
     handleExportImage,
+    handleExportPdf,
     handleRegenerate,
     handleDiagramRenderError,
     state,

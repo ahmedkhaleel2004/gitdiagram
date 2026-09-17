@@ -72,6 +72,7 @@ describe("RepoPageClient", () => {
       handleCloseApiKeyDialog: vi.fn(),
       handleOpenApiKeyDialog: vi.fn(),
       handleExportImage: vi.fn(),
+      handleExportPdf: vi.fn(),
       handleRegenerate: vi.fn(),
       handleDiagramRenderError: vi.fn(),
       state: {
@@ -107,6 +108,7 @@ describe("RepoPageClient", () => {
       handleCloseApiKeyDialog: vi.fn(),
       handleOpenApiKeyDialog: vi.fn(),
       handleExportImage: vi.fn(),
+      handleExportPdf: vi.fn(),
       handleRegenerate: vi.fn(),
       handleDiagramRenderError: vi.fn(),
       state: {
@@ -137,6 +139,7 @@ describe("RepoPageClient", () => {
       handleCloseApiKeyDialog: vi.fn(),
       handleOpenApiKeyDialog: vi.fn(),
       handleExportImage: vi.fn(),
+      handleExportPdf: vi.fn(),
       handleRegenerate: vi.fn(),
       handleDiagramRenderError: vi.fn(),
       state: {
@@ -166,6 +169,7 @@ describe("RepoPageClient", () => {
       handleCloseApiKeyDialog: vi.fn(),
       handleOpenApiKeyDialog: vi.fn(),
       handleExportImage: vi.fn(),
+      handleExportPdf: vi.fn(),
       handleRegenerate: vi.fn(),
       handleDiagramRenderError: vi.fn(),
       state: {
@@ -201,6 +205,7 @@ describe("RepoPageClient", () => {
       handleCloseApiKeyDialog: vi.fn(),
       handleOpenApiKeyDialog: vi.fn(),
       handleExportImage: vi.fn(),
+      handleExportPdf: vi.fn(),
       handleRegenerate: vi.fn(),
       handleDiagramRenderError: vi.fn(),
       state: {
