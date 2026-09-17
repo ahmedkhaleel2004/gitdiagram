@@ -77,7 +77,6 @@ describe("admitGenerationRequest", () => {
       value: {
         username: "openai",
         repo: "openai-node",
-        cancellationRegistered: false,
       },
     });
     if (result.admitted) {
@@ -121,53 +120,6 @@ describe("admitGenerationRequest", () => {
       });
     }
     expect(mocks.registerActiveGeneration).not.toHaveBeenCalled();
-  });
-
-  it("refunds the limiter when cancellation registration is unavailable", async () => {
-    mocks.registerActiveGeneration.mockRejectedValue(new Error("Redis down"));
-
-    const result = await admitGenerationRequest(
-      request({
-        session_id: "550e8400-e29b-41d4-a716-446655440000",
-        cancel_token: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-      }),
-    );
-
-    expect(result.admitted).toBe(false);
-    if (!result.admitted) {
-      expect(result.response.status).toBe(503);
-    }
-    expect(mocks.refundRateLimit).toHaveBeenCalledWith({
-      clientIp: "203.0.113.10",
-    });
-    expect(mocks.refundInfrastructureRateLimit).toHaveBeenCalledWith({
-      clientIp: "203.0.113.10",
-    });
-  });
-
-  it("refunds the limiter when the requested session already exists", async () => {
-    mocks.registerActiveGeneration.mockResolvedValue(false);
-
-    const result = await admitGenerationRequest(
-      request({
-        session_id: "550e8400-e29b-41d4-a716-446655440000",
-        cancel_token: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-      }),
-    );
-
-    expect(result.admitted).toBe(false);
-    if (!result.admitted) {
-      expect(result.response.status).toBe(409);
-      await expect(result.response.json()).resolves.toMatchObject({
-        error_code: "SESSION_CONFLICT",
-      });
-    }
-    expect(mocks.refundRateLimit).toHaveBeenCalledWith({
-      clientIp: "203.0.113.10",
-    });
-    expect(mocks.refundInfrastructureRateLimit).toHaveBeenCalledWith({
-      clientIp: "203.0.113.10",
-    });
   });
 
   it("rejects infrastructure abuse even when a model key is present", async () => {

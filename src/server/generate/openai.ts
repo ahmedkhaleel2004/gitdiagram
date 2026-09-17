@@ -425,3 +425,123 @@ export async function generateStructuredOutput<T>({
     rethrowAsUpstreamProviderError(error);
   }
 }
+
+export async function streamStructuredOutput<T>({
+  provider,
+  model,
+  systemPrompt,
+  userPrompt,
+  schema,
+  schemaName,
+  apiKey,
+  reasoningEffort,
+  textVerbosity,
+  maxOutputTokens,
+  signal,
+  clientRequestId,
+}: StructuredCompletionParams<T>): Promise<{
+  stream: AsyncGenerator<string, void, void>;
+  usagePromise: Promise<GenerationTokenUsage | null>;
+}> {
+  const client = createClient(provider, resolveApiKey(provider, apiKey));
+  const stream = await client.responses
+    .create(
+      {
+        model,
+        stream: true,
+        input: buildMessages(systemPrompt, userPrompt),
+        text: {
+          format: zodTextFormat(schema, schemaName),
+          ...(textVerbosity && supportsTextVerbosity(provider, model)
+            ? { verbosity: textVerbosity }
+            : {}),
+        },
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+        ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
+      },
+      buildRequestOptions({ provider, signal, clientRequestId }),
+    )
+    .catch(rethrowAsUpstreamProviderError);
+
+  let usageSettled = false;
+  let resolveUsage!: (usage: GenerationTokenUsage | null) => void;
+  const usagePromise = new Promise<GenerationTokenUsage | null>((resolve) => {
+    resolveUsage = resolve;
+  });
+
+  async function* outputStream(): AsyncGenerator<string, void, void> {
+    let responseId: string | undefined;
+    let finalUsage: GenerationTokenUsage | null = null;
+    let completed = false;
+
+    try {
+      for await (const event of stream) {
+        const response = "response" in event ? event.response : undefined;
+        if (response?.id) {
+          responseId = response.id;
+        }
+
+        if (event.type === "response.output_text.delta") {
+          if (event.delta) {
+            yield event.delta;
+          }
+          continue;
+        }
+
+        if (event.type === "response.completed") {
+          completed = true;
+          finalUsage = normalizeGenerationUsage(event.response.usage);
+          continue;
+        }
+
+        if (event.type === "response.failed") {
+          throw new Error(getResponseFailureMessage(event.response));
+        }
+
+        if (event.type === "response.incomplete") {
+          throw new Error(getResponseFailureMessage(event.response));
+        }
+
+        if (event.type === "error") {
+          const message = event.message ?? "OpenAI stream failed.";
+          throw new Error(message);
+        }
+      }
+
+      if (!completed) {
+        throw new Error("OpenAI stream ended before response.completed.");
+      }
+
+      if (!finalUsage) {
+        try {
+          finalUsage = await retrieveUsageFromResponseId(
+            client,
+            provider,
+            responseId,
+            signal,
+            clientRequestId ? `${clientRequestId}:usage` : undefined,
+          );
+        } catch {
+          finalUsage = null;
+        }
+      }
+
+      usageSettled = true;
+      resolveUsage(finalUsage);
+    } catch (error) {
+      resolveUsage(null);
+      usageSettled = true;
+      rethrowAsUpstreamProviderError(error);
+    } finally {
+      if (!usageSettled) {
+        resolveUsage(null);
+      }
+    }
+  }
+
+  return {
+    stream: outputStream(),
+    usagePromise,
+  };
+}
+

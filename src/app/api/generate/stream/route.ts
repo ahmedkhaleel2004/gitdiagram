@@ -23,10 +23,7 @@ import {
 } from "~/server/generate/cost-estimate";
 import { normalizeGenerationError } from "~/server/generate/errors";
 import { createFinalGenerationCostSummary } from "~/server/generate/final-cost";
-import {
-  startGenerationCancellationPolling,
-  unregisterActiveGeneration,
-} from "~/server/generate/cancellation";
+
 import {
   EXPLANATION_MAX_OUTPUT_TOKENS,
   EXPLANATION_REASONING_EFFORT,
@@ -54,7 +51,6 @@ import {
   getProvider,
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
-import { streamCompletion } from "~/server/generate/openai";
 import { SYSTEM_FIRST_PROMPT } from "~/server/generate/prompts";
 import type { SuccessfulDiagramState } from "~/server/storage/generation-persistence";
 import {
@@ -115,29 +111,12 @@ export async function POST(request: Request) {
     apiKey,
     githubPat,
     sessionId,
-    cancelToken,
-    cancellationRegistered,
     rateLimitedClientIp,
     rateLimitedWindowStartSeconds,
   } = admission.value;
   const generationAbortController = new AbortController();
   const deadlineSignal = AbortSignal.timeout(GENERATION_DEADLINE_MS);
   const postResponseTasks: Array<() => Promise<void>> = [];
-  if (cancellationRegistered && cancelToken) {
-    postResponseTasks.push(async () => {
-      try {
-        await unregisterActiveGeneration(sessionId, cancelToken);
-      } catch {
-        console.warn(
-          JSON.stringify({
-            event: "generate.cancellation.cleanup_failed",
-            session_id: sessionId,
-            error: "Active cancellation registration cleanup failed.",
-          }),
-        );
-      }
-    });
-  }
   let abortCause: "client" | "deadline" | null = null;
   const streamState: GenerationStreamState = {
     streamClosed: false,
@@ -165,12 +144,6 @@ export async function POST(request: Request) {
   };
   const handleRequestAbort = () => abortGeneration("client");
   const handleDeadline = () => abortGeneration("deadline");
-  const stopCancellationPolling = cancellationRegistered
-    ? startGenerationCancellationPolling({
-        sessionId,
-        onCancelled: () => abortGeneration("client"),
-      })
-    : () => undefined;
 
   request.signal.addEventListener("abort", handleRequestAbort, { once: true });
   deadlineSignal.addEventListener("abort", handleDeadline, { once: true });
@@ -478,108 +451,17 @@ export async function POST(request: Request) {
             };
           }
 
+          // explanation is now generated and streamed as part of generateValidatedGraph
           audit = withTimelineEvent(
             audit,
-            "explanation_sent",
-            `Sending explanation request to ${model}...`,
+            "graph",
+            "Analyzing repository structure and planning graph...",
           );
           send({
-            status: "explanation_sent",
+            status: "graph",
             session_id: audit.sessionId,
-            message: `Sending explanation request to ${model}...`,
+            message: "Analyzing repository structure and planning graph...",
           });
-          throwIfAborted(generationAbortController.signal);
-
-          audit = withTimelineEvent(
-            audit,
-            "explanation",
-            "Analyzing repository structure...",
-          );
-          send({
-            status: "explanation",
-            session_id: audit.sessionId,
-            message: "Analyzing repository structure...",
-          });
-
-          let explanationResponse = "";
-          if (quotaReservation) {
-            await markComplimentaryQuotaStarted(quotaReservation);
-          }
-          accounting.pendingModelRequestTokenBound = complimentaryEstimate
-            ? buildComplimentaryStageTokenBound(complimentaryEstimate, {
-                stage: "explanation",
-              })
-            : 0;
-          const explanationStartedAt = performance.now();
-          let recordedFirstExplanationChunk = false;
-          const explanationStream = await streamCompletion({
-            provider,
-            model,
-            systemPrompt: SYSTEM_FIRST_PROMPT,
-            userPrompt: toTaggedMessage({
-              file_tree: githubData.fileTree,
-              readme: githubData.readme,
-            }),
-            apiKey,
-            reasoningEffort: EXPLANATION_REASONING_EFFORT,
-            textVerbosity: EXPLANATION_TEXT_VERBOSITY,
-            maxOutputTokens: EXPLANATION_MAX_OUTPUT_TOKENS,
-            signal: generationAbortController.signal,
-            clientRequestId: `${audit.sessionId}:explanation`,
-          });
-          for await (const chunk of coalesceTextChunks(
-            explanationStream.stream,
-          )) {
-            throwIfAborted(generationAbortController.signal);
-            if (!recordedFirstExplanationChunk) {
-              recordTiming("explanation_first_chunk", explanationStartedAt);
-              recordedFirstExplanationChunk = true;
-            }
-            explanationResponse += chunk;
-            await send({
-              status: "explanation_chunk",
-              session_id: audit.sessionId,
-              chunk,
-            });
-          }
-          recordTiming("explanation", explanationStartedAt);
-          let explanationUsage: GenerationTokenUsage | null = null;
-          try {
-            explanationUsage = await explanationStream.usagePromise;
-          } catch {
-            accounting.hasCompleteMeasuredUsage = false;
-          }
-          if (explanationUsage) {
-            accounting.actualUsages.push(explanationUsage);
-            accounting.pendingModelRequestTokenBound = 0;
-            audit = withStageUsage(audit, {
-              stage: "explanation",
-              model,
-              costSummary: createCostSummary({
-                kind: "actual",
-                model,
-                usage: explanationUsage,
-                approximate: false,
-              }),
-              createdAt: new Date().toISOString(),
-            });
-          } else {
-            accounting.hasCompleteMeasuredUsage = false;
-            accounting.completedUnmeasuredTokenBound +=
-              accounting.pendingModelRequestTokenBound;
-            accounting.pendingModelRequestTokenBound = 0;
-          }
-
-          const explanation = extractTaggedSection(
-            explanationResponse,
-            "explanation",
-          );
-          if (!explanation.trim()) {
-            throw new Error(
-              "OpenAI explanation generation returned no usable output.",
-            );
-          }
-          audit = withExplanation(audit, explanation);
 
           const fileTreeLookup = buildFileTreeLookup(githubData.fileTree);
           const graphResult = await generateValidatedGraph({
@@ -587,7 +469,7 @@ export async function POST(request: Request) {
             model,
             apiKey,
             sessionId: audit.sessionId,
-            explanation,
+            readme: githubData.readme,
             fileTree: githubData.fileTree,
             fileTreeLookup,
             signal: generationAbortController.signal,
@@ -618,6 +500,8 @@ export async function POST(request: Request) {
             return;
           }
           const validGraph = graphResult.graph;
+          const explanation = graphResult.explanation;
+          audit = withExplanation(audit, explanation);
 
           audit = withTimelineEvent(
             audit,
@@ -781,7 +665,6 @@ export async function POST(request: Request) {
           });
 
           clearInterval(heartbeat);
-          stopCancellationPolling();
           request.signal.removeEventListener("abort", handleRequestAbort);
           deadlineSignal.removeEventListener("abort", handleDeadline);
           await closeStream();

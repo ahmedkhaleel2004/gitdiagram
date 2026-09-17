@@ -84,6 +84,7 @@ const diagramEdgeSchema = z.object({
 });
 
 export const diagramGraphSchema = z.object({
+  explanation: z.string().trim().max(3000),
   groups: z.array(diagramGroupSchema).max(MAX_GRAPH_GROUPS),
   nodes: z.array(diagramNodeSchema).min(1).max(MAX_GRAPH_NODES),
   edges: z.array(diagramEdgeSchema).max(MAX_GRAPH_EDGES),

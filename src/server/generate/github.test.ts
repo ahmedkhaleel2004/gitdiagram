@@ -8,6 +8,10 @@ vi.mock("~/server/github-auth", () => ({
   getGitHubApiHeaders,
 }));
 
+vi.mock("next/cache", () => ({
+  unstable_cache: (cb: any) => cb,
+}));
+
 import {
   GITHUB_REQUEST_TIMEOUT_MS,
   getGithubData,
@@ -239,61 +243,6 @@ describe("getGithubData repository input bounds", () => {
     });
   });
 
-  it("revalidates cached public trees with ETag and reuses a 304 body", async () => {
-    let treeRequests = 0;
-    const fetchMock = vi.fn(
-      async (input: string | URL | Request, init?: RequestInit) => {
-        const url = String(input);
-        if (url.endsWith("/repos/acme/demo")) {
-          return jsonResponse({
-            default_branch: "main",
-            private: false,
-            stargazers_count: 42,
-          });
-        }
-        if (url.includes("/git/trees/main?recursive=1")) {
-          treeRequests += 1;
-          const headers = new Headers(init?.headers);
-          if (treeRequests === 2) {
-            expect(headers.get("if-none-match")).toBe('"tree-v1"');
-            return new Response(null, { status: 304 });
-          }
-          return new Response(
-            JSON.stringify({
-              truncated: false,
-              tree: [{ path: "src/cached.ts", type: "blob" }],
-            }),
-            {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-                ETag: '"tree-v1"',
-              },
-            },
-          );
-        }
-        if (url.endsWith("/repos/acme/demo/readme")) {
-          return jsonResponse({
-            size: 6,
-            content: Buffer.from("# Demo").toString("base64"),
-            encoding: "base64",
-          });
-        }
-        throw new Error(`Unexpected GitHub URL: ${url}`);
-      },
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
-      fileTree: "src/cached.ts",
-      pathTypes: new Map([["src/cached.ts", "blob"]]),
-    });
-    await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
-      fileTree: "src/cached.ts",
-      pathTypes: new Map([["src/cached.ts", "blob"]]),
-    });
-    expect(treeRequests).toBe(2);
-  });
 
   it("rejects private repository access without caller credentials before reading contents", async () => {
     const fetchMock = vi.fn(

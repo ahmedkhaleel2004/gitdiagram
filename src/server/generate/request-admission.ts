@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { registerActiveGeneration } from "./cancellation";
 import {
   consumeGenerationInfrastructureRateLimit,
   consumeGenerationRateLimit,
@@ -19,8 +18,6 @@ interface AdmittedGenerationRequest {
   apiKey?: string;
   githubPat?: string;
   sessionId: string;
-  cancelToken?: string;
-  cancellationRegistered: boolean;
   /**
    * The bucket a rate-limit slot was charged to, or null when this caller is
    * not throttled (they brought their own key, or the IP was unattributable).
@@ -83,7 +80,6 @@ export async function admitGenerationRequest(
     username,
     repo,
     session_id: requestedSessionId,
-    cancel_token: cancelToken,
   } = parsed.data;
   const { apiKey, githubPat } = await resolveRequestCredentials(request, {
     apiKey: parsed.data.api_key,
@@ -115,18 +111,6 @@ export async function admitGenerationRequest(
 
   let rateLimitedClientIp: string | null = null;
   let rateLimitedWindowStartSeconds = 0;
-  const refundAdmissionRateLimits = async () => {
-    await Promise.all([
-      refundGenerationInfrastructureRateLimit({
-        clientIp: infrastructureRateLimitedClientIp,
-        windowStartSeconds: infrastructureRateLimit.windowStartSeconds,
-      }),
-      refundGenerationRateLimit({
-        clientIp: rateLimitedClientIp,
-        windowStartSeconds: rateLimitedWindowStartSeconds,
-      }),
-    ]);
-  };
 
   if (!apiKey?.trim()) {
     const rateLimit = await consumeGenerationRateLimit({
@@ -156,48 +140,6 @@ export async function admitGenerationRequest(
   }
 
   const sessionId = requestedSessionId ?? randomUUID();
-  let cancellationRegistered = false;
-  if (requestedSessionId && cancelToken) {
-    try {
-      cancellationRegistered = await registerActiveGeneration(
-        sessionId,
-        cancelToken,
-      );
-    } catch {
-      console.error(
-        JSON.stringify({
-          event: "generate.cancellation.registration_failed",
-          session_id: sessionId,
-          error: "Cancellation registration is temporarily unavailable.",
-        }),
-      );
-      await refundAdmissionRateLimits();
-      return {
-        admitted: false,
-        response: jsonError(
-          {
-            error: "Generation is temporarily unavailable. Please retry.",
-            errorCode: "CANCELLATION_UNAVAILABLE",
-          },
-          { status: 503 },
-        ),
-      };
-    }
-
-    if (!cancellationRegistered) {
-      await refundAdmissionRateLimits();
-      return {
-        admitted: false,
-        response: jsonError(
-          {
-            error: "Generation session already exists. Please retry.",
-            errorCode: "SESSION_CONFLICT",
-          },
-          { status: 409 },
-        ),
-      };
-    }
-  }
 
   return {
     admitted: true,
@@ -207,8 +149,6 @@ export async function admitGenerationRequest(
       apiKey,
       githubPat,
       sessionId,
-      cancelToken,
-      cancellationRegistered,
       rateLimitedClientIp,
       rateLimitedWindowStartSeconds,
     },

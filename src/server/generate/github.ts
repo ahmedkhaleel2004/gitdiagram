@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { getGitHubApiHeaders } from "../github-auth";
 import { GitHubRequestError } from "./github-errors";
 
@@ -52,32 +53,8 @@ const PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR =
 export const MAX_INCLUDED_FILE_TREE_CHARACTERS = 780_000;
 export const MAX_README_BYTES = 750_000;
 export const GITHUB_REQUEST_TIMEOUT_MS = 30_000;
-const MAX_PUBLIC_TREE_CACHE_ENTRIES = 8;
-const MAX_PUBLIC_TREE_CACHE_CHARACTERS = 4_000_000;
-
-interface PublicTreeCacheEntry {
-  etag: string;
-  fileTree: string;
-  pathTypes: ReadonlyMap<string, RepositoryPathType>;
-  characters: number;
-}
-
 type JsonFetchResult<T> =
   { notModified: true } | { notModified: false; value: T; etag: string | null };
-
-// Fluid instances can reuse unchanged public trees without retaining private
-// repository data. Every reuse is revalidated with GitHub, so repository
-// changes remain visible immediately while 304 responses avoid the largest
-// response body and JSON parse in the ingestion path.
-const publicTreeCache = new Map<string, PublicTreeCacheEntry>();
-let publicTreeCacheCharacters = 0;
-
-function deletePublicTreeCacheEntry(key: string): void {
-  const entry = publicTreeCache.get(key);
-  if (entry && publicTreeCache.delete(key)) {
-    publicTreeCacheCharacters -= entry.characters;
-  }
-}
 
 // Directory segments are matched anywhere in the path.
 const EXCLUDED_DIRECTORY_SEGMENTS = [
@@ -250,7 +227,6 @@ async function getFileTree(
   repo: string,
   branch: string,
   headers: HeadersInit,
-  usePublicConditionalCache: boolean,
   signal?: AbortSignal,
 ): Promise<{
   fileTree: string;
@@ -260,24 +236,14 @@ async function getFileTree(
   // encodeURIComponent also encodes "/" as %2F, which the trees API accepts
   // in the {tree_sha} position; plain branch names are unchanged.
   const url = `https://api.github.com/repos/${username}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
-  const cached = usePublicConditionalCache
-    ? publicTreeCache.get(url)
-    : undefined;
-  if (cached) {
-    publicTreeCache.delete(url);
-    publicTreeCache.set(url, cached);
-  }
   const result = await fetchJsonResult<GitHubTreeResponse>(
     url,
     headers,
     FILE_TREE_UNAVAILABLE_ERROR,
     signal,
-    cached?.etag,
+    undefined, // no longer passing etag
     EMPTY_REPOSITORY_ERROR,
   );
-  if (result.notModified && cached) {
-    return { fileTree: cached.fileTree, pathTypes: cached.pathTypes };
-  }
   if (result.notModified) {
     throw new Error("GitHub returned an unexpected not-modified response.");
   }
@@ -305,30 +271,6 @@ async function getFileTree(
   const fileTree = paths.join("\n");
   if (fileTree.length > MAX_INCLUDED_FILE_TREE_CHARACTERS) {
     throw new Error(REPOSITORY_TOO_LARGE_ERROR);
-  }
-
-  if (usePublicConditionalCache) {
-    deletePublicTreeCacheEntry(url);
-    if (result.etag) {
-      while (
-        publicTreeCache.size >= MAX_PUBLIC_TREE_CACHE_ENTRIES ||
-        publicTreeCacheCharacters + fileTree.length >
-          MAX_PUBLIC_TREE_CACHE_CHARACTERS
-      ) {
-        const oldestKey = publicTreeCache.keys().next().value;
-        if (typeof oldestKey !== "string") {
-          break;
-        }
-        deletePublicTreeCacheEntry(oldestKey);
-      }
-      publicTreeCache.set(url, {
-        etag: result.etag,
-        fileTree,
-        pathTypes,
-        characters: fileTree.length,
-      });
-      publicTreeCacheCharacters += fileTree.length;
-    }
   }
 
   return { fileTree, pathTypes };
@@ -415,7 +357,6 @@ async function fetchGithubData(
       repo,
       defaultBranch,
       headers,
-      !hasCallerGithubPat && !isPrivate,
       signal,
     ),
     getReadme(username, repo, headers, signal).then(
@@ -439,6 +380,18 @@ async function fetchGithubData(
   };
 }
 
+const getCachedPublicGithubData = unstable_cache(
+  async (username: string, repo: string) => {
+    const data = await fetchGithubData(username, repo, undefined, undefined);
+    return {
+      ...data,
+      pathTypesEntries: Array.from(data.pathTypes.entries()),
+    };
+  },
+  ["public-github-data-cache"],
+  { revalidate: 3600 }
+);
+
 export async function getGithubData(
   username: string,
   repo: string,
@@ -460,12 +413,11 @@ export async function getGithubData(
     // No caller token means fetchGithubData rejects private metadata BEFORE
     // reading contents, even if the server's installation could access it.
     try {
-      const publicData = await fetchGithubData(
-        username,
-        repo,
-        undefined,
-        signal,
-      );
+      const cached = await getCachedPublicGithubData(username, repo);
+      const publicData = {
+        ...cached,
+        pathTypes: new Map(cached.pathTypesEntries) as ReadonlyMap<string, RepositoryPathType>,
+      };
       console.info(
         JSON.stringify({ event: "generate.github.public_fallback_succeeded" }),
       );
