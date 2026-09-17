@@ -218,7 +218,21 @@
   padding: 22px 0;
 }
 .recovery button {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--wash);
+  color: var(--ink);
+  box-shadow: none;
   font-size: 12px;
+  font-weight: 500;
+  transform: none;
+}
+.recovery button:first-child {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 .workspace[data-state="error"] {
   padding-bottom: 8px;

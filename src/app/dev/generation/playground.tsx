@@ -62,7 +62,7 @@ export default function GenerationPlayground() {
       <div className="mb-6 flex flex-wrap items-end gap-3 rounded-xl border border-black/15 bg-white/35 p-3 text-xs dark:border-white/15 dark:bg-white/5">
         <button
           type="button"
-          className="neo-button flex min-h-10 min-w-36 items-center justify-center gap-2 rounded-md px-4 text-xs font-semibold"
+          className="flex min-h-10 min-w-36 items-center justify-center gap-2 rounded-md bg-purple-700 px-4 text-xs font-medium text-white hover:bg-purple-800 dark:bg-purple-300 dark:text-purple-950 dark:hover:bg-purple-200"
           onClick={() =>
             terminal ? restart(true) : setPlaying((value) => !value)
           }
