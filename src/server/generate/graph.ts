@@ -293,7 +293,7 @@ function labelForNode(node: DiagramGraphNode): string {
   const secondaryDetail = detailForNode(node);
   const fileHint = fileHintForNode(node);
 
-  return [primaryLabel, secondaryDetail, fileHint]
+  return [primaryLabel, secondaryDetail ?? fileHint]
     .filter(Boolean)
     .join("<br/>");
 }
@@ -346,20 +346,43 @@ const toneClassNames = [
   "toneTeal",
 ] as const;
 
-function toneClassForGroup(
-  groupId: string | null | undefined,
+function toneClassForNode(
+  node: DiagramGraphNode,
   groupOrder: Map<string, number>,
 ): string {
-  if (!groupId) {
-    return "toneNeutral";
-  }
+  const groupIndex = node.groupId ? groupOrder.get(node.groupId) : undefined;
+  if (groupIndex !== undefined)
+    return toneClassNames[groupIndex % toneClassNames.length]!;
+  // Meaningful colour is a compiler guarantee, even when the planner needs no
+  // groups. Existing grouped diagrams retain their familiar subsystem palette.
+  const words = `${node.label} ${node.type}`.toLowerCase();
+  if (
+    node.shape === "database" ||
+    /database|storage|cache|postgres|sqlite|redis|clickhouse/.test(words)
+  )
+    return "toneAmber";
+  if (/queue|worker|background|scheduler|task/.test(words)) return "toneRose";
+  if (/client|browser|user|frontend|view|screen|ui\b/.test(words))
+    return "toneBlue";
+  if (/api|server|route|request|handler|webhook/.test(words)) return "toneMint";
+  if (!node.path || /model|inference|provider|integration/.test(words))
+    return "toneIndigo";
+  return "toneTeal";
+}
 
-  const index = groupOrder.get(groupId);
-  if (index === undefined) {
-    return "toneNeutral";
-  }
-
-  return toneClassNames[index % toneClassNames.length] ?? "toneNeutral";
+/** Repair formatting only when the canonical path is known to exist. */
+export function normalizeKnownGraphPaths(
+  graph: DiagramGraph,
+  paths: Set<string>,
+): DiagramGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => {
+      if (!node.path || paths.has(node.path)) return node;
+      const canonical = node.path.replace(/^\.\//, "").replace(/\/+$/, "");
+      return paths.has(canonical) ? { ...node, path: canonical } : node;
+    }),
+  };
 }
 
 function buildGitHubUrl(
@@ -393,7 +416,7 @@ export function compileDiagramGraph(params: {
 
   const pushNode = (node: DiagramGraphNode, indent = "") => {
     lines.push(`${indent}${renderNode(node)}`);
-    const className = toneClassForGroup(node.groupId, groupOrder);
+    const className = toneClassForNode(node, groupOrder);
     classAssignments.set(className, [
       ...(classAssignments.get(className) ?? []),
       node.id,

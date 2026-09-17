@@ -46,6 +46,7 @@ export interface GenerationEstimateResult {
   estimatedOutputTokens: number;
   pricingModel: string;
   pricing: ReturnType<typeof estimateTextTokenCostUsd>["pricing"];
+  analysisPricing?: ReturnType<typeof estimateTextTokenCostUsd>["pricing"];
   explanationInputTokens: number;
   graphStaticInputTokens: number;
   graphRepairStaticInputTokens: number | null;
@@ -103,6 +104,9 @@ async function countPromptInputTokens({
 export async function estimateGenerationCost(params: {
   provider: AIProvider;
   model: string;
+  analysisModel?: string;
+  sourceFiles?: string;
+  sourceTokenReserve?: number;
   fileTree: string;
   readme: string;
   username: string;
@@ -116,6 +120,7 @@ export async function estimateGenerationCost(params: {
   const explanationPrompt = toTaggedMessage({
     file_tree: params.fileTree,
     readme: params.readme,
+    source_files: params.sourceFiles ?? "",
   });
   const graphPromptWithoutExplanation = toTaggedMessage({
     explanation: "",
@@ -131,7 +136,7 @@ export async function estimateGenerationCost(params: {
     await Promise.all([
       countPromptInputTokens({
         provider: params.provider,
-        model: params.model,
+        model: params.analysisModel ?? params.model,
         systemPrompt: SYSTEM_FIRST_PROMPT,
         userPrompt: explanationPrompt,
         apiKey: params.apiKey,
@@ -187,13 +192,15 @@ export async function estimateGenerationCost(params: {
 
   const costSummary = createEstimateCostSummary({
     model: params.model,
-    explanationInputTokens: explanationCount.inputTokens,
+    analysisModel: params.analysisModel,
+    explanationInputTokens:
+      explanationCount.inputTokens + (params.sourceTokenReserve ?? 0),
     graphStaticInputTokens: graphStaticCount.inputTokens,
     approximate: true,
     note: noteParts.join(" "),
   });
 
-  const { pricingModel, pricing } = estimateTextTokenCostUsd(
+  const { pricing } = estimateTextTokenCostUsd(
     params.model,
     costSummary.usage.inputTokens,
     costSummary.usage.outputTokens,
@@ -204,9 +211,15 @@ export async function estimateGenerationCost(params: {
     estimatedInputTokens: costSummary.usage.inputTokens,
     estimatedOutputTokens:
       EXPLANATION_MAX_OUTPUT_TOKENS + GRAPH_MAX_OUTPUT_TOKENS,
-    pricingModel,
+    pricingModel: costSummary.pricingModel,
     pricing,
-    explanationInputTokens: explanationCount.inputTokens,
+    analysisPricing: estimateTextTokenCostUsd(
+      params.analysisModel ?? params.model,
+      0,
+      0,
+    ).pricing,
+    explanationInputTokens:
+      explanationCount.inputTokens + (params.sourceTokenReserve ?? 0),
     graphStaticInputTokens: graphStaticCount.inputTokens,
     graphRepairStaticInputTokens: graphRepairStaticCount?.inputTokens ?? null,
   };

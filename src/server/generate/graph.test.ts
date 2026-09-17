@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import type { DiagramGraph } from "~/features/diagram/graph";
 
 import {
   buildFileTreeLookup,
@@ -7,6 +8,7 @@ import {
   isRepairableWithoutRetry,
   parseDiagramGraph,
   stripUnknownNodePaths,
+  normalizeKnownGraphPaths,
   validateDiagramGraph,
 } from "~/server/generate/graph";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
@@ -591,5 +593,57 @@ describe("compileDiagramGraph", () => {
     await expect(validateMermaidSyntax(diagram)).resolves.toMatchObject({
       valid: true,
     });
+  });
+});
+
+describe("diagram presentation guarantees", () => {
+  it("assigns meaningful colours to ungrouped nodes", () => {
+    const graph: DiagramGraph = {
+      groups: [],
+      nodes: [
+        {
+          ...nodeFixture("api", "src/api.ts"),
+          label: "HTTP API",
+          type: "handler",
+        },
+        {
+          ...nodeFixture("db", null),
+          label: "PostgreSQL",
+          type: "database",
+          shape: "database",
+        },
+      ],
+      edges: [
+        {
+          from: "api",
+          to: "db",
+          label: "stores",
+          description: null,
+          style: null,
+        },
+      ],
+    };
+    const diagram = compileDiagramGraph({
+      graph,
+      username: "acme",
+      repo: "app",
+      branch: "main",
+    });
+    expect(diagram).toContain("class node_api toneMint");
+    expect(diagram).toContain("class node_db toneAmber");
+    expect(diagram).not.toContain("class node_api toneNeutral");
+  });
+  it("normalizes harmless directory formatting only for verified paths", () => {
+    const graph: DiagramGraph = {
+      groups: [],
+      nodes: [
+        nodeFixture("api", "./src/api/"),
+        nodeFixture("unknown", "src/imagined/"),
+      ],
+      edges: [],
+    };
+    const normalized = normalizeKnownGraphPaths(graph, new Set(["src/api"]));
+    expect(normalized.nodes[0]?.path).toBe("src/api");
+    expect(normalized.nodes[1]?.path).toBe("src/imagined/");
   });
 });

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   finalizeQuota: vi.fn(),
   generateStructuredOutput: vi.fn(),
   getGithubData: vi.fn(),
+  getModel: vi.fn(),
   isComplimentaryGateEnabled: vi.fn(),
   shouldApplyComplimentaryGate: vi.fn(),
   persistAudit: vi.fn(),
@@ -74,7 +75,7 @@ vi.mock("~/server/generate/github", () => ({
     "Repository is too large (>195k tokens) for analysis. Try a smaller repo.",
 }));
 vi.mock("~/server/generate/model-config", () => ({
-  getModel: vi.fn(() => "gpt-5.6-terra"),
+  getModel: mocks.getModel,
   getProvider: vi.fn(() => "openai"),
   getProviderLabel: vi.fn(() => "OpenAI"),
   shouldUseExactInputTokenCount: vi.fn(() => true),
@@ -139,6 +140,8 @@ function readSseEvents(body: string): Array<Record<string, unknown>> {
 describe("POST /api/generate/stream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.generateStructuredOutput.mockReset();
+    mocks.getModel.mockReturnValue("gpt-5.6-terra");
     mocks.isComplimentaryGateEnabled.mockReturnValue(true);
     mocks.shouldApplyComplimentaryGate.mockReturnValue(true);
     vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -146,6 +149,7 @@ describe("POST /api/generate/stream", () => {
     mocks.getGithubData.mockResolvedValue({
       defaultBranch: "main",
       fileTree: "src/index.ts",
+      pathTypes: new Map([["src/index.ts", "blob"]]),
       readme: "# OpenAI Node",
       isPrivate: false,
       stargazerCount: 10,
@@ -852,5 +856,71 @@ describe("POST /api/generate/stream", () => {
       missing_repository_path: 1,
     });
     expect(finishLog).not.toContain("private-name");
+  });
+  it("uses Terra analysis and Luna graph for a larger server-funded repo and sums both costs", async () => {
+    mocks.getModel.mockReturnValue("gpt-5.6-luna");
+    mocks.isComplimentaryGateEnabled.mockReturnValue(false);
+    mocks.shouldApplyComplimentaryGate.mockReturnValue(false);
+    const paths = Array.from({ length: 12 }, (_, i) => `src/component${i}.ts`);
+    mocks.getGithubData.mockResolvedValue({
+      defaultBranch: "main",
+      fileTree: paths.join("\n"),
+      pathTypes: new Map(paths.map((path) => [path, "blob"])),
+      readme: "Application",
+      isPrivate: false,
+      stargazerCount: 0,
+    });
+    mockEstimate(1000);
+    const usage = { inputTokens: 1000, outputTokens: 1000, totalTokens: 2000 };
+    mocks.streamCompletion.mockResolvedValue({
+      stream: (async function* () {
+        yield "<explanation>A sourced application brief.</explanation>";
+      })(),
+      usagePromise: Promise.resolve(usage),
+    });
+    const graph = {
+      groups: [],
+      nodes: [
+        {
+          id: "entry",
+          label: "Entry",
+          type: "module",
+          description: null,
+          groupId: null,
+          path: paths[0],
+          shape: null,
+        },
+      ],
+      edges: [],
+    };
+    mocks.generateStructuredOutput.mockResolvedValue({
+      output: graph,
+      rawText: JSON.stringify(graph),
+      usage,
+    });
+    const response = await POST(request());
+    const terminal = readSseEvents(await response.text()).find(
+      (event) => event.status === "complete",
+    );
+    expect(mocks.streamCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-5.6-terra",
+        userPrompt: expect.stringContaining("<source_files>"),
+      }),
+    );
+    expect(mocks.generateStructuredOutput).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gpt-5.6-luna" }),
+    );
+    expect(terminal).toMatchObject({
+      cost_summary: {
+        kind: "actual",
+        amountUsd: 0.0154,
+        pricingModel: "gpt-5.6-terra + gpt-5.6-luna",
+      },
+      latest_session_audit: {
+        model: "gpt-5.6-luna",
+        analysisModel: "gpt-5.6-terra",
+      },
+    });
   });
 });

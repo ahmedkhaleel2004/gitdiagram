@@ -17,6 +17,7 @@ import {
 import { toTaggedMessage } from "./format";
 import {
   formatGraphValidationFeedback,
+  normalizeKnownGraphPaths,
   isRepairableWithoutRetry,
   stripUnknownNodePaths,
   type GraphValidationCategory,
@@ -109,7 +110,7 @@ export async function generateValidatedGraph(
         : 0;
     const graphStartedAt = performance.now();
     const {
-      output: graph,
+      output: generatedGraph,
       rawText,
       usage,
     } = await generateStructuredOutput({
@@ -135,6 +136,10 @@ export async function generateValidatedGraph(
       signal: params.signal,
       clientRequestId: `${params.sessionId}:graph:${attempt}`,
     });
+    const graph = normalizeKnownGraphPaths(
+      generatedGraph,
+      params.fileTreeLookup,
+    );
     params.recordTiming(`graph_attempt_${attempt}`, graphStartedAt);
 
     if (usage) {

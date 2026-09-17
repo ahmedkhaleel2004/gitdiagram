@@ -1,3 +1,9 @@
+import {
+  prepareRepositoryContext,
+  selectAnalysisModel,
+  MAX_SOURCE_CHARACTERS,
+} from "~/server/generate/repository-context";
+import { estimateTokens } from "~/server/generate/openai";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
@@ -136,11 +142,22 @@ export async function POST(request: Request) {
     }
 
     const githubData = await getGithubData(username, repo, githubPat, signal);
+    const context = prepareRepositoryContext(githubData);
+    const analysisModel = selectAnalysisModel({
+      provider,
+      model,
+      apiKey,
+      pathTypes: githubData.pathTypes,
+    });
     const estimate = await estimateGenerationCost({
       provider,
       model,
-      fileTree: githubData.fileTree,
-      readme: githubData.readme,
+      analysisModel,
+      sourceTokenReserve: context.selectedPaths.length
+        ? estimateTokens("x".repeat(MAX_SOURCE_CHARACTERS))
+        : 0,
+      fileTree: context.fileTree,
+      readme: context.readme,
       username,
       repo,
       apiKey,
@@ -158,10 +175,19 @@ export async function POST(request: Request) {
         cost: estimate.costSummary.display,
         cost_summary: estimate.costSummary,
         model,
+        analysis_model: analysisModel,
         pricing_model: estimate.pricingModel,
         estimated_input_tokens: estimate.estimatedInputTokens,
         estimated_output_tokens: estimate.estimatedOutputTokens,
+        analysis_pricing: {
+          model: analysisModel,
+          input_per_million_usd: (estimate.analysisPricing ?? estimate.pricing)
+            .inputPerMillionUsd,
+          output_per_million_usd: (estimate.analysisPricing ?? estimate.pricing)
+            .outputPerMillionUsd,
+        },
         pricing: {
+          model,
           input_per_million_usd: estimate.pricing.inputPerMillionUsd,
           output_per_million_usd: estimate.pricing.outputPerMillionUsd,
         },

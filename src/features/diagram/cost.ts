@@ -4,6 +4,8 @@ export interface GenerationTokenUsage {
   totalTokens: number;
   reasoningTokens?: number;
   cachedInputTokens?: number;
+  cacheWriteTokens?: number;
+  serviceTier?: string;
 }
 
 export interface GenerationCostSummary {

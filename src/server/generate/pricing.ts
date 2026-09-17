@@ -24,6 +24,7 @@ interface RawResponseUsage {
   total_tokens?: number;
   input_tokens_details?: {
     cached_tokens?: number;
+    cache_write_tokens?: number;
   };
   output_tokens_details?: {
     reasoning_tokens?: number;
@@ -31,7 +32,7 @@ interface RawResponseUsage {
 }
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
-  "gpt-5.6-sol": { inputPerMillionUsd: 5.0, outputPerMillionUsd: 30.0 },
+  "gpt-5.6-sol": { inputPerMillionUsd: 4.0, outputPerMillionUsd: 20.0 },
   "gpt-5.6-terra": { inputPerMillionUsd: 2.0, outputPerMillionUsd: 12.0 },
   "gpt-5.6-luna": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 1.2 },
   "gpt-5.4": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 15.0 },
@@ -134,6 +135,7 @@ export function estimateTextTokenCostUsd(
 
 export function normalizeGenerationUsage(
   usage: RawResponseUsage | null | undefined,
+  serviceTier?: string | null,
 ): GenerationTokenUsage | null {
   if (!usage) {
     return null;
@@ -149,6 +151,10 @@ export function normalizeGenerationUsage(
     inputTokens,
     outputTokens,
     totalTokens,
+    ...(serviceTier ? { serviceTier } : {}),
+    ...(typeof usage.input_tokens_details?.cache_write_tokens === "number"
+      ? { cacheWriteTokens: usage.input_tokens_details.cache_write_tokens }
+      : {}),
     ...(typeof cachedInputTokens === "number" ? { cachedInputTokens } : {}),
     ...(typeof reasoningTokens === "number" ? { reasoningTokens } : {}),
   };
@@ -164,6 +170,8 @@ export function sumGenerationUsage(
       totalTokens: total.totalTokens + (usage?.totalTokens ?? 0),
       cachedInputTokens:
         (total.cachedInputTokens ?? 0) + (usage?.cachedInputTokens ?? 0),
+      cacheWriteTokens:
+        (total.cacheWriteTokens ?? 0) + (usage?.cacheWriteTokens ?? 0),
       reasoningTokens:
         (total.reasoningTokens ?? 0) + (usage?.reasoningTokens ?? 0),
     }),
@@ -197,15 +205,38 @@ export function createCostSummary(params: {
   approximate: boolean;
   note?: string;
 }): GenerationCostSummary {
-  const { costUsd, pricingModel } = estimateTextTokenCostUsd(
+  const {
+    costUsd: baseCostUsd,
+    pricingModel,
+    pricing,
+  } = estimateTextTokenCostUsd(
     params.model,
     params.usage.inputTokens,
     params.usage.outputTokens,
   );
 
+  const is56 = /^gpt-5\.6-(?:luna|terra|sol)$/.test(pricingModel);
+  const reads = Math.min(
+    Math.max(params.usage.cachedInputTokens ?? 0, 0),
+    params.usage.inputTokens,
+  );
+  const writes = Math.min(
+    Math.max(params.usage.cacheWriteTokens ?? 0, 0),
+    Math.max(0, params.usage.inputTokens - reads),
+  );
+  const cacheAdjustment = is56
+    ? ((-0.9 * reads + 0.25 * writes) * pricing.inputPerMillionUsd) / 1_000_000
+    : 0;
+  const tier = params.usage.serviceTier;
+  const tierMultiplier =
+    is56 && (tier === "fast" || tier === "priority") ? 2 : 1;
+  const unknownTier = Boolean(
+    tier && !["default", "fast", "priority"].includes(tier),
+  );
+  const costUsd = (baseCostUsd + cacheAdjustment) * tierMultiplier;
   return {
     kind: params.kind,
-    approximate: params.approximate,
+    approximate: params.approximate || unknownTier,
     amountUsd: costUsd,
     display: formatCostUsd(costUsd),
     pricingModel,
@@ -216,32 +247,60 @@ export function createCostSummary(params: {
 
 export function createEstimateCostSummary(params: {
   model: string;
+  analysisModel?: string;
   explanationInputTokens: number;
   graphStaticInputTokens: number;
   approximate: boolean;
   note?: string;
   graphAttemptCount?: number;
 }): GenerationCostSummary {
-  const graphAttemptCount = params.graphAttemptCount ?? 1;
-  const usage: GenerationTokenUsage = {
-    inputTokens:
-      params.explanationInputTokens +
-      params.graphStaticInputTokens +
-      EXPLANATION_MAX_OUTPUT_TOKENS,
-    outputTokens:
-      EXPLANATION_MAX_OUTPUT_TOKENS +
-      GRAPH_MAX_OUTPUT_TOKENS * graphAttemptCount,
-    totalTokens: 0,
-  };
-  usage.totalTokens = usage.inputTokens + usage.outputTokens;
+  const stage = (model: string, inputTokens: number, outputTokens: number) =>
+    createCostSummary({
+      kind: "estimate",
+      model,
+      approximate: params.approximate,
+      usage: {
+        inputTokens,
+        outputTokens,
+        totalTokens: inputTokens + outputTokens,
+        cacheWriteTokens: inputTokens,
+      },
+    });
+  return combineCostSummaries(
+    [
+      stage(
+        params.analysisModel ?? params.model,
+        params.explanationInputTokens,
+        EXPLANATION_MAX_OUTPUT_TOKENS,
+      ),
+      stage(
+        params.model,
+        params.graphStaticInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS,
+        GRAPH_MAX_OUTPUT_TOKENS * (params.graphAttemptCount ?? 1),
+      ),
+    ],
+    params.note ??
+      "Estimate assumes one graph-planning attempt, uncached writes and the configured output caps.",
+  );
+}
 
-  return createCostSummary({
-    kind: "estimate",
-    model: params.model,
-    usage,
-    approximate: params.approximate,
-    note:
-      params.note ??
-      "Estimate assumes one graph-planning attempt and the configured output caps.",
-  });
+/** Sum already-priced stages: applying one model's rate to mixed tokens is wrong. */
+export function combineCostSummaries(
+  summaries: GenerationCostSummary[],
+  note?: string,
+): GenerationCostSummary {
+  const amountUsd = summaries.reduce((sum, entry) => sum + entry.amountUsd, 0);
+  return {
+    kind: summaries.every((entry) => entry.kind === "actual")
+      ? "actual"
+      : "estimate",
+    approximate: summaries.some((entry) => entry.approximate),
+    amountUsd,
+    display: formatCostUsd(amountUsd),
+    pricingModel: [
+      ...new Set(summaries.map((entry) => entry.pricingModel)),
+    ].join(" + "),
+    usage: sumGenerationUsage(...summaries.map((entry) => entry.usage)),
+    ...(note ? { note } : {}),
+  };
 }

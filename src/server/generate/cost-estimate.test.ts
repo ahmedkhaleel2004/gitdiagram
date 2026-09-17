@@ -39,8 +39,8 @@ describe("estimateGenerationCost", () => {
     expect(result.explanationInputTokens).toBe(100);
     expect(result.graphStaticInputTokens).toBe(200);
     expect(result.graphRepairStaticInputTokens).toBe(300);
-    expect(result.estimatedInputTokens).toBe(6_300);
-    expect(result.estimatedOutputTokens).toBe(12_000);
+    expect(result.estimatedInputTokens).toBe(8_300);
+    expect(result.estimatedOutputTokens).toBe(14_000);
 
     expect(countInputTokens).toHaveBeenCalledTimes(3);
     const calls = countInputTokens.mock.calls.map(([call]) => call);

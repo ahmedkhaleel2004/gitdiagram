@@ -10,6 +10,9 @@ interface GitHubRepoResponse {
 interface GitHubTreeItem {
   path?: unknown;
   type?: unknown;
+  sha?: unknown;
+  size?: unknown;
+  mode?: unknown;
 }
 
 interface GitHubTreeResponse {
@@ -23,13 +26,21 @@ interface GitHubReadmeResponse {
   size?: unknown;
 }
 
+export interface SourceBlob {
+  sha: string;
+  size: number;
+}
+
 export interface GithubData {
   defaultBranch: string;
   fileTree: string;
   readme: string;
   isPrivate: boolean;
+  /** Metadata/tree were authorized as public after a stale caller token failed. */
+  usedPublicFallback?: boolean;
   stargazerCount: number | null;
   pathTypes: ReadonlyMap<string, RepositoryPathType>;
+  sourceBlobs?: ReadonlyMap<string, SourceBlob>;
 }
 
 export type RepositoryPathType = "blob" | "tree";
@@ -59,6 +70,7 @@ interface PublicTreeCacheEntry {
   etag: string;
   fileTree: string;
   pathTypes: ReadonlyMap<string, RepositoryPathType>;
+  sourceBlobs?: ReadonlyMap<string, SourceBlob>;
   characters: number;
 }
 
@@ -255,6 +267,7 @@ async function getFileTree(
 ): Promise<{
   fileTree: string;
   pathTypes: ReadonlyMap<string, RepositoryPathType>;
+  sourceBlobs?: ReadonlyMap<string, SourceBlob>;
 }> {
   // Branch names may contain URL-significant characters ("#", "?", …).
   // encodeURIComponent also encodes "/" as %2F, which the trees API accepts
@@ -276,7 +289,11 @@ async function getFileTree(
     EMPTY_REPOSITORY_ERROR,
   );
   if (result.notModified && cached) {
-    return { fileTree: cached.fileTree, pathTypes: cached.pathTypes };
+    return {
+      fileTree: cached.fileTree,
+      pathTypes: cached.pathTypes,
+      sourceBlobs: cached.sourceBlobs,
+    };
   }
   if (result.notModified) {
     throw new Error("GitHub returned an unexpected not-modified response.");
@@ -289,11 +306,22 @@ async function getFileTree(
 
   const paths: string[] = [];
   const pathTypes = new Map<string, RepositoryPathType>();
+  const sourceBlobs = new Map<string, SourceBlob>();
   for (const item of data.tree ?? []) {
     if (typeof item.path === "string" && shouldIncludeFile(item.path)) {
       paths.push(item.path);
       if (item.type === "blob" || item.type === "tree") {
         pathTypes.set(item.path, item.type);
+        if (
+          item.type === "blob" &&
+          (item.mode === "100644" || item.mode === "100755") &&
+          typeof item.sha === "string" &&
+          /^[a-f0-9]{40,64}$/.test(item.sha) &&
+          typeof item.size === "number" &&
+          item.size >= 0
+        ) {
+          sourceBlobs.set(item.path, { sha: item.sha, size: item.size });
+        }
       }
     }
   }
@@ -325,13 +353,14 @@ async function getFileTree(
         etag: result.etag,
         fileTree,
         pathTypes,
+        sourceBlobs,
         characters: fileTree.length,
       });
       publicTreeCacheCharacters += fileTree.length;
     }
   }
 
-  return { fileTree, pathTypes };
+  return { fileTree, pathTypes, sourceBlobs };
 }
 
 class MissingReadmeError extends Error {}
@@ -436,6 +465,7 @@ async function fetchGithubData(
     isPrivate,
     stargazerCount,
     pathTypes: tree.pathTypes,
+    sourceBlobs: tree.sourceBlobs,
   };
 }
 
@@ -469,7 +499,7 @@ export async function getGithubData(
       console.info(
         JSON.stringify({ event: "generate.github.public_fallback_succeeded" }),
       );
-      return publicData;
+      return { ...publicData, usedPublicFallback: true };
     } catch {
       // Preserve the caller's actionable credential/access failure without
       // revealing whether the server can see a private repository.

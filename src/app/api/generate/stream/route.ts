@@ -1,3 +1,8 @@
+import {
+  prepareRepositoryContext,
+  selectAnalysisModel,
+} from "~/server/generate/repository-context";
+import { fetchSourceContext } from "~/server/generate/source-context";
 import { after } from "next/server";
 
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
@@ -350,6 +355,29 @@ export async function POST(request: Request) {
           repositoryVerified = true;
           recordTiming("github", githubStartedAt);
           storageVisibility = githubData.isPrivate ? "private" : "public";
+          const context = prepareRepositoryContext(githubData);
+          const analysisModel = selectAnalysisModel({
+            provider,
+            model,
+            apiKey,
+            pathTypes: githubData.pathTypes,
+          });
+          const sourceStartedAt = performance.now();
+          const sources = await fetchSourceContext({
+            username,
+            repo,
+            githubData,
+            selectedPaths: context.selectedPaths,
+            githubPat,
+            signal: generationAbortController.signal,
+          });
+          recordTiming("source_context", sourceStartedAt);
+          audit = {
+            ...audit,
+            analysisModel,
+            sourcePaths: sources.paths,
+            unavailableSourceCount: sources.unavailableCount,
+          };
           const estimateStartedAt = performance.now();
           const appliesComplimentaryGate = shouldApplyComplimentaryGate({
             provider,
@@ -358,8 +386,10 @@ export async function POST(request: Request) {
           estimate = await estimateGenerationCost({
             provider,
             model,
-            fileTree: githubData.fileTree,
-            readme: githubData.readme,
+            analysisModel,
+            sourceFiles: sources.text,
+            fileTree: context.fileTree,
+            readme: context.readme,
             username,
             repo,
             apiKey,
@@ -486,7 +516,7 @@ export async function POST(request: Request) {
           send({
             status: "explanation_sent",
             session_id: audit.sessionId,
-            message: `Sending explanation request to ${model}...`,
+            message: `Sending explanation request to ${analysisModel}...`,
           });
           throwIfAborted(generationAbortController.signal);
 
@@ -514,11 +544,12 @@ export async function POST(request: Request) {
           let recordedFirstExplanationChunk = false;
           const explanationStream = await streamCompletion({
             provider,
-            model,
+            model: analysisModel,
             systemPrompt: SYSTEM_FIRST_PROMPT,
             userPrompt: toTaggedMessage({
-              file_tree: githubData.fileTree,
-              readme: githubData.readme,
+              file_tree: context.fileTree,
+              readme: context.readme,
+              source_files: sources.text,
             }),
             apiKey,
             reasoningEffort: EXPLANATION_REASONING_EFFORT,
@@ -554,10 +585,10 @@ export async function POST(request: Request) {
             accounting.pendingModelRequestTokenBound = 0;
             audit = withStageUsage(audit, {
               stage: "explanation",
-              model,
+              model: analysisModel,
               costSummary: createCostSummary({
                 kind: "actual",
-                model,
+                model: analysisModel,
                 usage: explanationUsage,
                 approximate: false,
               }),
@@ -588,7 +619,7 @@ export async function POST(request: Request) {
             apiKey,
             sessionId: audit.sessionId,
             explanation,
-            fileTree: githubData.fileTree,
+            fileTree: context.fileTree,
             fileTreeLookup,
             signal: generationAbortController.signal,
             audit,
@@ -656,6 +687,7 @@ export async function POST(request: Request) {
             model,
             estimate,
             actualUsages: accounting.actualUsages,
+            stageUsages: audit.stageUsages,
             hasCompleteMeasuredUsage: accounting.hasCompleteMeasuredUsage,
             graphAttemptCount: audit.graphAttempts.length,
           });

@@ -84,22 +84,22 @@ describe("complimentary gate", () => {
       graphRepairStaticInputTokens: 300,
     };
 
-    expect(buildComplimentaryAdmissionTokens(estimate)).toBe(58_900);
+    expect(buildComplimentaryAdmissionTokens(estimate)).toBe(66_900);
     expect(
       buildComplimentaryStageTokenBound(estimate, { stage: "explanation" }),
-    ).toBe(6_100);
+    ).toBe(8_100);
     expect(
       buildComplimentaryStageTokenBound(estimate, {
         stage: "graph",
         attempt: 1,
       }),
-    ).toBe(12_200);
+    ).toBe(14_200);
     expect(
       buildComplimentaryStageTokenBound(estimate, {
         stage: "graph",
         attempt: 2,
       }),
-    ).toBe(20_300);
+    ).toBe(22_300);
   });
 
   it("returns a denial payload with the next UTC reset time", async () => {

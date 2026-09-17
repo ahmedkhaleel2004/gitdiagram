@@ -202,7 +202,7 @@ async function retrieveUsageFromResponseId(
     undefined,
     buildRequestOptions({ provider, signal, clientRequestId }),
   );
-  return normalizeGenerationUsage(response.usage);
+  return normalizeGenerationUsage(response.usage, response.service_tier);
 }
 
 export async function streamCompletion({
@@ -263,7 +263,10 @@ export async function streamCompletion({
 
         if (event.type === "response.completed") {
           completed = true;
-          finalUsage = normalizeGenerationUsage(event.response.usage);
+          finalUsage = normalizeGenerationUsage(
+            event.response.usage,
+            event.response.service_tier,
+          );
           continue;
         }
 
@@ -409,7 +412,7 @@ export async function generateStructuredOutput<T>({
     return {
       output: response.output_parsed,
       rawText,
-      usage: normalizeGenerationUsage(response.usage),
+      usage: normalizeGenerationUsage(response.usage, response.service_tier),
     };
   } catch (error) {
     if (provider === "openrouter" && isStructuredOutputRejection(error)) {

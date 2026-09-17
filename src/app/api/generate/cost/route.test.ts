@@ -76,6 +76,7 @@ describe("POST /api/generate/cost", () => {
     mocks.getGithubData.mockResolvedValue({
       defaultBranch: "main",
       fileTree: "src/index.ts",
+      pathTypes: new Map([["src/index.ts", "blob"]]),
       readme: "# OpenAI Node",
       isPrivate: false,
       stargazerCount: 10,

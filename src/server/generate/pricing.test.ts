@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   createEstimateCostSummary,
+  createCostSummary,
+  combineCostSummaries,
   estimateTextTokenCostUsd,
   normalizeGenerationUsage,
   resolvePricingModel,
@@ -82,8 +84,60 @@ describe("createEstimateCostSummary", () => {
 
     expect(result.kind).toBe("estimate");
     expect(result.approximate).toBe(true);
-    expect(result.usage.inputTokens).toBe(6_300);
-    expect(result.usage.outputTokens).toBe(12_000);
+    expect(result.usage.inputTokens).toBe(8_300);
+    expect(result.usage.outputTokens).toBe(14_000);
     expect(result.note).toContain("configured output caps");
+  });
+});
+
+describe("mixed-model measured costs", () => {
+  it("applies cache read discounts, cache write rates, and the returned tier", () => {
+    const cost = createCostSummary({
+      kind: "actual",
+      model: "gpt-5.6-terra",
+      approximate: false,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 100,
+        totalTokens: 1100,
+        cachedInputTokens: 400,
+        cacheWriteTokens: 200,
+        serviceTier: "priority",
+      },
+    });
+    // 400 ordinary at $2 + 400 reads at $0.20 + 200 writes at $2.50 + output at $12, then Fast 2x.
+    expect(cost.amountUsd).toBeCloseTo(
+      ((400 * 2 + 400 * 0.2 + 200 * 2.5 + 100 * 12) * 2) / 1e6,
+      10,
+    );
+  });
+  it("adds Terra analysis and Luna graph costs without repricing combined tokens", () => {
+    const stage = (model: string) =>
+      createCostSummary({
+        kind: "actual",
+        model,
+        approximate: false,
+        usage: { inputTokens: 1000, outputTokens: 1000, totalTokens: 2000 },
+      });
+    const total = combineCostSummaries([
+      stage("gpt-5.6-terra"),
+      stage("gpt-5.6-luna"),
+    ]);
+    expect(total.amountUsd).toBeCloseTo(0.0154, 10);
+    expect(total.pricingModel).toBe("gpt-5.6-terra + gpt-5.6-luna");
+    expect(total.usage.totalTokens).toBe(4000);
+  });
+  it("prices mixed-model estimates by stage with an uncached-write upper bound", () => {
+    const total = createEstimateCostSummary({
+      model: "gpt-5.6-luna",
+      analysisModel: "gpt-5.6-terra",
+      explanationInputTokens: 1000,
+      graphStaticInputTokens: 200,
+      approximate: true,
+    });
+    expect(total.amountUsd).toBeCloseTo(
+      (1000 * 2.5 + 8000 * 12 + 8200 * 0.25 + 6000 * 1.2) / 1e6,
+      10,
+    );
   });
 });

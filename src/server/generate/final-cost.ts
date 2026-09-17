@@ -1,6 +1,7 @@
 import type {
   GenerationCostSummary,
   GenerationTokenUsage,
+  GenerationStageUsage,
 } from "~/features/diagram/cost";
 import type { GenerationEstimateResult } from "./cost-estimate";
 import {
@@ -8,16 +9,25 @@ import {
   GRAPH_MAX_OUTPUT_TOKENS,
   GRAPH_RETRY_INPUT_BUFFER_TOKENS,
 } from "./generation-policy";
-import { createCostSummary, sumGenerationUsage } from "./pricing";
+import {
+  combineCostSummaries,
+  createCostSummary,
+  sumGenerationUsage,
+} from "./pricing";
 
 export function createFinalGenerationCostSummary(params: {
   model: string;
   estimate: GenerationEstimateResult;
   actualUsages: GenerationTokenUsage[];
+  stageUsages?: GenerationStageUsage[];
   hasCompleteMeasuredUsage: boolean;
   graphAttemptCount: number;
 }): GenerationCostSummary {
   if (params.hasCompleteMeasuredUsage) {
+    const measured = params.stageUsages
+      ?.filter((stage) => stage.stage !== "estimate")
+      .map((stage) => stage.costSummary);
+    if (measured?.length) return combineCostSummaries(measured);
     return createCostSummary({
       kind: "actual",
       model: params.model,
@@ -38,18 +48,22 @@ export function createFinalGenerationCostSummary(params: {
       : baseUsage.inputTokens +
         GRAPH_MAX_OUTPUT_TOKENS +
         GRAPH_RETRY_INPUT_BUFFER_TOKENS;
-  const usage: GenerationTokenUsage = {
-    inputTokens: baseUsage.inputTokens + retryInputTokens * retryCount,
-    outputTokens: baseUsage.outputTokens + GRAPH_MAX_OUTPUT_TOKENS * retryCount,
-    totalTokens: 0,
+  const retryUsage: GenerationTokenUsage = {
+    inputTokens: retryInputTokens * retryCount,
+    outputTokens: GRAPH_MAX_OUTPUT_TOKENS * retryCount,
+    totalTokens: (retryInputTokens + GRAPH_MAX_OUTPUT_TOKENS) * retryCount,
+    cacheWriteTokens: retryInputTokens * retryCount,
   };
-  usage.totalTokens = usage.inputTokens + usage.outputTokens;
-
-  return createCostSummary({
-    kind: "estimate",
-    model: params.model,
-    usage,
-    approximate: true,
-    note: `Provider usage was unavailable for at least one stage, so this remains a conservative estimate for ${graphAttemptCount} graph-planning attempt${graphAttemptCount === 1 ? "" : "s"}.`,
-  });
+  return combineCostSummaries(
+    [
+      params.estimate.costSummary,
+      createCostSummary({
+        kind: "estimate",
+        model: params.model,
+        usage: retryUsage,
+        approximate: true,
+      }),
+    ],
+    `Provider usage was unavailable for at least one stage, so this remains a conservative estimate for ${graphAttemptCount} graph-planning attempt${graphAttemptCount === 1 ? "" : "s"}.`,
+  );
 }

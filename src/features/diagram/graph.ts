@@ -119,6 +119,9 @@ export interface GenerationSessionAudit {
   stage: string;
   provider: string;
   model: string;
+  analysisModel?: string;
+  sourcePaths?: string[];
+  unavailableSourceCount?: number;
   quotaStatus?: "admitted" | "denied" | "finalized";
   quotaBucket?: string;
   quotaDateUtc?: string;

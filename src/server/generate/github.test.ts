@@ -155,6 +155,7 @@ describe("getGithubData repository input bounds", () => {
     await expect(getGithubData("acme", "demo")).resolves.toEqual({
       defaultBranch: "main",
       fileTree: "src/user.login.ts\nsrc/main.ts",
+      sourceBlobs: new Map(),
       readme: "# Demo",
       isPrivate: false,
       stargazerCount: 42,
