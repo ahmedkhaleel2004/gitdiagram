@@ -31,6 +31,17 @@ const config = {
   reactStrictMode: false,
   ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
   transpilePackages: ["@aws-sdk/client-s3"],
+  async redirects() {
+    // Support replacing github.com in a file, branch, issue or pull-request URL.
+    return [
+      {
+        source:
+          "/:username/:repo/:view(tree|blob|issues|pull|pulls|commit|commits|releases|actions)/:path*",
+        destination: "/:username/:repo",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

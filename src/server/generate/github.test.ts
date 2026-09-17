@@ -476,4 +476,87 @@ describe("getGithubData repository input bounds", () => {
     expect(errorSpy.mock.calls.flat().join(" ")).toContain("ghs_serversecret");
     errorSpy.mockRestore();
   });
+  it.each([401, 403, 404])(
+    "recovers public repository access when a saved token returns %s",
+    async (status) => {
+      getGitHubApiHeaders.mockImplementation(({ githubPat }) => ({
+        Authorization: githubPat ? "Bearer caller" : "Bearer server",
+      }));
+      const publicFetch = createGitHubFetch({
+        tree: [{ path: "src/main.ts", type: "blob" }],
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input, init) => {
+          if (
+            new Headers(init?.headers).get("Authorization") === "Bearer caller"
+          )
+            return jsonResponse({ message: "Not accessible" }, status);
+          return publicFetch(input);
+        }),
+      );
+      await expect(
+        getGithubData("acme", "demo", "expired-test-token"),
+      ).resolves.toMatchObject({ isPrivate: false, fileTree: "src/main.ts" });
+    },
+  );
+
+  it("never uses server private access to rescue an invalid caller credential", async () => {
+    getGitHubApiHeaders.mockImplementation(({ githubPat }) => ({
+      Authorization: githubPat ? "Bearer caller" : "Bearer server",
+    }));
+    const fetchMock = vi.fn(async (_input, init) =>
+      new Headers(init?.headers).get("Authorization") === "Bearer caller"
+        ? jsonResponse({ message: "Bad credentials" }, 401)
+        : jsonResponse({ default_branch: "main", private: true }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      getGithubData("acme", "secret", "expired-test-token"),
+    ).rejects.toThrow("GitHub request failed (401)");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(
+      fetchMock.mock.calls.every(
+        ([url]) =>
+          !String(url).includes("/git/trees/") &&
+          !String(url).endsWith("/readme"),
+      ),
+    ).toBe(true);
+  });
+
+  it("recovers a public tree when a fine-grained token can see metadata but not contents", async () => {
+    getGitHubApiHeaders.mockImplementation(({ githubPat }) => ({
+      Authorization: githubPat ? "Bearer caller" : "Bearer server",
+    }));
+    const publicFetch = createGitHubFetch({
+      tree: [{ path: "src/main.ts", type: "blob" }],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input, init) => {
+        if (
+          String(input).includes("/git/trees/") &&
+          new Headers(init?.headers).get("Authorization") === "Bearer caller"
+        )
+          return jsonResponse({ message: "Forbidden" }, 403);
+        return publicFetch(input);
+      }),
+    );
+    await expect(
+      getGithubData("acme", "demo", "restricted-test-token"),
+    ).resolves.toMatchObject({ isPrivate: false });
+  });
+
+  it("does not retry with server credentials after cancellation", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(async () => {
+      controller.abort();
+      return jsonResponse({}, 401);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      getGithubData("acme", "demo", "caller", controller.signal),
+    ).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

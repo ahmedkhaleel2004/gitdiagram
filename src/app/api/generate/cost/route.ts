@@ -28,6 +28,7 @@ import {
 } from "~/server/generate/pricing";
 import { parseGenerateRequest } from "~/server/generate/types";
 import { getClientIp } from "~/server/http/client-ip";
+import { classifyGitHubError } from "~/server/generate/github-errors";
 import { resolveRequestCredentials } from "~/server/http/request-credentials";
 import { isSameOriginRequest } from "~/server/http/same-origin";
 
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
   const requestId = randomUUID();
   const deadlineSignal = AbortSignal.timeout(COST_REQUEST_DEADLINE_MS);
   const signal = AbortSignal.any([request.signal, deadlineSignal]);
+  let hasCallerGithubToken = false;
 
   try {
     // Estimation runs the same bounded GitHub ingestion as a real generation,
@@ -92,6 +94,7 @@ export async function POST(request: Request) {
     const rateLimit = await consumeGenerationInfrastructureRateLimit({
       clientIp: getClientIp(request),
     });
+    hasCallerGithubToken = Boolean(githubPat?.trim());
     if (!rateLimit.allowed) {
       return jsonResponse(
         {
@@ -166,6 +169,17 @@ export async function POST(request: Request) {
       { requestId },
     );
   } catch (error) {
+    const githubError = classifyGitHubError(error, hasCallerGithubToken);
+    if (githubError && !deadlineSignal.aborted) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: githubError.message,
+          error_code: githubError.errorCode,
+        },
+        { status: githubError.status, requestId },
+      );
+    }
     const message =
       error instanceof Error
         ? error.message

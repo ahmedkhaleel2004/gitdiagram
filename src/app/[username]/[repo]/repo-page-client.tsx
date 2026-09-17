@@ -17,6 +17,13 @@ import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 
 const loadMermaidChart = () => import("~/components/mermaid-diagram");
+const PrivateReposDialog = dynamic(
+  () =>
+    import("~/components/private-repos-dialog").then(
+      (module) => module.PrivateReposDialog,
+    ),
+  { ssr: false },
+);
 const MermaidChart = dynamic(loadMermaidChart, {
   // The default diagram is not shown in the zoom viewer, so rendering that
   // frame while this chunk loads causes a misleading flash on cold visits.
@@ -38,6 +45,7 @@ export default function RepoPageClient({
 }: RepoPageClientProps) {
   const [zoomingEnabled, setZoomingEnabled] = useState(false);
   const [diagramRendered, setDiagramRendered] = useState(false);
+  const [showGithubAccess, setShowGithubAccess] = useState(false);
 
   useStarReminder();
 
@@ -73,6 +81,13 @@ export default function RepoPageClient({
     state.errorCode === "RATE_LIMITED" ||
     Boolean(error?.includes("API key")) ||
     Boolean(state.error?.includes("API key"));
+  const showGithubAccessCta = [
+    "REPOSITORY_NOT_FOUND",
+    "GITHUB_AUTH_REQUIRED",
+    "GITHUB_TOKEN_INVALID",
+    "GITHUB_ACCESS_DENIED",
+    "GITHUB_TREE_UNAVAILABLE",
+  ].includes(state.errorCode ?? "");
 
   useEffect(() => {
     if (hasDiagram || loading) {
@@ -156,6 +171,30 @@ export default function RepoPageClient({
                     audit={state.latestSessionAudit}
                     error={error || state.error}
                   />
+                  <div className="mt-4 flex flex-wrap justify-center gap-3">
+                    <Button
+                      onClick={() => void handleRegenerate()}
+                      className="neo-button px-4 py-2"
+                    >
+                      Try again
+                    </Button>
+                    {showGithubAccessCta && (
+                      <Button
+                        onClick={() => setShowGithubAccess(true)}
+                        className="neo-button px-4 py-2"
+                      >
+                        GitHub Access
+                      </Button>
+                    )}
+                    <a
+                      href={`https://github.com/${encodeURIComponent(normalizedUsername)}/${encodeURIComponent(normalizedRepo)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="neo-link self-center text-sm"
+                    >
+                      Open repository on GitHub
+                    </a>
+                  </div>
                   {showApiKeyCta && (
                     <div className="mt-8 flex flex-col items-center gap-2">
                       <Button
@@ -178,6 +217,13 @@ export default function RepoPageClient({
           onClose={handleCloseApiKeyDialog}
           onSaved={handleApiKeySaved}
         />
+        {showGithubAccess && (
+          <PrivateReposDialog
+            isOpen
+            onClose={() => setShowGithubAccess(false)}
+            onSaved={() => void handleRegenerate()}
+          />
+        )}
         <Toaster />
       </main>
     </TooltipProvider>

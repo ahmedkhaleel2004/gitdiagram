@@ -21,6 +21,7 @@ import { Input } from "./ui/input";
 interface PrivateReposDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  onSaved?: () => void;
 }
 
 const ERROR_MESSAGES: Record<Exclude<CredentialSettingError, null>, string> = {
@@ -32,6 +33,7 @@ const ERROR_MESSAGES: Record<Exclude<CredentialSettingError, null>, string> = {
 export function PrivateReposDialog({
   isOpen,
   onClose,
+  onSaved,
 }: PrivateReposDialogProps) {
   const {
     clear,
@@ -51,6 +53,7 @@ export function PrivateReposDialog({
     const saved = await save();
     if (saved) {
       onClose();
+      onSaved?.();
     }
   };
 
@@ -124,7 +127,14 @@ export function PrivateReposDialog({
           <div className="flex items-center justify-between">
             <button
               type="button"
-              onClick={() => void clear()}
+              onClick={async () => {
+                if (await clear()) {
+                  if (onSaved) {
+                    onClose();
+                    onSaved();
+                  }
+                }
+              }}
               disabled={!isConfigured || isPending}
               className="neo-link text-sm disabled:cursor-not-allowed disabled:opacity-50"
             >

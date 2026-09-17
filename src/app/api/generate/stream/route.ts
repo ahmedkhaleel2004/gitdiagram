@@ -270,6 +270,7 @@ export async function POST(request: Request) {
           });
           const provider = getProvider();
           const model = getModel(provider);
+          audit = { ...audit, provider, model };
           assertModelPricingAvailable(model);
 
           console.info(
@@ -703,6 +704,7 @@ export async function POST(request: Request) {
             : normalizeGenerationError({
                 provider: audit.provider,
                 apiKey,
+                githubPat,
                 message: rawMessage,
                 error,
               });

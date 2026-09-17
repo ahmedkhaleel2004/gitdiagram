@@ -200,7 +200,7 @@ describe("POST /api/generate/cost", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({
-      error: "Repository not found.",
+      error: expect.stringContaining("GitHub Access"),
       error_code: "REPOSITORY_NOT_FOUND",
     });
   });

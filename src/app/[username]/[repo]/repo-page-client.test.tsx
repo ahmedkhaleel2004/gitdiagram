@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RepoPageClient from "./repo-page-client";
@@ -214,5 +214,30 @@ describe("RepoPageClient", () => {
     expect(mainCardProps).toHaveBeenCalledWith(
       expect.objectContaining({ costSummary }),
     );
+  });
+  it("offers repository access recovery without suggesting an AI key", () => {
+    const retry = vi.fn();
+    useDiagram.mockReturnValue({
+      diagram: "",
+      loading: false,
+      handleRegenerate: retry,
+      state: {
+        status: "error",
+        error: "Check your GitHub access.",
+        errorCode: "GITHUB_TOKEN_INVALID",
+      },
+    });
+    render(<RepoPageClient username="Acme" repo="Demo" />);
+    expect(
+      screen.getByRole("button", { name: "GitHub Access" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /use your ai key/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open repository on GitHub" }),
+    ).toHaveAttribute("href", "https://github.com/acme/demo");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 });

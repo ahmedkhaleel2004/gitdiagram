@@ -94,7 +94,8 @@ describe("normalizeGenerationError", () => {
       error: new Error(message),
     });
 
-    expect(normalized).toEqual({ message, errorCode: "STREAM_FAILED" });
+    expect(normalized.errorCode).toBe("REPOSITORY_NOT_FOUND");
+    expect(normalized.message).toContain("GitHub Access");
   });
 });
 

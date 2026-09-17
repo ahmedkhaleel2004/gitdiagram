@@ -1,4 +1,5 @@
 import { REPOSITORY_TOO_LARGE_ERROR } from "./github";
+import { classifyGitHubError } from "./github-errors";
 import {
   MODEL_PRICING_UNAVAILABLE_ERROR,
   ModelPricingUnavailableError,
@@ -86,9 +87,16 @@ function isOpenAiQuotaExhaustedError(message: string): boolean {
 export function normalizeGenerationError(params: {
   provider: string;
   apiKey?: string;
+  githubPat?: string;
   message: string;
   error?: unknown;
 }): { message: string; errorCode: string } {
+  const githubError = classifyGitHubError(
+    params.error,
+    Boolean(params.githubPat?.trim()),
+  );
+  if (githubError)
+    return { message: githubError.message, errorCode: githubError.errorCode };
   if (params.error instanceof ModelPricingUnavailableError) {
     return {
       message: MODEL_PRICING_UNAVAILABLE_ERROR,

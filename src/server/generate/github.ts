@@ -1,4 +1,5 @@
 import { getGitHubApiHeaders } from "../github-auth";
+import { GitHubRequestError } from "./github-errors";
 
 interface GitHubRepoResponse {
   default_branch?: string;
@@ -166,7 +167,7 @@ async function fetchJsonResult<T>(
   }
 
   if (response.status === 404) {
-    throw new Error(notFoundMessage);
+    throw new GitHubRequestError(notFoundMessage, 404);
   }
 
   // GitHub answers 409 ("Git Repository is empty.") for zero-commit repos on
@@ -186,7 +187,12 @@ async function fetchJsonResult<T>(
         body: (await response.text()).slice(0, 500),
       }),
     );
-    throw new Error(buildGithubRequestFailedError(response.status));
+    throw new GitHubRequestError(
+      buildGithubRequestFailedError(response.status),
+      response.status,
+      response.headers.get("x-ratelimit-remaining") === "0" ||
+        response.headers.has("retry-after"),
+    );
   }
 
   return {
@@ -381,7 +387,7 @@ async function getReadme(
   return readme;
 }
 
-export async function getGithubData(
+async function fetchGithubData(
   username: string,
   repo: string,
   githubPat?: string,
@@ -431,4 +437,44 @@ export async function getGithubData(
     stargazerCount,
     pathTypes: tree.pathTypes,
   };
+}
+
+export async function getGithubData(
+  username: string,
+  repo: string,
+  githubPat?: string,
+  signal?: AbortSignal,
+): Promise<GithubData> {
+  try {
+    return await fetchGithubData(username, repo, githubPat, signal);
+  } catch (error) {
+    if (
+      !githubPat?.trim() ||
+      !(error instanceof GitHubRequestError) ||
+      ![401, 403, 404].includes(error.status) ||
+      signal?.aborted
+    )
+      throw error;
+
+    // An expired/restricted saved token must not block public repositories.
+    // No caller token means fetchGithubData rejects private metadata BEFORE
+    // reading contents, even if the server's installation could access it.
+    try {
+      const publicData = await fetchGithubData(
+        username,
+        repo,
+        undefined,
+        signal,
+      );
+      console.info(
+        JSON.stringify({ event: "generate.github.public_fallback_succeeded" }),
+      );
+      return publicData;
+    } catch {
+      // Preserve the caller's actionable credential/access failure without
+      // revealing whether the server can see a private repository.
+      signal?.throwIfAborted();
+      throw error;
+    }
+  }
 }
