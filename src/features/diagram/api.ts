@@ -65,27 +65,6 @@ function isTerminalMessage(message: DiagramStreamMessage): boolean {
   );
 }
 
-function sendGenerationCancellation(
-  sessionId: string,
-  cancelToken: string,
-): void {
-  void fetch(`${GENERATE_BASE_PATH}/cancel`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    credentials: "omit",
-    body: JSON.stringify({
-      session_id: sessionId,
-      cancel_token: cancelToken,
-    }),
-    keepalive: true,
-  }).catch(() => {
-    // The stream's own deadline remains the fallback if this best-effort
-    // cancellation notification cannot reach the server.
-  });
-}
-
 export async function streamDiagramGeneration(
   params: StreamGenerationParams,
   handlers: StreamHandlers,
@@ -93,22 +72,7 @@ export async function streamDiagramGeneration(
   await migrateLegacyCredentialStorage();
 
   const sessionId = globalThis.crypto.randomUUID();
-  const cancelToken = globalThis.crypto.randomUUID();
   let receivedTerminalEvent = false;
-  let cancellationSent = false;
-  const notifyCancellation = () => {
-    if (receivedTerminalEvent || cancellationSent) {
-      return;
-    }
-    cancellationSent = true;
-    sendGenerationCancellation(sessionId, cancelToken);
-  };
-
-  params.signal?.addEventListener("abort", notifyCancellation, { once: true });
-  if (params.signal?.aborted) {
-    notifyCancellation();
-  }
-
   try {
     const response = await fetch(`${GENERATE_BASE_PATH}/stream`, {
       method: "POST",
@@ -120,7 +84,6 @@ export async function streamDiagramGeneration(
         username: params.username,
         repo: params.repo,
         session_id: sessionId,
-        cancel_token: cancelToken,
       }),
       signal: params.signal,
     });
@@ -162,9 +125,6 @@ export async function streamDiagramGeneration(
             receivedTerminalEvent || isTerminalMessage(message);
           const shouldContinue = await handlers.onMessage(message);
           if (shouldContinue === false) {
-            if (!receivedTerminalEvent) {
-              notifyCancellation();
-            }
             await reader.cancel();
             return;
           }
@@ -178,9 +138,6 @@ export async function streamDiagramGeneration(
           receivedTerminalEvent || isTerminalMessage(message);
         const shouldContinue = await handlers.onMessage(message);
         if (shouldContinue === false) {
-          if (!receivedTerminalEvent) {
-            notifyCancellation();
-          }
           await reader.cancel();
           return;
         }
@@ -195,9 +152,6 @@ export async function streamDiagramGeneration(
       reader.releaseLock();
     }
   } finally {
-    if (!receivedTerminalEvent) {
-      notifyCancellation();
-    }
-    params.signal?.removeEventListener("abort", notifyCancellation);
+    // AbortSignal will automatically cancel the fetch when triggered
   }
 }

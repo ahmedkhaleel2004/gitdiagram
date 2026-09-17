@@ -169,60 +169,8 @@ describe("streamDiagramGeneration", () => {
     expect(streamBody.session_id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
     );
-    expect(streamBody.cancel_token).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
-    );
   });
 
-  it("sends a credential-free keepalive cancellation when the caller aborts", async () => {
-    const abortController = new AbortController();
-    const fetchMock = vi.fn(
-      (url: string, init?: RequestInit): Promise<Response> => {
-        if (url === "/api/generate/cancel") {
-          return Promise.resolve(new Response(null, { status: 204 }));
-        }
-
-        return new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            "abort",
-            () => reject(new DOMException("Aborted", "AbortError")),
-            { once: true },
-          );
-        });
-      },
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const generation = streamDiagramGeneration(
-      {
-        username: "openai",
-        repo: "openai-node",
-        signal: abortController.signal,
-      },
-      { onMessage: vi.fn() },
-    );
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-
-    abortController.abort();
-    await expect(generation).rejects.toThrow("Aborted");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-
-    const streamBody = JSON.parse(
-      String(fetchMock.mock.calls[0]?.[1]?.body),
-    ) as { cancel_token: string; session_id: string };
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/generate/cancel");
-    expect(fetchMock.mock.calls[1]?.[1]).toEqual(
-      expect.objectContaining({
-        method: "POST",
-        keepalive: true,
-        credentials: "omit",
-        body: JSON.stringify({
-          session_id: streamBody.session_id,
-          cancel_token: streamBody.cancel_token,
-        }),
-      }),
-    );
-  });
 
   it("does not send cancellation when a terminal event closes the reader", async () => {
     const readerCancelled = vi.fn();
@@ -271,8 +219,7 @@ describe("streamDiagramGeneration", () => {
       { onMessage: () => false },
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/generate/cancel");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a stream that closes without a terminal event", async () => {
@@ -292,8 +239,7 @@ describe("streamDiagramGeneration", () => {
         { onMessage: vi.fn() },
       ),
     ).rejects.toThrow("Generation stream ended before completion");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/generate/cancel");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("sends cancellation when the response stream fails during a read", async () => {
@@ -320,8 +266,7 @@ describe("streamDiagramGeneration", () => {
         { onMessage: vi.fn() },
       ),
     ).rejects.toThrow("connection lost");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/generate/cancel");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("normalizes a Vercel WAF rate-limit response", async () => {

@@ -23,7 +23,7 @@ import {
   validateDiagramGraph,
 } from "./graph";
 import type { AIProvider } from "./model-config";
-import { generateStructuredOutput } from "./openai";
+import { generateStructuredOutput, streamStructuredOutput } from "./openai";
 import { createCostSummary } from "./pricing";
 import { SYSTEM_GRAPH_PROMPT } from "./prompts";
 import {
@@ -47,7 +47,7 @@ interface GenerateValidatedGraphParams {
   model: string;
   apiKey?: string;
   sessionId: string;
-  explanation: string;
+  readme: string;
   fileTree: string;
   fileTreeLookup: Set<string>;
   signal: AbortSignal;
@@ -64,6 +64,7 @@ export type ValidatedGraphResult =
       ok: true;
       audit: GenerationSessionAudit;
       graph: DiagramGraph;
+      explanation: string;
     }
   | {
       ok: false;
@@ -108,33 +109,115 @@ export async function generateValidatedGraph(
           })
         : 0;
     const graphStartedAt = performance.now();
-    const {
-      output: graph,
-      rawText,
-      usage,
-    } = await generateStructuredOutput({
-      provider: params.provider,
-      model: params.model,
-      systemPrompt: SYSTEM_GRAPH_PROMPT,
-      userPrompt: toTaggedMessage(
-        attempt === 1
-          ? { explanation: params.explanation }
-          : {
-              explanation: params.explanation,
-              file_tree: params.fileTree,
-              previous_graph: previousGraphRaw,
-              validation_feedback: validationFeedback,
-            },
-      ),
-      schema: diagramGraphSchema,
-      schemaName: "diagram_graph",
-      apiKey: params.apiKey,
-      reasoningEffort: GRAPH_REASONING_EFFORT,
-      textVerbosity: GRAPH_TEXT_VERBOSITY,
-      maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
-      signal: params.signal,
-      clientRequestId: `${params.sessionId}:graph:${attempt}`,
-    });
+    let graph: DiagramGraph;
+    let rawText: string;
+    let usage: GenerationTokenUsage | null = null;
+    let finalExplanation = "";
+
+    if (attempt === 1) {
+      const streamStartedAt = performance.now();
+      const { stream, usagePromise } = await streamStructuredOutput({
+        provider: params.provider,
+        model: params.model,
+        systemPrompt: SYSTEM_GRAPH_PROMPT,
+        userPrompt: toTaggedMessage({
+          file_tree: params.fileTree,
+          readme: params.readme,
+        }),
+        schema: diagramGraphSchema,
+        schemaName: "diagram_graph",
+        apiKey: params.apiKey,
+        reasoningEffort: GRAPH_REASONING_EFFORT,
+        textVerbosity: GRAPH_TEXT_VERBOSITY,
+        maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
+        signal: params.signal,
+        clientRequestId: `${params.sessionId}:graph:${attempt}`,
+      });
+
+      let accumulatedText = "";
+      let explanationStreamedLength = 0;
+      let recordedFirstChunk = false;
+
+      for await (const chunk of stream) {
+        params.signal.throwIfAborted();
+        accumulatedText += chunk;
+
+        if (!recordedFirstChunk) {
+          params.recordTiming(`graph_attempt_1_first_chunk`, streamStartedAt);
+          recordedFirstChunk = true;
+        }
+
+        const startMatch = accumulatedText.match(/"explanation"\s*:\s*"/);
+        if (startMatch) {
+          const startIndex = startMatch.index! + startMatch[0].length;
+          let endQuoteIndex = -1;
+          let escaped = false;
+          for (let i = startIndex; i < accumulatedText.length; i++) {
+            if (escaped) {
+              escaped = false;
+            } else if (accumulatedText[i] === '\\') {
+              escaped = true;
+            } else if (accumulatedText[i] === '"') {
+              endQuoteIndex = i;
+              break;
+            }
+          }
+
+          const currentEnd = endQuoteIndex !== -1 ? endQuoteIndex : accumulatedText.length - (escaped ? 1 : 0);
+          if (currentEnd > startIndex) {
+            const currentExplanationRaw = accumulatedText.substring(startIndex, currentEnd);
+            try {
+              const parsed = JSON.parse(`"${currentExplanationRaw}"`);
+              const newChunk = parsed.substring(explanationStreamedLength);
+              if (newChunk) {
+                explanationStreamedLength += newChunk.length;
+                finalExplanation = parsed;
+                void params.send({
+                  status: "explanation_chunk",
+                  session_id: params.sessionId,
+                  chunk: newChunk,
+                });
+              }
+            } catch {
+              // wait for more chunks to form valid JSON string
+            }
+          }
+        }
+      }
+
+      rawText = accumulatedText;
+      try {
+        const parsed = JSON.parse(rawText);
+        graph = diagramGraphSchema.parse(parsed);
+      } catch (error) {
+        throw new Error("Structured output stream returned invalid JSON or schema: " + (error instanceof Error ? error.message : "Unknown"));
+      }
+      usage = await usagePromise;
+    } else {
+      const result = await generateStructuredOutput({
+        provider: params.provider,
+        model: params.model,
+        systemPrompt: SYSTEM_GRAPH_PROMPT,
+        userPrompt: toTaggedMessage({
+          file_tree: params.fileTree,
+          readme: params.readme,
+          previous_graph: previousGraphRaw,
+          validation_feedback: validationFeedback,
+        }),
+        schema: diagramGraphSchema,
+        schemaName: "diagram_graph",
+        apiKey: params.apiKey,
+        reasoningEffort: GRAPH_REASONING_EFFORT,
+        textVerbosity: GRAPH_TEXT_VERBOSITY,
+        maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
+        signal: params.signal,
+        clientRequestId: `${params.sessionId}:graph:${attempt}`,
+      });
+      graph = result.output;
+      rawText = result.rawText;
+      usage = result.usage;
+      finalExplanation = graph.explanation ?? "";
+    }
     params.recordTiming(`graph_attempt_${attempt}`, graphStartedAt);
 
     if (usage) {
@@ -220,6 +303,7 @@ export async function generateValidatedGraph(
         ok: true,
         audit: withGraph(audit, acceptedGraph),
         graph: acceptedGraph,
+        explanation: finalExplanation,
       };
     }
 
