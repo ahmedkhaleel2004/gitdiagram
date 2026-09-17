@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowUpRight, ShieldCheck, Sparkles } from "lucide-react";
 import { GITHUB_REPO_URL } from "~/lib/site";
 import { GitHubIcon } from "~/components/icons/github-icon";
+import { getSponsorStats } from "~/server/sponsor-stats";
 import { SponsorEmailActions } from "./sponsor-email-actions";
 
 export const metadata: Metadata = {
@@ -14,74 +15,30 @@ export const metadata: Metadata = {
   },
 };
 
+export const revalidate = 300;
+
 type Stat = {
   label: string;
   value: string;
   detail: string;
 };
 
-const lifetimeStats: Stat[] = [
-  {
-    label: "Tracked unique visitors",
-    value: "366,235",
-    detail: "Tracked since Dec 26, 2024",
-  },
-  {
-    label: "Pageviews",
-    value: "846,732",
-    detail: "Across GitDiagram",
-  },
-  {
-    label: "GitHub stars",
-    value: "16,178",
-    detail: "Open-source developer reach",
-  },
-];
-
-const monthlyStats: Stat[] = [
-  {
-    label: "Tracked unique visitors",
-    value: "31,666",
-    detail: "Unique, across GitDiagram",
-  },
-  {
-    label: "Pageviews",
-    value: "81,385",
-    detail: "Across GitDiagram",
-  },
-  {
-    label: "Repo page visitors",
-    value: "27,731",
-    detail: "Unique visitors to repository pages",
-  },
-];
-
-const surfaces = [
-  {
-    name: "Repo diagram pages",
-    pageviews: "57,536",
-    description:
-      "Sponsor line placed on generated repository diagram pages, right after the primary diagram experience.",
-  },
-  {
-    name: "Homepage",
-    pageviews: "11,605",
-    description:
-      "Native sponsor line near the repository input, in front of developers as they start a lookup.",
-  },
-  {
-    name: "Browse catalog",
-    pageviews: "8,350",
-    description:
-      "Placement on the catalog where developers explore public repositories.",
-  },
-  {
-    name: "GitHub README",
-    pageviews: null,
-    description:
-      "Sponsor mention in the open-source project README for developers discovering GitDiagram on GitHub.",
-  },
-];
+const numberFormatter = new Intl.NumberFormat("en-US");
+const format = (value: number) => numberFormatter.format(value);
+const updatedAtFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "America/Toronto",
+});
+const trackedSinceFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "America/Toronto",
+});
 
 const sponsorFits = [
   "AI coding tools and repo agents",
@@ -93,7 +50,72 @@ const sponsorFits = [
 const SPONSOR_EMAIL_ADDRESS = "ahmedkhaleel2004@gmail.com";
 const SPONSOR_EMAIL = `mailto:${SPONSOR_EMAIL_ADDRESS}?subject=GitDiagram%20sponsor%20slot`;
 
-export default function SponsorPage() {
+export default async function SponsorPage() {
+  const stats = await getSponsorStats();
+  const updatedAt = updatedAtFormatter.format(new Date(stats.asOf));
+  const lifetimeStats: Stat[] = [
+    {
+      label: "Tracked unique visitors",
+      value: format(stats.lifetimeVisitors),
+      detail: `Tracked since ${trackedSinceFormatter.format(new Date(stats.trackedSince))}`,
+    },
+    {
+      label: "Pageviews",
+      value: format(stats.lifetimePageviews),
+      detail: "Across GitDiagram",
+    },
+    {
+      label: "GitHub stars",
+      value: format(stats.githubStars),
+      detail: "Open-source developer reach",
+    },
+  ];
+
+  const monthlyStats: Stat[] = [
+    {
+      label: "Tracked unique visitors",
+      value: format(stats.monthlyVisitors),
+      detail: "Unique, across GitDiagram",
+    },
+    {
+      label: "Pageviews",
+      value: format(stats.monthlyPageviews),
+      detail: "Across GitDiagram",
+    },
+    {
+      label: "Repo page visitors",
+      value: format(stats.repoVisitors),
+      detail: "Unique visitors to repository pages",
+    },
+  ];
+
+  const surfaces = [
+    {
+      name: "Repo diagram pages",
+      pageviews: format(stats.repoPageviews),
+      description:
+        "Sponsor line placed on generated repository diagram pages, right after the primary diagram experience.",
+    },
+    {
+      name: "Homepage",
+      pageviews: format(stats.homePageviews),
+      description:
+        "Native sponsor line near the repository input, in front of developers as they start a lookup.",
+    },
+    {
+      name: "Browse catalog",
+      pageviews: format(stats.browsePageviews),
+      description:
+        "Placement on the catalog where developers explore public repositories.",
+    },
+    {
+      name: "GitHub README",
+      pageviews: null,
+      description:
+        "Sponsor mention in the open-source project README for developers discovering GitDiagram on GitHub.",
+    },
+  ];
+
   return (
     <main className="flex-grow px-5 py-10 sm:px-8 lg:py-14">
       <div className="mx-auto max-w-5xl">
@@ -145,7 +167,7 @@ export default function SponsorPage() {
               </h2>
             </div>
             <p className="text-sm font-semibold text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-              As of September 17, 2026 at 6:40 p.m. ET
+              <time dateTime={stats.asOf}>Updated {updatedAt} ET</time>
             </p>
           </div>
 
@@ -154,7 +176,8 @@ export default function SponsorPage() {
             <StatRow heading="Lifetime" stats={lifetimeStats} />
           </div>
           <p className="mt-4 text-xs leading-5 text-[hsl(var(--neo-soft-text))] dark:text-neutral-400">
-            Traffic figures come from PostHog for gitdiagram.com. The 30-day
+            Traffic figures come from PostHog for gitdiagram.com; stars come
+            from GitHub. Figures refresh about every five minutes. The 30-day
             window ends at the time shown above. Visitors are unique within each
             window. Pageviews measure site traffic, not sponsor impressions.
           </p>

@@ -8,7 +8,7 @@ interface GitHubRepoResponse {
 
 const GITHUB_REPO_URL =
   "https://api.github.com/repos/ahmedkhaleel2004/gitdiagram";
-const STAR_COUNT_REVALIDATE_SECONDS = 60 * 30;
+const STAR_COUNT_REVALIDATE_SECONDS = 60 * 5;
 
 export async function getStarCount() {
   try {
