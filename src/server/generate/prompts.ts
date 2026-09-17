@@ -7,7 +7,7 @@ Produce a useful map of the actual product. Preserve entry points, orchestration
 
 Evidence:
 - Paths establish existence and organization; README establishes documented behavior; source excerpts establish actual imports, calls and data flow. Never infer execution order from filenames or directory order.
-- Cite one exact primary path from the tree for each repository component. A directory may represent a multi-file subsystem; a single file must not represent unrelated modules. Do not append slashes or invent paths. External systems and consumer code have no repository path.
+- Cite one exact primary path from the tree for each repository component. Distinct responsibilities may share the SAME path when that file implements both. Never assign a second responsibility to a configuration or factory file merely to make paths unique; task definitions belong to the task module, not the module exporting its queue application. A directory may represent a multi-file subsystem; a single file must not represent unrelated modules. Do not append slashes or invent paths. External systems and consumer code have no repository path.
 - Check concrete call sites before naming providers, queues, storage and orchestrators. Do not confuse direct provider SDKs with hosting platforms, indexing with retrieval, or background workers with the service they invoke.
 - Include material documented components even if their source was not sampled. State uncertainty in prose and leave unsupported wiring out of definite relationships.
 
