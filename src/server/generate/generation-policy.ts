@@ -1,5 +1,5 @@
-export const EXPLANATION_REASONING_EFFORT = "medium" as const;
-export const GRAPH_REASONING_EFFORT = "low" as const;
+export const EXPLANATION_REASONING_EFFORT = "high" as const;
+export const GRAPH_REASONING_EFFORT = "medium" as const;
 
 export const EXPLANATION_TEXT_VERBOSITY = "low" as const;
 export const GRAPH_TEXT_VERBOSITY = "low" as const;

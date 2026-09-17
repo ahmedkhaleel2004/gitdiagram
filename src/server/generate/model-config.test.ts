@@ -24,16 +24,16 @@ describe("getProvider", () => {
 });
 
 describe("getModel", () => {
-  it("uses GPT-5.6 Terra as the OpenAI default", () => {
+  it("uses GPT-5.6 Luna as the OpenAI default", () => {
     delete process.env.OPENAI_MODEL;
 
-    expect(getModel("openai")).toBe("gpt-5.6-terra");
+    expect(getModel("openai")).toBe("gpt-5.6-luna");
   });
 
   it("preserves an explicit OpenAI model override", () => {
-    process.env.OPENAI_MODEL = "gpt-5.6-luna";
+    process.env.OPENAI_MODEL = "gpt-5.6-terra";
 
-    expect(getModel("openai")).toBe("gpt-5.6-luna");
+    expect(getModel("openai")).toBe("gpt-5.6-terra");
   });
 
   it("uses GPT-5.6 Terra as the OpenRouter fallback", () => {

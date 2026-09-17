@@ -79,7 +79,7 @@ describe("OpenAI Responses text verbosity", () => {
       expect.objectContaining({ maxRetries: 0, timeout: 150_000 }),
     );
     expect(openAiMocks.responsesCreate).toHaveBeenCalledWith(
-      expect.any(Object),
+      expect.objectContaining({ service_tier: "default" }),
       {
         signal,
         headers: { "X-Client-Request-Id": "session:explanation" },
@@ -134,6 +134,9 @@ describe("OpenAI Responses text verbosity", () => {
     });
     await consume(proxyResult.stream);
 
+    expect(openAiMocks.responsesCreate.mock.calls[1]?.[0]).not.toHaveProperty(
+      "service_tier",
+    );
     for (const [body] of openAiMocks.responsesCreate.mock.calls) {
       expect(body).not.toHaveProperty("text");
     }
@@ -161,6 +164,7 @@ describe("OpenAI Responses text verbosity", () => {
     const [body] = openAiMocks.responsesParse.mock.calls[0] as [
       Record<string, unknown>,
     ];
+    expect(body.service_tier).toBe("default");
     expect(body.text).toEqual(
       expect.objectContaining({
         format: expect.objectContaining({ type: "json_schema" }),

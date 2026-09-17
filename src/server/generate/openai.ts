@@ -222,6 +222,8 @@ export async function streamCompletion({
     .create(
       {
         model,
+        // Pin standard pricing instead of inheriting a project-level Fast setting.
+        ...(provider === "openai" ? { service_tier: "default" as const } : {}),
         stream: true,
         input: buildMessages(systemPrompt, userPrompt),
         ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
@@ -382,6 +384,7 @@ export async function generateStructuredOutput<T>({
     const response = await client.responses.parse(
       {
         model,
+        ...(provider === "openai" ? { service_tier: "default" as const } : {}),
         input: buildMessages(systemPrompt, userPrompt),
         text: {
           format: zodTextFormat(schema, schemaName),

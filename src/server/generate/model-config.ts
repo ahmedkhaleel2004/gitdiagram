@@ -1,7 +1,7 @@
 export type AIProvider = "openai" | "openrouter";
 
 const DEFAULT_PROVIDER: AIProvider = "openai";
-const DEFAULT_OPENAI_MODEL = "gpt-5.6-terra";
+const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-terra";
 const GPT_56_MODEL_PATTERN =
   /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/i;

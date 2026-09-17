@@ -58,9 +58,9 @@ describe("estimateGenerationCost", () => {
         userPrompt.includes("<file_tree>"),
     );
 
-    expect(explanationCall?.reasoningEffort).toBe("medium");
-    expect(firstGraphCall?.reasoningEffort).toBe("low");
-    expect(repairGraphCall?.reasoningEffort).toBe("low");
+    expect(explanationCall?.reasoningEffort).toBe("high");
+    expect(firstGraphCall?.reasoningEffort).toBe("medium");
+    expect(repairGraphCall?.reasoningEffort).toBe("medium");
     expect(firstGraphCall?.userPrompt).not.toContain("<repo_owner>");
     expect(firstGraphCall?.userPrompt).not.toContain("<repo_name>");
     expect(firstGraphCall?.userPrompt).not.toContain("<previous_graph>");
