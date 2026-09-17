@@ -64,8 +64,13 @@ export async function upstashEval<T>(params: {
 }
 
 export async function checkUpstashConnection(): Promise<void> {
-  const response = await upstashCommand<string>(["PING"]);
-  if (response !== "PONG") {
-    throw new Error("Upstash did not return PONG.");
+  // PING is exempt from Upstash's command quota and still succeeds when real
+  // application reads and writes are blocked. Probe a regular, read-only command.
+  const response = await upstashCommand<number>([
+    "EXISTS",
+    "gitdiagram:readiness",
+  ]);
+  if (response !== 0 && response !== 1) {
+    throw new Error("Upstash did not return a valid readiness response.");
   }
 }
