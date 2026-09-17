@@ -37,6 +37,9 @@ export function toStoredSessionSummary(
     stage: audit.stage,
     provider: audit.provider,
     model: audit.model,
+    analysisModel: audit.analysisModel,
+    sourcePaths: audit.sourcePaths,
+    unavailableSourceCount: audit.unavailableSourceCount,
     quotaStatus: audit.quotaStatus,
     quotaBucket: audit.quotaBucket,
     quotaDateUtc: audit.quotaDateUtc,
@@ -49,7 +52,10 @@ export function toStoredSessionSummary(
     // graph twice. Older version-1 artifacts with both copies remain readable.
     graph: audit.status === "failed" ? audit.graph : null,
     graphAttempts: audit.status === "failed" ? audit.graphAttempts : [],
-    stageUsages: [],
+    // Keep compact billing evidence for mixed-model runs across reloads.
+    stageUsages: (audit.stageUsages ?? []).filter(
+      (stage) => stage.stage !== "estimate",
+    ),
     // The live SSE audit may show a caller their own provider's raw error, but
     // this summary is written to shared storage (the public failure record and
     // the artifact's latest session summary) and served to later visitors, so

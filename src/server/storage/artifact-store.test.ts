@@ -190,6 +190,51 @@ describe("writeDiagramArtifact", () => {
 });
 
 describe("toStoredSessionSummary", () => {
+  it("preserves source coverage and model-specific billing through persistence and reload", () => {
+    const audit = createAudit({
+      sessionId: "mixed",
+      createdAt: "2026-09-17T12:00:00Z",
+      updatedAt: "2026-09-17T12:01:00Z",
+    });
+    audit.model = "gpt-5.6-luna";
+    audit.analysisModel = "gpt-5.6-terra";
+    audit.sourcePaths = ["src/main.ts"];
+    audit.unavailableSourceCount = 1;
+    audit.explanation = "Large source-grounded brief";
+    audit.stageUsages = [
+      {
+        stage: "explanation",
+        model: "gpt-5.6-terra",
+        createdAt: audit.createdAt,
+        costSummary: {
+          kind: "actual",
+          approximate: false,
+          amountUsd: 0.014,
+          display: "$0.014 USD",
+          pricingModel: "gpt-5.6-terra",
+          usage: {
+            inputTokens: 1000,
+            outputTokens: 1000,
+            totalTokens: 2000,
+            serviceTier: "default",
+          },
+        },
+      },
+    ];
+    const reloaded = JSON.parse(
+      JSON.stringify(toStoredSessionSummary(audit)),
+    ) as GenerationSessionAudit;
+    expect(reloaded).toMatchObject({
+      model: "gpt-5.6-luna",
+      analysisModel: "gpt-5.6-terra",
+      sourcePaths: ["src/main.ts"],
+      unavailableSourceCount: 1,
+      stageUsages: audit.stageUsages,
+    });
+    expect(reloaded).not.toHaveProperty("explanation");
+    expect(reloaded.graph).toBeNull();
+  });
+
   it("does not duplicate a successful artifact graph in its audit summary", () => {
     const audit = createAudit({
       sessionId: "session-success",
