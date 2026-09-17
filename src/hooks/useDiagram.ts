@@ -138,12 +138,14 @@ export function useDiagram(
     );
   }, []);
 
-  const { state, runGeneration, setState } = useDiagramStream({
-    username,
-    repo,
-    onComplete: onStreamComplete,
-    initialState: toInitialStreamState(initialState),
-  });
+  const { state, runGeneration, cancelGeneration, setState } = useDiagramStream(
+    {
+      username,
+      repo,
+      onComplete: onStreamComplete,
+      initialState: toInitialStreamState(initialState),
+    },
+  );
 
   const applyStoredState = useCallback(
     (stateRecord: DiagramStateResponse) => {
@@ -215,7 +217,9 @@ export function useDiagram(
       if (mode === "foreground") {
         setState((prev) => ({
           ...prev,
+          status: "idle",
           error: undefined,
+          errorCode: undefined,
         }));
       }
 
@@ -307,13 +311,25 @@ export function useDiagram(
 
   const handleRegenerate = useCallback(async () => {
     if (isExampleRepo(username, repo)) {
+      // The example's Regenerate control stays disabled, but error recovery
+      // must still reload its saved diagram after a failed or stopped lookup.
+      if (state.status === "error") await getDiagram();
       return;
     }
 
     await runGenerationOperation(
       "Something went wrong. Please try again later.",
     );
-  }, [repo, runGenerationOperation, username]);
+  }, [getDiagram, repo, runGenerationOperation, state.status, username]);
+
+  const handleCancel = useCallback(() => {
+    // Also invalidate a still-pending cache lookup so it cannot start a new
+    // paid generation after the user has pressed Stop.
+    foregroundOperationRef.current.activeId = null;
+    backgroundSyncRevisionRef.current += 1;
+    cancelGeneration();
+    setLoading(false);
+  }, [cancelGeneration]);
 
   useEffect(() => {
     if (initialState?.diagram) {
@@ -392,6 +408,7 @@ export function useDiagram(
     handleOpenApiKeyDialog,
     handleExportImage,
     handleRegenerate,
+    handleCancel,
     handleDiagramRenderError,
     state,
   };

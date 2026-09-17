@@ -21,6 +21,9 @@ export type DiagramStreamStatus =
 
 export interface DiagramStreamState {
   status: DiagramStreamStatus;
+  startedAt?: number;
+  lastActivityAt?: number;
+  sourceFileCount?: number;
   sessionId?: string;
   message?: string;
   costSummary?: GenerationCostSummary;
@@ -39,6 +42,7 @@ export interface DiagramStreamState {
 
 export interface DiagramStreamMessage {
   status: DiagramStreamStatus;
+  source_file_count?: number;
   session_id?: string;
   message?: string;
   cost_summary?: GenerationCostSummary;

@@ -30,10 +30,6 @@ vi.mock("~/components/main-card", () => ({
   },
 }));
 
-vi.mock("~/components/loading", () => ({
-  default: () => <div data-testid="loading" />,
-}));
-
 vi.mock("~/components/mermaid-diagram", () => ({
   default: ({ chart }: { chart: string }) => (
     <div data-testid="diagram">{chart}</div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { loadDiagramRenderer } from "~/components/generation/load-diagram-renderer";
+
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { Key } from "lucide-react";
@@ -7,6 +9,7 @@ import { toast } from "sonner";
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import MainCard from "~/components/main-card";
 import Loading from "~/components/loading";
+import { DiagramResult } from "~/components/generation/diagram-result";
 import { GenerationAuditPanel } from "~/components/generation-audit-panel";
 import { useDiagram } from "~/hooks/useDiagram";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
@@ -16,7 +19,6 @@ import { Button } from "~/components/ui/button";
 import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 
-const loadMermaidChart = () => import("~/components/mermaid-diagram");
 const PrivateReposDialog = dynamic(
   () =>
     import("~/components/private-repos-dialog").then(
@@ -24,11 +26,6 @@ const PrivateReposDialog = dynamic(
     ),
   { ssr: false },
 );
-const MermaidChart = dynamic(loadMermaidChart, {
-  // The default diagram is not shown in the zoom viewer, so rendering that
-  // frame while this chunk loads causes a misleading flash on cold visits.
-  loading: () => null,
-});
 
 type RepoPageClientProps = {
   username: string;
@@ -64,6 +61,7 @@ export default function RepoPageClient({
     handleOpenApiKeyDialog,
     handleExportImage,
     handleRegenerate,
+    handleCancel,
     handleDiagramRenderError,
     state,
   } = useDiagram(
@@ -91,7 +89,7 @@ export default function RepoPageClient({
 
   useEffect(() => {
     if (hasDiagram || loading) {
-      void loadMermaidChart();
+      void loadDiagramRenderer();
     }
   }, [hasDiagram, loading]);
 
@@ -113,6 +111,42 @@ export default function RepoPageClient({
       duration: 8_000,
     });
   }, [state.persistenceWarning]);
+
+  const recoveryActions = (
+    <>
+      <Button
+        onClick={() => void handleRegenerate()}
+        className="neo-button px-4 py-2"
+      >
+        Try again
+      </Button>
+      {showGithubAccessCta && (
+        <Button
+          onClick={() => setShowGithubAccess(true)}
+          className="neo-button px-4 py-2"
+        >
+          GitHub Access
+        </Button>
+      )}
+      <a
+        href={`https://github.com/${encodeURIComponent(normalizedUsername)}/${encodeURIComponent(normalizedRepo)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="neo-link self-center text-sm"
+      >
+        Open repository on GitHub
+      </a>
+      {showApiKeyCta && (
+        <Button
+          onClick={handleOpenApiKeyDialog}
+          className="neo-button px-4 py-2"
+        >
+          <Key className="mr-2 h-5 w-5" />
+          Use Your AI Key
+        </Button>
+      )}
+    </>
+  );
 
   return (
     <TooltipProvider delayDuration={500} skipDelayDuration={300}>
@@ -136,27 +170,29 @@ export default function RepoPageClient({
         <div className="mt-8 flex w-full flex-col items-center gap-8">
           {loading ? (
             <Loading
-              costSummary={state.costSummary}
+              repository={`${normalizedUsername}/${normalizedRepo}`}
+              onCancel={handleCancel}
               status={state.status}
-              message={state.message}
+              startedAt={state.startedAt}
+              lastActivityAt={state.lastActivityAt}
+              sourceFileCount={state.sourceFileCount}
               explanation={state.explanation}
               graph={state.graph}
-              graphAttempts={state.graphAttempts}
-              validationError={state.validationError}
-              diagram={state.diagram}
             />
           ) : (
             <div className="flex w-full flex-col items-center gap-8">
               {hasDiagram && (
                 <>
-                  <div className="flex w-full justify-center px-4">
-                    <MermaidChart
-                      chart={diagram}
-                      zoomingEnabled={zoomingEnabled}
-                      onRenderError={handleDiagramRenderError}
-                      onRenderComplete={handleDiagramRenderComplete}
-                    />
-                  </div>
+                  <DiagramResult
+                    diagram={diagram}
+                    repository={`${normalizedUsername}/${normalizedRepo}`}
+                    explanation={state.explanation}
+                    graph={state.graph}
+                    startedAt={state.startedAt}
+                    zoomingEnabled={zoomingEnabled}
+                    onRenderError={handleDiagramRenderError}
+                    onRenderComplete={handleDiagramRenderComplete}
+                  />
                   {diagramRendered && (
                     <SponsorSlot
                       surface="diagram"
@@ -166,45 +202,29 @@ export default function RepoPageClient({
                 </>
               )}
               {hasError && (
-                <div className="w-full max-w-5xl text-center">
-                  <GenerationAuditPanel
-                    audit={state.latestSessionAudit}
-                    error={error || state.error}
-                  />
-                  <div className="mt-4 flex flex-wrap justify-center gap-3">
-                    <Button
-                      onClick={() => void handleRegenerate()}
-                      className="neo-button px-4 py-2"
-                    >
-                      Try again
-                    </Button>
-                    {showGithubAccessCta && (
-                      <Button
-                        onClick={() => setShowGithubAccess(true)}
-                        className="neo-button px-4 py-2"
-                      >
-                        GitHub Access
-                      </Button>
-                    )}
-                    <a
-                      href={`https://github.com/${encodeURIComponent(normalizedUsername)}/${encodeURIComponent(normalizedRepo)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="neo-link self-center text-sm"
-                    >
-                      Open repository on GitHub
-                    </a>
-                  </div>
-                  {showApiKeyCta && (
-                    <div className="mt-8 flex flex-col items-center gap-2">
-                      <Button
-                        onClick={handleOpenApiKeyDialog}
-                        className="neo-button px-4 py-2"
-                      >
-                        <Key className="mr-2 h-5 w-5" />
-                        Use Your AI Key
-                      </Button>
-                    </div>
+                <div className="flex w-full flex-col items-center gap-6">
+                  {hasDiagram ? (
+                    <>
+                      <GenerationAuditPanel
+                        audit={state.latestSessionAudit}
+                        error={error || state.error}
+                      />
+                      <div className="flex flex-wrap justify-center gap-3">
+                        {recoveryActions}
+                      </div>
+                    </>
+                  ) : (
+                    <Loading
+                      status="error"
+                      repository={`${normalizedUsername}/${normalizedRepo}`}
+                      explanation={state.explanation}
+                      error={error || state.error}
+                      cancelled={state.errorCode === "GENERATION_CANCELLED"}
+                      recovery={recoveryActions}
+                    />
+                  )}
+                  {!hasDiagram && state.latestSessionAudit && (
+                    <GenerationAuditPanel audit={state.latestSessionAudit} />
                   )}
                 </div>
               )}

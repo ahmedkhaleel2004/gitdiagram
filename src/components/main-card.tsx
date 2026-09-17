@@ -1,5 +1,6 @@
 "use client";
 
+import styles from "./repository-toolbar.module.css";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Sparkles } from "lucide-react";
@@ -80,7 +81,13 @@ export default function MainCard({
   };
 
   return (
-    <div className="neo-panel relative w-full max-w-3xl rounded-lg !bg-[hsl(var(--neo-panel))] p-4 sm:p-8">
+    <div
+      className={
+        isHome
+          ? "neo-panel relative w-full max-w-3xl rounded-lg !bg-[hsl(var(--neo-panel))] p-4 sm:p-8"
+          : styles.toolbar
+      }
+    >
       <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <label htmlFor="repository-input" className="sr-only">
@@ -89,7 +96,11 @@ export default function MainCard({
           <Input
             id="repository-input"
             placeholder="owner/repo or GitHub URL"
-            className="neo-input h-14 min-w-0 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:h-10 sm:flex-1 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
+            className={
+              isHome
+                ? "neo-input h-14 min-w-0 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:h-10 sm:flex-1 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
+                : styles.input
+            }
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
             aria-describedby={error ? "repository-input-error" : undefined}
@@ -98,7 +109,11 @@ export default function MainCard({
           />
           <Button
             type="submit"
-            className="neo-button h-14 px-4 text-base sm:h-10 sm:p-6 sm:px-6 sm:text-lg"
+            className={
+              isHome
+                ? "neo-button h-14 px-4 text-base sm:h-10 sm:p-6 sm:px-6 sm:text-lg"
+                : styles.submit
+            }
           >
             Diagram
           </Button>
@@ -123,6 +138,7 @@ export default function MainCard({
                     <button
                       type="button"
                       disabled={isExampleRepoSelected}
+                      data-repo-action="regenerate"
                       title={
                         isExampleRepoSelected
                           ? "Regeneration is disabled for example repositories."
@@ -154,6 +170,7 @@ export default function MainCard({
                         handleDropdownToggle("export");
                       }}
                       aria-expanded={activeDropdown === "export"}
+                      data-repo-action="export"
                       className={`flex min-h-11 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border-[3px] border-black px-2 py-2 text-sm leading-tight font-semibold text-black transition-[background-color,transform] duration-150 ease-[var(--ease-out)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:active:opacity-80 sm:min-h-0 sm:w-auto sm:max-w-[250px] sm:justify-between sm:gap-2 sm:px-4 sm:text-base sm:font-medium dark:text-black ${
                         activeDropdown === "export"
                           ? "bg-purple-400 dark:border-[#2d1d4e] dark:bg-[hsl(var(--neo-button))]"
@@ -232,13 +249,15 @@ export default function MainCard({
         )}
       </form>
 
-      <div className="absolute -bottom-8 -left-12 hidden sm:block">
-        <Sparkles
-          className="h-20 w-20 fill-sky-400 text-black dark:fill-[hsl(var(--neo-button))] dark:text-[hsl(var(--background))]"
-          strokeWidth={0.6}
-          style={{ transform: "rotate(-15deg)" }}
-        />
-      </div>
+      {isHome && (
+        <div className="absolute -bottom-8 -left-12 hidden sm:block">
+          <Sparkles
+            className="h-20 w-20 fill-sky-400 text-black dark:fill-[hsl(var(--neo-button))] dark:text-[hsl(var(--background))]"
+            strokeWidth={0.6}
+            style={{ transform: "rotate(-15deg)" }}
+          />
+        </div>
+      )}
     </div>
   );
 }

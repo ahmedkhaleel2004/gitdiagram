@@ -5,18 +5,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DiagramStreamHttpError } from "~/features/diagram/api";
 import type { DiagramStreamState } from "~/features/diagram/types";
 import { useDiagram } from "~/hooks/useDiagram";
+import { isExampleRepo } from "~/lib/exampleRepos";
 
 const {
   getCredentialStatus,
   getDiagramState,
   useDiagramExport,
   runGeneration,
+  cancelGeneration,
   setStreamState,
 } = vi.hoisted(() => ({
   getCredentialStatus: vi.fn(),
   getDiagramState: vi.fn(),
   useDiagramExport: vi.fn(),
   runGeneration: vi.fn(),
+  cancelGeneration: vi.fn(),
   setStreamState: vi.fn(),
 }));
 
@@ -94,6 +97,7 @@ vi.mock("~/hooks/diagram/useDiagramStream", () => ({
     return {
       state,
       runGeneration,
+      cancelGeneration,
       setState: trackedSetState,
     };
   },
@@ -515,5 +519,47 @@ describe("useDiagram", () => {
     await waitFor(() =>
       expect(result.current.error).toContain("Diagram render failed"),
     );
+  });
+  it("stopping a pending cache lookup prevents a paid generation from starting", async () => {
+    const pending = createDeferred<{
+      diagram: null;
+      explanation: null;
+      graph: null;
+      latestSessionAudit: null;
+      lastSuccessfulAt: null;
+    }>();
+    getDiagramState.mockReturnValue(pending.promise);
+    const { result } = renderHook(() => useDiagram("acme", "demo"));
+    expect(result.current.loading).toBe(true);
+    act(() => result.current.handleCancel());
+    expect(result.current.loading).toBe(false);
+    expect(cancelGeneration).toHaveBeenCalledOnce();
+    await act(async () =>
+      pending.resolve({
+        diagram: null,
+        explanation: null,
+        graph: null,
+        latestSessionAudit: null,
+        lastSuccessfulAt: null,
+      }),
+    );
+    expect(runGeneration).not.toHaveBeenCalled();
+  });
+  it("allows recovery of a saved example after its lookup failed", async () => {
+    getDiagramState.mockRejectedValueOnce(new Error("Connection interrupted"));
+    const { result } = renderHook(() => useDiagram("pallets", "flask"));
+    await waitFor(() => expect(result.current.state.status).toBe("error"));
+    vi.mocked(isExampleRepo).mockReturnValueOnce(true);
+    getDiagramState.mockResolvedValueOnce({
+      diagram: "flowchart TD\nA-->B",
+      explanation: "Saved analysis",
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: null,
+    });
+    await act(async () => result.current.handleRegenerate());
+    expect(result.current.diagram).toContain("flowchart TD");
+    expect(result.current.loading).toBe(false);
+    expect(runGeneration).not.toHaveBeenCalled();
   });
 });

@@ -90,7 +90,8 @@ export function useDiagramStream({
     ) => {
       if (data.error) {
         flushPendingExplanation();
-        setState({
+        setState((prev) => ({
+          ...prev,
           status: "error",
           sessionId: data.session_id,
           costSummary: data.cost_summary,
@@ -100,7 +101,7 @@ export function useDiagramStream({
           validationError: data.validation_error,
           failureStage: data.failure_stage,
           latestSessionAudit: data.latest_session_audit,
-        });
+        }));
         return false;
       }
 
@@ -117,6 +118,7 @@ export function useDiagramStream({
           setState((prev) => ({
             ...prev,
             status: data.status,
+            sourceFileCount: data.source_file_count ?? prev.sourceFileCount,
             sessionId: data.session_id ?? prev.sessionId,
             message: data.message,
             costSummary: data.cost_summary ?? prev.costSummary,
@@ -138,8 +140,9 @@ export function useDiagramStream({
           flushPendingExplanation();
           const explanation = data.explanation ?? buffers.explanation;
           const diagram = data.diagram ?? "";
-          setState({
+          setState((prev) => ({
             status: "complete",
+            startedAt: prev.startedAt,
             sessionId: data.session_id,
             costSummary: data.cost_summary,
             quotaResetAt: data.quota_reset_at,
@@ -149,7 +152,7 @@ export function useDiagramStream({
             graphAttempts: data.graph_attempts,
             latestSessionAudit: data.latest_session_audit,
             persistenceWarning: data.persistence_warning,
-          });
+          }));
           await onComplete({
             explanation,
             diagram,
@@ -161,7 +164,8 @@ export function useDiagramStream({
         }
         case "error":
           flushPendingExplanation();
-          setState({
+          setState((prev) => ({
+            ...prev,
             status: "error",
             sessionId: data.session_id,
             costSummary: data.cost_summary,
@@ -171,7 +175,7 @@ export function useDiagramStream({
             validationError: data.validation_error,
             failureStage: data.failure_stage,
             latestSessionAudit: data.latest_session_audit,
-          });
+          }));
           return false;
       }
 
@@ -191,12 +195,14 @@ export function useDiagramStream({
     activeGenerationRef.current = abortController;
     setState({
       status: "started",
+      startedAt: Date.now(),
       message: "Starting generation process...",
       costSummary: undefined,
     });
     const buffers = {
       explanation: "",
     };
+    let lastActivityUpdate = 0;
 
     try {
       await streamDiagramGeneration(
@@ -206,6 +212,13 @@ export function useDiagramStream({
           signal: abortController.signal,
         },
         {
+          onActivity: () => {
+            if (activeGenerationRef.current !== abortController) return;
+            const now = Date.now();
+            if (now - lastActivityUpdate < 1000) return;
+            lastActivityUpdate = now;
+            setState((prev) => ({ ...prev, lastActivityAt: now }));
+          },
           onMessage: (message) =>
             activeGenerationRef.current === abortController
               ? handleStreamMessage(message, buffers)
@@ -223,9 +236,27 @@ export function useDiagramStream({
     }
   }, [handleStreamMessage, repo, username]);
 
+  const cancelGeneration = useCallback(() => {
+    activeGenerationRef.current?.abort();
+    activeGenerationRef.current = null;
+    if (explanationFrameRef.current !== null) {
+      cancelAnimationFrame(explanationFrameRef.current);
+      explanationFrameRef.current = null;
+    }
+    pendingExplanationRef.current = null;
+    setState((prev) => ({
+      ...prev,
+      status: "error",
+      errorCode: "GENERATION_CANCELLED",
+      error:
+        "You stopped this generation. You can start again whenever you’re ready.",
+    }));
+  }, []);
+
   return {
     state,
     runGeneration,
+    cancelGeneration,
     setState,
   };
 }

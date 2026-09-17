@@ -528,6 +528,7 @@ export async function POST(request: Request) {
           send({
             status: "explanation",
             session_id: audit.sessionId,
+            source_file_count: sources.paths.length,
             message: "Analyzing repository structure...",
           });
 

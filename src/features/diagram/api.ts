@@ -7,6 +7,8 @@ import type {
 } from "~/features/diagram/types";
 
 interface StreamHandlers {
+  /** Includes server keep-alives, even before the model sends text. */
+  onActivity?: () => void;
   onMessage: (
     message: DiagramStreamMessage,
   ) => boolean | void | Promise<boolean | void>;
@@ -154,6 +156,7 @@ export async function streamDiagramGeneration(
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (value.byteLength > 0) handlers.onActivity?.();
         streamBuffer += decoder.decode(value, { stream: true });
         const { messages, remainder } = parseSSEStreamBuffer(streamBuffer);
         streamBuffer = remainder;

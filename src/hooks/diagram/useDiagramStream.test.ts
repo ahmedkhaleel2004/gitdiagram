@@ -107,6 +107,35 @@ describe("useDiagramStream", () => {
     );
   });
 
+  it("keeps the current phase while recording keep-alives and source coverage", async () => {
+    streamDiagramGenerationMock.mockImplementationOnce(
+      async (_params, handlers) => {
+        await handlers.onMessage({
+          status: "explanation",
+          source_file_count: 12,
+        });
+        handlers.onActivity();
+      },
+    );
+    const { result } = renderHook(() =>
+      useDiagramStream({
+        username: "acme",
+        repo: "demo",
+        onComplete: vi.fn(async () => undefined),
+      }),
+    );
+    await act(async () => {
+      await result.current.runGeneration();
+    });
+    expect(result.current.state).toMatchObject({
+      status: "explanation",
+      sourceFileCount: 12,
+      startedAt: expect.any(Number),
+      lastActivityAt: expect.any(Number),
+    });
+    expect(result.current.state.explanation).toBeUndefined();
+  });
+
   it("commits multiple explanation chunks at most once per frame", async () => {
     let frameCallback: FrameRequestCallback | null = null;
     const requestFrame = vi
@@ -196,4 +225,71 @@ describe("useDiagramStream", () => {
 
     expect(result.current.state.diagram).toContain("A-->2");
   });
+});
+
+it("cancels the active request and ignores late stream messages", async () => {
+  let signal: AbortSignal | undefined;
+  let send:
+    | ((message: {
+        status: string;
+        chunk?: string;
+        diagram?: string;
+      }) => Promise<boolean>)
+    | undefined;
+  let finish!: () => void;
+  streamDiagramGenerationMock.mockImplementation((params, handlers) => {
+    signal = params.signal;
+    send = handlers.onMessage;
+    return new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+  });
+  const onComplete = vi.fn(async () => undefined);
+  const { result } = renderHook(() =>
+    useDiagramStream({ username: "acme", repo: "demo", onComplete }),
+  );
+  let pending!: Promise<void>;
+  act(() => {
+    pending = result.current.runGeneration();
+  });
+  await act(async () => {
+    await send?.({ status: "explanation_chunk", chunk: "Repository analysis" });
+    await send?.({ status: "graph_sent" });
+  });
+  act(() => result.current.cancelGeneration());
+  expect(signal?.aborted).toBe(true);
+  expect(result.current.state.errorCode).toBe("GENERATION_CANCELLED");
+  expect(result.current.state.explanation).toBe("Repository analysis");
+  await act(async () => {
+    await send?.({ status: "complete", diagram: "late" });
+    finish();
+    await pending;
+  });
+  expect(result.current.state.errorCode).toBe("GENERATION_CANCELLED");
+  expect(result.current.state.diagram).toBeUndefined();
+  expect(onComplete).not.toHaveBeenCalled();
+});
+
+it("retains useful analysis when the server reports a failure", async () => {
+  streamDiagramGenerationMock.mockImplementation(async (_params, handlers) => {
+    await handlers.onMessage({
+      status: "explanation_chunk",
+      chunk: "Useful architecture analysis",
+    });
+    await handlers.onMessage({
+      status: "error",
+      error: "Connection failed",
+      error_code: "STREAM_FAILED",
+    });
+  });
+  const { result } = renderHook(() =>
+    useDiagramStream({
+      username: "acme",
+      repo: "demo",
+      onComplete: async () => undefined,
+    }),
+  );
+  await act(async () => result.current.runGeneration());
+  expect(result.current.state.status).toBe("error");
+  expect(result.current.state.explanation).toBe("Useful architecture analysis");
 });

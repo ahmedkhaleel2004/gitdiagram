@@ -91,6 +91,32 @@ describe("getDiagramState", () => {
 });
 
 describe("streamDiagramGeneration", () => {
+  it("reports keep-alive activity before any model text arrives", async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start(value) {
+        controller = value;
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(stream)));
+    const onActivity = vi.fn();
+    const onMessage = vi.fn();
+    const generation = streamDiagramGeneration(
+      { username: "acme", repo: "demo" },
+      { onActivity, onMessage },
+    );
+    controller.enqueue(new TextEncoder().encode(": keep-alive\n\n"));
+    await vi.waitFor(() => expect(onActivity).toHaveBeenCalledOnce());
+    expect(onMessage).not.toHaveBeenCalled();
+    controller.enqueue(
+      new TextEncoder().encode('data: {"status":"complete"}\n\n'),
+    );
+    controller.close();
+    await generation;
+    expect(onMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "complete" }),
+    );
+  });
   it("waits for legacy credential migration before starting the stream", async () => {
     window.localStorage.setItem("openai_api_key", "legacy-openai");
     let acceptMigration!: (response: Response) => void;
