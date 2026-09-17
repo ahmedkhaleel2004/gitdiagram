@@ -22,56 +22,56 @@ type Stat = {
 
 const lifetimeStats: Stat[] = [
   {
-    label: "Unique visitors",
-    value: "308,254",
-    detail: "Tracked since Dec 23, 2024",
+    label: "Tracked unique visitors",
+    value: "366,237",
+    detail: "Tracked since Dec 26, 2024",
   },
   {
     label: "Pageviews",
-    value: "674,875",
+    value: "846,735",
     detail: "Across GitDiagram",
   },
   {
     label: "GitHub stars",
-    value: "15.6k",
+    value: "16,178",
     detail: "Open-source developer reach",
   },
 ];
 
 const monthlyStats: Stat[] = [
   {
-    label: "Dev visitors",
-    value: "10,411",
+    label: "Tracked unique visitors",
+    value: "31,643",
     detail: "Unique, across GitDiagram",
   },
   {
     label: "Pageviews",
-    value: "21,268",
+    value: "81,298",
     detail: "Across GitDiagram",
   },
   {
-    label: "Public repo diagrams",
-    value: "4,056",
-    detail: "Generated in the last 30 days",
+    label: "Repo page visitors",
+    value: "27,713",
+    detail: "Unique visitors to repository pages",
   },
 ];
 
 const surfaces = [
   {
     name: "Repo diagram pages",
-    pageviews: "11,246",
+    pageviews: "57,496",
     description:
-      "Sponsor line placed on generated repository diagram pages, right after the primary diagram experience — where developers spend the most time.",
+      "Sponsor line placed on generated repository diagram pages, right after the primary diagram experience.",
   },
   {
     name: "Homepage",
-    pageviews: "7,591",
+    pageviews: "11,587",
     description:
       "Native sponsor line near the repository input, in front of developers as they start a lookup.",
   },
   {
     name: "Browse catalog",
-    pageviews: "1,032",
+    pageviews: "8,329",
     description:
       "Placement on the catalog where developers explore public repositories.",
   },
@@ -79,7 +79,7 @@ const surfaces = [
     name: "GitHub README",
     pageviews: null,
     description:
-      "Sponsor mention in the open-source project README — durable, long-tail discovery.",
+      "Sponsor mention in the open-source project README for developers discovering GitDiagram on GitHub.",
   },
 ];
 
@@ -128,8 +128,8 @@ export default function SponsorPage() {
             </Link>
           </div>
           <p className="mt-5 max-w-3xl text-sm leading-6 font-bold text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-            The founding sponsor slot is open. Includes category exclusivity,
-            native placements, and a monthly UTM/screenshot report.
+            Sponsor GitDiagram for $999 USD for 30 days. Includes the homepage,
+            repository pages, browse catalog, and GitHub README.
           </p>
         </section>
 
@@ -145,14 +145,19 @@ export default function SponsorPage() {
               </h2>
             </div>
             <p className="text-sm font-semibold text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-              As of May 13, 2026
+              As of September 17, 2026 at 6:40 p.m. ET
             </p>
           </div>
 
           <div className="mt-8 space-y-8">
-            <StatRow heading="Lifetime" stats={lifetimeStats} />
             <StatRow heading="Last 30 days" stats={monthlyStats} />
+            <StatRow heading="Lifetime" stats={lifetimeStats} />
           </div>
+          <p className="mt-4 text-xs leading-5 text-[hsl(var(--neo-soft-text))] dark:text-neutral-400">
+            Traffic figures come from PostHog for gitdiagram.com. The 30-day
+            window ends at the time shown above. Visitors are unique within each
+            window. Pageviews measure site traffic, not sponsor impressions.
+          </p>
         </section>
 
         {/* SURFACES */}
@@ -166,7 +171,8 @@ export default function SponsorPage() {
           <p className="mt-3 max-w-3xl text-base leading-7 text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
             GitDiagram visitors aren&apos;t passively scrolling. They are
             looking up repositories, reading generated architecture maps, and
-            comparing how real software is built.
+            comparing how real software is built. The figures below are
+            pageviews in the same 30-day window.
           </p>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             {surfaces.map((surface) => (
@@ -180,7 +186,7 @@ export default function SponsorPage() {
                   </h3>
                   {surface.pageviews && (
                     <span className="shrink-0 rounded-md border-[2px] border-black bg-[hsl(var(--neo-button))] px-2 py-0.5 text-xs font-black tracking-wide text-black">
-                      {surface.pageviews}/mo
+                      {surface.pageviews} views
                     </span>
                   )}
                 </div>
@@ -244,9 +250,11 @@ export default function SponsorPage() {
               Sponsor the next month of GitDiagram.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-              Founding sponsors get category exclusivity, clean native
-              placement, and a monthly report with UTM clicks and surface
-              screenshots.
+              Put your product in front of developers exploring repositories.
+              $999 USD covers 30 days of clearly labeled placements across the
+              site and README, with your logo, a short product description, and
+              a link. Email Ahmed to agree the dates and creative. One-time
+              payment before launch, with no automatic renewal.
             </p>
             <SponsorEmailActions
               email={SPONSOR_EMAIL_ADDRESS}
