@@ -12,7 +12,11 @@ import type { Approach } from "./use-preview";
 
 const renders = new Map<
   string,
-  { onRenderComplete?: () => void; onRenderError?: (message: string) => void }
+  {
+    onRenderComplete?: () => void;
+    onRenderError?: (message: string) => void;
+    zoomingEnabled?: boolean;
+  }
 >();
 vi.mock("next-themes", () => ({
   useTheme: () => ({ resolvedTheme: "light" }),
@@ -25,6 +29,7 @@ vi.mock("next/dynamic", () => ({
     () =>
     (props: {
       chart: string;
+      zoomingEnabled?: boolean;
       onRenderComplete?: () => void;
       onRenderError?: (message: string) => void;
     }) => {
@@ -121,6 +126,36 @@ const base = {
   onCancel: vi.fn(),
   onRegenerate: vi.fn(),
 };
+
+it("reveals result controls only after rendering, folds activity away, and keeps zoom opt-in", () => {
+  render(<ConceptWorkspace {...base} approach="inline" />);
+  expect(
+    screen.queryByRole("button", { name: "Export" }),
+  ).not.toBeInTheDocument();
+  expect(renders.get("replacement")?.zoomingEnabled).toBe(false);
+
+  act(() => renders.get("replacement")?.onRenderComplete?.());
+  expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Diagram ready" }),
+  ).not.toBeInTheDocument();
+  const activity = screen.getByRole("button", {
+    name: "Activity",
+  });
+  expect(activity).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(activity);
+  expect(activity).toHaveAttribute("aria-expanded", "true");
+  fireEvent.click(activity);
+  expect(activity).toHaveAttribute("aria-expanded", "false");
+
+  fireEvent.click(screen.getByRole("button", { name: "Enable zoom" }));
+  expect(renders.get("replacement")?.zoomingEnabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Exit zoom" }));
+  expect(renders.get("replacement")?.zoomingEnabled).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
+  expect(base.onRegenerate).toHaveBeenCalledTimes(1);
+});
+
 describe.each<Approach>(["inline", "thread", "canvas"])(
   "%s result handoff",
   (approach) => {
@@ -130,7 +165,9 @@ describe.each<Approach>(["inline", "thread", "canvas"])(
       );
       act(() => renders.get("replacement")?.onRenderComplete?.());
       expect(
-        screen.getByRole("heading", { name: "Diagram ready" }),
+        approach === "inline"
+          ? screen.getByRole("status")
+          : screen.getByRole("heading", { name: "Diagram ready" }),
       ).toBeInTheDocument();
       rerender(<ConceptWorkspace {...base} approach={approach} runId={2} />);
       expect(
@@ -141,7 +178,9 @@ describe.each<Approach>(["inline", "thread", "canvas"])(
       ).toHaveAttribute("aria-hidden", "false");
       act(() => renders.get("replacement")?.onRenderComplete?.());
       expect(
-        screen.getByRole("heading", { name: "Diagram ready" }),
+        approach === "inline"
+          ? screen.getByRole("status")
+          : screen.getByRole("heading", { name: "Diagram ready" }),
       ).toBeInTheDocument();
     });
     it("keeps the previous diagram usable until its replacement has actually rendered", () => {
@@ -163,7 +202,9 @@ describe.each<Approach>(["inline", "thread", "canvas"])(
         screen.getByTestId("chart-replacement").parentElement,
       ).toHaveAttribute("aria-hidden", "false");
       expect(
-        screen.getByRole("heading", { name: "Diagram ready" }),
+        approach === "inline"
+          ? screen.getByRole("status")
+          : screen.getByRole("heading", { name: "Diagram ready" }),
       ).toBeInTheDocument();
     });
     it("retains the previous diagram when the new render fails or the request is cancelled", () => {

@@ -3,7 +3,7 @@ import type { DiagramGraph } from "~/features/diagram/graph";
 
 export const DEMO_REPOSITORY = "ahmedkhaleel2004/gitdiagram";
 const DEMO_NOTES = `## A repository-to-diagram pipeline
-GitDiagram turns a GitHub repository into an interactive architecture map. The main flow moves from a **Next.js interface**, through repository analysis, to a diagram you can explore.
+A **Next.js frontend** streams repository analysis from \`/api/generate\`. The server reads GitHub source files, builds and validates a graph, and returns a **Mermaid diagram**.
 
 ## The user-facing application
 The pages in \`src/app\` accept a repository URL and load a saved diagram when one exists. Otherwise, \`useDiagram\` starts a new generation and streams updates into the interface.

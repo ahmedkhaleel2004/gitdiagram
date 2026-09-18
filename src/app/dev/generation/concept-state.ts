@@ -115,7 +115,7 @@ export function conceptCopy({
     seconds >= 20 && generationStep(stream.status) < 2
       ? "Still working · receiving updates"
       : seconds >= 3
-        ? "12 source files read"
+        ? ""
         : "Fetching the README and source files";
   return { title: stageLabel(stream.status), description };
 }

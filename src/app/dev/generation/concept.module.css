@@ -68,13 +68,6 @@
 .repositoryName strong {
   font-weight: 550;
 }
-.branch {
-  color: var(--muted);
-  font-size: 10px;
-  padding: 2px 6px;
-  background: var(--wash);
-  border-radius: 5px;
-}
 .generate,
 .cancel {
   display: inline-flex;
@@ -258,6 +251,14 @@
 .chart :global(.mermaid) {
   height: 100%;
 }
+.diagram[data-zooming="false"] .chart {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+}
+.diagram[data-zooming="false"] .chart :global(.mermaid) {
+  height: auto;
+}
 .chart :global(.cluster-label) {
   font-weight: 500;
 }
@@ -330,9 +331,129 @@
   border-top: 0;
   margin-top: 8px;
 }
-/* Inline: the repository field and one small, aligned activity line. */
+/* Inline: progress folds away after the renderer confirms the result. */
 .concept[data-approach="inline"] .stage {
-  padding: 110px 0 24px;
+  grid-template-areas: "panel" "diagram";
+  padding: 0 0 24px;
+}
+.inlinePanel {
+  grid-area: panel;
+  min-width: 0;
+}
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 360ms var(--ease-out),
+    opacity 180ms ease;
+}
+.fold[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.foldClip {
+  min-height: 0;
+  overflow: hidden;
+}
+.toolbarFold[data-open="true"] > .foldClip {
+  overflow: visible;
+}
+.generationWork {
+  padding: 110px 0 20px;
+}
+.resultToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 22px;
+}
+.resultRepository {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+.resultRepository span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.resultRepository svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.resultActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.resultActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+.resultActions button[aria-expanded="true"],
+.resultActions button[aria-pressed="true"] {
+  background: var(--wash);
+  color: var(--ink);
+}
+.resultActions button:active {
+  transform: scale(0.97);
+}
+.resultActions button[aria-expanded="true"] > svg:last-child {
+  transform: rotate(180deg);
+}
+.resultActions .regenerateAction {
+  color: var(--ink);
+  background: var(--wash);
+}
+.resultActivity {
+  margin: 18px 0 0;
+  max-width: 600px;
+  padding: 6px 0 6px 16px;
+  border-left: 1px solid var(--line);
+}
+.exportControl {
+  position: relative;
+}
+.exportMenu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 7px);
+  right: 0;
+  width: 190px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 8px 30px #3013461a;
+  animation: label-in 150ms var(--ease-out);
+}
+.exportMenu button {
+  width: 100%;
+  justify-content: flex-start;
+  color: var(--ink);
+}
+.exportMenu p {
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--muted);
 }
 .concept[data-approach="inline"] .source {
   width: min(100%, 630px);
@@ -346,7 +467,7 @@
 .concept[data-approach="inline"] .diagram {
   margin-top: 30px;
 }
-.concept[data-approach="inline"][data-has-diagram="true"] .stage {
+.concept[data-approach="inline"][data-has-previous="true"] .generationWork {
   padding-top: 32px;
 }
 .concept[data-approach="inline"][data-active="true"] .repositoryControl {
@@ -541,6 +662,10 @@
   .details summary:hover {
     color: var(--ink);
   }
+  .resultActions button:hover {
+    background: var(--wash);
+    color: var(--ink);
+  }
 }
 @keyframes label-in {
   from {
@@ -587,9 +712,6 @@
   .repositoryName > span {
     display: none;
   }
-  .branch {
-    margin-left: auto;
-  }
   .generate {
     padding: 0 10px;
     gap: 5px;
@@ -603,8 +725,32 @@
   .statusTitle {
     font-size: 12px;
   }
-  .concept[data-approach="inline"] .stage {
+  .generationWork {
     padding-top: 80px;
+  }
+  .resultToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .resultActions {
+    justify-content: space-between;
+    width: 100%;
+    gap: 0;
+  }
+  .resultActions > button,
+  .resultActions > .exportControl > button {
+    padding-inline: 7px;
+    font-size: 10px;
+    min-height: 42px;
+    gap: 4px;
+  }
+  .resultActions > button > svg,
+  .resultActions > .exportControl > button > svg:first-child {
+    display: none;
+  }
+  .exportMenu {
+    right: -25px;
   }
   .concept[data-approach="thread"] .stage {
     padding: 44px 8px 24px;
@@ -662,6 +808,9 @@
   }
   .generate:active,
   .cancel:active {
+    transform: none;
+  }
+  .resultActions button:active {
     transform: none;
   }
   .activityMark i {

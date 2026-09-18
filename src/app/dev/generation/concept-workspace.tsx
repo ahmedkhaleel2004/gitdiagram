@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Check, CircleAlert, Pause } from "lucide-react";
 import type { DiagramStreamState } from "~/features/diagram/types";
 import type { Approach } from "./use-preview";
@@ -14,6 +14,7 @@ import styles from "./concept.module.css";
 import { conceptState } from "./concept-state";
 
 import { ConceptDiagram } from "./concept-diagram";
+import { InlineGenerationPanel } from "./inline-generation-panel";
 
 export function ConceptWorkspace({
   runId = 0,
@@ -43,6 +44,15 @@ export function ConceptWorkspace({
   onRegenerate: () => void;
 }) {
   const [renderedChart, setRenderedChart] = useState<string>();
+  const workspace = useRef<HTMLElement>(null);
+  const getSvg = useCallback(
+    () =>
+      workspace.current?.querySelector<SVGSVGElement>(
+        '[data-hidden="false"] .mermaid svg',
+      ) ?? null,
+    [],
+  );
+  const [zoomRequested, setZoomRequested] = useState(false);
   const [renderFailure, setRenderFailure] = useState<{
     key: string;
     message: string;
@@ -84,44 +94,68 @@ export function ConceptWorkspace({
     onStart();
   };
 
+  const generation = (
+    <>
+      <div className={styles.source}>
+        <RepositoryControl
+          active={active}
+          ready={ready}
+          failed={failed}
+          onStart={start}
+          onCancel={onCancel}
+          onRegenerate={onRegenerate}
+        />
+      </div>
+      <GenerationFeedback
+        failed={failed}
+        cancelled={cancelled}
+        ready={ready}
+        started={started}
+        quiet={quiet}
+        title={title}
+        seconds={seconds}
+        description={description}
+        hasPrevious={hasPrevious}
+        approach={approach}
+        stream={stream}
+        active={active}
+      />
+    </>
+  );
+
   return (
     <section
+      ref={workspace}
       className={styles.concept}
       data-approach={approach}
       data-active={active}
       data-started={started}
       data-paused={paused}
       data-has-diagram={Boolean(diagram)}
+      data-has-previous={Boolean(previousDiagram)}
       data-ready={ready}
       data-quiet={quiet}
       aria-label={`${approach} generation approach`}
     >
       <div className={styles.stage}>
-        <div className={styles.source}>
-          <RepositoryControl
-            active={active}
+        {approach === "inline" ? (
+          <InlineGenerationPanel
+            key={runId}
             ready={ready}
-            failed={failed}
-            onStart={start}
-            onCancel={onCancel}
+            stream={stream}
+            seconds={seconds}
+            zooming={zoomRequested}
+            onToggleZoom={() => setZoomRequested((value) => !value)}
             onRegenerate={onRegenerate}
-          />
-        </div>
-        <GenerationFeedback
-          failed={failed}
-          cancelled={cancelled}
-          ready={ready}
-          started={started}
-          quiet={quiet}
-          title={title}
-          seconds={seconds}
-          description={description}
-          hasPrevious={hasPrevious}
-          approach={approach}
-          stream={stream}
-          active={active}
-        />
+            getSvg={getSvg}
+          >
+            {generation}
+          </InlineGenerationPanel>
+        ) : (
+          generation
+        )}
         <ConceptDiagram
+          zoomingEnabled={approach !== "inline" || zoomRequested}
           diagram={diagram}
           previousDiagram={previousDiagram}
           runId={runId}
@@ -212,6 +246,8 @@ function GenerationFeedback({
           />
         ) : (
           <ActivityDetails
+            key={approach}
+            initiallyExpanded={approach === "inline"}
             stream={stream}
             seconds={seconds}
             active={active}

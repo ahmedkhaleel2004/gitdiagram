@@ -9,6 +9,7 @@ import styles from "./concept.module.css";
 const MermaidChart = dynamic(loadDiagramRenderer, { loading: () => null });
 
 export function ConceptDiagram({
+  zoomingEnabled,
   diagram,
   previousDiagram,
   runId,
@@ -18,6 +19,7 @@ export function ConceptDiagram({
   onComplete,
   onError,
 }: {
+  zoomingEnabled: boolean;
   diagram?: string;
   previousDiagram?: string;
   runId: number;
@@ -32,6 +34,7 @@ export function ConceptDiagram({
   return (
     <div
       className={styles.diagram}
+      data-zooming={zoomingEnabled}
       data-visible={Boolean(previousDiagram) || ready}
       data-previous={Boolean(previousDiagram) && !ready}
       aria-busy={!previousDiagram && !ready && !renderFailed}
@@ -45,7 +48,7 @@ export function ConceptDiagram({
         >
           <MermaidChart
             chart={themedDemoDiagram(previousDiagram, resolvedTheme === "dark")}
-            zoomingEnabled
+            zoomingEnabled={zoomingEnabled}
             containerClassName={styles.chart}
           />
         </div>
@@ -60,7 +63,7 @@ export function ConceptDiagram({
         >
           <MermaidChart
             chart={themedDemoDiagram(diagram, resolvedTheme === "dark")}
-            zoomingEnabled
+            zoomingEnabled={zoomingEnabled}
             containerClassName={styles.chart}
             onRenderComplete={onComplete}
             onRenderError={onError}

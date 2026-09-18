@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -50,7 +51,6 @@ export function RepositoryControl({
         <span>ahmedkhaleel2004 / </span>
         <strong>gitdiagram</strong>
       </div>
-      <span className={styles.branch}>main</span>
       {active ? (
         <button
           className={styles.cancel}
@@ -79,6 +79,41 @@ export function ActivityDetails({
   seconds,
   active,
   ready,
+  initiallyExpanded = false,
+}: {
+  stream: DiagramStreamState;
+  seconds: number;
+  active: boolean;
+  ready: boolean;
+  initiallyExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(initiallyExpanded);
+  return (
+    <details
+      className={styles.details}
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
+      <summary>
+        Activity <ChevronDown size={12} aria-hidden="true" />
+      </summary>
+      <div className={styles.detailBody}>
+        <ActivityContent
+          stream={stream}
+          seconds={seconds}
+          active={active}
+          ready={ready}
+        />
+      </div>
+    </details>
+  );
+}
+
+export function ActivityContent({
+  stream,
+  seconds,
+  active,
+  ready,
 }: {
   stream: DiagramStreamState;
   seconds: number;
@@ -87,38 +122,28 @@ export function ActivityDetails({
 }) {
   const step = generationStep(stream.status);
   return (
-    <details className={styles.details}>
-      <summary>
-        View activity <ChevronDown size={12} aria-hidden="true" />
-      </summary>
-      <div className={styles.detailBody}>
-        <div className={styles.detailRow}>
-          <FileCode2 size={14} aria-hidden="true" />
-          {seconds >= 3 ? "12 source files read" : "Reading the repository"}
-          {seconds >= 3 && <Check size={13} aria-hidden="true" />}
-        </div>
-        {step >= 1 && (
-          <div className={styles.detailRow}>
-            <Layers2 size={14} aria-hidden="true" />
-            {step >= 2 ? "Architecture analyzed" : "Analyzing the architecture"}
-            {step >= 2 && <Check size={13} aria-hidden="true" />}
-          </div>
-        )}
-        {stream.graph && (
-          <div className={styles.detailRow}>
-            <GitBranch size={14} aria-hidden="true" />
-            {stream.graph.nodes.length} components · {stream.graph.edges.length}{" "}
-            connections
-          </div>
-        )}
-        {stream.explanation && (
-          <ArchitectureNotes
-            text={stream.explanation}
-            streaming={active && !ready && step === 1}
-          />
-        )}
+    <>
+      <div className={styles.detailRow}>
+        <FileCode2 size={14} aria-hidden="true" />
+        {seconds >= 3 ? "12 source files read" : "Reading the repository"}
+        {seconds >= 3 && <Check size={13} aria-hidden="true" />}
       </div>
-    </details>
+      {step >= 2 && (
+        <div className={styles.detailRow}>
+          <Layers2 size={14} aria-hidden="true" />
+          Architecture analyzed
+          <Check size={13} aria-hidden="true" />
+        </div>
+      )}
+      {stream.graph && !ready && (
+        <div className={styles.detailRow}>
+          <GitBranch size={14} aria-hidden="true" />
+          {stream.graph.nodes.length} components · {stream.graph.edges.length}{" "}
+          connections
+        </div>
+      )}
+      <ArchitectureSummary stream={stream} active={active && !ready} />
+    </>
   );
 }
 
@@ -134,17 +159,12 @@ export function WorkThread({
   ready: boolean;
 }) {
   const step = generationStep(stream.status);
-  const excerpt = stream.explanation
-    ?.split("\n")
-    .find((line) => line.length > 30 && !line.startsWith("#"))
-    ?.replace(/\*\*|`/g, "");
   return (
     <div className={styles.workThread}>
       {seconds >= 1 && (
         <div className={styles.threadMilestone}>
           <Check size={13} aria-hidden="true" />
           <span>Repository found</span>
-          <span className={styles.threadMeta}>main</span>
         </div>
       )}
       {seconds >= 3 && (
@@ -160,21 +180,37 @@ export function WorkThread({
           <span>Architecture analyzed</span>
         </div>
       )}
-      {excerpt && (
-        <div className={styles.excerpt}>
-          <p>{excerpt}</p>
-          <ArchitectureNotes
-            text={stream.explanation}
-            streaming={active && step === 1}
-          />
-        </div>
-      )}
+      <ArchitectureSummary stream={stream} active={active} />
       {ready && (
         <div className={styles.threadMilestone}>
           <Check size={13} aria-hidden="true" />
           <span>Diagram ready</span>
         </div>
       )}
+    </div>
+  );
+}
+
+function ArchitectureSummary({
+  stream,
+  active,
+}: {
+  stream: DiagramStreamState;
+  active: boolean;
+}) {
+  const excerpt = stream.explanation
+    ?.split("\n")
+    .find((line) => line.length > 30 && !line.startsWith("#"))
+    ?.replace(/\*\*|`/g, "");
+  if (!excerpt) return null;
+
+  return (
+    <div className={styles.excerpt}>
+      <p>{excerpt}</p>
+      <ArchitectureNotes
+        text={stream.explanation}
+        streaming={active && generationStep(stream.status) === 1}
+      />
     </div>
   );
 }
