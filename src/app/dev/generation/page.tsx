@@ -5,6 +5,8 @@ import GenerationPlayground from "./playground";
 export const metadata: Metadata = {
   title: "Generation playground · GitDiagram",
   robots: { index: false, follow: false },
+  // The preview owns both themes; extension recoloring also mutates SSR icons.
+  other: { "darkreader-lock": "true" },
 };
 
 export default async function GenerationPlaygroundPage({
