@@ -72,7 +72,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
   const showMobileGithubButton = pathname === "/" || isBrowsePage;
 
   return (
-    <header className="border-b-[3px] border-black dark:border-black">
+    <header className="border-black sm:border-b-[3px] dark:border-black">
       <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-8">
         <Link href="/" className="flex items-center">
           <span className="text-[clamp(1.25rem,6vw,1.5rem)] font-semibold sm:text-xl">
@@ -121,7 +121,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
             ) : (
               <Menu className="h-4 w-4" aria-hidden="true" />
             )}
-            Menu
+            <span className="max-[360px]:sr-only">Menu</span>
           </button>
         </div>
         <nav className="hidden items-center gap-6 sm:flex">

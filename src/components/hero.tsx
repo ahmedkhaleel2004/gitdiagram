@@ -46,12 +46,12 @@ const Hero = () => {
   return (
     <>
       <div className="relative mx-auto w-fit sm:hidden">
-        <VioletSparkle className="pointer-events-none absolute -top-11 -left-9 h-auto w-12 -rotate-12" />
+        <VioletSparkle className="pointer-events-none absolute -top-11 -left-9 h-auto w-12 -rotate-12 max-[360px]:-left-4" />
         <h1 className="text-center text-[clamp(2.5rem,11.5vw,3.3rem)] leading-[0.95] font-bold tracking-tight">
           Repository to <br />
           diagram
         </h1>
-        <SkySparkle className="pointer-events-none absolute -right-9 -bottom-6 h-auto w-12 rotate-6" />
+        <SkySparkle className="pointer-events-none absolute -right-9 -bottom-6 h-auto w-12 rotate-6 max-[360px]:-right-4" />
       </div>
 
       <div className="relative mx-auto hidden w-full flex-row items-center justify-center sm:flex">
