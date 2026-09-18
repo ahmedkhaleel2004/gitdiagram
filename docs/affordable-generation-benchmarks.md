@@ -57,4 +57,23 @@ A live Excalidraw review revealed missing collaboration despite fast generation.
 
 ## Live verification before the recovery release
 
-The Luna compact-schema release `75e5448` rendered GitDiagram in 14.0 seconds and Excalidraw in 18.4 seconds. Both production aliases pointed to the verified full commit, and CI passed. The Excalidraw coverage finding above was identified in that live check. The recovery and coverage release requires a fresh live click-to-render check after deployment.
+The Luna compact-schema release `75e5448` rendered GitDiagram in 14.0 seconds and Excalidraw in 18.4 seconds. Both production aliases pointed to the verified full commit, and CI passed. The Excalidraw coverage finding above was identified in that live check. The recovery and coverage release was then verified separately below.
+
+## Recovery release: verified in production
+
+Commit `d439b6484a602437b6160867f35143988ffd322a` deployed as `dpl_BsgGqMvFU2mrFsCHXonPf2WCf7GV`. Vercel confirmed `READY` and both `gitdiagram.com` and `www.gitdiagram.com` aliases. [CI run 35338133629](https://github.com/ahmedkhaleel2004/gitdiagram/actions/runs/35338133629) passed, including the standalone Docker build. `/api/healthz` returned all five checks healthy.
+
+Real browser clicks were timed until the client announced **Diagram ready**, which is gated by successful SVG rendering. The stored session audits confirmed Luna and the following results:
+
+| Live repository | Click to rendered diagram | Components / relationships | Actual API cost (USD) |
+|---|---:|---:|---:|
+| ahmedkhaleel2004/gitdiagram | 15.973 s | 28 / 30 | $0.0134436 |
+| excalidraw/excalidraw | 15.160 s | 23 / 23 | $0.00709636 |
+| caddyserver/caddy | 10.657 s | 24 / 28 | $0.0056756 |
+| lukeed/clsx | 5.969 s | 5 / 6 | $0.00181636 |
+
+The three larger live repositories read all 12 selected files, without unavailable excerpts. clsx read all six selected files. Each needed one model request and no repair or slow recovery. Excalidraw's live graph included collaboration, encryption, local persistence, export, libraries, and text-to-diagram integration. GitDiagram linked its graph compiler to the correct implementation.
+
+PNG export produced a visually inspected 4916 × 6508 image with the site's lavender background, subsystem colors, and complete diagram. The copy control passed 7,412 characters of Mermaid to the browser clipboard API, which resolved successfully. The in-app browser's separate clipboard reader returned empty, so native clipboard round-trip was not independently confirmed. Zoom entered and exited correctly. Stored state retained successful audits, timestamps, graphs, costs, and explanations.
+
+The 160 completed benchmark artifacts recorded $1.2543 in API usage-derived costs during this goal. This excludes cancelled probes/attempts without reported usage, initial failed experiments without a completed artifact, live checks, and public traffic; it is not an invoice total.
