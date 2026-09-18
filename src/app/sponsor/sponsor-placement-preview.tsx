@@ -1,14 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { Trigger } from "@radix-ui/react-dialog";
+import { useState, type CSSProperties } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { ArrowUpRight, Expand } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "~/components/ui/dialog";
 import type { SponsorSurface } from "./sponsor-content";
 import styles from "./sponsor-placement-preview.module.css";
 
@@ -16,26 +11,51 @@ export function SponsorPlacementPreview({
   name,
   preview,
 }: Pick<SponsorSurface, "name" | "preview">) {
+  const [instant, setInstant] = useState(false);
+
   return (
-    <Dialog>
-      <Trigger asChild>
+    <Dialog.Root>
+      <Dialog.Trigger asChild>
         <button
           type="button"
           className={styles.trigger}
           aria-label={`View placement: ${name}`}
+          onClick={(event) => setInstant(event.detail === 0)}
         >
           <Expand aria-hidden="true" />
           View placement
         </button>
-      </Trigger>
-      <DialogContent className={styles.dialog}>
-        <div className={styles.heading}>
-          <DialogTitle className={styles.title}>{name}</DialogTitle>
-          <DialogDescription className={styles.description}>
-            {preview.caption}
-          </DialogDescription>
-        </div>
-        <div className={styles.imageContainer}>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay
+          className={styles.overlay}
+          data-instant={instant || undefined}
+        />
+        <Dialog.Content
+          className={styles.dialog}
+          data-instant={instant || undefined}
+          onEscapeKeyDown={() => setInstant(true)}
+          style={
+            {
+              "--preview-ratio": preview.width / preview.height,
+            } as CSSProperties
+          }
+        >
+          <div className={styles.heading}>
+            <Dialog.Title className={styles.title}>{name}</Dialog.Title>
+            <a
+              className={styles.fullSize}
+              href={preview.src}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open full size
+              <ArrowUpRight aria-hidden="true" />
+            </a>
+          </div>
+          <Dialog.Description className="sr-only">
+            {preview.caption} Click outside the image or press Escape to close.
+          </Dialog.Description>
           <div className={styles.imageStage}>
             <Image
               src={preview.src}
@@ -43,6 +63,7 @@ export function SponsorPlacementPreview({
               width={preview.width}
               height={preview.height}
               className={styles.image}
+              loading="eager"
               unoptimized
             />
             <svg
@@ -58,15 +79,14 @@ export function SponsorPlacementPreview({
               />
             </svg>
           </div>
-        </div>
-        <div className={styles.footer}>
-          <p>Current desktop placement</p>
-          <a href={preview.src} target="_blank" rel="noopener noreferrer">
-            Open full size
-            <ArrowUpRight aria-hidden="true" />
-          </a>
-        </div>
-      </DialogContent>
-    </Dialog>
+          <Dialog.Close
+            className={styles.accessibleClose}
+            onClick={() => setInstant(true)}
+          >
+            Close preview
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

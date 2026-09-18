@@ -19,71 +19,99 @@
   width: 14px;
   height: 14px;
 }
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgb(12 10 18 / 72%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  opacity: 1;
+  transition: opacity 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
 .dialog {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  width: calc(100% - 48px);
-  max-width: 1100px;
-  max-height: calc(100dvh - 48px);
-  overflow: hidden;
-  padding: 0;
-  border: 2px solid hsl(var(--foreground));
-  border-radius: 8px;
-  background: hsl(var(--background));
-  box-shadow: 7px 7px 0 #000;
-  color: hsl(var(--foreground));
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 51;
+  width: min(
+    1100px,
+    calc(100vw - 64px),
+    calc((100dvh - 144px) * var(--preview-ratio))
+  );
+  color: #fff;
+  outline: none;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  transform-origin: center;
+  transition:
+    opacity 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 240ms cubic-bezier(0.23, 1, 0.32, 1);
   -webkit-font-smoothing: antialiased;
 }
+@starting-style {
+  .overlay,
+  .dialog {
+    opacity: 0;
+  }
+  .dialog {
+    transform: translate(-50%, calc(-50% + 8px)) scale(0.97);
+  }
+}
+.overlay[data-state="closed"],
+.dialog[data-state="closed"] {
+  opacity: 0;
+  transition-duration: 160ms;
+  /* Radix waits for animationend before unmounting. The visual motion uses
+     transitions so an early dismissal continues from its current position. */
+  animation: retainDuringExit 160ms;
+}
+.dialog[data-state="closed"] {
+  transform: translate(-50%, calc(-50% + 4px)) scale(0.985);
+}
+@keyframes retainDuringExit {
+  from,
+  to {
+    visibility: visible;
+  }
+}
 .heading {
-  flex-shrink: 0;
-  padding: 25px 76px 23px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 14px;
 }
 .title {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 1.2;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
 }
-.description {
-  margin-top: 7px;
-  color: hsl(var(--neo-soft-text));
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.6;
+.fullSize {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  color: rgb(255 255 255 / 88%);
+  font-size: 13px;
+  font-weight: 600;
 }
-.dialog > button {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  top: 20px;
-  right: 20px;
-  border: 2px solid hsl(var(--foreground));
-  border-radius: 5px;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  opacity: 1;
+.fullSize svg {
+  width: 16px;
+  height: 16px;
 }
-.dialog > button svg {
-  width: 18px;
-  height: 18px;
-}
-.imageContainer {
-  min-height: 0;
-  overflow: auto;
-  border-block: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  background: hsl(var(--neo-panel));
+.imageStage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 24%);
 }
 .image {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 66dvh;
-  object-fit: contain;
-}
-.imageStage {
-  position: relative;
 }
 .highlight {
   position: absolute;
@@ -94,72 +122,79 @@
   stroke: #ef4444;
   stroke-width: 2.5px;
 }
-.footer {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 28px;
-  font-size: 12px;
-  font-weight: 500;
+.accessibleClose {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-height: 32px;
+  color: #fff;
+  font-size: 13px;
 }
-.footer p {
-  color: hsl(var(--neo-soft-text));
-}
-.footer a {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 40px;
-  font-weight: 700;
+.accessibleClose:not(:focus-visible) {
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
-.footer svg {
-  width: 15px;
-  height: 15px;
-}
 .dialog :is(a, button):focus-visible {
-  outline: 3px solid hsl(var(--neo-link));
-  outline-offset: 4px;
+  outline: 2px solid #fff;
+  outline-offset: 5px;
+  border-radius: 2px;
 }
 @media (hover: hover) and (pointer: fine) {
-  .trigger:hover,
-  .dialog > button:hover {
+  .trigger:hover {
     background: hsl(var(--neo-panel-muted));
   }
-  .footer a:hover {
+  .fullSize:hover {
+    color: #fff;
     text-decoration: underline;
     text-underline-offset: 4px;
   }
 }
 @media (max-width: 720px) {
   .dialog {
-    width: calc(100% - 24px);
-    max-height: calc(100dvh - 32px);
-    box-shadow: 4px 4px 0 #000;
+    width: min(
+      calc(100vw - 32px),
+      calc((100dvh - 144px) * var(--preview-ratio))
+    );
   }
   .heading {
-    padding: 22px 64px 20px 20px;
+    gap: 16px;
+    margin-bottom: 10px;
   }
   .title {
-    font-size: 21px;
+    font-size: 17px;
   }
-  .description {
-    font-size: 13px;
-  }
-  .dialog > button {
-    top: 16px;
-    right: 14px;
-  }
-  .footer {
-    flex-wrap: wrap;
-    gap: 0 12px;
-    padding: 12px 20px;
+  .fullSize {
+    font-size: 12px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .trigger {
     transition: none;
   }
+  .overlay,
+  .dialog {
+    transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .dialog,
+  .dialog[data-state="closed"] {
+    transform: translate(-50%, -50%);
+  }
+  .overlay[data-state="closed"],
+  .dialog[data-state="closed"] {
+    animation-duration: 120ms;
+  }
+  @starting-style {
+    .dialog {
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+.overlay[data-instant],
+.dialog[data-instant] {
+  transition: none;
+  animation: none;
 }
