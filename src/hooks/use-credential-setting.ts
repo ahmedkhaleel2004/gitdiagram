@@ -15,7 +15,7 @@ export type CredentialSettingError = "load" | "save" | "clear" | null;
 interface CredentialSettingState {
   error: CredentialSettingError;
   isConfigured: boolean;
-  isPending: boolean;
+  pendingAction: "save" | "clear" | null;
   value: string;
 }
 
@@ -32,7 +32,7 @@ const CREDENTIAL_STATUS_KEYS = {
 const INITIAL_STATE: CredentialSettingState = {
   error: null,
   isConfigured: false,
-  isPending: false,
+  pendingAction: null,
   value: "",
 };
 
@@ -83,7 +83,7 @@ export function useCredentialSetting({
       setState((current) => ({
         ...current,
         error: null,
-        isPending: true,
+        pendingAction: action,
       }));
 
       try {
@@ -98,7 +98,7 @@ export function useCredentialSetting({
             value: "",
           }));
         }
-        return true;
+        return requestRevisionRef.current === requestRevision;
       } catch {
         if (requestRevisionRef.current === requestRevision) {
           setState((current) => ({
@@ -111,7 +111,7 @@ export function useCredentialSetting({
         if (requestRevisionRef.current === requestRevision) {
           setState((current) => ({
             ...current,
-            isPending: false,
+            pendingAction: null,
           }));
         }
       }
@@ -127,6 +127,7 @@ export function useCredentialSetting({
 
   return {
     ...state,
+    isPending: state.pendingAction !== null,
     clear,
     save,
     setValue: (value: string) => {

@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -35,7 +36,7 @@ describe("credential dialogs", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: mocks.writeText },
@@ -61,12 +62,14 @@ describe("credential dialogs", () => {
     render(<ApiKeyDialog isOpen onClose={onClose} onSaved={onSaved} />);
 
     await waitFor(() => expect(mocks.getCredentialStatus).toHaveBeenCalled());
-    const input = screen.getByLabelText("OpenAI API key");
+    const input = screen.getByLabelText("OpenAI API key", {
+      selector: "input",
+    });
     expect(input).toHaveValue("");
     expect(input.closest(".ph-no-capture")).toBe(screen.getByRole("dialog"));
 
     fireEvent.change(input, { target: { value: "sk-browser-entry" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save & retry" }));
 
     await waitFor(() =>
       expect(mocks.saveCredential).toHaveBeenCalledWith(
@@ -86,15 +89,16 @@ describe("credential dialogs", () => {
     mocks.getCredentialStatus.mockReturnValueOnce(credentialStatus.promise);
     render(<ApiKeyDialog isOpen onClose={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText("OpenAI API key"), {
-      target: { value: "sk-browser-entry" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save Key" }));
+    fireEvent.change(
+      screen.getByLabelText("OpenAI API key", { selector: "input" }),
+      {
+        target: { value: "sk-browser-entry" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
 
     expect(
-      await screen.findByText(
-        "An API key is currently saved. Its value cannot be displayed.",
-      ),
+      await screen.findByText("Key saved. Paste a new one to replace it."),
     ).toBeInTheDocument();
 
     credentialStatus.resolve({
@@ -104,9 +108,7 @@ describe("credential dialogs", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(
-          "An API key is currently saved. Its value cannot be displayed.",
-        ),
+        screen.getByText("Key saved. Paste a new one to replace it."),
       ).toBeInTheDocument(),
     );
   });
@@ -187,27 +189,166 @@ describe("credential dialogs", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Couldn’t copy");
   });
 
-  it("only closes and retries after the token is saved successfully", async () => {
-    mocks.saveCredential.mockRejectedValueOnce(new Error("Save failed"));
-    const onClose = vi.fn();
-    const onSaved = vi.fn();
-    render(
-      <PrivateReposDialog
-        isOpen
-        onClose={onClose}
-        onSaved={onSaved}
-        repository="acme/demo"
-      />,
+  it("opens OpenAI setup separately and copies instructions without the entered key", async () => {
+    render(<ApiKeyDialog isOpen onClose={vi.fn()} />);
+    expect(
+      screen.getByRole("link", { name: "Create key on OpenAI" }),
+    ).toHaveAttribute("href", "https://platform.openai.com/api-keys");
+    expect(
+      screen.getByRole("link", { name: "Create key on OpenAI" }),
+    ).toHaveAttribute("target", "_blank");
+    fireEvent.change(
+      screen.getByLabelText("OpenAI API key", { selector: "input" }),
+      {
+        target: { value: "sk-secret-entry" },
+      },
     );
-    fireEvent.change(screen.getByLabelText("GitHub personal access token"), {
-      target: { value: "github_pat_test" },
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy prompt for my AI" }),
+    );
+    await screen.findByRole("button", { name: "Copied! Paste into your AI" });
+    const prompt = mocks.writeText.mock.calls[0]![0] as string;
+    expect(prompt).toContain("https://platform.openai.com/api-keys");
+    expect(prompt).toContain("billed to my OpenAI API account");
+    expect(prompt).toContain("Do not put the key in chat, logs, or files.");
+    expect(prompt).not.toContain("sk-secret-entry");
+    expect(mocks.saveCredential).not.toHaveBeenCalled();
+  });
+
+  describe.each([
+    {
+      name: "API key",
+      Component: ApiKeyDialog,
+      inputLabel: "OpenAI API key",
+      noun: "key",
+      credential: "openai_api_key",
+    },
+    {
+      name: "GitHub token",
+      Component: PrivateReposDialog,
+      inputLabel: "GitHub personal access token",
+      noun: "token",
+      credential: "github_pat",
+    },
+  ])("$name behavior", ({ Component, inputLabel, noun, credential }) => {
+    it("keeps failed saves open and only retries after success", async () => {
+      mocks.saveCredential.mockRejectedValueOnce(new Error("Save failed"));
+      const onClose = vi.fn();
+      const onSaved = vi.fn();
+      render(<Component isOpen onClose={onClose} onSaved={onSaved} />);
+      const saveButton = screen.getByRole("button", { name: "Save & retry" });
+      expect(saveButton).toBeDisabled();
+      expect(
+        screen.queryByRole("button", { name: `Clear ${noun}` }),
+      ).not.toBeInTheDocument();
+      fireEvent.change(
+        screen.getByLabelText(inputLabel, { selector: "input" }),
+        {
+          target: { value: "test-secret" },
+        },
+      );
+      fireEvent.click(saveButton);
+      await screen.findByRole("alert");
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onSaved).not.toHaveBeenCalled();
+      expect(
+        screen.getByLabelText(inputLabel, { selector: "input" }),
+      ).toHaveValue("test-secret");
+      fireEvent.click(saveButton);
+      await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+      expect(onClose).toHaveBeenCalledOnce();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save & retry" }));
-    await screen.findByRole("alert");
-    expect(onClose).not.toHaveBeenCalled();
-    expect(onSaved).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Save & retry" }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
-    expect(onClose).toHaveBeenCalledOnce();
+
+    it("shows clearing feedback and refreshes only after a successful clear", async () => {
+      mocks.getCredentialStatus.mockResolvedValueOnce({
+        openaiApiKeyConfigured: true,
+        githubPatConfigured: true,
+      });
+      const cleared = createDeferred<{
+        openaiApiKeyConfigured: boolean;
+        githubPatConfigured: boolean;
+      }>();
+      mocks.clearCredential.mockReturnValueOnce(cleared.promise);
+      const onClose = vi.fn();
+      const onSaved = vi.fn();
+      render(<Component isOpen onClose={onClose} onSaved={onSaved} />);
+      fireEvent.click(
+        await screen.findByRole("button", { name: `Clear ${noun}` }),
+      );
+      expect(
+        screen.getByRole("button", { name: "Clearing..." }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: "Save & retry" }),
+      ).toBeDisabled();
+      expect(
+        screen.getByLabelText(inputLabel, { selector: "input" }),
+      ).toBeDisabled();
+      expect(onSaved).not.toHaveBeenCalled();
+      await act(async () =>
+        cleared.resolve({
+          openaiApiKeyConfigured: false,
+          githubPatConfigured: false,
+        }),
+      );
+      expect(mocks.clearCredential).toHaveBeenCalledWith(credential);
+      expect(onClose).toHaveBeenCalledOnce();
+      expect(onSaved).toHaveBeenCalledOnce();
+    });
+
+    it("does not retry after a pending save is dismissed", async () => {
+      const saved = createDeferred<{
+        openaiApiKeyConfigured: boolean;
+        githubPatConfigured: boolean;
+      }>();
+      mocks.saveCredential.mockReturnValueOnce(saved.promise);
+      const onClose = vi.fn();
+      const onSaved = vi.fn();
+      const { rerender } = render(
+        <Component isOpen onClose={onClose} onSaved={onSaved} />,
+      );
+      fireEvent.change(
+        screen.getByLabelText(inputLabel, { selector: "input" }),
+        {
+          target: { value: "test-secret" },
+        },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Save & retry" }));
+      expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+      rerender(
+        <Component isOpen={false} onClose={onClose} onSaved={onSaved} />,
+      );
+      await act(async () =>
+        saved.resolve({
+          openaiApiKeyConfigured: true,
+          githubPatConfigured: true,
+        }),
+      );
+      expect(onSaved).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("resets the copied feedback and secret when reopened", async () => {
+      const onClose = vi.fn();
+      const { rerender } = render(<Component isOpen onClose={onClose} />);
+      fireEvent.change(
+        screen.getByLabelText(inputLabel, { selector: "input" }),
+        {
+          target: { value: "test-secret" },
+        },
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Copy prompt for my AI" }),
+      );
+      await screen.findByRole("button", { name: "Copied! Paste into your AI" });
+      rerender(<Component isOpen={false} onClose={onClose} />);
+      rerender(<Component isOpen onClose={onClose} />);
+      expect(
+        screen.getByRole("button", { name: "Copy prompt for my AI" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText(inputLabel, { selector: "input" }),
+      ).toHaveValue("");
+    });
   });
 });
