@@ -1,6 +1,4 @@
-import Link from "next/link";
-import { ArrowDown, ArrowUpRight } from "lucide-react";
-import { GITHUB_REPO_URL } from "~/lib/site";
+import { ArrowDown } from "lucide-react";
 import { SponsorEmailActions } from "./sponsor-email-actions";
 import { SponsorPlacementPreview } from "./sponsor-placement-preview";
 import {
@@ -76,13 +74,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
         className={styles.audience}
         aria-labelledby="audience-title"
       >
-        <div className={styles.sectionHeading}>
-          <h2 id="audience-title">Audience</h2>
-          <Link href={GITHUB_REPO_URL} className={styles.textLink}>
-            View the open-source project
-            <ArrowUpRight aria-hidden="true" />
-          </Link>
-        </div>
+        <h2 id="audience-title">Audience</h2>
         <div className={styles.audienceColumns}>
           <AudienceMetrics title="Last 30 days" metrics={content.monthly} />
           <AudienceMetrics title="Lifetime" metrics={content.lifetime} />

@@ -132,21 +132,11 @@
 .audience {
   padding-top: 24px;
 }
-.sectionHeading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 40px;
-}
 .page h2 {
   font-size: 32px;
   line-height: 1.2;
   font-weight: 700;
   letter-spacing: -0.035em;
-}
-.sectionHeading > .textLink {
-  flex-shrink: 0;
-  font-size: 12px;
 }
 .audienceColumns {
   display: grid;
@@ -364,11 +354,6 @@
 @media (max-width: 1000px) {
   .page {
     padding-inline: 30px;
-  }
-  .sectionHeading {
-    align-items: start;
-    flex-direction: column;
-    gap: 12px;
   }
   .audienceColumns {
     gap: 40px;
