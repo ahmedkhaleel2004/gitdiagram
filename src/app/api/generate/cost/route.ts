@@ -147,7 +147,6 @@ export async function POST(request: Request) {
       provider,
       model,
       apiKey,
-      pathTypes: githubData.pathTypes,
     });
     const estimate = await estimateGenerationCost({
       provider,

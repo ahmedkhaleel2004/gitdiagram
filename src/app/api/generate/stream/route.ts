@@ -367,7 +367,6 @@ export async function POST(request: Request) {
             provider,
             model,
             apiKey,
-            pathTypes: githubData.pathTypes,
           });
           const singlePass = usesSinglePassArchitecture({
             provider,

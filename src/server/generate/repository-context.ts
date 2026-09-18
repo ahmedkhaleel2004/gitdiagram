@@ -152,16 +152,9 @@ export function selectAnalysisModel(params: {
   provider: AIProvider;
   model: string;
   apiKey?: string;
-  pathTypes: GithubData["pathTypes"];
 }): string {
-  // Preserve custom providers/models and user-supplied key billing expectations.
-  if (!usesSinglePassArchitecture(params)) return params.model;
-  const sourcePaths = [...params.pathTypes]
-    .filter(
-      ([path, type]) =>
-        type === "blob" && isArchitectureSource(path) && !MANIFEST.test(path),
-    )
-    .map(([path]) => path);
-  // Reserve the all-Luna path for genuinely small, single-purpose codebases.
-  return sourcePaths.length <= 8 ? params.model : "gpt-5.6-sol";
+  // Small repositories also need reliable scope selection: cheaper models
+  // inflated utility maps with build machinery in the quality benchmarks.
+  // Preserve explicit model/provider choices and user-supplied key billing.
+  return usesSinglePassArchitecture(params) ? "gpt-5.6-sol" : params.model;
 }

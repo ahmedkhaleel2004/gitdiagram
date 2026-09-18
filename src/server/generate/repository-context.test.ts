@@ -131,24 +131,9 @@ describe("repository evidence preparation", () => {
 });
 
 describe("analysis model routing", () => {
-  const small = repository(["index.js", "test/index.js"]);
-  const application = repository(
-    Array.from({ length: 20 }, (_, i) => `src/component${i}.ts`),
-  );
-  it("keeps tiny libraries on Luna and uses Sol to analyze larger implementations", () => {
+  it("uses Sol for managed architecture regardless of repository size", () => {
     expect(
-      selectAnalysisModel({
-        provider: "openai",
-        model: "gpt-5.6-luna",
-        pathTypes: small.pathTypes,
-      }),
-    ).toBe("gpt-5.6-luna");
-    expect(
-      selectAnalysisModel({
-        provider: "openai",
-        model: "gpt-5.6-luna",
-        pathTypes: application.pathTypes,
-      }),
+      selectAnalysisModel({ provider: "openai", model: "gpt-5.6-luna" }),
     ).toBe("gpt-5.6-sol");
   });
   it("preserves custom model and BYOK choices", () => {
@@ -161,9 +146,7 @@ describe("analysis model routing", () => {
         apiKey: "user-key",
       },
     ]) {
-      expect(
-        selectAnalysisModel({ ...params, pathTypes: application.pathTypes }),
-      ).toBe(params.model);
+      expect(selectAnalysisModel(params)).toBe(params.model);
     }
   });
 });
