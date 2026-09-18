@@ -254,27 +254,21 @@
 .repositoryTitle {
   width: fit-content;
   max-width: 100%;
-  padding: 9px 14px;
-  border: 2px solid var(--edge);
-  border-radius: 6px;
-  background: var(--surface);
-  box-shadow: 3px 3px 0 var(--hard-shadow);
-  font-size: 18px;
-  font-weight: 650;
-  letter-spacing: -0.025em;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
 }
 .repositoryTitle a {
+  white-space: normal;
+  overflow-wrap: anywhere;
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
+}
+.repositoryTitle svg {
+  flex-shrink: 0;
 }
 .actions {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding-bottom: 3px;
 }
 .actionButton {
   display: inline-flex;
@@ -557,9 +551,6 @@
   }
   .resultToolbar {
     padding-top: 10px;
-  }
-  .repositoryTitle {
-    font-size: 16px;
   }
   .resultActivity {
     margin-top: 24px;

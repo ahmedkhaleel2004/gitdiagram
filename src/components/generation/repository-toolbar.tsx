@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import { ChevronDown, RotateCcw, Scan } from "lucide-react";
+import { GitHubIcon } from "~/components/icons/github-icon";
 import { DiagramExport } from "./diagram-export";
 import styles from "./workspace.module.css";
 
@@ -36,11 +37,13 @@ export function RepositoryToolbar({
     <div className={styles.resultToolbar}>
       <h1 className={styles.repositoryTitle}>
         <a
+          className={styles.actionButton}
           href={`https://github.com/${repository}`}
           target="_blank"
           rel="noopener noreferrer"
         >
-          {repository}
+          <GitHubIcon width={15} height={15} aria-hidden="true" />
+          <span>{repository}</span>
         </a>
       </h1>
       <div className={styles.actions}>
