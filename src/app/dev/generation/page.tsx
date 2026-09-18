@@ -10,9 +10,16 @@ export const metadata: Metadata = {
 export default async function GenerationPlaygroundPage({
   searchParams,
 }: {
-  searchParams: Promise<{ focus?: string }>;
+  searchParams: Promise<{ focus?: string; approach?: string }>;
 }) {
   if (process.env.NODE_ENV !== "development") notFound();
-  const { focus } = await searchParams;
-  return <GenerationPlayground focused={focus === "1"} />;
+  const { focus, approach } = await searchParams;
+  const initialApproach =
+    approach === "thread" || approach === "canvas" ? approach : "inline";
+  return (
+    <GenerationPlayground
+      focused={focus === "1"}
+      initialApproach={initialApproach}
+    />
+  );
 }

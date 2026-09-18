@@ -40,7 +40,7 @@ const edges = [
   ["validate", "mermaid"],
   ["storage", "web"],
 ] as const;
-const DEMO_GRAPH: DiagramGraph = {
+export const DEMO_GRAPH: DiagramGraph = {
   groups: [],
   nodes: nodes.map(([id, label, path]) => ({
     id,
@@ -59,7 +59,7 @@ const DEMO_GRAPH: DiagramGraph = {
     style: "solid",
   })),
 };
-const DEMO_DIAGRAM = `flowchart LR
+export const DEMO_DIAGRAM = `flowchart LR
   web["Web interface"] --> stream["Streaming API"]
   subgraph pipeline["Generation pipeline"]
     analysis["Architecture analysis"] --> graph_node["Graph generation"] --> validate["Validate & compile"]
@@ -69,13 +69,35 @@ const DEMO_DIAGRAM = `flowchart LR
   validate --> storage[("Saved diagrams")]
   validate --> mermaid["Interactive diagram"]
   storage --> web
-  classDef ui fill:#e9d5ff,stroke:#16101e,stroke-width:2px,color:#16101e
-  classDef data fill:#fef3c7,stroke:#16101e,stroke-width:2px,color:#16101e
+  classDef default fill:#f5f0fb,stroke:#ab96bf,stroke-width:1px,color:#382c46,rx:8,ry:8
+  classDef ui fill:#e9dcfa,stroke:#a48abc,stroke-width:1px,color:#382c46,rx:8,ry:8
+  classDef data fill:#f4e9d5,stroke:#c7af86,stroke-width:1px,color:#514329,rx:8,ry:8
   class web,mermaid ui
   class github,storage data
+  style pipeline fill:#eee8f480,stroke:#cbbbd9,stroke-width:1px,rx:12,ry:12
+  linkStyle default stroke:#a697b6,stroke-width:1.2px
 `;
 
-export type DemoScenario = "normal" | "slow" | "retry" | "error" | "stalled";
+export const DEMO_PREVIOUS_DIAGRAM = `flowchart LR
+  web["Web interface"] --> api["Generation API"]
+  api --> context["Repository context"]
+  context --> diagram["Diagram renderer"]
+  api --> storage[("Saved diagrams")]
+  storage --> web
+  classDef default fill:#f5f0fb,stroke:#ab96bf,stroke-width:1px,color:#382c46,rx:8,ry:8
+  classDef ui fill:#e9dcfa,stroke:#a48abc,stroke-width:1px,color:#382c46,rx:8,ry:8
+  class web,diagram ui
+  linkStyle default stroke:#a697b6,stroke-width:1.2px
+`;
+
+export type DemoScenario =
+  | "normal"
+  | "slow"
+  | "retry"
+  | "error"
+  | "stalled"
+  | "regenerate"
+  | "regenerate-error";
 export function demoDuration(scenario: DemoScenario) {
   return scenario === "stalled"
     ? 90
@@ -111,7 +133,7 @@ export function demoState(
         Math.floor(DEMO_NOTES.length * Math.min(1, (time - 5) / 9)),
       ),
     };
-  if (scenario === "error" && time >= 20)
+  if ((scenario === "error" || scenario === "regenerate-error") && time >= 20)
     return {
       status: "error",
       explanation: DEMO_NOTES,
@@ -134,4 +156,27 @@ export function demoState(
     graph: DEMO_GRAPH,
     diagram: DEMO_DIAGRAM,
   };
+}
+
+const DARK_DEMO_COLORS: Record<string, string> = {
+  "#f5f0fb": "#302538",
+  "#ab96bf": "#695879",
+  "#382c46": "#e4daed",
+  "#e9dcfa": "#463052",
+  "#a48abc": "#8665a4",
+  "#f4e9d5": "#443725",
+  "#c7af86": "#8e7654",
+  "#514329": "#e7d8b7",
+  "#eee8f480": "#262030",
+  "#cbbbd9": "#564461",
+  "#a697b6": "#86758f",
+};
+
+export function themedDemoDiagram(diagram: string, dark: boolean) {
+  return dark
+    ? diagram.replace(
+        /#[a-f0-9]{6,8}\b/g,
+        (color) => DARK_DEMO_COLORS[color] ?? color,
+      )
+    : diagram;
 }

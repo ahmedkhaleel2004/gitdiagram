@@ -1,29 +1,23 @@
-# Generation preview
+# Generation approach tester
 
 Run `bun run dev`, then open <http://localhost:3000/dev/generation>.
-Use `?focus=1` for the quiet view; **Preview controls** reveals the simulator controls.
 
-The fixtures use the production components without generation requests or credits. The page returns **404 outside development**. Remove this directory when the temporary preview is no longer needed.
+Three local prototypes share one simulation. Choose **Inline**, **Thread**, or **Canvas**; switching keeps the current time and scenario. Each approach has a direct URL, for example `?approach=thread`. Add `&focus=1` to hide the playback controls initially. The controls button remains available.
 
-## Design direction
+- **Inline:** a soft repository field with a compact activity line and optional detail.
+- **Thread:** an open account of the work, a short excerpt as architecture notes arrive, and a sidebar beside the finished diagram.
+- **Canvas:** an open diagram workspace with a floating repository dock; status recedes to the corner when a diagram is available.
 
-The generation view follows the user's September 17 correction: soft colour, fluid motion, very little text, and no card or visible progress checklist. A small translucent form moves gently above one phase label. The repository name, elapsed time, and Cancel remain available. The repository form returns when generation ends.
+These prototypes follow the September 18 reference study: [Beautiful UI](https://www.beautifului.dev/), [AICSS](https://www.aicss.dev/), and [Libraries.dev](https://libraries.dev/). They use original presentation code with existing project dependencies. The earlier production generation UI is unchanged while the alternatives are compared.
 
-The short phase labels follow actual server events. After 20 seconds with server activity the view says **Still working**. After 25 seconds without activity it says **Waiting for updates** and pauses the moving form. Local diagram rendering is not mistaken for a disconnected stream. No percentage, intermediate graph, or connection claim is invented.
+## Trying the experience
 
-Streamed prose stays off the generation canvas. The completed architecture overview remains available beside the finished diagram, and failed generations preserve their overview. Loading feedback remains visible until Mermaid reports a successful render.
+Click **Generate**, or use Play/Pause, the timeline, playback speed, and Jump to. Scenarios cover normal generation, a slow first response, regeneration over an existing result, a regeneration failure, automatic refinement, a quiet connection, and a connection error. Stop generation and Try again work in every approach. Use the normal site theme toggle for light and dark.
 
-Motion uses small transforms on the decorative shape, with no full-screen moving background. Phase labels and the completed result enter with short transitions. Reduced motion removes animation while keeping status and connection feedback. Light and dark colours are tuned separately; small text has a higher-contrast alternative.
+The fixture supplies simulated server events and architecture text. No generation API requests or model credits are used. The completed result uses the real Mermaid renderer, including pan, zoom, and fit. The previous diagram stays mounted and usable until a replacement has actually rendered, including when a request is cancelled or the replacement fails. The simulator only announces completion after the renderer callback.
 
-## Review scenarios
+The route returns 404 outside development. All prototype layout and colour overrides are scoped to the tester. No model, billing, production theme, or generation API configuration is changed.
 
-Use **Scenario**, **Jump to**, and playback controls to inspect:
+## Verification
 
-- Normal generation and the actual Mermaid result.
-- A slow first response with healthy server keep-alives.
-- Missing updates and recovery after a connection error.
-- Automatic diagram refinement.
-- Immediate Cancel and Try again.
-- Light/dark, 320 px / 390 px screens, and reduced motion.
-
-The Apple design skill informed the new direction. No component library or animation dependency was added, and the model/quality configuration is unchanged.
+The component tests cover approach switching without losing position, immediate acknowledgement, healthy versus silent long waits, cancellation/restart, and renderer handoff/failure for all three approaches. Browser review covers light/dark, 320px and 390px layouts, reduced motion, activity disclosure, completed diagrams, zoom/fit, and regeneration.
