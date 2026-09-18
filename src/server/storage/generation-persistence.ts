@@ -137,7 +137,9 @@ export async function persistGenerationResult(params: {
             }
             revalidateTag(
               getPublicDiagramStateCacheTag(params.username, params.repo),
-              "max",
+              // A regenerated diagram must survive the very next reload.
+              // "max" serves the previous artifact once while refreshing it.
+              { expire: 0 },
             );
             await updatePublicBrowseIndexForSuccessfulDiagram({
               username: params.username,

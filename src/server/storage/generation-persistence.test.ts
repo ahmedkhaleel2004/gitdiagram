@@ -100,7 +100,7 @@ describe("persistGenerationResult", () => {
     );
   });
 
-  it("revalidates pages and social images for both URL casings", async () => {
+  it("expires saved diagram data and revalidates pages for both URL casings", async () => {
     const params = { ...baseParams(), visibility: "public" as const };
 
     await persistGenerationResult(params);
@@ -126,7 +126,7 @@ describe("persistGenerationResult", () => {
     );
     expect(mocks.revalidateTag).toHaveBeenCalledWith(
       "public-diagram-state:acme:demo",
-      "max",
+      { expire: 0 },
     );
   });
 
