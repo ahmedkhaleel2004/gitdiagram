@@ -134,7 +134,7 @@
 }
 .sectionHeading {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 40px;
 }
@@ -143,15 +143,6 @@
   line-height: 1.2;
   font-weight: 700;
   letter-spacing: -0.035em;
-}
-.sectionHeading > div {
-  max-width: 640px;
-}
-.sectionHeading p {
-  margin-top: 16px;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.8;
 }
 .sectionHeading > .textLink {
   flex-shrink: 0;
@@ -209,9 +200,9 @@
 }
 .detailSection {
   display: grid;
-  grid-template-columns: 310px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 82px;
+  gap: 32px;
   margin-top: 60px;
   padding-top: 42px;
   border-top: 1px solid var(--quiet-line);
@@ -381,10 +372,6 @@
   .metricValue {
     font-size: 29px;
   }
-  .detailSection {
-    grid-template-columns: 260px minmax(0, 1fr);
-    gap: 50px;
-  }
   .placementHeading > p > span {
     font-size: 40px;
   }
@@ -447,9 +434,6 @@
   .page h2 {
     font-size: 29px;
   }
-  .sectionHeading p {
-    font-size: 14px;
-  }
   .audienceColumns {
     grid-template-columns: 1fr;
     gap: 30px;
@@ -465,7 +449,6 @@
     padding-block: 16px;
   }
   .detailSection {
-    grid-template-columns: 1fr;
     gap: 28px;
     margin-top: 42px;
     padding-top: 30px;

@@ -77,14 +77,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
         aria-labelledby="audience-title"
       >
         <div className={styles.sectionHeading}>
-          <div>
-            <h2 id="audience-title">An audience for your next launch.</h2>
-            <p>
-              GitDiagram turns repositories into architecture diagrams.
-              Developers come here to understand code, explore projects, and
-              decide what to build with.
-            </p>
-          </div>
+          <h2 id="audience-title">Audience</h2>
           <Link href={GITHUB_REPO_URL} className={styles.textLink}>
             View the open-source project
             <ArrowUpRight aria-hidden="true" />
@@ -112,13 +105,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
         id="sponsor-placements"
         aria-labelledby="placements-title"
       >
-        <div>
-          <h2 id="placements-title">Where developers find you.</h2>
-          <p className={styles.sectionIntro}>
-            Your product appears alongside the repositories they came to
-            explore. Each placement gives them a direct path to your website.
-          </p>
-        </div>
+        <h2 id="placements-title">Placements</h2>
         <div>
           <div className={styles.placements}>
             {content.surfaces.map((surface) => (
@@ -145,7 +132,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
 
       <section className={styles.detailSection} aria-labelledby="fit-title">
         <div>
-          <h2 id="fit-title">Built for the same people.</h2>
+          <h2 id="fit-title">Sponsor fit</h2>
           <p className={styles.sectionIntro}>
             If your customers build software, GitDiagram is a relevant place to
             introduce your product.
