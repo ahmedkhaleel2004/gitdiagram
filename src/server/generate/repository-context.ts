@@ -7,7 +7,7 @@ export const MAX_SOURCE_FILES = 12;
 // Read them within a byte bound, then excerpt into the unchanged model budget.
 export const MAX_SOURCE_FILE_BYTES = 512_000;
 const MAX_TREE_CHARACTERS = 24_000;
-const MAX_README_CHARACTERS = 16_000;
+const MAX_README_CHARACTERS = 8_500;
 
 const EXCLUDED =
   /(^|\/)(?:\.[^/]+|tests?|__tests__|testdata|fixtures?|examples?(?:_src)?|samples?|docs?(?:_src)?|tutorials?(?:_src)?|documentation|bench|benchmarks?|vendor|third_party|node_modules|dist|build|generated|migrations?|alembic|assets|locales?|translations?)(\/|$)|(?:\.test(?:-d)?|\.spec|\.generated|\.min)\.|(?:^|\/)(?:test\.[^/]+|bench(?:mark|marker)?\.[^/]+|test_[^/]+|[^/]+_test\.[^/]+)$/i;
@@ -57,15 +57,13 @@ function score(path: string): number {
     )
   )
     value += 18;
-  if (/(?:config|types|constants|utils|helpers|schema|models)/i.test(path))
-    value -= 18;
+  if (/(?:config|types|constants|utils|helpers|schema|models)/i.test(name))
+    value -= 6;
   if (/(?:analytics|telemetry|instrumentation|logger|logging)/i.test(name))
     value -= 25;
   if (/(?:^|\/)(?:healthz?|readyz?|livez?)(?:\/|\.)/i.test(path)) value -= 30;
-  if (
-    /(?:^|\/)scripts?\/(?:check|build|release|dev|lint|format)[-_.]/i.test(path)
-  )
-    value -= 35;
+  if (/(?:^|\/)scripts?\//i.test(path)) value -= 35;
+  if (/^(?:testclient|conftest)\./i.test(name)) value -= 35;
   if (/(?:activity|service)\.(?:kt|java)$/i.test(name)) value += 18;
   if (/^I[A-Z].*\.(?:java|kt|cs)$/.test(name) || /\.d\.ts$/.test(name))
     value -= 20;
@@ -98,6 +96,16 @@ export function selectSourcePaths(
       .sort((a, b) => {
         const priority = (path: string) =>
           score(path) -
+          // Empty package barrels and tiny wrappers should not crowd out
+          // substantial runtime modules; size is only a modest tie-breaker.
+          (data.sourceBlobs?.get(path)?.size !== undefined &&
+          data.sourceBlobs.get(path)!.size < 250
+            ? 15
+            : 0) +
+          Math.min(
+            10,
+            Math.log2(1 + (data.sourceBlobs?.get(path)?.size ?? 0) / 1000),
+          ) -
           5 *
             (directories.get(
               path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "",
@@ -120,14 +128,18 @@ export function selectSourcePaths(
 export function prepareRepositoryContext(data: GithubData) {
   const selectedPaths = selectSourcePaths(data);
   const allPaths = data.fileTree.split("\n");
+  const runtimePaths = allPaths.filter(isArchitectureSource);
+  // Large code repositories do not need test/asset inventories in the model
+  // prompt. Keep the original tree for small or primarily non-code projects.
+  const contextPaths = runtimePaths.length > 40 ? runtimePaths : allPaths;
   const ordered = [
     ...new Set([
       ...selectedPaths,
-      ...allPaths.filter(
+      ...contextPaths.filter(
         (path) => data.pathTypes.get(path) === "tree" && !EXCLUDED.test(path),
       ),
-      ...allPaths.filter(isArchitectureSource),
-      ...allPaths,
+      ...runtimePaths,
+      ...contextPaths,
     ]),
   ];
   const paths: string[] = [];

@@ -66,7 +66,11 @@ describe("repository evidence preparation", () => {
     expect(selected).not.toContain("scripts/check-performance-budgets.mjs");
     expect(
       selected.indexOf("src/app/api/generate/stream/route.ts"),
-    ).toBeLessThan(selected.indexOf("src/lib/analytics-client.ts"));
+    ).toBeLessThan(
+      selected.includes("src/lib/analytics-client.ts")
+        ? selected.indexOf("src/lib/analytics-client.ts")
+        : Infinity,
+    );
     expect(selected.slice(0, 6)).not.toContain("src/app/api/healthz/route.ts");
   });
   it("keeps runtime stages instead of letting schemas and maintenance crowd them out", () => {

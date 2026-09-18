@@ -26,4 +26,34 @@ describe("architecture excerpts", () => {
       500,
     );
   });
+  it("keeps downstream domain calls instead of spending all evidence on setup", () => {
+    const text = [
+      'import { prepare, generate, persist } from "./workflow";',
+      "export async function POST(request) {",
+      ...Array.from({ length: 100 }, (_, i) => `  await setup${i}();`),
+      "  const inputs = await prepare(request);",
+      ...Array.from({ length: 100 }, (_, i) => `  // setup details ${i}`),
+      "  const graph = await generate(inputs);",
+      ...Array.from({ length: 100 }, (_, i) => `  // validation details ${i}`),
+      "  await persist(graph);",
+      "}",
+    ].join("\n");
+    const excerpt = excerptSource(text, 2200);
+    expect(excerpt).toContain("const graph = await generate(inputs);");
+    expect(excerpt).toContain("await persist(graph);");
+    expect(excerpt).toContain('generate, persist from "./workflow"');
+    expect(excerpt.length).toBeLessThanOrEqual(2200);
+  });
+  it("retains a called alias's declared module without inventing an import path", () => {
+    const text = [
+      'import { generate as render, unused, type Settings } from "@domain/engine";',
+      ...Array.from({ length: 150 }, (_, i) => `// setup ${i}`),
+      "const graph = render(input);",
+      ...Array.from({ length: 150 }, (_, i) => `// other details ${i}`),
+    ].join("\n");
+    const excerpt = excerptSource(text, 1700);
+    expect(excerpt).toContain('render from "@domain/engine"');
+    expect(excerpt).toContain("const graph = render(input);");
+    expect(excerpt).not.toContain('unused from "@domain/engine"');
+  });
 });

@@ -1,5 +1,60 @@
 import { describe, expect, it } from "vitest";
-import { readArchitectureProgress } from "./architecture-output";
+import {
+  architectureOutputSchema,
+  expandArchitectureGraph,
+  readArchitectureProgress,
+} from "./architecture-output";
+import { diagramGraphSchema } from "~/features/diagram/graph";
+import {
+  buildFileTreeLookup,
+  compileDiagramGraph,
+  validateDiagramGraph,
+} from "./graph";
+
+it("accepts compact model output while preserving colored, linked, stored graphs", () => {
+  const { graph } = architectureOutputSchema.parse({
+    explanation: "A request is dispatched to the worker.",
+    graph: {
+      groups: [{ id: "runtime", label: "Processing" }],
+      nodes: [
+        {
+          id: "request",
+          label: "Request",
+          groupId: null,
+          path: null,
+          shape: "circle",
+        },
+        {
+          id: "worker",
+          label: "Worker",
+          groupId: "runtime",
+          path: "src/worker.ts",
+          shape: "box",
+        },
+      ],
+      edges: [
+        { from: "request", to: "worker", label: "dispatches", style: "dashed" },
+      ],
+    },
+  });
+  const expanded = expandArchitectureGraph(graph);
+  expect(diagramGraphSchema.safeParse(expanded).success).toBe(true);
+  expect(
+    validateDiagramGraph(expanded, buildFileTreeLookup("src/worker.ts")).valid,
+  ).toBe(true);
+  const mermaid = compileDiagramGraph({
+    graph: expanded,
+    username: "owner",
+    repo: "repo",
+    branch: "main",
+    pathTypes: new Map([["src/worker.ts", "blob"]]),
+  });
+  expect(mermaid).toContain("fill:#");
+  expect(mermaid).toContain(
+    "https://github.com/owner/repo/blob/main/src/worker.ts",
+  );
+  expect(mermaid).toContain("dispatches");
+});
 
 describe("streaming architecture overview", () => {
   it("decodes every possible chunk boundary without leaking JSON or graph content", () => {

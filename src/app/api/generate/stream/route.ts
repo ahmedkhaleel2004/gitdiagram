@@ -5,6 +5,7 @@ import {
 import { fetchSourceContext } from "~/server/generate/source-context";
 import {
   architectureOutputSchema,
+  expandArchitectureGraph,
   readArchitectureProgress,
 } from "~/server/generate/architecture-output";
 import { after } from "next/server";
@@ -38,6 +39,7 @@ import {
 } from "~/server/generate/cancellation";
 import {
   EXPLANATION_REASONING_EFFORT,
+  ARCHITECTURE_REASONING_EFFORT,
   EXPLANATION_TEXT_VERBOSITY,
 } from "~/server/generate/generation-policy";
 import {
@@ -569,7 +571,9 @@ export async function POST(request: Request) {
               source_files: sources.text,
             }),
             apiKey,
-            reasoningEffort: EXPLANATION_REASONING_EFFORT,
+            reasoningEffort: singlePass
+              ? ARCHITECTURE_REASONING_EFFORT
+              : EXPLANATION_REASONING_EFFORT,
             textVerbosity: EXPLANATION_TEXT_VERBOSITY,
             signal: generationAbortController.signal,
             clientRequestId: `${audit.sessionId}:explanation`,
@@ -665,7 +669,9 @@ export async function POST(request: Request) {
             apiKey,
             sessionId: audit.sessionId,
             explanation,
-            initialGraph: architecture?.graph,
+            initialGraph: architecture
+              ? expandArchitectureGraph(architecture.graph)
+              : undefined,
             fileTree: context.fileTree,
             fileTreeLookup,
             signal: generationAbortController.signal,

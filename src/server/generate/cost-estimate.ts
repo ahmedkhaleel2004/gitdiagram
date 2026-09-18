@@ -6,6 +6,7 @@ import {
 } from "~/server/generate/openai";
 import {
   EXPLANATION_REASONING_EFFORT,
+  ARCHITECTURE_REASONING_EFFORT,
   GRAPH_REASONING_EFFORT,
 } from "~/server/generate/generation-policy";
 import {
@@ -151,7 +152,9 @@ export async function estimateGenerationCost(params: {
           : SYSTEM_FIRST_PROMPT,
         userPrompt: explanationPrompt,
         apiKey: params.apiKey,
-        reasoningEffort: EXPLANATION_REASONING_EFFORT,
+        reasoningEffort: singlePass
+          ? ARCHITECTURE_REASONING_EFFORT
+          : EXPLANATION_REASONING_EFFORT,
         preferExactInputTokenCount: params.preferExactInputTokenCount,
         signal: params.signal,
         clientRequestId: params.clientRequestId
