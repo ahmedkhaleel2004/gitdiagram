@@ -145,7 +145,7 @@ export function SponsorCatalogRow() {
       <td colSpan={4} className="block p-0 lg:table-cell">
         <a
           {...linkProps(sponsor.href)}
-          className="group flex flex-col gap-3 px-4 py-4 text-left sm:flex-row sm:items-center sm:justify-between lg:px-5"
+          className="group flex items-center justify-between gap-3 px-4 py-4 text-left lg:px-5"
         >
           <span className="flex min-w-0 items-center gap-3">
             <SponsorLogo
@@ -157,7 +157,7 @@ export function SponsorCatalogRow() {
               <span className="block text-[10px] leading-none font-black tracking-[0.16em] text-[hsl(var(--neo-soft-text))] uppercase dark:text-neutral-300">
                 {sponsor.isActive ? "Sponsored" : "Sponsor slot"}
               </span>
-              <span className="mt-1 block text-[1.15rem] leading-tight font-black tracking-tight text-black dark:text-neutral-50">
+              <span className="mt-1 block text-base leading-tight font-black tracking-tight text-black sm:text-[1.15rem] dark:text-neutral-50">
                 {sponsor.name}
               </span>
               <span className="mt-1 block text-sm leading-5 font-semibold text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
@@ -165,10 +165,14 @@ export function SponsorCatalogRow() {
               </span>
             </span>
           </span>
-          <p className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-md border-[2px] border-black bg-[hsl(var(--neo-button))] px-4 py-2 text-sm font-black text-black shadow-[3px_3px_0_0_#000]">
+          <p className="hidden min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-md border-[2px] border-black bg-[hsl(var(--neo-button))] px-4 py-2 text-sm font-black text-black shadow-[3px_3px_0_0_#000] sm:inline-flex">
             {sponsor.cta}
             <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
           </p>
+          <ArrowUpRight
+            aria-hidden="true"
+            className="size-5 shrink-0 sm:hidden"
+          />
         </a>
       </td>
     </tr>

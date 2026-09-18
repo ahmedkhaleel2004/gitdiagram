@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight, Clock3, Star } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Fragment, type RefObject } from "react";
 
@@ -46,8 +47,8 @@ function GeneratedAtTime({ value }: { value: string }) {
   const hydrated = useHydrated();
 
   return (
-    <time dateTime={value}>
-      <span className="mt-2 block text-base leading-snug font-medium text-[hsl(var(--foreground))] lg:mt-0 lg:text-sm lg:font-normal lg:whitespace-nowrap lg:text-[hsl(var(--neo-soft-text))] dark:text-[hsl(var(--foreground))] lg:dark:text-neutral-300">
+    <time dateTime={value} title={formatGeneratedAtUtc(value)}>
+      <span className="block text-xs leading-snug text-[hsl(var(--neo-soft-text))] lg:text-sm lg:whitespace-nowrap dark:text-neutral-300">
         {hydrated ? formatGeneratedAt(value) : formatGeneratedAtUtc(value)}
       </span>
     </time>
@@ -75,17 +76,15 @@ export function BrowseCatalogResults({
   return (
     <>
       <div className="flex items-center justify-between">
-        <p className="text-base text-[hsl(var(--neo-soft-text))] lg:text-sm dark:text-neutral-300">
-          Showing {showingStart}-{showingEnd} of{" "}
+        <p className="text-sm text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
+          {showingStart}–{showingEnd} of{" "}
           {totalCountFormatter.format(result.total)} public diagrams
         </p>
       </div>
 
       <div className="neo-panel overflow-hidden rounded-lg">
-        <div className="border-b-[3px] border-black bg-[hsl(var(--neo-panel-muted))] px-4 py-3 text-left text-xs font-semibold tracking-[0.18em] uppercase lg:hidden dark:border-[#0d0a19] dark:bg-[hsl(var(--neo-panel-muted))]">
-          Repository Results
-        </div>
-        <table className="w-full border-collapse lg:table-fixed">
+        <table className="block w-full border-collapse lg:table lg:table-fixed">
+          <caption className="sr-only">Public repository diagrams</caption>
           <colgroup className="hidden lg:table-column-group">
             <col />
             <col className="w-[104px]" />
@@ -125,39 +124,48 @@ export function BrowseCatalogResults({
                     >
                       <div
                         title={`${item.username}/${item.repo}`}
-                        className="flex h-full w-full flex-col px-4 pt-5 pb-5 lg:px-5 lg:py-4"
+                        className="flex h-full w-full min-w-0 flex-col px-4 pt-4 pb-2 lg:px-5 lg:py-4"
                       >
-                        <span className="block text-[1.4rem] leading-[1.05] font-semibold tracking-tight break-all lg:overflow-hidden lg:text-lg lg:leading-tight lg:break-normal lg:text-ellipsis lg:whitespace-nowrap">
+                        <span className="block text-lg leading-snug font-semibold tracking-tight [overflow-wrap:anywhere] lg:overflow-hidden lg:leading-tight lg:text-ellipsis lg:whitespace-nowrap">
                           {item.username}/{item.repo}
-                        </span>
-                        <span className="mt-3 block lg:hidden">
-                          <span className="inline-flex items-center rounded-full border-[2px] border-black bg-black/5 px-3 py-1 text-sm font-semibold dark:border-[#1a0d30] dark:bg-white/5">
-                            {formatStarSummary(item.stargazerCount)}
-                          </span>
                         </span>
                       </div>
                     </td>
                     <td className="hidden px-5 py-4 text-sm font-semibold whitespace-nowrap lg:table-cell">
                       {formatStarCount(item.stargazerCount)}
                     </td>
-                    <td className="block px-4 pt-4 text-[hsl(var(--neo-soft-text))] lg:table-cell lg:px-5 lg:py-4 lg:text-sm dark:text-neutral-300">
-                      <span className="block text-[11px] font-semibold tracking-[0.18em] text-[hsl(var(--neo-soft-text))] uppercase lg:hidden dark:text-neutral-400">
-                        Last Generated
-                      </span>
-                      <GeneratedAtTime value={item.lastSuccessfulAt} />
+                    <td className="block px-4 text-[hsl(var(--neo-soft-text))] lg:table-cell lg:px-5 lg:py-4 lg:text-sm dark:text-neutral-300">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:block">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium lg:hidden">
+                          <Star aria-hidden="true" className="size-3.5" />
+                          {formatStarSummary(item.stargazerCount)}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 lg:block">
+                          <Clock3
+                            aria-hidden="true"
+                            className="size-3.5 lg:hidden"
+                          />
+                          <span className="sr-only">Last generated </span>
+                          <GeneratedAtTime value={item.lastSuccessfulAt} />
+                        </span>
+                      </div>
                     </td>
                     <td className="block px-4 py-4 lg:table-cell lg:px-5 lg:py-4 lg:pr-6 xl:px-6 xl:pr-7">
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-center xl:flex xl:gap-3 xl:whitespace-nowrap">
+                      <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-center xl:flex xl:gap-3 xl:whitespace-nowrap">
                         <Link
                           href={diagramPath}
                           prefetch={false}
-                          className="neo-button inline-flex min-h-[52px] w-full items-center justify-center rounded-md px-4 py-3 text-base font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[148px] xl:px-4"
+                          className="neo-button inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[148px] xl:px-4"
                         >
                           Open Diagram
+                          <ArrowRight
+                            aria-hidden="true"
+                            className="size-4 lg:hidden"
+                          />
                         </Link>
                         <Link
                           href={githubPath}
-                          className="browse-muted-button inline-flex min-h-[52px] w-full items-center justify-center rounded-md px-4 py-3 text-base font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[104px] xl:px-4"
+                          className="browse-muted-button inline-flex min-h-11 w-full items-center justify-center rounded-md px-3 py-2 text-sm font-semibold whitespace-nowrap lg:min-h-0 lg:min-w-0 lg:px-3 lg:py-2 lg:text-sm xl:w-auto xl:min-w-[104px] xl:px-4"
                         >
                           GitHub
                         </Link>
@@ -171,16 +179,16 @@ export function BrowseCatalogResults({
         </table>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-base text-[hsl(var(--neo-soft-text))] lg:text-sm dark:text-neutral-300">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
           Page {result.page} of {result.totalPages}
         </p>
-        <div className="flex gap-3">
+        <div className="flex gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => handlePageChange(result.page - 1)}
             disabled={!hasPreviousPage}
-            className={`browse-muted-button inline-flex items-center rounded-md px-5 py-3 text-base font-semibold lg:px-4 lg:py-2 lg:text-sm ${
+            className={`browse-muted-button inline-flex min-h-11 items-center justify-center rounded-md px-3 py-2 text-sm font-semibold lg:px-4 lg:py-2 lg:text-sm ${
               hasPreviousPage ? "" : "cursor-not-allowed opacity-50"
             }`}
           >
@@ -190,7 +198,7 @@ export function BrowseCatalogResults({
             type="button"
             onClick={() => handlePageChange(result.page + 1)}
             disabled={!hasNextPage}
-            className={`inline-flex items-center rounded-md px-5 py-3 text-base font-semibold lg:px-4 lg:py-2 lg:text-sm ${
+            className={`inline-flex min-h-11 items-center justify-center rounded-md px-3 py-2 text-sm font-semibold lg:px-4 lg:py-2 lg:text-sm ${
               hasNextPage
                 ? "neo-button"
                 : "cursor-not-allowed border-[3px] border-black bg-[hsl(var(--neo-button))] opacity-50 dark:border-[#1a0d30]"

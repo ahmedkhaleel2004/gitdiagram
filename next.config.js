@@ -23,12 +23,14 @@ const contentSecurityPolicy = [
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "upgrade-insecure-requests",
+  // Safari upgrades localhost assets to HTTPS too, which breaks HTTP dev servers.
+  ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: false,
+  allowedDevOrigins: ["127.0.0.1"],
   ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
   transpilePackages: ["@aws-sdk/client-s3"],
   async redirects() {

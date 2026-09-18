@@ -144,6 +144,11 @@
     outline: none !important;
   }
 
+  .browse-controls .neo-input:focus-visible {
+    outline: 2px solid hsl(var(--foreground)) !important;
+    outline-offset: 4px;
+  }
+
   .dark .neo-input {
     background: hsl(var(--neo-input-bg)) !important;
   }

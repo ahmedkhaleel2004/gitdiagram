@@ -24,10 +24,10 @@ function firstSearchParam(value: string | string[] | undefined) {
 function BrowseCatalogStreamingFallback() {
   return (
     <div className="space-y-6" aria-busy="true" aria-live="polite">
-      <div className="neo-panel grid gap-4 rounded-lg p-5 md:grid-cols-[minmax(0,1fr)_220px_180px] md:gap-5 md:p-6">
-        <Skeleton className="h-[82px] w-full" />
-        <Skeleton className="h-[82px] w-full" />
-        <Skeleton className="h-[82px] w-full" />
+      <div className="neo-panel grid grid-cols-2 gap-4 rounded-lg p-4 md:grid-cols-[minmax(0,1fr)_220px_180px] md:gap-5 md:p-6">
+        <Skeleton className="h-[74px] w-full first:col-span-2 md:first:col-span-1" />
+        <Skeleton className="h-[74px] w-full first:col-span-2 md:first:col-span-1" />
+        <Skeleton className="h-[74px] w-full first:col-span-2 md:first:col-span-1" />
       </div>
       <div className="neo-panel space-y-3 rounded-lg p-5">
         {Array.from({ length: 6 }, (_, index) => (
@@ -68,15 +68,14 @@ export default async function BrowsePage({
     page: firstSearchParam(params.page),
   };
   return (
-    <main className="px-4 py-8 sm:px-8 sm:py-10">
+    <main className="px-4 pt-5 pb-8 sm:px-8 sm:py-10">
       <div className="mx-auto max-w-6xl">
-        <section className="mb-6 max-w-3xl sm:mb-8">
-          <h1 className="max-w-[11ch] text-[clamp(2.9rem,12vw,4rem)] leading-[0.92] font-bold tracking-[-0.05em] text-balance sm:max-w-none sm:text-5xl sm:tracking-tight">
-            Browse stored repository diagrams
+        <section className="mb-5 max-w-3xl sm:mb-8">
+          <h1 className="text-4xl leading-[1.05] font-bold tracking-tight text-balance sm:text-5xl">
+            Browse diagrams
           </h1>
-          <p className="mt-4 max-w-[34rem] text-lg leading-[1.45] text-pretty text-[hsl(var(--neo-soft-text))] sm:mt-3 sm:text-base sm:leading-normal dark:text-neutral-300">
-            Scan the full public diagram catalog by repository name, stars, and
-            generation time.
+          <p className="mt-3 max-w-[34rem] text-base leading-relaxed text-pretty text-[hsl(var(--neo-soft-text))] sm:leading-normal dark:text-neutral-300">
+            Explore public repositories, one diagram at a time.
           </p>
         </section>
 

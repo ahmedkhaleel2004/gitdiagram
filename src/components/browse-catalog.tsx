@@ -270,7 +270,9 @@ export function BrowseCatalog({
         <p className="text-sm font-semibold tracking-[0.2em] text-black/70 uppercase dark:text-[hsl(var(--foreground))]">
           Browse
         </p>
-        <h2 className="mt-3 text-3xl font-bold">Browse index unavailable</h2>
+        <h2 className="mt-3 text-2xl font-bold sm:text-3xl">
+          Browse index unavailable
+        </h2>
         <p className="mt-4 max-w-3xl text-base text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
           {loadError ??
             "This page reads only the hosted browse index. The index is currently unavailable in storage."}
@@ -293,7 +295,7 @@ export function BrowseCatalog({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <BrowseCatalogControls
         minStars={minStars}
         onMinStarsChange={handleMinStarsChange}
@@ -310,11 +312,11 @@ export function BrowseCatalog({
       ) : null}
 
       {result.total === 0 ? (
-        <div className="neo-panel p-10 text-center">
+        <div className="neo-panel rounded-lg px-5 py-8 text-center sm:p-10">
           <p className="text-sm font-semibold tracking-[0.2em] text-black/70 uppercase dark:text-[hsl(var(--foreground))]">
             Browse
           </p>
-          <h2 className="mt-3 text-3xl font-bold">
+          <h2 className="mt-3 text-2xl font-bold sm:text-3xl">
             No diagrams match these filters
           </h2>
           <p className="mt-4 text-base text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
