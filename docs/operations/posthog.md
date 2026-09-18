@@ -74,6 +74,10 @@ these priority groups at the user's request for broader and targeted coverage.
 - Both credential dialogs have `ph-no-capture`, blocking their entire subtrees from
   replay and autocapture. All inputs are masked; hidden/file inputs are blocked.
 - Console recording, request headers/bodies, and network capture are disabled.
+- The network redaction callback preserves PostHog's URL-only page metadata,
+  stripping query strings and fragments. Returning `null` for every callback also
+  drops rrweb's viewport metadata, causing white-screen playback until a recorded
+  viewport resize. Actual network entries are still rejected.
 - Recorder extensions use the existing same-origin `/phx9a` proxy; CSP is unchanged.
 - Surveys are disabled in the client. No new user-facing surveys or experiments are
   launched by enabling telemetry.

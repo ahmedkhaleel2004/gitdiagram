@@ -85,8 +85,18 @@ function getPostHog() {
         strictMinimumDuration: true,
         recordHeaders: false,
         recordBody: false,
-        // Requests can contain credentials or private repository contents.
-        maskCapturedNetworkRequestFn: () => null,
+        maskCapturedNetworkRequestFn: (request) => {
+          // PostHog also calls this with only { name } for page URL metadata.
+          // Dropping that removes rrweb's viewport event and leaves playback blank.
+          // Real network entries remain excluded, including their payloads.
+          if (Object.keys(request).some((key) => key !== "name")) return null;
+          try {
+            const url = new URL(request.name);
+            return { ...request, name: `${url.origin}${url.pathname}` };
+          } catch {
+            return null;
+          }
+        },
       },
       disable_surveys: true,
       person_profiles: "identified_only",
