@@ -8,7 +8,7 @@ import { ExpandedActivity } from "./generation-activity";
 import { feedbackState } from "./feedback-state";
 import styles from "./workspace.module.css";
 
-export function ActivityMark({ active = true }: { active?: boolean }) {
+function ActivityMark({ active = true }: { active?: boolean }) {
   return (
     <span
       className={styles.activityMark}

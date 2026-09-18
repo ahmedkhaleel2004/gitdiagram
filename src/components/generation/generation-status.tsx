@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GENERATION_STEPS } from "./progress";
 
 export function useGenerationClock({
   running,
@@ -28,29 +27,4 @@ export function useGenerationClock({
       Math.floor(value ?? (now - (startedAt ?? mountedAt)) / 1000),
     ),
   };
-}
-
-export function GenerationSteps({ step }: { step: number }) {
-  return (
-    <ol aria-label="Generation progress">
-      {GENERATION_STEPS.map((label, index) => (
-        <li
-          key={label}
-          data-state={
-            index < step ? "done" : index === step ? "active" : "pending"
-          }
-          aria-current={index === step ? "step" : undefined}
-        >
-          {label}
-          <span className="sr-only">
-            {index < step
-              ? " — completed"
-              : index === step
-                ? " — in progress"
-                : " — not started"}
-          </span>
-        </li>
-      ))}
-    </ol>
-  );
 }
