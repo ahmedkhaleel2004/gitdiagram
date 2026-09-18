@@ -15,7 +15,6 @@ import { SponsorSlot } from "~/components/sponsor-slot";
 import { loadDiagramRenderer } from "./load-diagram-renderer";
 import { GenerationActivity } from "./generation-activity";
 import { GenerationFeedback } from "./generation-feedback";
-import { RepositoryForm } from "./repository-form";
 import { RepositorySource } from "./repository-source";
 import { RepositoryToolbar } from "./repository-toolbar";
 import { useDiagramPresentation } from "./use-diagram-presentation";
@@ -46,10 +45,16 @@ export function RepositoryWorkspace({
 }) {
   const {
     presented,
+    result,
     layers,
     ready,
     active,
     failed,
+    toolbarVisible,
+    hasGeneration,
+    workVisible,
+    opening,
+    announcement,
     renderFailed,
     candidateKey,
     complete,
@@ -65,7 +70,6 @@ export function RepositoryWorkspace({
   const focusRun = useRef(false);
   const focusResult = useRef(false);
   const historyId = useId();
-  const toolbarVisible = Boolean(presented && !active);
   const historyVisible = toolbarVisible && showHistory;
   const getSvg = useCallback(
     () =>
@@ -117,7 +121,7 @@ export function RepositoryWorkspace({
         <div className={styles.foldClip}>
           <RepositoryToolbar
             repository={repository}
-            diagram={presented?.diagram ?? ""}
+            diagram={result.diagram}
             historyId={historyId}
             historyVisible={historyVisible}
             toggleHistory={() => setShowHistory((value) => !value)}
@@ -129,44 +133,41 @@ export function RepositoryWorkspace({
             getSvg={getSvg}
             editing={editing}
             toggleEditing={() => setEditing((value) => !value)}
+            pending={!presented}
+            lastGenerated={result.lastGenerated}
+            cost={result.state.costSummary}
           />
-          {editing && (
-            <div className={styles.editForm}>
-              <RepositoryForm
-                initialValue={repository}
-                onClose={() => setEditing(false)}
-              />
-            </div>
-          )}
         </div>
       </div>
       <div
         ref={work}
         className={styles.fold}
-        data-open={!ready}
-        aria-hidden={ready}
-        inert={ready}
+        data-open={workVisible}
+        aria-hidden={!workVisible}
+        inert={!workVisible}
       >
         <div className={styles.foldClip}>
-          <div className={styles.work}>
-            {(!toolbarVisible || ready) && (
-              <RepositorySource
-                repository={repository}
+          {hasGeneration && (
+            <div className={styles.work}>
+              {(!toolbarVisible || ready) && (
+                <RepositorySource
+                  repository={repository}
+                  active={active}
+                  stopRef={stop}
+                  onCancel={cancelGeneration}
+                  onRetry={regenerateDiagram}
+                />
+              )}
+              <GenerationFeedback
+                key={state.startedAt ?? "stored"}
+                state={state}
                 active={active}
-                stopRef={stop}
-                onCancel={cancelGeneration}
-                onRetry={regenerateDiagram}
+                renderFailed={renderFailed}
+                hasPrevious={Boolean(presented && !ready)}
+                recovery={recovery}
               />
-            )}
-            <GenerationFeedback
-              key={state.startedAt ?? "stored"}
-              state={state}
-              active={active}
-              renderFailed={renderFailed}
-              hasPrevious={Boolean(presented && !ready)}
-              recovery={recovery}
-            />
-          </div>
+            </div>
+          )}
         </div>
       </div>
       <div
@@ -178,23 +179,23 @@ export function RepositoryWorkspace({
       >
         <div className={styles.foldClip}>
           <div className={styles.resultActivity}>
-            {presented && (
-              <GenerationActivity
-                state={presented.state}
-                lastGenerated={presented.lastGenerated}
-              />
-            )}
+            {presented && <GenerationActivity state={presented.state} />}
           </div>
         </div>
       </div>
       <span className="sr-only" role="status">
-        {ready ? "Diagram ready" : ""}
+        {announcement}
       </span>
       <div
         className={styles.diagram}
         data-zooming={zooming}
-        aria-busy={active && !presented}
+        aria-busy={(active || opening) && !presented}
       >
+        {opening && (
+          <div className={styles.savedLoading} aria-hidden="true">
+            <span>Loading diagram…</span>
+          </div>
+        )}
         {layers.map((layer) => {
           const visible = presented?.key === layer.key;
           const candidate = candidateKey === layer.key;

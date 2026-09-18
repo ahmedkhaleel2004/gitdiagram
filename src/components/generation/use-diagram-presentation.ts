@@ -45,5 +45,10 @@ export function useDiagramPresentation(
     },
     [candidateKey, onRenderError],
   );
-  return { presented, ...presentation, complete, fail };
+  const result = presented ?? {
+    diagram: state.diagram ?? "",
+    state,
+    lastGenerated,
+  };
+  return { presented, result, ...presentation, complete, fail };
 }

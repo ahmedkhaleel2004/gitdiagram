@@ -1,13 +1,24 @@
 .form {
   width: 100%;
 }
+.form > div {
+  min-height: 56px;
+}
+.cancel {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  min-height: 44px;
+  color: var(--muted);
+}
 .input {
   min-width: 0;
   flex: 1;
   padding-block: 10px;
   background: transparent;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 18px;
+  font-weight: 650;
   outline: none;
 }
 .input::placeholder {
@@ -29,7 +40,7 @@
   .form button {
     padding-inline: 10px;
   }
-  .form button svg {
+  .form button[type="submit"] svg {
     display: none;
   }
 }

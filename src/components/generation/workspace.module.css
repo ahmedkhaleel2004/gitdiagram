@@ -28,6 +28,7 @@
 }
 .fold {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
@@ -39,6 +40,7 @@
   opacity: 1;
 }
 .foldClip {
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -240,86 +242,123 @@
   border-top: 0;
   margin-top: 8px;
 }
-.metadata {
-  margin-top: 16px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.8;
-}
 .resultToolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px 20px;
+  width: 100%;
+  padding: 14px 5px 4px 0;
+}
+.resultIdentity {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 22px 0 16px;
-  border-bottom: 1px solid var(--line);
+  gap: 10px;
+  min-height: 56px;
+  padding: 7px 10px 7px 14px;
+  border: 2px solid var(--edge);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 4px 4px 0 var(--hard-shadow);
 }
-.repositoryLink {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 650;
-}
-.repositoryLink a {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.repositoryLink svg {
+.resultIdentity > svg {
   flex-shrink: 0;
-  color: var(--accent);
+  width: 18px;
+  color: var(--ink);
+}
+.resultIdentity h1 {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.resultIdentity h1 span,
+.resultIdentity h1 strong {
+  color: inherit;
+  font-weight: inherit;
 }
 .editRepository {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   flex-shrink: 0;
-  padding: 10px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 2px solid var(--edge);
   border-radius: 5px;
+  box-shadow: 2px 2px 0 var(--hard-shadow);
+  background: var(--wash);
+  font-size: 13px;
+  font-weight: 650;
 }
 .actions {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
+  justify-content: center;
+  gap: 10px;
+  padding-bottom: 3px;
 }
-.actions button {
+.actionButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 40px;
-  padding: 7px 10px;
-  border-radius: 5px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 550;
+  gap: 8px;
+  min-height: 44px;
+  padding: 9px 16px;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  box-shadow: 3px 3px 0 var(--hard-shadow);
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 650;
   white-space: nowrap;
   transition:
     background-color 150ms ease,
     transform 150ms var(--ease-out);
 }
-.actions button[aria-expanded="true"],
-.actions button[aria-pressed="true"] {
+.actionButton[aria-expanded="true"],
+.actionButton[aria-pressed="true"] {
   background: var(--wash);
-  color: var(--ink);
 }
-.actions button[aria-expanded="true"] > svg:last-child {
+.actionButton[aria-expanded="true"] > svg:last-child {
   transform: rotate(180deg);
 }
-.actions .primary {
-  margin-left: 7px;
+.actionButton.primary {
   background: hsl(var(--neo-button));
   color: #261333;
-  font-weight: 600;
+}
+.resultMetadata {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  column-gap: 22px;
+  row-gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.savedLoading {
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.savedLoading > span {
+  animation: loadingHint 180ms ease 250ms both;
 }
 .workspace button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 .resultActivity {
-  margin: 18px 0 0;
-  max-width: 600px;
+  margin: 24px auto 0;
+  max-width: 880px;
   padding: 6px 0 6px 16px;
   border-left: 2px solid var(--line);
 }
@@ -340,9 +379,17 @@
   animation: appear 150ms var(--ease-out);
 }
 .exportMenu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
   width: 100%;
-  justify-content: flex-start;
+  padding: 8px 10px;
+  border-radius: 4px;
   color: var(--ink);
+  font-size: 12px;
+  font-weight: 550;
+  text-align: left;
 }
 .exportMenu p {
   padding: 5px 10px;
@@ -408,10 +455,6 @@
   cursor: pointer;
   padding-block: 10px;
 }
-.editForm {
-  padding: 22px 5px 8px 0;
-  max-width: 640px;
-}
 .workspace button:focus-visible,
 .workspace a:focus-visible,
 .workspace summary:focus-visible {
@@ -420,11 +463,12 @@
 }
 @media (hover: hover) and (pointer: fine) {
   .primary:hover:not(:disabled),
-  .actions .primary:hover:not(:disabled) {
+  .actionButton.primary:hover:not(:disabled) {
     background: hsl(var(--neo-button-hover));
   }
   .stop:hover,
-  .actions button:hover:not(:disabled),
+  .actionButton:not(.primary):hover:not(:disabled),
+  .exportMenu button:hover:not(:disabled),
   .editRepository:hover,
   .recovery button:hover {
     background: var(--wash);
@@ -436,20 +480,19 @@
 }
 @media (prefers-reduced-motion: no-preference) {
   .primary:active:not(:disabled),
-  .stop:active {
+  .stop:active,
+  .actionButton:active:not(:disabled),
+  .editRepository:active {
     transform: translate(2px, 2px);
     box-shadow: none;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 1080px) {
   .resultToolbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
   }
   .actions {
-    width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
   }
 }
 @media (max-width: 640px) {
@@ -472,22 +515,50 @@
   .elapsed {
     font-size: 10px;
   }
-  .actions {
-    gap: 0;
+  .resultToolbar {
+    padding-top: 10px;
   }
-  .actions > button,
-  .actions > .exportControl > button {
-    min-height: 44px;
-    padding-inline: 7px;
-    font-size: 11px;
-    gap: 4px;
+  .resultIdentity {
+    padding: 7px 10px;
   }
-  .actions > button > svg,
-  .actions > .exportControl > button > svg:first-child {
+  .resultIdentity h1 {
+    font-size: 16px;
+  }
+  .resultIdentity > svg {
+    width: 18px;
+  }
+  .editRepository {
+    padding: 8px;
+    font-size: 12px;
+  }
+  .editRepository > svg {
     display: none;
   }
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .actionButton {
+    width: 100%;
+    padding-inline: 10px;
+  }
+  .resultMetadata {
+    justify-content: flex-start;
+    column-gap: 18px;
+    row-gap: 4px;
+  }
   .exportMenu {
-    right: -20px;
+    left: 0;
+    right: auto;
+  }
+}
+@keyframes loadingHint {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 @keyframes pixels {

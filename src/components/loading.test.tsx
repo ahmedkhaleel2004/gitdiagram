@@ -25,7 +25,7 @@ describe("generation experience", () => {
   it("shows an accessible route loading state", () => {
     render(<Loading />);
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Opening your diagram",
+      "Loading diagram",
     );
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });

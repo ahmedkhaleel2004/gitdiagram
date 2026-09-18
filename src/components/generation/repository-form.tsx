@@ -1,8 +1,8 @@
 "use client";
 
-import { useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, GitBranch } from "lucide-react";
+import { ArrowUpRight, GitBranch, X } from "lucide-react";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
 import styles from "./repository-form.module.css";
 import workspace from "./workspace.module.css";
@@ -20,9 +20,15 @@ export function RepositoryForm({
   const [pending, startTransition] = useTransition();
   const input = useRef<HTMLInputElement>(null);
   const id = useId();
+  useEffect(() => {
+    input.current?.focus();
+  }, []);
   return (
     <form
       className={styles.form}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose?.();
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         if (pending) return;
@@ -64,6 +70,16 @@ export function RepositoryForm({
           {pending ? "Opening…" : "Generate"}
           <ArrowUpRight size={15} aria-hidden="true" />
         </button>
+        {onClose && (
+          <button
+            type="button"
+            className={styles.cancel}
+            onClick={onClose}
+            aria-label="Cancel editing"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        )}
       </div>
       {error && (
         <p id={`${id}-error`} className={styles.error} role="alert">

@@ -99,7 +99,7 @@ describe("RepoPageClient", () => {
       screen.queryByRole("button", { name: /use your ai key/i }),
     ).not.toBeInTheDocument();
   });
-  it("makes final cost available under Activity after render completion", async () => {
+  it("shows final cost directly without opening Activity", async () => {
     setup({
       status: "complete",
       diagram: "flowchart TD\nA-->B",
@@ -113,16 +113,14 @@ describe("RepoPageClient", () => {
       },
     });
     render(<RepoPageClient username="Acme" repo="Demo" />);
-    expect(
-      screen.queryByRole("button", { name: "Export" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
+    expect(screen.getByText("Estimated cost: $0.0100 USD")).toBeVisible();
     fireEvent.click(
       await screen.findByRole("button", {
         name: "Finish rendering",
         hidden: true,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
     expect(screen.getByText("Estimated cost: $0.0100 USD")).toBeVisible();
   });
   it("offers GitHub access recovery and retries the current repository", () => {

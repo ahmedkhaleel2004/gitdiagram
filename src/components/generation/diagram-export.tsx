@@ -8,9 +8,11 @@ import styles from "./workspace.module.css";
 export function DiagramExport({
   diagram,
   getSvg,
+  disabled = false,
 }: {
   diagram: string;
   getSvg: () => SVGSVGElement | null;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -73,6 +75,8 @@ export function DiagramExport({
       <button
         ref={trigger}
         type="button"
+        className={styles.actionButton}
+        disabled={disabled}
         aria-expanded={open}
         aria-controls={id}
         onClick={() => {

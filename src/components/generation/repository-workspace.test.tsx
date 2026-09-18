@@ -64,11 +64,15 @@ const visible = (chart: string) =>
   );
 
 describe("repository generation workspace", () => {
-  it("reveals a rendered result, hides activity, and keeps zoom opt-in", () => {
+  it("restores a saved diagram without replaying generation activity", () => {
     render(<RepositoryWorkspace {...props} state={cached} />);
     expect(
-      screen.queryByRole("button", { name: "Export" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("heading", { name: "acme/demo", level: 1 }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
+    expect(screen.queryByText("Drawing your diagram")).not.toBeInTheDocument();
+    expect(screen.queryByText("12 source files read")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading diagram");
     expect(renders.get("old")?.zoomingEnabled).toBe(false);
     finish("old");
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
@@ -86,6 +90,75 @@ describe("repository generation workspace", () => {
     expect(renders.get("old")?.zoomingEnabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Exit zoom" }));
     expect(renders.get("old")?.zoomingEnabled).toBe(false);
+  });
+  it("keeps saved generation time and actual cost visible without opening Activity", () => {
+    const savedAt = new Date("2026-09-18T08:32:40Z");
+    const cost = {
+      kind: "actual" as const,
+      approximate: false,
+      amountUsd: 0.0076,
+      display: "$0.0076 USD",
+      pricingModel: "test",
+      usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 },
+    };
+    const { rerender } = render(
+      <RepositoryWorkspace
+        {...props}
+        lastGenerated={savedAt}
+        state={{ ...cached, costSummary: cost }}
+      />,
+    );
+    expect(screen.getByText("Actual cost: $0.0076 USD")).toBeVisible();
+    expect(document.querySelector("time")).toHaveAttribute(
+      "dateTime",
+      savedAt.toISOString(),
+    );
+    finish("old");
+    expect(screen.getByRole("button", { name: "Activity" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByText("Actual cost: $0.0076 USD")).toBeVisible();
+    rerender(
+      <RepositoryWorkspace
+        {...props}
+        state={{
+          status: "error",
+          errorCode: "GENERATION_CANCELLED",
+          startedAt: 20,
+          costSummary: { ...cost, display: "$0.9999 USD" },
+        }}
+      />,
+    );
+    expect(screen.getByText("Actual cost: $0.0076 USD")).toBeVisible();
+    expect(
+      screen.queryByText("Actual cost: $0.9999 USD"),
+    ).not.toBeInTheDocument();
+  });
+  it("uses a quiet loading state during a repository lookup", () => {
+    render(
+      <RepositoryWorkspace {...props} loading state={{ status: "idle" }} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Loading diagram");
+    expect(screen.queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Activity" }),
+    ).not.toBeInTheDocument();
+  });
+  it("edits the repository in place and returns keyboard focus on cancel", () => {
+    render(<RepositoryWorkspace {...props} state={cached} />);
+    finish("old");
+    fireEvent.click(screen.getByRole("button", { name: "Change repository" }));
+    const input = screen.getByRole("textbox", { name: "GitHub repository" });
+    expect(input).toHaveValue("acme/demo");
+    expect(input).toHaveFocus();
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Change repository" }),
+    ).toHaveFocus();
+    visible("old");
   });
   it("keeps the previous result through streaming and waits for the replacement render", () => {
     const { rerender } = render(

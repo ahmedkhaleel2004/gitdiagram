@@ -13,13 +13,7 @@ import { ArchitectureNotes } from "./architecture-notes";
 import { generationStep } from "./progress";
 import styles from "./workspace.module.css";
 
-export function GenerationActivity({
-  state,
-  lastGenerated,
-}: {
-  state: DiagramStreamState;
-  lastGenerated?: Date;
-}) {
+export function GenerationActivity({ state }: { state: DiagramStreamState }) {
   const step = generationStep(state.status);
   const streaming = [
     "explanation_sent",
@@ -59,24 +53,6 @@ export function GenerationActivity({
         <div className={styles.excerpt}>
           {excerpt && <p>{excerpt}</p>}
           <ArchitectureNotes text={state.explanation} streaming={streaming} />
-        </div>
-      )}
-      {(lastGenerated || state.costSummary) && (
-        <div className={styles.metadata}>
-          {lastGenerated && (
-            <p>
-              Last generated:{" "}
-              <time dateTime={lastGenerated.toISOString()}>
-                {lastGenerated.toLocaleString()}
-              </time>
-            </p>
-          )}
-          {state.costSummary && (
-            <p>
-              {state.costSummary.kind === "actual" ? "Actual" : "Estimated"}{" "}
-              cost: {state.costSummary.display}
-            </p>
-          )}
         </div>
       )}
     </>
