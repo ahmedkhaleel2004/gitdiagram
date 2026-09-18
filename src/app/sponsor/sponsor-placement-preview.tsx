@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState, type CSSProperties } from "react";
+import { preload } from "react-dom";
 import * as Dialog from "@radix-ui/react-dialog";
 import { ArrowUpRight, Expand } from "lucide-react";
 import type { SponsorSurface } from "./sponsor-content";
@@ -12,6 +13,11 @@ export function SponsorPlacementPreview({
   preview,
 }: Pick<SponsorSurface, "name" | "preview">) {
   const [instant, setInstant] = useState(false);
+  const [imageReady, setImageReady] = useState(false);
+
+  function preloadImage() {
+    preload(preview.src, { as: "image" });
+  }
 
   return (
     <Dialog.Root>
@@ -21,6 +27,8 @@ export function SponsorPlacementPreview({
           className={styles.trigger}
           aria-label={`View placement: ${name}`}
           onClick={(event) => setInstant(event.detail === 0)}
+          onPointerEnter={preloadImage}
+          onFocus={preloadImage}
         >
           <Expand aria-hidden="true" />
           View placement
@@ -56,7 +64,15 @@ export function SponsorPlacementPreview({
           <Dialog.Description className="sr-only">
             {preview.caption} Click outside the image or press Escape to close.
           </Dialog.Description>
-          <div className={styles.imageStage}>
+          {!imageReady && (
+            <span className={styles.loading} role="status">
+              Loading preview…
+            </span>
+          )}
+          <div
+            className={styles.imageStage}
+            data-ready={imageReady || undefined}
+          >
             <Image
               src={preview.src}
               alt={preview.alt}
@@ -64,6 +80,8 @@ export function SponsorPlacementPreview({
               height={preview.height}
               className={styles.image}
               loading="eager"
+              onLoad={() => setImageReady(true)}
+              onError={() => setImageReady(true)}
               unoptimized
             />
             <svg

@@ -107,6 +107,19 @@
   overflow: hidden;
   border-radius: 6px;
   box-shadow: 0 24px 80px rgb(0 0 0 / 24%);
+  opacity: 0;
+  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.imageStage[data-ready] {
+  opacity: 1;
+}
+.loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgb(255 255 255 / 75%);
+  font-size: 13px;
 }
 .image {
   display: block;
@@ -197,4 +210,7 @@
 .dialog[data-instant] {
   transition: none;
   animation: none;
+}
+.dialog[data-instant] .imageStage {
+  transition: none;
 }
