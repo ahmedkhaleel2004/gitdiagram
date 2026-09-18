@@ -474,6 +474,103 @@
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
 }
 
+/* Neo keeps Inline's flow; hard edges belong to controls, not the activity. */
+.concept[data-variant="inline-neo"] {
+  --ink: #291b35;
+  --edge: #33203f;
+  --line: #a17bbd;
+  --hard-shadow: #33203f;
+  --primary: hsl(var(--neo-button));
+}
+:global(.dark) .concept[data-variant="inline-neo"] {
+  --ink: #eee3f7;
+  --edge: #9677ae;
+  --line: #75588c;
+  --hard-shadow: #09060e;
+  --primary: hsl(var(--neo-button));
+}
+.concept[data-approach="inline"][data-variant="inline-neo"] .repositoryControl {
+  border: 2px solid var(--edge);
+  border-radius: 8px;
+  box-shadow: 4px 4px 0 var(--hard-shadow);
+}
+.concept[data-variant="inline-neo"] .source {
+  /* Keep the offset shadow inside the folding panel's clipping boundary. */
+  padding: 0 5px 5px 0;
+}
+.concept[data-variant="inline-neo"] .repositoryName strong,
+.concept[data-variant="inline-neo"] .resultRepository {
+  font-weight: 650;
+}
+.concept[data-variant="inline-neo"] .generate,
+.concept[data-variant="inline-neo"] .cancel {
+  border: 1.5px solid var(--edge);
+  border-radius: 5px;
+  box-shadow: 2px 2px 0 var(--hard-shadow);
+  font-weight: 600;
+  color: var(--ink);
+}
+.concept[data-variant="inline-neo"] .generate {
+  background: var(--primary);
+  color: #261333;
+  border-color: #33203f;
+}
+.concept[data-variant="inline-neo"] .statusTitle {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.concept[data-variant="inline-neo"] .details summary {
+  font-weight: 600;
+}
+.concept[data-variant="inline-neo"] .detailBody,
+.concept[data-variant="inline-neo"] .resultActivity {
+  border-left-width: 2px;
+}
+.concept[data-variant="inline-neo"] .resultToolbar {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.concept[data-variant="inline-neo"] .resultActions button {
+  border-radius: 5px;
+  font-weight: 550;
+}
+.concept[data-variant="inline-neo"] .resultActions .regenerateAction {
+  margin-left: 7px;
+  background: var(--primary);
+  color: #261333;
+  border: 1.5px solid #33203f;
+  box-shadow: 2px 2px 0 var(--hard-shadow);
+  font-weight: 600;
+}
+.concept[data-variant="inline-neo"] .exportMenu {
+  border: 1.5px solid var(--edge);
+  border-radius: 6px;
+  box-shadow: 3px 3px 0 var(--hard-shadow);
+}
+.concept[data-variant="inline-neo"] .chart > div:last-child {
+  border-radius: 8px;
+  border-color: var(--line);
+}
+.concept[data-variant="inline-neo"] .chart :global(.pointer-events-auto) {
+  border: 1.5px solid var(--edge);
+  border-radius: 5px;
+  box-shadow: 2px 2px 0 var(--hard-shadow);
+}
+@media (hover: hover) and (pointer: fine) {
+  .concept[data-variant="inline-neo"] .generate:hover,
+  .concept[data-variant="inline-neo"] .resultActions .regenerateAction:hover {
+    background: hsl(var(--neo-button-hover));
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .concept[data-variant="inline-neo"] .generate:active,
+  .concept[data-variant="inline-neo"] .cancel:active,
+  .concept[data-variant="inline-neo"] .resultActions .regenerateAction:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+  }
+}
+
 /* Thread: an open, readable account of the work, then a small result sidebar. */
 .concept[data-approach="thread"] .stage {
   max-width: 660px;

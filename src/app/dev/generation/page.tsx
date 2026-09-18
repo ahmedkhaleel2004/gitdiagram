@@ -17,7 +17,9 @@ export default async function GenerationPlaygroundPage({
   if (process.env.NODE_ENV !== "development") notFound();
   const { focus, approach } = await searchParams;
   const initialApproach =
-    approach === "thread" || approach === "canvas" ? approach : "inline";
+    approach === "thread" || approach === "canvas" || approach === "inline-neo"
+      ? approach
+      : "inline";
   return (
     <GenerationPlayground
       focused={focus === "1"}

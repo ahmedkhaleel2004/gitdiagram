@@ -15,6 +15,10 @@ export const APPROACHES = [
     label: "Inline",
   },
   {
+    id: "inline-neo",
+    label: "Inline — Neo",
+  },
+  {
     id: "thread",
     label: "Thread",
   },

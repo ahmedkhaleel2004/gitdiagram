@@ -58,6 +58,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 .approaches {
   display: flex;
@@ -250,8 +251,17 @@
     font-size: 9px;
   }
   .approach {
-    min-width: 71px;
-    padding-inline: 13px;
+    min-width: 0;
+    padding-inline: 8px;
+  }
+  .approaches {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex: 1;
+    max-width: 360px;
+  }
+  .designBar {
+    align-items: flex-start;
   }
   .controlsToggle span {
     display: none;

@@ -43,6 +43,7 @@ export function ConceptWorkspace({
   onCancel: () => void;
   onRegenerate: () => void;
 }) {
+  const layout = approach === "inline-neo" ? "inline" : approach;
   const [renderedChart, setRenderedChart] = useState<string>();
   const workspace = useRef<HTMLElement>(null);
   const getSvg = useCallback(
@@ -116,7 +117,7 @@ export function ConceptWorkspace({
         seconds={seconds}
         description={description}
         hasPrevious={hasPrevious}
-        approach={approach}
+        approach={layout}
         stream={stream}
         active={active}
       />
@@ -127,7 +128,8 @@ export function ConceptWorkspace({
     <section
       ref={workspace}
       className={styles.concept}
-      data-approach={approach}
+      data-approach={layout}
+      data-variant={approach}
       data-active={active}
       data-started={started}
       data-paused={paused}
@@ -138,7 +140,7 @@ export function ConceptWorkspace({
       aria-label={`${approach} generation approach`}
     >
       <div className={styles.stage}>
-        {approach === "inline" ? (
+        {layout === "inline" ? (
           <InlineGenerationPanel
             key={runId}
             ready={ready}
@@ -155,7 +157,7 @@ export function ConceptWorkspace({
           generation
         )}
         <ConceptDiagram
-          zoomingEnabled={approach !== "inline" || zoomRequested}
+          zoomingEnabled={layout !== "inline" || zoomRequested}
           diagram={diagram}
           previousDiagram={previousDiagram}
           runId={runId}

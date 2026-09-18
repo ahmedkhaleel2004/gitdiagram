@@ -41,6 +41,7 @@ vi.mock("next/dynamic", () => ({
 afterEach(() => {
   cleanup();
   renders.clear();
+  vi.clearAllMocks();
   vi.useRealTimers();
 });
 
@@ -50,7 +51,13 @@ describe("generation approach tester", () => {
     fireEvent.change(screen.getByLabelText("Jump to stage"), {
       target: { value: "10" },
     });
-    for (const name of ["Thread", "Canvas", "Inline"]) {
+    for (const name of [
+      "Thread",
+      "Canvas",
+      "Inline",
+      "Inline — Neo",
+      "Inline",
+    ]) {
       fireEvent.click(screen.getByRole("radio", { name }));
       expect(screen.getByLabelText("Preview time")).toHaveValue("10");
       expect(
@@ -127,36 +134,39 @@ const base = {
   onRegenerate: vi.fn(),
 };
 
-it("reveals result controls only after rendering, folds activity away, and keeps zoom opt-in", () => {
-  render(<ConceptWorkspace {...base} approach="inline" />);
-  expect(
-    screen.queryByRole("button", { name: "Export" }),
-  ).not.toBeInTheDocument();
-  expect(renders.get("replacement")?.zoomingEnabled).toBe(false);
+it.each<Approach>(["inline", "inline-neo"])(
+  "%s reveals result controls only after rendering, folds activity away, and keeps zoom opt-in",
+  (approach) => {
+    render(<ConceptWorkspace {...base} approach={approach} />);
+    expect(
+      screen.queryByRole("button", { name: "Export" }),
+    ).not.toBeInTheDocument();
+    expect(renders.get("replacement")?.zoomingEnabled).toBe(false);
 
-  act(() => renders.get("replacement")?.onRenderComplete?.());
-  expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
-  expect(
-    screen.queryByRole("heading", { name: "Diagram ready" }),
-  ).not.toBeInTheDocument();
-  const activity = screen.getByRole("button", {
-    name: "Activity",
-  });
-  expect(activity).toHaveAttribute("aria-expanded", "false");
-  fireEvent.click(activity);
-  expect(activity).toHaveAttribute("aria-expanded", "true");
-  fireEvent.click(activity);
-  expect(activity).toHaveAttribute("aria-expanded", "false");
+    act(() => renders.get("replacement")?.onRenderComplete?.());
+    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Diagram ready" }),
+    ).not.toBeInTheDocument();
+    const activity = screen.getByRole("button", {
+      name: "Activity",
+    });
+    expect(activity).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(activity);
+    expect(activity).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(activity);
+    expect(activity).toHaveAttribute("aria-expanded", "false");
 
-  fireEvent.click(screen.getByRole("button", { name: "Enable zoom" }));
-  expect(renders.get("replacement")?.zoomingEnabled).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Exit zoom" }));
-  expect(renders.get("replacement")?.zoomingEnabled).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
-  expect(base.onRegenerate).toHaveBeenCalledTimes(1);
-});
+    fireEvent.click(screen.getByRole("button", { name: "Enable zoom" }));
+    expect(renders.get("replacement")?.zoomingEnabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Exit zoom" }));
+    expect(renders.get("replacement")?.zoomingEnabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
+    expect(base.onRegenerate).toHaveBeenCalledTimes(1);
+  },
+);
 
-describe.each<Approach>(["inline", "thread", "canvas"])(
+describe.each<Approach>(["inline", "inline-neo", "thread", "canvas"])(
   "%s result handoff",
   (approach) => {
     it("waits for a fresh render when another run returns identical diagram text", () => {
@@ -165,7 +175,7 @@ describe.each<Approach>(["inline", "thread", "canvas"])(
       );
       act(() => renders.get("replacement")?.onRenderComplete?.());
       expect(
-        approach === "inline"
+        approach === "inline" || approach === "inline-neo"
           ? screen.getByRole("status")
           : screen.getByRole("heading", { name: "Diagram ready" }),
       ).toBeInTheDocument();
@@ -178,7 +188,7 @@ describe.each<Approach>(["inline", "thread", "canvas"])(
       ).toHaveAttribute("aria-hidden", "false");
       act(() => renders.get("replacement")?.onRenderComplete?.());
       expect(
-        approach === "inline"
+        approach === "inline" || approach === "inline-neo"
           ? screen.getByRole("status")
           : screen.getByRole("heading", { name: "Diagram ready" }),
       ).toBeInTheDocument();
@@ -202,7 +212,7 @@ describe.each<Approach>(["inline", "thread", "canvas"])(
         screen.getByTestId("chart-replacement").parentElement,
       ).toHaveAttribute("aria-hidden", "false");
       expect(
-        approach === "inline"
+        approach === "inline" || approach === "inline-neo"
           ? screen.getByRole("status")
           : screen.getByRole("heading", { name: "Diagram ready" }),
       ).toBeInTheDocument();
