@@ -229,9 +229,7 @@ export function useMermaidViewport({
     const { height, width } = getSvgDimensions(svgElement);
     const scale = getDefaultDiagramScale({
       containerWidth: containerElement.getBoundingClientRect().width,
-      contentHeight: height,
       contentWidth: width,
-      viewportHeight: window.innerHeight,
     });
 
     svgElement.style.width = `${width * scale}px`;

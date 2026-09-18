@@ -129,4 +129,30 @@ describe("useMermaidViewport", () => {
 
     expect(moveEvent.preventDefault).not.toHaveBeenCalled();
   });
+  it("uses the reading width for tall maps instead of squeezing labels into the viewport height", () => {
+    const { rerender, result } = renderHook(
+      ({ renderVersion }) =>
+        useMermaidViewport({
+          fitPadding: 0,
+          fitToContainer: false,
+          renderVersion,
+          zoomingEnabled: false,
+        }),
+      { initialProps: { renderVersion: 0 } },
+    );
+    const container = document.createElement("div");
+    container.getBoundingClientRect = () => CONTAINER_BOUNDS;
+    const diagram = document.createElement("div");
+    diagram.innerHTML =
+      "<svg viewBox='0 0 1600 2240'><rect width='1600' height='2240' /></svg>";
+    result.current.containerRef.current = container;
+    result.current.diagramRef.current = diagram;
+    act(() => {
+      rerender({ renderVersion: 1 });
+    });
+    const svg = diagram.querySelector("svg")!;
+    expect(svg.style.width).toBe("1000px");
+    expect(svg.style.height).toBe("1400px");
+    expect(diagram.style.transform).toBe("");
+  });
 });

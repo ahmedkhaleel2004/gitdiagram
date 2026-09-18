@@ -48,7 +48,7 @@ A live Excalidraw review revealed missing collaboration despite fast generation.
 
 ## Functional validation
 
-- 550 tests passed across 80 files; lint, TypeScript, formatting, Knip, dependency audit, production build, and performance budgets passed. React Doctor reported one bounded-worker loop warning; the three concurrent workers intentionally await each file to limit GitHub load.
+- 551 tests passed across 80 files; lint, TypeScript, formatting, Knip, dependency audit, production build, and performance budgets passed. React Doctor reported one bounded-worker loop warning; the three concurrent workers intentionally await each file to limit GitHub load.
 - Approved UI and homepage files were unchanged.
 - Final local regeneration after cancellation: 12.795 seconds from click to rendered graph; 25 components and 28 relationships. The stored actual cost displayed in Activity was $0.0059 with caching.
 - Initial spend-containment release restored Luna before experimentation finished. A live regeneration on that release took 11.890 seconds and cost $0.01278776.
@@ -77,3 +77,7 @@ The three larger live repositories read all 12 selected files, without unavailab
 PNG export produced a visually inspected 4916 × 6508 image with the site's lavender background, subsystem colors, and complete diagram. The copy control passed 7,412 characters of Mermaid to the browser clipboard API, which resolved successfully. The in-app browser's separate clipboard reader returned empty, so native clipboard round-trip was not independently confirmed. Zoom entered and exited correctly. Stored state retained successful audits, timestamps, graphs, costs, and explanations.
 
 The 160 completed benchmark artifacts recorded $1.2543 in API usage-derived costs during this goal. This excludes cancelled probes/attempts without reported usage, initial failed experiments without a completed artifact, live checks, and public traffic; it is not an invoice total.
+
+## Reading-size correction
+
+The final visual pass found that normal reading mode fitted both SVG dimensions to the viewport, making a detailed Caddy graph only 474 pixels wide on a laptop. Reading mode now fits the available **width**, permits ordinary vertical page scrolling, and caps small-diagram enlargement at 1.25×. The same saved graph rendered at 1,152 pixels wide locally, making its labels more than twice as large. Interactive zoom and browse-preview fitting retain their own behavior. Desktop and 390-pixel mobile checks had no horizontal page overflow. The homepage and approved toolbar/theme were unchanged. The full suite passed 551 tests; React Doctor scored this rendering change 100/100.

@@ -391,18 +391,14 @@ describe("MermaidChart", () => {
     expect(
       getDefaultDiagramScale({
         containerWidth: 1000,
-        contentHeight: 1600,
         contentWidth: 320,
-        viewportHeight: 800,
       }),
-    ).toBeCloseTo(1.26);
+    ).toBeCloseTo(1.25);
 
     expect(
       getDefaultDiagramScale({
         containerWidth: 1000,
-        contentHeight: 400,
         contentWidth: 1600,
-        viewportHeight: 800,
       }),
     ).toBeCloseTo(0.625);
   });
