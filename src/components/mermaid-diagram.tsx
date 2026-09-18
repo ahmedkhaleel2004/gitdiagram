@@ -31,6 +31,11 @@ interface MermaidChartProps {
 
 const INTERACTIVE_FIT_PADDING = 24;
 const PREVIEW_FIT_PADDING = 16;
+const INTERACTIVE_VIEWER_PROPS = {
+  "aria-label": "Interactive diagram viewer",
+  role: "region",
+  tabIndex: 0,
+};
 
 let elkLayoutRegistered = false;
 type MermaidLayoutLoaders = Parameters<typeof mermaid.registerLayoutLoaders>[0];
@@ -61,7 +66,10 @@ const MermaidChart = ({
     disconnectResizeObserver,
     fitDiagram,
     formattedZoom,
+    handleClickCapture,
     handleDragStart,
+    handleKeyDown,
+    handleLostPointerCapture,
     handlePointerCancel,
     handlePointerDown,
     handlePointerMove,
@@ -221,8 +229,6 @@ const MermaidChart = ({
   return (
     <div
       ref={containerRef}
-      aria-label={zoomingEnabled ? "Interactive diagram viewer" : undefined}
-      role={zoomingEnabled ? "region" : undefined}
       className={cn(
         "w-full p-4",
         zoomingEnabled && "h-[70vh] max-h-[52rem] min-h-[22rem]",
@@ -236,6 +242,8 @@ const MermaidChart = ({
       )}
       <div
         ref={interactionLayerRef}
+        {...(zoomingEnabled ? INTERACTIVE_VIEWER_PROPS : {})}
+        onKeyDown={handleKeyDown}
         className={cn(
           "relative h-full",
           zoomingEnabled
@@ -243,9 +251,11 @@ const MermaidChart = ({
             : "touch-pan-x touch-pan-y touch-pinch-zoom",
           (zoomingEnabled || fitToContainer) && "overflow-hidden",
           zoomingEnabled &&
-            "rounded-xl border border-black/12 bg-white/30 select-none dark:border-white/12 dark:bg-white/[0.03] [&_*]:select-none",
+            "cursor-grab rounded-xl border border-black/12 bg-white/30 select-none data-[dragging=true]:cursor-grabbing dark:border-white/12 dark:bg-white/[0.03] [&_*]:select-none",
         )}
+        onClickCapture={handleClickCapture}
         onDragStart={handleDragStart}
+        onLostPointerCapture={handleLostPointerCapture}
         onPointerCancel={handlePointerCancel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -255,9 +265,9 @@ const MermaidChart = ({
           <MermaidDiagramToolbar
             formattedZoom={formattedZoom}
             isPanZoomReady={isPanZoomReady}
-            onFit={fitDiagram}
+            onFit={() => fitDiagram(true)}
             onZoomIn={() => stepZoom(1.18)}
-            onZoomOut={() => stepZoom(0.85)}
+            onZoomOut={() => stepZoom(1 / 1.18)}
           />
         )}
         <div
@@ -265,8 +275,7 @@ const MermaidChart = ({
           className={cn(
             "mermaid text-foreground [&_svg]:mx-auto [&_svg]:block [&_svg]:max-w-full [&_svg]:overflow-visible",
             !isPanZoomReady && "invisible",
-            zoomingEnabled &&
-              "cursor-grab active:cursor-grabbing [&_svg]:h-auto [&_svg]:w-auto",
+            zoomingEnabled && "[&_svg]:h-auto [&_svg]:w-auto",
             !zoomingEnabled && "[&_svg]:h-auto",
             diagramClassName,
           )}

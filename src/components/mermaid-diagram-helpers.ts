@@ -217,7 +217,8 @@ export function getWheelZoomScaleFactor(
       ? TRACKPAD_PINCH_ZOOM_SPEED
       : MOUSE_WHEEL_ZOOM_SPEED;
 
-  return Math.exp(-normalizeWheelDelta(event) * zoomSpeed);
+  const delta = Math.max(-240, Math.min(240, normalizeWheelDelta(event)));
+  return Math.exp(-delta * zoomSpeed);
 }
 
 export function getPinchScaleFactor(
@@ -239,7 +240,7 @@ export function isLikelyTrackpadGesture(
 
   const absX = Math.abs(event.deltaX);
   const absY = Math.abs(event.deltaY);
-  return absX > 0 || absY < 40;
+  return absX > 0 || absY < 40 || !Number.isInteger(event.deltaY);
 }
 
 // Normal reading follows the page's width and can scroll vertically. Fitting

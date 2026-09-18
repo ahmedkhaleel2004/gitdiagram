@@ -18,7 +18,10 @@ export function MermaidDiagramToolbar({
   onZoomOut,
 }: MermaidDiagramToolbarProps) {
   return (
-    <div className="pointer-events-none absolute top-3 right-3 z-10 flex items-center gap-2">
+    <div
+      data-diagram-toolbar
+      className="pointer-events-none absolute top-3 right-3 z-10 flex items-center gap-2"
+    >
       <div className="pointer-events-auto flex items-center overflow-hidden rounded-full border border-black/10 bg-white/80 shadow-[0_10px_30px_rgba(15,23,42,0.14)] ring-1 ring-white/70 backdrop-blur-md dark:border-white/10 dark:bg-[#101722]/78 dark:shadow-[0_12px_32px_rgba(0,0,0,0.32)] dark:ring-white/10">
         <button
           type="button"

@@ -7,23 +7,18 @@ import {
   useRef,
   useState,
   type DragEvent,
-  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent,
 } from "react";
 
 import {
   clampViewState,
   getDefaultDiagramScale,
-  getDistanceBetweenPointers,
-  getPinchScaleFactor,
-  getPointerMidpoint,
   getSvgDimensions,
-  getTrackedPointerPair,
-  getWheelZoomScaleFactor,
-  isLikelyTrackpadGesture,
-  type PinchState,
-  type PointerCoordinates,
   type ViewState,
 } from "~/components/mermaid-diagram-helpers";
+
+import { useDiagramPointerGestures } from "~/hooks/use-diagram-pointer-gestures";
+import { useDiagramWheelGestures } from "~/hooks/use-diagram-wheel-gestures";
 
 const ZOOM_LABEL_UPDATE_INTERVAL_MS = 100;
 
@@ -62,6 +57,27 @@ function applyViewState(
   diagramElement.style.transformOrigin = "0 0";
 }
 
+function getViewportBounds(element: HTMLDivElement) {
+  const rect = element.getBoundingClientRect();
+  return {
+    left: rect.left + element.clientLeft,
+    top: rect.top + element.clientTop,
+    width: element.clientWidth || rect.width,
+    height: element.clientHeight || rect.height,
+  };
+}
+
+function getFitScale(
+  bounds: { width: number; height: number },
+  content: { width: number; height: number },
+  padding: number,
+) {
+  return Math.min(
+    Math.max(bounds.width - padding * 2, 1) / content.width,
+    Math.max(bounds.height - padding * 2, 1) / content.height,
+  );
+}
+
 export function useMermaidViewport({
   fitPadding,
   fitToContainer,
@@ -72,15 +88,10 @@ export function useMermaidViewport({
   const containerRef = useRef<HTMLDivElement>(null);
   const diagramRef = useRef<HTMLDivElement>(null);
   const interactionLayerRef = useRef<HTMLDivElement>(null);
-  const activePointersRef = useRef<Map<number, PointerCoordinates>>(new Map());
-  const dragStateRef = useRef<{
-    lastX: number;
-    lastY: number;
-    pointerId: number;
-  } | null>(null);
-  const pinchStateRef = useRef<PinchState | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const viewStateRef = useRef<ViewState | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const animationTargetRef = useRef<ViewState | null>(null);
   const viewStateFrameRef = useRef<number | null>(null);
   const pendingZoomLabelRef = useRef<ViewState | null>(null);
   const zoomLabelTimeoutRef = useRef<number | null>(null);
@@ -148,15 +159,28 @@ export function useMermaidViewport({
     viewStateFrameRef.current = null;
   }, []);
 
+  const cancelViewAnimation = useCallback(() => {
+    if (animationFrameRef.current !== null)
+      cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = null;
+    animationTargetRef.current = null;
+  }, []);
+
   const commitViewState = useCallback(
     (nextView: ViewState | null) => {
+      cancelViewAnimation();
       cancelViewStateFrame();
       cancelPendingZoomLabel();
       viewStateRef.current = nextView;
       applyViewState(diagramRef.current, nextView);
       updateZoomLabel(nextView);
     },
-    [cancelPendingZoomLabel, cancelViewStateFrame, updateZoomLabel],
+    [
+      cancelPendingZoomLabel,
+      cancelViewAnimation,
+      cancelViewStateFrame,
+      updateZoomLabel,
+    ],
   );
 
   const scheduleViewState = useCallback(
@@ -175,60 +199,86 @@ export function useMermaidViewport({
     [scheduleZoomLabel],
   );
 
+  const animateViewState = useCallback(
+    (target: ViewState) => {
+      const from = viewStateRef.current;
+      if (
+        !from ||
+        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      ) {
+        commitViewState(target);
+        return;
+      }
+      cancelViewAnimation();
+      cancelViewStateFrame();
+      animationTargetRef.current = target;
+      let start: number | null = null;
+      const tick = (now: number) => {
+        start ??= now;
+        const progress = Math.max(0, Math.min((now - start) / 160, 1));
+        const eased = 1 - (1 - progress) ** 3;
+        const next = {
+          ...target,
+          x: from.x + (target.x - from.x) * eased,
+          y: from.y + (target.y - from.y) * eased,
+          scale: from.scale + (target.scale - from.scale) * eased,
+        };
+        viewStateRef.current = next;
+        applyViewState(diagramRef.current, next);
+        scheduleZoomLabel(next);
+        if (progress < 1)
+          animationFrameRef.current = requestAnimationFrame(tick);
+        else commitViewState(target);
+      };
+      animationFrameRef.current = requestAnimationFrame(tick);
+    },
+    [
+      cancelViewAnimation,
+      cancelViewStateFrame,
+      commitViewState,
+      scheduleZoomLabel,
+    ],
+  );
+
   const disconnectResizeObserver = useCallback(() => {
     resizeObserverRef.current?.disconnect();
     resizeObserverRef.current = null;
   }, []);
 
-  const resetInteractionState = useCallback(() => {
-    activePointersRef.current.clear();
-    dragStateRef.current = null;
-    pinchStateRef.current = null;
-  }, []);
+  const fitDiagram = useCallback(
+    (animate = false) => {
+      const containerElement = interactionLayerRef.current;
+      const svgElement = diagramRef.current?.querySelector("svg");
+      if (!(containerElement instanceof HTMLDivElement)) return;
+      if (!(svgElement instanceof SVGSVGElement)) return;
 
-  const prepareForRender = useCallback(() => {
-    setIsPanZoomReady(false);
-    disconnectResizeObserver();
-    resetInteractionState();
-    userInteractedRef.current = false;
-    commitViewState(null);
-  }, [commitViewState, disconnectResizeObserver, resetInteractionState]);
+      const bounds = getViewportBounds(containerElement);
+      const { height, width } = getSvgDimensions(svgElement);
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      const scale = getFitScale(bounds, { width, height }, fitPadding);
 
-  const fitDiagram = useCallback(() => {
-    const containerElement = containerRef.current;
-    const svgElement = diagramRef.current?.querySelector("svg");
-    if (!(containerElement instanceof HTMLDivElement)) return;
-    if (!(svgElement instanceof SVGSVGElement)) return;
-
-    const bounds = containerElement.getBoundingClientRect();
-    const { height, width } = getSvgDimensions(svgElement);
-    const insetX = Math.min(fitPadding, Math.max((bounds.width - 1) / 2, 0));
-    const insetY = Math.min(fitPadding, Math.max((bounds.height - 1) / 2, 0));
-    const availableWidth = Math.max(bounds.width - insetX * 2, 1);
-    const availableHeight = Math.max(bounds.height - insetY * 2, 1);
-    const fitScale = Math.min(availableWidth / width, availableHeight / height);
-    const scale = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
-
-    userInteractedRef.current = false;
-    commitViewState({
-      fitScale: scale,
-      height,
-      scale,
-      width,
-      x: insetX + (availableWidth - width * scale) / 2,
-      y: insetY + (availableHeight - height * scale) / 2,
-    });
-  }, [commitViewState, fitPadding]);
+      userInteractedRef.current = false;
+      (animate ? animateViewState : commitViewState)({
+        fitScale: scale,
+        height,
+        scale,
+        width,
+        x: (bounds.width - width * scale) / 2,
+        y: (bounds.height - height * scale) / 2,
+      });
+    },
+    [animateViewState, commitViewState, fitPadding],
+  );
 
   const scaleDiagramForReading = useCallback(() => {
-    const containerElement = containerRef.current;
+    const containerElement = interactionLayerRef.current;
     const svgElement = diagramRef.current?.querySelector("svg");
     if (!(containerElement instanceof HTMLDivElement)) return;
     if (!(svgElement instanceof SVGSVGElement)) return;
 
     const { height, width } = getSvgDimensions(svgElement);
     const scale = getDefaultDiagramScale({
-      containerWidth: containerElement.getBoundingClientRect().width,
+      containerWidth: getViewportBounds(containerElement).width,
       contentWidth: width,
     });
 
@@ -241,13 +291,14 @@ export function useMermaidViewport({
       scaleFactor: number,
       clientX: number,
       clientY: number,
-      updateLabelImmediately = false,
+      animate = false,
     ) => {
-      const currentView = viewStateRef.current;
-      const containerElement = containerRef.current;
+      const currentView =
+        (animate ? animationTargetRef.current : null) ?? viewStateRef.current;
+      const containerElement = interactionLayerRef.current;
       if (!currentView || !(containerElement instanceof HTMLDivElement)) return;
 
-      const bounds = containerElement.getBoundingClientRect();
+      const bounds = getViewportBounds(containerElement);
       const localX = clientX - bounds.left;
       const localY = clientY - bounds.top;
       const minScale = currentView.fitScale * 0.6;
@@ -275,22 +326,22 @@ export function useMermaidViewport({
       };
 
       userInteractedRef.current = true;
-      if (updateLabelImmediately) {
-        commitViewState(nextView);
+      if (animate) {
+        animateViewState(nextView);
       } else {
         scheduleViewState(nextView, true);
       }
     },
-    [commitViewState, scheduleViewState],
+    [animateViewState, scheduleViewState],
   );
 
   const panBy = useCallback(
     (deltaX: number, deltaY: number) => {
       const currentView = viewStateRef.current;
-      const containerElement = containerRef.current;
+      const containerElement = interactionLayerRef.current;
       if (!currentView || !(containerElement instanceof HTMLDivElement)) return;
 
-      const bounds = containerElement.getBoundingClientRect();
+      const bounds = getViewportBounds(containerElement);
       const clamped = clampViewState({
         containerHeight: bounds.height,
         containerWidth: bounds.width,
@@ -320,10 +371,10 @@ export function useMermaidViewport({
       clientY: number,
       scaleFactor: number,
     ) => {
-      const containerElement = containerRef.current;
+      const containerElement = interactionLayerRef.current;
       if (!(containerElement instanceof HTMLDivElement)) return null;
 
-      const bounds = containerElement.getBoundingClientRect();
+      const bounds = getViewportBounds(containerElement);
       const localStartX = startClientX - bounds.left;
       const localStartY = startClientY - bounds.top;
       const localX = clientX - bounds.left;
@@ -361,10 +412,10 @@ export function useMermaidViewport({
 
   const stepZoom = useCallback(
     (scaleFactor: number) => {
-      const containerElement = containerRef.current;
+      const containerElement = interactionLayerRef.current;
       if (!(containerElement instanceof HTMLDivElement)) return;
 
-      const bounds = containerElement.getBoundingClientRect();
+      const bounds = getViewportBounds(containerElement);
       zoomAroundPoint(
         scaleFactor,
         bounds.left + bounds.width / 2,
@@ -375,10 +426,123 @@ export function useMermaidViewport({
     [zoomAroundPoint],
   );
 
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (
+        !zoomingEnabled ||
+        !isPanZoomReady ||
+        event.target !== event.currentTarget ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      )
+        return;
+      switch (event.key) {
+        case "+":
+        case "=":
+          stepZoom(1.18);
+          break;
+        case "-":
+          stepZoom(1 / 1.18);
+          break;
+        case "0":
+        case "Home":
+          fitDiagram(true);
+          break;
+        case "ArrowLeft":
+          cancelViewAnimation();
+          panBy(40, 0);
+          break;
+        case "ArrowRight":
+          cancelViewAnimation();
+          panBy(-40, 0);
+          break;
+        case "ArrowUp":
+          cancelViewAnimation();
+          panBy(0, 40);
+          break;
+        case "ArrowDown":
+          cancelViewAnimation();
+          panBy(0, -40);
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+    },
+    [
+      cancelViewAnimation,
+      fitDiagram,
+      isPanZoomReady,
+      panBy,
+      stepZoom,
+      zoomingEnabled,
+    ],
+  );
+
+  const handleDragStart = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (zoomingEnabled) {
+        event.preventDefault();
+      }
+    },
+    [zoomingEnabled],
+  );
+
+  const {
+    handleClickCapture,
+    handleLostPointerCapture,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    resetInteractionState,
+    hasActivePointers,
+  } = useDiagramPointerGestures({
+    enabled: zoomingEnabled && isPanZoomReady,
+    layerRef: interactionLayerRef,
+    viewRef: viewStateRef,
+    onStart: cancelViewAnimation,
+    onEnd: flushPendingZoomLabel,
+    panBy,
+    pinchTo,
+  });
+
+  useDiagramWheelGestures({
+    enabled: zoomingEnabled && isPanZoomReady,
+    layerRef: interactionLayerRef,
+    onStart: cancelViewAnimation,
+    hasActivePointers,
+    panBy,
+    zoomAroundPoint,
+  });
+
+  const resetViewportInteraction = useEffectEvent(() => {
+    resetInteractionState();
+    cancelViewAnimation();
+    flushPendingZoomLabel();
+  });
+
+  useEffect(() => {
+    const reset = () => resetViewportInteraction();
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("blur", reset);
+      reset();
+    };
+  }, []);
+
+  const prepareForRender = useCallback(() => {
+    setIsPanZoomReady(false);
+    disconnectResizeObserver();
+    resetInteractionState();
+    userInteractedRef.current = false;
+    commitViewState(null);
+  }, [commitViewState, disconnectResizeObserver, resetInteractionState]);
+
   useEffect(() => {
     if (renderVersion === 0) return;
 
-    const containerElement = containerRef.current;
+    const containerElement = interactionLayerRef.current;
     const svgElement = diagramRef.current?.querySelector("svg");
     if (!(containerElement instanceof HTMLDivElement)) return;
     if (!(svgElement instanceof SVGSVGElement)) return;
@@ -399,10 +563,41 @@ export function useMermaidViewport({
       scaleDiagramForReading();
     }
 
+    let previousBounds = getViewportBounds(containerElement);
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
       resizeObserver = new ResizeObserver(() => {
-        if (zoomingEnabled && userInteractedRef.current) return;
+        const bounds = getViewportBounds(containerElement);
+        if (bounds.width <= 0 || bounds.height <= 0) return;
+        if (
+          bounds.width === previousBounds.width &&
+          bounds.height === previousBounds.height
+        )
+          return;
+        const previous = previousBounds;
+        previousBounds = bounds;
+        const current = viewStateRef.current;
+        if (zoomingEnabled && userInteractedRef.current && current) {
+          resetInteractionState();
+          const fitScale = getFitScale(bounds, current, fitPadding);
+          const scale = Math.min(
+            fitScale * 12,
+            Math.max(fitScale * 0.6, current.scale),
+          );
+          const centerX = (previous.width / 2 - current.x) / current.scale;
+          const centerY = (previous.height / 2 - current.y) / current.scale;
+          const position = clampViewState({
+            containerWidth: bounds.width,
+            containerHeight: bounds.height,
+            contentWidth: current.width,
+            contentHeight: current.height,
+            nextScale: scale,
+            nextX: bounds.width / 2 - centerX * scale,
+            nextY: bounds.height / 2 - centerY * scale,
+          });
+          commitViewState({ ...current, ...position, fitScale, scale });
+          return;
+        }
         if (zoomingEnabled || fitToContainer) {
           fitDiagram();
         } else {
@@ -429,6 +624,7 @@ export function useMermaidViewport({
     commitViewState,
     disconnectResizeObserver,
     fitDiagram,
+    fitPadding,
     fitToContainer,
     renderVersion,
     resetInteractionState,
@@ -438,206 +634,17 @@ export function useMermaidViewport({
 
   useEffect(
     () => () => {
+      cancelViewAnimation();
       cancelViewStateFrame();
       cancelPendingZoomLabel();
       disconnectResizeObserver();
     },
-    [cancelPendingZoomLabel, cancelViewStateFrame, disconnectResizeObserver],
-  );
-
-  const handleWheelEvent = useEffectEvent((event: WheelEvent) => {
-    if (!viewStateRef.current) return;
-    if (event.deltaX === 0 && event.deltaY === 0) return;
-
-    event.preventDefault();
-    if (!isLikelyTrackpadGesture(event)) {
-      zoomAroundPoint(
-        getWheelZoomScaleFactor(event),
-        event.clientX,
-        event.clientY,
-      );
-      return;
-    }
-
-    panBy(-event.deltaX, -event.deltaY);
-  });
-
-  useEffect(() => {
-    if (!zoomingEnabled) return;
-
-    const interactionLayer = interactionLayerRef.current;
-    if (!interactionLayer) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      handleWheelEvent(event);
-    };
-
-    interactionLayer.addEventListener("wheel", handleWheel, {
-      passive: false,
-    });
-    return () => {
-      interactionLayer.removeEventListener("wheel", handleWheel);
-    };
-  }, [zoomingEnabled]);
-
-  const handleDragStart = useCallback(
-    (event: DragEvent<HTMLDivElement>) => {
-      if (zoomingEnabled) {
-        event.preventDefault();
-      }
-    },
-    [zoomingEnabled],
-  );
-
-  const handlePointerCancel = useCallback(() => {
-    resetInteractionState();
-    flushPendingZoomLabel();
-  }, [flushPendingZoomLabel, resetInteractionState]);
-
-  const handlePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const isTouchPointer = event.pointerType === "touch";
-      if (
-        !zoomingEnabled ||
-        !isPanZoomReady ||
-        (!isTouchPointer && event.button !== 0)
-      ) {
-        return;
-      }
-      if (!(event.target instanceof Element)) return;
-
-      const isInsideDiagram = Boolean(event.target.closest(".mermaid svg"));
-      const isClickableNode = Boolean(event.target.closest(".clickable"));
-      const isToolbarControl = Boolean(event.target.closest("button"));
-      if (
-        (!isTouchPointer && !isInsideDiagram) ||
-        isClickableNode ||
-        isToolbarControl
-      ) {
-        return;
-      }
-
-      activePointersRef.current.set(event.pointerId, {
-        x: event.clientX,
-        y: event.clientY,
-      });
-      event.currentTarget.setPointerCapture(event.pointerId);
-
-      const currentView = viewStateRef.current;
-      if (activePointersRef.current.size >= 2 && currentView) {
-        const pointerPair = getTrackedPointerPair(activePointersRef.current);
-        if (!pointerPair) return;
-        const [firstPointer, secondPointer] = pointerPair;
-        const midpoint = getPointerMidpoint(firstPointer, secondPointer);
-        pinchStateRef.current = {
-          startDistance: getDistanceBetweenPointers(
-            firstPointer,
-            secondPointer,
-          ),
-          startView: currentView,
-          startX: midpoint.x,
-          startY: midpoint.y,
-        };
-        dragStateRef.current = null;
-        event.preventDefault();
-        return;
-      }
-
-      dragStateRef.current = {
-        lastX: event.clientX,
-        lastY: event.clientY,
-        pointerId: event.pointerId,
-      };
-      event.preventDefault();
-    },
-    [isPanZoomReady, zoomingEnabled],
-  );
-
-  const handlePointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (activePointersRef.current.has(event.pointerId)) {
-        activePointersRef.current.set(event.pointerId, {
-          x: event.clientX,
-          y: event.clientY,
-        });
-      }
-
-      if (pinchStateRef.current && activePointersRef.current.size >= 2) {
-        const pointerPair = getTrackedPointerPair(activePointersRef.current);
-        if (!pointerPair) return;
-        const [firstPointer, secondPointer] = pointerPair;
-        const midpoint = getPointerMidpoint(firstPointer, secondPointer);
-        const distance = getDistanceBetweenPointers(
-          firstPointer,
-          secondPointer,
-        );
-
-        if (distance > 0 && pinchStateRef.current.startDistance > 0) {
-          event.preventDefault();
-          const nextView = pinchTo(
-            pinchStateRef.current.startView,
-            pinchStateRef.current.startX,
-            pinchStateRef.current.startY,
-            midpoint.x,
-            midpoint.y,
-            getPinchScaleFactor(pinchStateRef.current.startDistance, distance),
-          );
-          if (nextView) {
-            pinchStateRef.current = {
-              startDistance: distance,
-              startView: nextView,
-              startX: midpoint.x,
-              startY: midpoint.y,
-            };
-          }
-        }
-        return;
-      }
-
-      const dragState = dragStateRef.current;
-      if (!dragState || dragState.pointerId !== event.pointerId) return;
-
-      event.preventDefault();
-      panBy(event.clientX - dragState.lastX, event.clientY - dragState.lastY);
-      dragStateRef.current = {
-        ...dragState,
-        lastX: event.clientX,
-        lastY: event.clientY,
-      };
-    },
-    [panBy, pinchTo],
-  );
-
-  const handlePointerUp = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      activePointersRef.current.delete(event.pointerId);
-      if (activePointersRef.current.size < 2) {
-        const wasPinching = pinchStateRef.current !== null;
-        pinchStateRef.current = null;
-        flushPendingZoomLabel();
-
-        if (wasPinching && activePointersRef.current.size === 1) {
-          const [remainingEntry] = activePointersRef.current.entries();
-          if (remainingEntry) {
-            const [remainingPointerId, remainingPointer] = remainingEntry;
-            dragStateRef.current = {
-              lastX: remainingPointer.x,
-              lastY: remainingPointer.y,
-              pointerId: remainingPointerId,
-            };
-          }
-        }
-      }
-
-      if (dragStateRef.current?.pointerId === event.pointerId) {
-        dragStateRef.current = null;
-      }
-
-      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-    },
-    [flushPendingZoomLabel],
+    [
+      cancelPendingZoomLabel,
+      cancelViewAnimation,
+      cancelViewStateFrame,
+      disconnectResizeObserver,
+    ],
   );
 
   return {
@@ -647,7 +654,10 @@ export function useMermaidViewport({
     fitDiagram,
     formattedZoom,
     handleDragStart,
-    handlePointerCancel,
+    handleKeyDown,
+    handleClickCapture,
+    handlePointerCancel: handlePointerUp,
+    handleLostPointerCapture,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
