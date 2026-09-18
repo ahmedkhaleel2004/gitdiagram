@@ -3,15 +3,59 @@ import type { PostHog } from "posthog-js";
 const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 let posthogPromise: Promise<PostHog> | null = null;
 
+async function getReplayRegion() {
+  // Clear previous overrides on every page load, including lookup failures.
+  const region = { replay_region_country: "", replay_region_code: "" };
+  try {
+    const response = await fetch("/api/analytics-context", {
+      cache: "no-store",
+      credentials: "omit",
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!response.ok) return region;
+    const data: unknown = await response.json();
+    if (
+      data &&
+      typeof data === "object" &&
+      "country" in data &&
+      "region" in data
+    ) {
+      if (typeof data.country === "string" && /^[A-Z]{2}$/.test(data.country)) {
+        region.replay_region_country = data.country;
+      }
+      if (
+        typeof data.region === "string" &&
+        /^[A-Z0-9]{1,3}$/.test(data.region)
+      ) {
+        region.replay_region_code = data.region;
+      }
+    }
+  } catch {
+    // Country/device targeting and ordinary sampling still work without region.
+  }
+  return region;
+}
+
 function getPostHog() {
   if (!posthogKey) return null;
 
-  posthogPromise ??= import("posthog-js").then(({ default: posthog }) => {
+  posthogPromise ??= Promise.all([
+    import("posthog-js"),
+    import("posthog-js/customizations"),
+    getReplayRegion(),
+  ]).then(([{ default: posthog }, customizations, region]) => {
     posthog.init(posthogKey, {
       defaults: "2026-06-25",
       // Use a non-default first-party path to reduce adblock filter hits.
       api_host: "/phx9a",
       ui_host: "https://us.posthog.com",
+      loaded: (client) => {
+        // Flag-only overrides target anonymous first visits without person profiles.
+        client.setPersonPropertiesForFlags(region, false);
+        customizations.setAllPersonProfilePropertiesAsPersonPropertiesForFlags(
+          client,
+        );
+      },
       autocapture: {
         dom_event_allowlist: ["click", "submit"],
         capture_copied_text: false,
@@ -32,7 +76,8 @@ function getPostHog() {
       disable_session_recording: false,
       enable_recording_console_log: false,
       session_recording: {
-        // Sampling (25%) and the 10s minimum are managed in PostHog settings.
+        // Priority audiences: 100%, no minimum. Others: 20%, 10s minimum.
+        // Both recording groups are managed in PostHog settings.
         // The separate $0 billing cap stops ingestion at the free allowance.
         maskAllInputs: true,
         blockSelector:
