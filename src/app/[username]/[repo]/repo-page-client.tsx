@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { Key } from "lucide-react";
+import { ExternalLink, Key, LockKeyhole } from "lucide-react";
 import { toast } from "sonner";
 import type { DiagramStateResponse } from "~/features/diagram/types";
 import { RepositoryWorkspace } from "~/components/generation/repository-workspace";
@@ -13,6 +13,8 @@ import { useStarReminder } from "~/hooks/useStarReminder";
 import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { isExampleRepo } from "~/lib/exampleRepos";
+import { githubAccessTitle } from "~/features/diagram/github-access";
+import { Button } from "~/components/ui/button";
 
 const PrivateReposDialog = dynamic(
   () =>
@@ -64,13 +66,7 @@ export default function RepoPageClient({
     state.errorCode === "RATE_LIMITED" ||
     Boolean(error?.includes("API key")) ||
     Boolean(state.error?.includes("API key"));
-  const showGithubAccessCta = [
-    "REPOSITORY_NOT_FOUND",
-    "GITHUB_AUTH_REQUIRED",
-    "GITHUB_TOKEN_INVALID",
-    "GITHUB_ACCESS_DENIED",
-    "GITHUB_TREE_UNAVAILABLE",
-  ].includes(state.errorCode ?? "");
+  const showGithubAccessCta = Boolean(githubAccessTitle(state.errorCode));
 
   useEffect(() => {
     if (hasDiagram || loading) void loadDiagramRenderer();
@@ -98,21 +94,32 @@ export default function RepoPageClient({
           recovery={
             <>
               {showGithubAccessCta && (
-                <button type="button" onClick={() => setShowGithubAccess(true)}>
-                  GitHub Access
-                </button>
+                <Button
+                  type="button"
+                  onClick={() => setShowGithubAccess(true)}
+                  className="neo-button"
+                >
+                  <LockKeyhole aria-hidden="true" />
+                  Add GitHub access
+                </Button>
               )}
               {showApiKeyCta && (
-                <button type="button" onClick={handleOpenApiKeyDialog}>
+                <Button
+                  type="button"
+                  onClick={handleOpenApiKeyDialog}
+                  className="neo-button"
+                >
                   <Key className="mr-2 inline h-4 w-4" aria-hidden="true" />
                   Use Your AI Key
-                </button>
+                </Button>
               )}
               <a
                 href={`https://github.com/${repository}`}
                 target="_blank"
                 rel="noopener noreferrer"
+                className="neo-button-muted inline-flex items-center justify-center gap-2 font-medium"
               >
+                <ExternalLink className="h-4 w-4" aria-hidden="true" />
                 Open repository on GitHub
               </a>
             </>
@@ -126,6 +133,7 @@ export default function RepoPageClient({
         {showGithubAccess && (
           <PrivateReposDialog
             isOpen
+            repository={repository}
             onClose={() => setShowGithubAccess(false)}
             onSaved={() => void handleRegenerate()}
           />

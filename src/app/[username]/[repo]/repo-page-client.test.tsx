@@ -136,7 +136,7 @@ describe("RepoPageClient", () => {
     });
     render(<RepoPageClient username="Acme" repo="Demo" />);
     expect(
-      screen.getByRole("button", { name: "GitHub Access" }),
+      screen.getByRole("button", { name: "Add GitHub access" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /use your ai key/i }),
@@ -147,4 +147,30 @@ describe("RepoPageClient", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(retry).toHaveBeenCalledOnce();
   });
+  it.each([
+    ["REPOSITORY_NOT_FOUND", "Private repository?"],
+    ["GITHUB_AUTH_REQUIRED", "This repository needs GitHub access"],
+    ["GITHUB_ACCESS_DENIED", "Your token needs repository access"],
+    ["GITHUB_TOKEN_INVALID", "Update your GitHub token"],
+  ])(
+    "presents %s as an access step instead of a generation failure",
+    (errorCode, title) => {
+      setup({
+        status: "error",
+        errorCode,
+        error: "Add GitHub access to continue.",
+      });
+      render(<RepoPageClient username="Acme" repo="Demo" />);
+      expect(screen.getByRole("alert")).toHaveTextContent(title);
+      expect(
+        screen.queryByText("Couldn’t generate the diagram"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Add GitHub access" }),
+      ).toHaveClass("neo-button");
+      expect(
+        screen.getByRole("link", { name: "Open repository on GitHub" }),
+      ).toHaveClass("neo-button-muted");
+    },
+  );
 });

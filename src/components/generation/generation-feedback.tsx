@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CircleAlert, Pause } from "lucide-react";
+import { CircleAlert, LockKeyhole, Pause } from "lucide-react";
 import type { DiagramStreamState } from "~/features/diagram/types";
+import { githubAccessTitle } from "~/features/diagram/github-access";
 import { useGenerationClock } from "./generation-status";
 import { ExpandedActivity } from "./generation-activity";
 import { feedbackState } from "./feedback-state";
@@ -53,6 +54,8 @@ export function GenerationFeedback({
         {failed ? (
           cancelled ? (
             <Pause size={17} aria-hidden="true" />
+          ) : !renderFailed && githubAccessTitle(state.errorCode) ? (
+            <LockKeyhole size={17} aria-hidden="true" />
           ) : (
             <CircleAlert size={17} aria-hidden="true" />
           )

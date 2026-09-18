@@ -244,7 +244,7 @@ describe("POST /api/generate/stream", () => {
     await mocks.afterCallback?.();
 
     expect(body).toContain("REPOSITORY_NOT_FOUND");
-    expect(body).toContain("GitHub Access");
+    expect(body).toContain("GitHub access");
     // The caller reached a model call for nothing, so the slot goes back.
     expect(mocks.refundRateLimit).toHaveBeenCalledWith({
       clientIp: "203.0.113.7",

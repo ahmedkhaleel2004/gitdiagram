@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   clearCredential: vi.fn(),
   getCredentialStatus: vi.fn(),
   saveCredential: vi.fn(),
+  writeText: vi.fn(),
 }));
 
 vi.mock("~/features/credentials/api", () => ({
@@ -35,6 +36,11 @@ describe("credential dialogs", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: mocks.writeText },
+    });
+    mocks.writeText.mockResolvedValue(undefined);
     mocks.getCredentialStatus.mockResolvedValue({
       openaiApiKeyConfigured: false,
       githubPatConfigured: false,
@@ -113,10 +119,8 @@ describe("credential dialogs", () => {
     const onClose = vi.fn();
     render(<PrivateReposDialog isOpen onClose={onClose} />);
 
-    await screen.findByText(
-      "A GitHub token is currently saved. Its value cannot be displayed.",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    await screen.findByText("Token saved. Paste a new one to replace it.");
+    fireEvent.click(screen.getByRole("button", { name: "Clear token" }));
     await waitFor(() =>
       expect(mocks.clearCredential).toHaveBeenCalledWith("github_pat"),
     );
@@ -126,12 +130,84 @@ describe("credential dialogs", () => {
     fireEvent.change(input, {
       target: { value: "github_pat_fine_grained" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Token" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save token" }));
     await waitFor(() =>
       expect(mocks.saveCredential).toHaveBeenCalledWith(
         "github_pat",
         "github_pat_fine_grained",
       ),
     );
+  });
+
+  it("prefills a read-only token and copies repository-specific setup without the secret", async () => {
+    render(
+      <PrivateReposDialog isOpen onClose={vi.fn()} repository="acme/demo" />,
+    );
+    const link = screen.getByRole("link", { name: "Create token on GitHub" });
+    const url = new URL(link.getAttribute("href")!);
+    expect(url.origin + url.pathname).toBe(
+      "https://github.com/settings/personal-access-tokens/new",
+    );
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      contents: "read",
+      expires_in: "30",
+      target_name: "acme",
+    });
+    expect(link).toHaveAttribute("target", "_blank");
+    fireEvent.change(screen.getByLabelText("GitHub personal access token"), {
+      target: { value: "github_pat_secret" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy prompt for my AI" }),
+    );
+    await screen.findByRole("button", {
+      name: "Copied! Paste into your AI",
+    });
+    const prompt = mocks.writeText.mock.calls[0]![0] as string;
+    expect(prompt).toContain("https://github.com/acme/demo");
+    expect(prompt).toContain("Contents to Read-only");
+    expect(prompt).toContain("Do not put the token in chat, logs, or files.");
+    expect(prompt).not.toContain("github_pat_secret");
+    expect(mocks.saveCredential).not.toHaveBeenCalled();
+  });
+
+  it("offers a manually copyable prompt if clipboard access fails", async () => {
+    mocks.writeText.mockRejectedValueOnce(new Error("Clipboard denied"));
+    render(<PrivateReposDialog isOpen onClose={vi.fn()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy prompt for my AI" }),
+    );
+    const fallback = await screen.findByRole("textbox", {
+      name: "AI setup prompt",
+    });
+    expect(fallback).toHaveAttribute("readonly");
+    expect((fallback as HTMLTextAreaElement).value).toContain(
+      "Ask me which repository",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn’t copy");
+  });
+
+  it("only closes and retries after the token is saved successfully", async () => {
+    mocks.saveCredential.mockRejectedValueOnce(new Error("Save failed"));
+    const onClose = vi.fn();
+    const onSaved = vi.fn();
+    render(
+      <PrivateReposDialog
+        isOpen
+        onClose={onClose}
+        onSaved={onSaved}
+        repository="acme/demo"
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("GitHub personal access token"), {
+      target: { value: "github_pat_test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save & retry" }));
+    await screen.findByRole("alert");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save & retry" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

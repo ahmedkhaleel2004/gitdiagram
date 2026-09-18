@@ -18,7 +18,7 @@ export function classifyGitHubError(
   if (error.message === "Repository not found.")
     return {
       message:
-        "We couldn't access this repository. Check the owner and repository name. If it's private, add a GitHub token with access using GitHub Access.",
+        "If this repository is private, add GitHub access to continue. Otherwise, check the owner and repository name in the URL.",
       errorCode: "REPOSITORY_NOT_FOUND",
       status: 404,
     };
@@ -38,7 +38,7 @@ export function classifyGitHubError(
   )
     return {
       message:
-        "This repository is private. Add a GitHub token with access using GitHub Access, then try again.",
+        "Private repositories need a GitHub token. Add GitHub access to generate your diagram.",
       errorCode: "GITHUB_AUTH_REQUIRED",
       status: 403,
     };
@@ -59,14 +59,14 @@ export function classifyGitHubError(
     if (hasCallerToken && error.status === 401)
       return {
         message:
-          "Your saved GitHub token is invalid or expired. Update or remove it using GitHub Access, then try again.",
+          "Your saved token is invalid or expired. Add a new token using Add GitHub access, or clear it to try without one.",
         errorCode: "GITHUB_TOKEN_INVALID",
         status: 401,
       };
     if (hasCallerToken && error.status === 403)
       return {
         message:
-          "Your GitHub token doesn't have access to this repository's files. Update its repository permissions using GitHub Access, then try again.",
+          "Select this repository and give your token Contents: Read-only permission. Organization repositories may also need admin approval.",
         errorCode: "GITHUB_ACCESS_DENIED",
         status: 403,
       };

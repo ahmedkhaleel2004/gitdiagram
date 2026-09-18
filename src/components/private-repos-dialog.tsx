@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import { useId, useState } from "react";
+import { Check, Copy, ExternalLink } from "lucide-react";
 
 import {
   useCredentialSetting,
@@ -22,6 +23,7 @@ interface PrivateReposDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => void;
+  repository?: string;
 }
 
 const ERROR_MESSAGES: Record<Exclude<CredentialSettingError, null>, string> = {
@@ -34,7 +36,12 @@ export function PrivateReposDialog({
   isOpen,
   onClose,
   onSaved,
+  repository,
 }: PrivateReposDialogProps) {
+  const inputId = useId();
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
   const {
     clear,
     error,
@@ -47,6 +54,27 @@ export function PrivateReposDialog({
     credential: "github_pat",
     isOpen,
   });
+  const tokenUrl = new URL(
+    "https://github.com/settings/personal-access-tokens/new",
+  );
+  tokenUrl.search = new URLSearchParams({
+    name: "GitDiagram",
+    description: "Read selected repositories to generate architecture diagrams",
+    expires_in: "30",
+    contents: "read",
+    ...(repository ? { target_name: repository.split("/")[0]! } : {}),
+  }).toString();
+  const aiPrompt = [
+    `Help me connect ${repository ? `https://github.com/${repository}` : "a private GitHub repository"} to GitDiagram.`,
+    `Use my browser to open ${tokenUrl.toString()} and create a fine-grained personal access token named GitDiagram that expires in 30 days.`,
+    repository
+      ? `Choose the resource owner ${repository.split("/")[0]} and grant access only to the ${repository} repository.`
+      : "Ask me which repository I want to use, then choose its resource owner and grant access only to that repository.",
+    "Set repository Contents to Read-only; Metadata read access is included automatically. Do not add write or account permissions.",
+    "If the organization requires approval, tell me what its admin needs to approve.",
+    "Help me paste the token directly into GitDiagram's GitHub access dialog and save it. Do not put the token in chat, logs, or files.",
+    "If you cannot use my browser, walk me through these steps briefly.",
+  ].join("\n\n");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,104 +85,168 @@ export function PrivateReposDialog({
     }
   };
 
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(aiPrompt);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("failed");
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="ph-no-capture neo-panel p-6 sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-black dark:text-neutral-100">
-            Enter GitHub Personal Access Token
+      <DialogContent className="ph-no-capture neo-panel max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-lg p-5 sm:max-w-md sm:p-6">
+        <DialogHeader className="text-left">
+          <DialogTitle className="pr-6 text-xl font-bold">
+            GitHub access
           </DialogTitle>
-          <DialogDescription className="sr-only">
-            Provide a GitHub personal access token to enable private repository
-            diagrams in this browser.
+          <DialogDescription className="text-sm text-neutral-700 dark:text-neutral-300">
+            Use a token to let GitDiagram read your private repository.
           </DialogDescription>
         </DialogHeader>
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-4 text-black dark:text-neutral-200"
-        >
-          <div className="text-sm">
-            To enable private repositories, you&apos;ll need to provide a GitHub
-            Personal Access Token with repository access. A saved token persists
-            for 30 days in a protected HttpOnly cookie. Find out how{" "}
-            <Link
-              href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
-              className="neo-link"
-            >
-              here
-            </Link>
-            .
-          </div>
-          <details className="group text-sm [&>summary:focus-visible]:outline-none">
-            <summary className="neo-link cursor-pointer font-medium">
-              Data storage disclaimer
-            </summary>
-            <div className="mt-2 space-y-2 overflow-hidden pl-2">
-              <p>
-                Page JavaScript cannot read the saved token. Your browser sends
-                it only to this site&apos;s API routes. Successful
-                private-repository diagrams are stored in the configured private
-                artifact bucket for this deployment. You can also self-host this
-                app by following the instructions in the{" "}
-                <Link href={GITHUB_REPO_URL} className="neo-link">
-                  README
-                </Link>
-                .
-              </p>
-            </div>
-          </details>
-          <Input
-            type="password"
-            aria-label="GitHub personal access token"
-            placeholder={
-              isConfigured ? "Enter a replacement token" : "github_pat_..."
-            }
-            value={pat}
-            onChange={(e) => setPat(e.target.value)}
-            className="neo-input flex-1 rounded-md px-3 py-2 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 dark:placeholder:text-neutral-400"
-            required
-          />
-          {isConfigured ? (
-            <p className="text-sm font-medium">
-              A GitHub token is currently saved. Its value cannot be displayed.
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold">1. Create a token</h3>
+            <p className="text-sm text-neutral-700 dark:text-neutral-300">
+              Choose the repository owner and select{" "}
+              {repository ? (
+                <strong className="break-all">{repository}</strong>
+              ) : (
+                "your repository"
+              )}
+              . <strong>Contents: Read-only</strong> is already selected.
             </p>
-          ) : null}
-          {error ? (
-            <p role="alert" className="text-sm font-medium text-red-700">
+            <a
+              href={tokenUrl.toString()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="neo-button inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-4"
+            >
+              Create token on GitHub
+              <ExternalLink className="h-4 w-4" aria-hidden="true" />
+            </a>
+            <Button
+              type="button"
+              onClick={() => void copyPrompt()}
+              className="neo-button-muted min-h-11 w-full"
+            >
+              {copyStatus === "copied" ? (
+                <Check aria-hidden="true" />
+              ) : (
+                <Copy aria-hidden="true" />
+              )}
+              <span aria-live="polite">
+                {copyStatus === "copied"
+                  ? "Copied! Paste into your AI"
+                  : "Copy prompt for my AI"}
+              </span>
+            </Button>
+            {copyStatus === "failed" && (
+              <div className="space-y-2">
+                <p role="alert" className="text-sm">
+                  Couldn’t copy. Select the prompt below to copy it manually.
+                </p>
+                <textarea
+                  aria-label="AI setup prompt"
+                  readOnly
+                  value={aiPrompt}
+                  onFocus={(event) => event.currentTarget.select()}
+                  className="neo-input min-h-28 w-full rounded-md p-3 text-sm"
+                />
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <label htmlFor={inputId} className="block text-sm font-bold">
+              2. Paste your token
+            </label>
+            <Input
+              id={inputId}
+              type="password"
+              aria-label="GitHub personal access token"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder={
+                isConfigured ? "Paste a replacement token" : "github_pat_..."
+              }
+              value={pat}
+              onChange={(e) => setPat(e.target.value)}
+              className="neo-input h-11 rounded-md px-3 py-2 text-base placeholder:font-normal placeholder:text-gray-600 dark:placeholder:text-neutral-400"
+              required
+            />
+            <p className="pt-1 text-xs text-neutral-700 dark:text-neutral-300">
+              {isConfigured
+                ? "Token saved. Paste a new one to replace it."
+                : "Saved in this browser for 30 days. Clear it anytime."}
+            </p>
+          </div>
+          <details className="text-xs text-neutral-700 dark:text-neutral-300">
+            <summary className="neo-link w-fit cursor-pointer font-medium focus-visible:outline-2 focus-visible:outline-offset-4">
+              How your data is used
+            </summary>
+            <p className="mt-2 leading-relaxed">
+              Your token is kept in a protected browser cookie for 30 days.
+              Repository content is sent to the AI provider to generate your
+              diagram. Private diagrams are stored privately on GitDiagram. You
+              can also{" "}
+              <a
+                href={GITHUB_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="neo-link underline"
+              >
+                self-host
+              </a>
+              .
+            </p>
+          </details>
+          {error && (
+            <p
+              role="alert"
+              className="text-sm font-medium text-red-700 dark:text-red-300"
+            >
               {ERROR_MESSAGES[error]}
             </p>
-          ) : null}
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={async () => {
-                if (await clear()) {
-                  if (onSaved) {
-                    onClose();
-                    onSaved();
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            {isConfigured && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (await clear()) {
+                    if (onSaved) {
+                      onClose();
+                      onSaved();
+                    }
                   }
-                }
-              }}
-              disabled={!isConfigured || isPending}
-              className="neo-link text-sm disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Clear
-            </button>
-            <div className="flex gap-3">
+                }}
+                disabled={isPending}
+                className="neo-link min-h-10 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Clear token
+              </button>
+            )}
+            <div className="ml-auto flex gap-3">
               <Button
                 type="button"
                 onClick={onClose}
                 disabled={isPending}
-                className="neo-button-muted px-4 py-2"
+                className="neo-button-muted min-h-11 px-4 py-2"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 disabled={pat.trim().length === 0 || isPending}
-                className="neo-button px-4 py-2 disabled:opacity-50"
+                className="neo-button min-h-11 px-4 py-2 disabled:opacity-50"
               >
-                {isPending ? "Saving..." : "Save Token"}
+                {isPending
+                  ? "Saving..."
+                  : repository
+                    ? "Save & retry"
+                    : "Save token"}
               </Button>
             </div>
           </div>

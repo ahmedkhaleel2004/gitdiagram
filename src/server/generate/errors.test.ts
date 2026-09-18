@@ -95,7 +95,7 @@ describe("normalizeGenerationError", () => {
     });
 
     expect(normalized.errorCode).toBe("REPOSITORY_NOT_FOUND");
-    expect(normalized.message).toContain("GitHub Access");
+    expect(normalized.message).toContain("GitHub access");
   });
 });
 
