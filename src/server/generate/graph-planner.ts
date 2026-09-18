@@ -8,9 +8,8 @@ import {
 } from "~/features/diagram/graph";
 import type { DiagramStreamMessage } from "~/features/diagram/types";
 import type { ComplimentaryAdmissionEstimate } from "./complimentary-gate";
-import { buildComplimentaryStageTokenBound } from "./complimentary-gate";
+import { buildComplimentaryStageTokenEstimate } from "./complimentary-gate";
 import {
-  GRAPH_MAX_OUTPUT_TOKENS,
   GRAPH_REASONING_EFFORT,
   GRAPH_TEXT_VERBOSITY,
 } from "./generation-policy";
@@ -37,8 +36,8 @@ import {
 export interface GenerationUsageAccounting {
   actualUsages: GenerationTokenUsage[];
   hasCompleteMeasuredUsage: boolean;
-  completedUnmeasuredTokenBound: number;
-  pendingModelRequestTokenBound: number;
+  completedUnmeasuredTokenEstimate: number;
+  pendingModelRequestTokenEstimate: number;
 }
 
 type StreamSend = (payload: DiagramStreamMessage) => Promise<boolean>;
@@ -101,9 +100,9 @@ export async function generateValidatedGraph(
       graph_attempts: audit.graphAttempts,
     });
 
-    params.accounting.pendingModelRequestTokenBound =
+    params.accounting.pendingModelRequestTokenEstimate =
       params.complimentaryEstimate
-        ? buildComplimentaryStageTokenBound(params.complimentaryEstimate, {
+        ? buildComplimentaryStageTokenEstimate(params.complimentaryEstimate, {
             stage: "graph",
             attempt,
           })
@@ -132,7 +131,6 @@ export async function generateValidatedGraph(
       apiKey: params.apiKey,
       reasoningEffort: GRAPH_REASONING_EFFORT,
       textVerbosity: GRAPH_TEXT_VERBOSITY,
-      maxOutputTokens: GRAPH_MAX_OUTPUT_TOKENS,
       signal: params.signal,
       clientRequestId: `${params.sessionId}:graph:${attempt}`,
     });
@@ -144,7 +142,7 @@ export async function generateValidatedGraph(
 
     if (usage) {
       params.accounting.actualUsages.push(usage);
-      params.accounting.pendingModelRequestTokenBound = 0;
+      params.accounting.pendingModelRequestTokenEstimate = 0;
       audit = withStageUsage(audit, {
         stage: "graph_attempt",
         attempt,
@@ -159,9 +157,9 @@ export async function generateValidatedGraph(
       });
     } else {
       params.accounting.hasCompleteMeasuredUsage = false;
-      params.accounting.completedUnmeasuredTokenBound +=
-        params.accounting.pendingModelRequestTokenBound;
-      params.accounting.pendingModelRequestTokenBound = 0;
+      params.accounting.completedUnmeasuredTokenEstimate +=
+        params.accounting.pendingModelRequestTokenEstimate;
+      params.accounting.pendingModelRequestTokenEstimate = 0;
     }
 
     void params.send({

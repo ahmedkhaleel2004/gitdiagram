@@ -5,8 +5,8 @@ import type {
 } from "~/features/diagram/cost";
 import type { GenerationEstimateResult } from "./cost-estimate";
 import {
-  EXPLANATION_MAX_OUTPUT_TOKENS,
-  GRAPH_MAX_OUTPUT_TOKENS,
+  EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+  GRAPH_ESTIMATED_OUTPUT_TOKENS,
   GRAPH_RETRY_INPUT_BUFFER_TOKENS,
 } from "./generation-policy";
 import {
@@ -42,16 +42,17 @@ export function createFinalGenerationCostSummary(params: {
   const retryInputTokens =
     params.estimate.graphRepairStaticInputTokens !== null
       ? params.estimate.graphRepairStaticInputTokens +
-        EXPLANATION_MAX_OUTPUT_TOKENS +
-        GRAPH_MAX_OUTPUT_TOKENS +
+        EXPLANATION_ESTIMATED_OUTPUT_TOKENS +
+        GRAPH_ESTIMATED_OUTPUT_TOKENS +
         GRAPH_RETRY_INPUT_BUFFER_TOKENS
       : baseUsage.inputTokens +
-        GRAPH_MAX_OUTPUT_TOKENS +
+        GRAPH_ESTIMATED_OUTPUT_TOKENS +
         GRAPH_RETRY_INPUT_BUFFER_TOKENS;
   const retryUsage: GenerationTokenUsage = {
     inputTokens: retryInputTokens * retryCount,
-    outputTokens: GRAPH_MAX_OUTPUT_TOKENS * retryCount,
-    totalTokens: (retryInputTokens + GRAPH_MAX_OUTPUT_TOKENS) * retryCount,
+    outputTokens: GRAPH_ESTIMATED_OUTPUT_TOKENS * retryCount,
+    totalTokens:
+      (retryInputTokens + GRAPH_ESTIMATED_OUTPUT_TOKENS) * retryCount,
     cacheWriteTokens: retryInputTokens * retryCount,
   };
   return combineCostSummaries(
@@ -64,6 +65,6 @@ export function createFinalGenerationCostSummary(params: {
         approximate: true,
       }),
     ],
-    `Provider usage was unavailable for at least one stage, so this remains a conservative estimate for ${graphAttemptCount} graph-planning attempt${graphAttemptCount === 1 ? "" : "s"}.`,
+    `Provider usage was unavailable for at least one stage, so this remains an estimate for ${graphAttemptCount} graph-planning attempt${graphAttemptCount === 1 ? "" : "s"}.`,
   );
 }

@@ -86,7 +86,9 @@ describe("createEstimateCostSummary", () => {
     expect(result.approximate).toBe(true);
     expect(result.usage.inputTokens).toBe(8_300);
     expect(result.usage.outputTokens).toBe(14_000);
-    expect(result.note).toContain("configured output caps");
+    expect(result.note).toContain(
+      "estimated output usage; actual usage may be higher",
+    );
   });
 });
 

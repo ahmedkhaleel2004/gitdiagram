@@ -114,7 +114,6 @@ interface StreamCompletionParams {
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
   textVerbosity?: TextVerbosity;
-  maxOutputTokens?: number;
   signal?: AbortSignal;
   clientRequestId?: string;
 }
@@ -129,7 +128,6 @@ interface StructuredCompletionParams<T> {
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
   textVerbosity?: TextVerbosity;
-  maxOutputTokens?: number;
   signal?: AbortSignal;
   clientRequestId?: string;
 }
@@ -213,7 +211,6 @@ export async function streamCompletion({
   apiKey,
   reasoningEffort,
   textVerbosity,
-  maxOutputTokens,
   signal,
   clientRequestId,
 }: StreamCompletionParams): Promise<StreamCompletionResult> {
@@ -230,7 +227,6 @@ export async function streamCompletion({
         ...(textVerbosity && supportsTextVerbosity(provider, model)
           ? { text: { verbosity: textVerbosity } }
           : {}),
-        ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
       },
       buildRequestOptions({ provider, signal, clientRequestId }),
     )
@@ -373,7 +369,6 @@ export async function generateStructuredOutput<T>({
   apiKey,
   reasoningEffort,
   textVerbosity,
-  maxOutputTokens,
   signal,
   clientRequestId,
 }: StructuredCompletionParams<T>): Promise<{
@@ -396,7 +391,6 @@ export async function generateStructuredOutput<T>({
             : {}),
         },
         ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-        ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
       },
       buildRequestOptions({ provider, signal, clientRequestId }),
     );

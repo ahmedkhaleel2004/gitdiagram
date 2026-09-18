@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { GenerationEstimateResult } from "./cost-estimate";
 import { createFinalGenerationCostSummary } from "./final-cost";
 import {
-  EXPLANATION_MAX_OUTPUT_TOKENS,
-  GRAPH_MAX_OUTPUT_TOKENS,
+  EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+  GRAPH_ESTIMATED_OUTPUT_TOKENS,
   GRAPH_RETRY_INPUT_BUFFER_TOKENS,
 } from "./generation-policy";
 
@@ -69,8 +69,8 @@ describe("createFinalGenerationCostSummary", () => {
     });
     const retryInputTokens =
       800 +
-      EXPLANATION_MAX_OUTPUT_TOKENS +
-      GRAPH_MAX_OUTPUT_TOKENS +
+      EXPLANATION_ESTIMATED_OUTPUT_TOKENS +
+      GRAPH_ESTIMATED_OUTPUT_TOKENS +
       GRAPH_RETRY_INPUT_BUFFER_TOKENS;
 
     expect(result).toMatchObject({
@@ -78,7 +78,7 @@ describe("createFinalGenerationCostSummary", () => {
       approximate: true,
       usage: {
         inputTokens: 1_000 + retryInputTokens * 2,
-        outputTokens: 500 + GRAPH_MAX_OUTPUT_TOKENS * 2,
+        outputTokens: 500 + GRAPH_ESTIMATED_OUTPUT_TOKENS * 2,
       },
     });
     expect(result.note).toContain("3 graph-planning attempts");
@@ -97,7 +97,10 @@ describe("createFinalGenerationCostSummary", () => {
     });
 
     expect(result.usage.inputTokens).toBe(
-      1_000 + 1_000 + GRAPH_MAX_OUTPUT_TOKENS + GRAPH_RETRY_INPUT_BUFFER_TOKENS,
+      1_000 +
+        1_000 +
+        GRAPH_ESTIMATED_OUTPUT_TOKENS +
+        GRAPH_RETRY_INPUT_BUFFER_TOKENS,
     );
     expect(result.kind).toBe("estimate");
   });

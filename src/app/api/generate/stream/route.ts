@@ -11,7 +11,7 @@ import type { ArtifactVisibility } from "~/server/storage/types";
 import {
   admitComplimentaryQuota,
   buildComplimentaryAdmissionTokens,
-  buildComplimentaryStageTokenBound,
+  buildComplimentaryStageTokenEstimate,
   getComplimentaryDenialMessage,
   getComplimentaryModelMismatchMessage,
   getComplimentaryProviderMismatchMessage,
@@ -33,7 +33,6 @@ import {
   unregisterActiveGeneration,
 } from "~/server/generate/cancellation";
 import {
-  EXPLANATION_MAX_OUTPUT_TOKENS,
   EXPLANATION_REASONING_EFFORT,
   EXPLANATION_TEXT_VERBOSITY,
 } from "~/server/generate/generation-policy";
@@ -240,8 +239,8 @@ export async function POST(request: Request) {
         const accounting: GenerationUsageAccounting = {
           actualUsages: [],
           hasCompleteMeasuredUsage: true,
-          completedUnmeasuredTokenBound: 0,
-          pendingModelRequestTokenBound: 0,
+          completedUnmeasuredTokenEstimate: 0,
+          pendingModelRequestTokenEstimate: 0,
         };
         let terminalPayload: DiagramStreamMessage | null = null;
         let terminalErrorCode: string | null = null;
@@ -536,8 +535,8 @@ export async function POST(request: Request) {
           if (quotaReservation) {
             await markComplimentaryQuotaStarted(quotaReservation);
           }
-          accounting.pendingModelRequestTokenBound = complimentaryEstimate
-            ? buildComplimentaryStageTokenBound(complimentaryEstimate, {
+          accounting.pendingModelRequestTokenEstimate = complimentaryEstimate
+            ? buildComplimentaryStageTokenEstimate(complimentaryEstimate, {
                 stage: "explanation",
               })
             : 0;
@@ -555,7 +554,6 @@ export async function POST(request: Request) {
             apiKey,
             reasoningEffort: EXPLANATION_REASONING_EFFORT,
             textVerbosity: EXPLANATION_TEXT_VERBOSITY,
-            maxOutputTokens: EXPLANATION_MAX_OUTPUT_TOKENS,
             signal: generationAbortController.signal,
             clientRequestId: `${audit.sessionId}:explanation`,
           });
@@ -583,7 +581,7 @@ export async function POST(request: Request) {
           }
           if (explanationUsage) {
             accounting.actualUsages.push(explanationUsage);
-            accounting.pendingModelRequestTokenBound = 0;
+            accounting.pendingModelRequestTokenEstimate = 0;
             audit = withStageUsage(audit, {
               stage: "explanation",
               model: analysisModel,
@@ -597,9 +595,9 @@ export async function POST(request: Request) {
             });
           } else {
             accounting.hasCompleteMeasuredUsage = false;
-            accounting.completedUnmeasuredTokenBound +=
-              accounting.pendingModelRequestTokenBound;
-            accounting.pendingModelRequestTokenBound = 0;
+            accounting.completedUnmeasuredTokenEstimate +=
+              accounting.pendingModelRequestTokenEstimate;
+            accounting.pendingModelRequestTokenEstimate = 0;
           }
 
           const explanation = extractTaggedSection(

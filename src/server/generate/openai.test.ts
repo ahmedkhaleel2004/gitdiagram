@@ -75,6 +75,9 @@ describe("OpenAI Responses text verbosity", () => {
     });
 
     await consume(result.stream);
+    expect(openAiMocks.responsesCreate.mock.calls[0]?.[0]).not.toHaveProperty(
+      "max_output_tokens",
+    );
     expect(openAiMocks.clientOptions).toHaveBeenCalledWith(
       expect.objectContaining({ maxRetries: 0, timeout: 150_000 }),
     );
@@ -165,6 +168,7 @@ describe("OpenAI Responses text verbosity", () => {
       Record<string, unknown>,
     ];
     expect(body.service_tier).toBe("default");
+    expect(body).not.toHaveProperty("max_output_tokens");
     expect(body.text).toEqual(
       expect.objectContaining({
         format: expect.objectContaining({ type: "json_schema" }),

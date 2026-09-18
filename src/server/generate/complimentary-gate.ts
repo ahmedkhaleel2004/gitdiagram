@@ -8,8 +8,8 @@ import {
 } from "~/server/storage/quota-store";
 import type { AIProvider } from "~/server/generate/model-config";
 import {
-  EXPLANATION_MAX_OUTPUT_TOKENS,
-  GRAPH_MAX_OUTPUT_TOKENS,
+  EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+  GRAPH_ESTIMATED_OUTPUT_TOKENS,
   GRAPH_RETRY_INPUT_BUFFER_TOKENS,
 } from "~/server/generate/pricing";
 
@@ -129,17 +129,26 @@ export function getComplimentaryQuotaBucket(): string {
 export function buildComplimentaryAdmissionTokens(
   estimate: ComplimentaryAdmissionEstimate,
 ): number {
-  const explanationStageTokens = buildComplimentaryStageTokenBound(estimate, {
-    stage: "explanation",
-  });
-  const firstGraphAttemptTokens = buildComplimentaryStageTokenBound(estimate, {
-    stage: "graph",
-    attempt: 1,
-  });
-  const retryGraphAttemptTokens = buildComplimentaryStageTokenBound(estimate, {
-    stage: "graph",
-    attempt: 2,
-  });
+  const explanationStageTokens = buildComplimentaryStageTokenEstimate(
+    estimate,
+    {
+      stage: "explanation",
+    },
+  );
+  const firstGraphAttemptTokens = buildComplimentaryStageTokenEstimate(
+    estimate,
+    {
+      stage: "graph",
+      attempt: 1,
+    },
+  );
+  const retryGraphAttemptTokens = buildComplimentaryStageTokenEstimate(
+    estimate,
+    {
+      stage: "graph",
+      attempt: 2,
+    },
+  );
 
   return (
     explanationStageTokens +
@@ -149,32 +158,34 @@ export function buildComplimentaryAdmissionTokens(
 }
 
 /**
- * Returns the conservative token bound for the one provider request that is
- * currently in flight. This lets interrupted generations commit the current
- * stage without charging every graph retry that never ran.
+ * Estimates usage for the provider request currently in flight when measured
+ * usage is unavailable. This is not an output cap or a guaranteed upper bound.
+ * Interrupted generations do not charge for graph retries that never ran.
  */
-export function buildComplimentaryStageTokenBound(
+export function buildComplimentaryStageTokenEstimate(
   estimate: ComplimentaryAdmissionEstimate,
   stage: ComplimentaryGenerationStage,
 ): number {
   if (stage.stage === "explanation") {
-    return estimate.explanationInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS;
+    return (
+      estimate.explanationInputTokens + EXPLANATION_ESTIMATED_OUTPUT_TOKENS
+    );
   }
 
   if (stage.attempt <= 1) {
     return (
       estimate.graphStaticInputTokens +
-      EXPLANATION_MAX_OUTPUT_TOKENS +
-      GRAPH_MAX_OUTPUT_TOKENS
+      EXPLANATION_ESTIMATED_OUTPUT_TOKENS +
+      GRAPH_ESTIMATED_OUTPUT_TOKENS
     );
   }
 
   return (
     estimate.graphRepairStaticInputTokens +
-    EXPLANATION_MAX_OUTPUT_TOKENS +
-    GRAPH_MAX_OUTPUT_TOKENS +
+    EXPLANATION_ESTIMATED_OUTPUT_TOKENS +
+    GRAPH_ESTIMATED_OUTPUT_TOKENS +
     GRAPH_RETRY_INPUT_BUFFER_TOKENS +
-    GRAPH_MAX_OUTPUT_TOKENS
+    GRAPH_ESTIMATED_OUTPUT_TOKENS
   );
 }
 

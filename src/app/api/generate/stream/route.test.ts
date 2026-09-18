@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   after: vi.fn(),
   admitQuota: vi.fn(),
-  buildStageTokenBound: vi.fn(),
+  buildStageTokenEstimate: vi.fn(),
   clearFailureSummary: vi.fn(),
   estimateCost: vi.fn(),
   finalizeQuota: vi.fn(),
@@ -51,7 +51,7 @@ vi.mock("~/server/storage/diagram-state", () => ({
 vi.mock("~/server/generate/complimentary-gate", () => ({
   admitComplimentaryQuota: mocks.admitQuota,
   buildComplimentaryAdmissionTokens: vi.fn(() => 10_000),
-  buildComplimentaryStageTokenBound: mocks.buildStageTokenBound,
+  buildComplimentaryStageTokenEstimate: mocks.buildStageTokenEstimate,
   finalizeComplimentaryQuota: mocks.finalizeQuota,
   markComplimentaryQuotaStarted: mocks.markQuotaStarted,
   getComplimentaryDenialMessage: vi.fn(() => "Daily limit reached."),
@@ -175,7 +175,7 @@ describe("POST /api/generate/stream", () => {
     mocks.after.mockImplementation((callback: () => Promise<void>) => {
       mocks.afterCallback = callback;
     });
-    mocks.buildStageTokenBound.mockImplementation(
+    mocks.buildStageTokenEstimate.mockImplementation(
       (
         estimate: {
           explanationInputTokens: number;
@@ -519,53 +519,59 @@ describe("POST /api/generate/stream", () => {
     );
   });
 
-  it("adds only the current graph bound after measured explanation usage", async () => {
-    const sessionId = "550e8400-e29b-41d4-a716-446655440000";
-    const cancelToken = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
-    mockEstimate(100);
-    mocks.admitQuota.mockResolvedValue({
-      admitted: true,
-      reservation: {
-        reservationId: "reservation-1",
-        quotaBucket: "daily",
-        quotaDateUtc: "2026-07-13",
-        quotaResetAt: "2026-07-14T00:00:00.000Z",
-        reservedTokens: 30_000,
-      },
-    });
-    const explanationUsage = {
-      inputTokens: 80,
-      outputTokens: 20,
-      totalTokens: 100,
-    };
-    mocks.streamCompletion.mockResolvedValue({
-      stream: (async function* () {
-        yield "<explanation>Measured explanation.</explanation>";
-      })(),
-      usagePromise: Promise.resolve(explanationUsage),
-    });
-    mocks.generateStructuredOutput.mockImplementation(
-      ({ signal }: { signal: AbortSignal }) =>
-        new Promise((_resolve, reject) => {
-          signal.addEventListener("abort", () => reject(signal.reason), {
-            once: true,
-          });
-          queueMicrotask(() => mocks.cancellationCallback?.());
-        }),
-    );
+  it.each([
+    { measuredTokens: 100, committedTokens: 12_200 },
+    { measuredTokens: 45_000, committedTokens: 45_000 },
+  ])(
+    "keeps measured usage of $measuredTokens when graph generation is cancelled",
+    async ({ measuredTokens, committedTokens }) => {
+      const sessionId = "550e8400-e29b-41d4-a716-446655440000";
+      const cancelToken = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+      mockEstimate(100);
+      mocks.admitQuota.mockResolvedValue({
+        admitted: true,
+        reservation: {
+          reservationId: "reservation-1",
+          quotaBucket: "daily",
+          quotaDateUtc: "2026-07-13",
+          quotaResetAt: "2026-07-14T00:00:00.000Z",
+          reservedTokens: 30_000,
+        },
+      });
+      const explanationUsage = {
+        inputTokens: 80,
+        outputTokens: measuredTokens - 80,
+        totalTokens: measuredTokens,
+      };
+      mocks.streamCompletion.mockResolvedValue({
+        stream: (async function* () {
+          yield "<explanation>Measured explanation.</explanation>";
+        })(),
+        usagePromise: Promise.resolve(explanationUsage),
+      });
+      mocks.generateStructuredOutput.mockImplementation(
+        ({ signal }: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+            queueMicrotask(() => mocks.cancellationCallback?.());
+          }),
+      );
 
-    const response = await POST(
-      request({ session_id: sessionId, cancel_token: cancelToken }),
-    );
-    await response.text();
+      const response = await POST(
+        request({ session_id: sessionId, cancel_token: cancelToken }),
+      );
+      await response.text();
 
-    expect(mocks.finalizeQuota).toHaveBeenCalledWith(
-      expect.objectContaining({ committedTokens: 12_200 }),
-    );
-    expect(console.info).toHaveBeenCalledWith(
-      expect.stringContaining('"outcome":"cancelled"'),
-    );
-  });
+      expect(mocks.finalizeQuota).toHaveBeenCalledWith(
+        expect.objectContaining({ committedTokens }),
+      );
+      expect(console.info).toHaveBeenCalledWith(
+        expect.stringContaining('"outcome":"cancelled"'),
+      );
+    },
+  );
 
   it("fails closed when cancellation registration is unavailable", async () => {
     const sessionId = "550e8400-e29b-41d4-a716-446655440000";
@@ -725,11 +731,11 @@ describe("POST /api/generate/stream", () => {
     expect(terminal?.cost_summary).toMatchObject({
       kind: "estimate",
       approximate: true,
-      note: expect.stringContaining("remains a conservative estimate"),
+      note: expect.stringContaining("remains an estimate"),
     });
   });
 
-  it("coalesces explanation deltas without changing their bytes or order", async () => {
+  it("streams complete output beyond estimates and accounts for all measured tokens", async () => {
     mockEstimate(100);
     mocks.admitQuota.mockResolvedValue({
       admitted: true,
@@ -741,7 +747,11 @@ describe("POST /api/generate/stream", () => {
         reservedTokens: 10_000,
       },
     });
-    const usage = { inputTokens: 80, outputTokens: 20, totalTokens: 100 };
+    const usage = {
+      inputTokens: 80,
+      outputTokens: 12_000,
+      totalTokens: 12_080,
+    };
     const sourceChunks = [
       "<explanation>",
       "Hello",
@@ -783,6 +793,15 @@ describe("POST /api/generate/stream", () => {
       .filter((event) => event.status === "explanation_chunk")
       .map((event) => event.chunk as string);
 
+    expect(mocks.streamCompletion.mock.calls[0]?.[0]).not.toHaveProperty(
+      "maxOutputTokens",
+    );
+    expect(
+      mocks.generateStructuredOutput.mock.calls[0]?.[0],
+    ).not.toHaveProperty("maxOutputTokens");
+    expect(mocks.finalizeQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ committedTokens: 24_160 }),
+    );
     expect(explanationChunks.join("")).toBe(sourceChunks.join(""));
     expect(explanationChunks.length).toBeLessThan(sourceChunks.length);
     expect(events.at(-1)).toMatchObject({

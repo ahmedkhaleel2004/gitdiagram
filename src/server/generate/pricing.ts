@@ -3,13 +3,13 @@ import type {
   GenerationTokenUsage,
 } from "~/features/diagram/cost";
 import {
-  EXPLANATION_MAX_OUTPUT_TOKENS,
-  GRAPH_MAX_OUTPUT_TOKENS,
+  EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+  GRAPH_ESTIMATED_OUTPUT_TOKENS,
 } from "~/server/generate/generation-policy";
 
 export {
-  EXPLANATION_MAX_OUTPUT_TOKENS,
-  GRAPH_MAX_OUTPUT_TOKENS,
+  EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+  GRAPH_ESTIMATED_OUTPUT_TOKENS,
   GRAPH_RETRY_INPUT_BUFFER_TOKENS,
 } from "~/server/generate/generation-policy";
 
@@ -271,16 +271,16 @@ export function createEstimateCostSummary(params: {
       stage(
         params.analysisModel ?? params.model,
         params.explanationInputTokens,
-        EXPLANATION_MAX_OUTPUT_TOKENS,
+        EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
       ),
       stage(
         params.model,
-        params.graphStaticInputTokens + EXPLANATION_MAX_OUTPUT_TOKENS,
-        GRAPH_MAX_OUTPUT_TOKENS * (params.graphAttemptCount ?? 1),
+        params.graphStaticInputTokens + EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+        GRAPH_ESTIMATED_OUTPUT_TOKENS * (params.graphAttemptCount ?? 1),
       ),
     ],
     params.note ??
-      "Estimate assumes one graph-planning attempt, uncached writes and the configured output caps.",
+      "Estimate assumes one graph-planning attempt, uncached writes and the estimated output usage; actual usage may be higher.",
   );
 }
 

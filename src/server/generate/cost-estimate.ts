@@ -5,9 +5,9 @@ import {
   type ReasoningEffort,
 } from "~/server/generate/openai";
 import {
-  EXPLANATION_MAX_OUTPUT_TOKENS,
+  EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
   EXPLANATION_REASONING_EFFORT,
-  GRAPH_MAX_OUTPUT_TOKENS,
+  GRAPH_ESTIMATED_OUTPUT_TOKENS,
   GRAPH_REASONING_EFFORT,
 } from "~/server/generate/generation-policy";
 import {
@@ -178,7 +178,7 @@ export async function estimateGenerationCost(params: {
     ]);
 
   const noteParts = [
-    "Estimate assumes one graph-planning attempt and the configured output caps.",
+    "Estimate assumes one graph-planning attempt and the estimated output usage; actual usage may be higher.",
   ];
   if (
     explanationCount.usedFallback ||
@@ -210,7 +210,7 @@ export async function estimateGenerationCost(params: {
     costSummary,
     estimatedInputTokens: costSummary.usage.inputTokens,
     estimatedOutputTokens:
-      EXPLANATION_MAX_OUTPUT_TOKENS + GRAPH_MAX_OUTPUT_TOKENS,
+      EXPLANATION_ESTIMATED_OUTPUT_TOKENS + GRAPH_ESTIMATED_OUTPUT_TOKENS,
     pricingModel: costSummary.pricingModel,
     pricing,
     analysisPricing: estimateTextTokenCostUsd(

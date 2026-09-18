@@ -19,7 +19,7 @@ vi.mock("~/server/storage/quota-store", () => ({
 import {
   admitComplimentaryQuota,
   buildComplimentaryAdmissionTokens,
-  buildComplimentaryStageTokenBound,
+  buildComplimentaryStageTokenEstimate,
   finalizeComplimentaryQuota,
   markComplimentaryQuotaStarted,
   modelMatchesComplimentaryFamily,
@@ -86,16 +86,16 @@ describe("complimentary gate", () => {
 
     expect(buildComplimentaryAdmissionTokens(estimate)).toBe(66_900);
     expect(
-      buildComplimentaryStageTokenBound(estimate, { stage: "explanation" }),
+      buildComplimentaryStageTokenEstimate(estimate, { stage: "explanation" }),
     ).toBe(8_100);
     expect(
-      buildComplimentaryStageTokenBound(estimate, {
+      buildComplimentaryStageTokenEstimate(estimate, {
         stage: "graph",
         attempt: 1,
       }),
     ).toBe(14_200);
     expect(
-      buildComplimentaryStageTokenBound(estimate, {
+      buildComplimentaryStageTokenEstimate(estimate, {
         stage: "graph",
         attempt: 2,
       }),

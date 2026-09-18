@@ -55,15 +55,20 @@ export async function finalizeGenerationStream(
     const measuredCommittedTokens = sumGenerationUsage(
       ...params.accounting.actualUsages,
     ).totalTokens;
+    // Output can exceed the reservation estimate. Even when another stage is
+    // interrupted, never clamp measured usage back down to that reservation.
     const actualCommittedTokens =
       params.accounting.hasCompleteMeasuredUsage &&
       !params.streamState.wasCancelled
         ? measuredCommittedTokens
-        : Math.min(
-            params.quotaReservation.reservedTokens,
-            measuredCommittedTokens +
-              params.accounting.completedUnmeasuredTokenBound +
-              params.accounting.pendingModelRequestTokenBound,
+        : Math.max(
+            measuredCommittedTokens,
+            Math.min(
+              params.quotaReservation.reservedTokens,
+              measuredCommittedTokens +
+                params.accounting.completedUnmeasuredTokenEstimate +
+                params.accounting.pendingModelRequestTokenEstimate,
+            ),
           );
 
     try {
