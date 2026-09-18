@@ -243,56 +243,31 @@
   margin-top: 8px;
 }
 .resultToolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 14px 20px;
   width: 100%;
   padding: 14px 5px 4px 0;
 }
-.resultIdentity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 56px;
-  padding: 7px 10px 7px 14px;
+.repositoryTitle {
+  width: fit-content;
+  max-width: 100%;
+  padding: 9px 14px;
   border: 2px solid var(--edge);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--surface);
-  box-shadow: 4px 4px 0 var(--hard-shadow);
-}
-.resultIdentity > svg {
-  flex-shrink: 0;
-  width: 18px;
-  color: var(--ink);
-}
-.resultIdentity h1 {
-  flex: 1;
-  min-width: 0;
+  box-shadow: 3px 3px 0 var(--hard-shadow);
   font-size: 18px;
   font-weight: 650;
   letter-spacing: -0.025em;
-  line-height: 1.3;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
-.resultIdentity h1 span,
-.resultIdentity h1 strong {
-  color: inherit;
-  font-weight: inherit;
-}
-.editRepository {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex-shrink: 0;
-  min-height: 42px;
-  padding: 8px 12px;
-  border: 2px solid var(--edge);
-  border-radius: 5px;
-  box-shadow: 2px 2px 0 var(--hard-shadow);
-  background: var(--wash);
-  font-size: 13px;
-  font-weight: 650;
+.repositoryTitle a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
 }
 .actions {
   display: flex;
@@ -332,35 +307,55 @@
   color: #261333;
 }
 .resultMetadata {
-  grid-column: 1 / -1;
   display: flex;
-  justify-content: flex-start;
+  justify-content: center;
   flex-wrap: wrap;
-  column-gap: 22px;
-  row-gap: 4px;
+  gap: 6px 22px;
+  padding: 18px 0 2px;
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-.savedLoading {
-  display: grid;
-  place-items: center;
-  min-height: 300px;
-  color: var(--muted);
-  font-size: 13px;
+.generatedTime {
+  min-width: 30ch;
 }
-.savedLoading > span {
-  animation: loadingHint 180ms ease 250ms both;
+.generatedTime[data-hydrated="false"] {
+  visibility: hidden;
 }
 .workspace button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 .resultActivity {
-  margin: 24px auto 0;
-  max-width: 880px;
-  padding: 6px 0 6px 16px;
-  border-left: 2px solid var(--line);
+  width: min(100%, 720px);
+  margin: 30px auto 6px;
+  padding: 8px 0 12px;
+}
+.resultActivity .activityFacts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.resultActivity .detailRow {
+  min-height: 24px;
+  font-size: 12px;
+}
+.resultActivity .detailRow > svg:last-child:not(:first-child) {
+  display: none;
+}
+.resultActivity .excerpt {
+  max-width: none;
+  margin-top: 20px;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.resultActivity .excerpt > p {
+  -webkit-line-clamp: 5;
+}
+.resultActivity .excerpt > div {
+  margin-top: 14px;
 }
 .exportControl {
   position: relative;
@@ -368,38 +363,93 @@
 .exportMenu {
   position: absolute;
   z-index: 5;
-  top: calc(100% + 7px);
+  top: calc(100% + 12px);
   right: 0;
-  width: 190px;
-  padding: 6px;
-  border: 1.5px solid var(--edge);
-  border-radius: 6px;
+  width: min(348px, calc(100vw - 44px));
+  padding: 12px;
+  border: 2px solid var(--edge);
+  border-radius: 7px;
   background: var(--surface);
   box-shadow: 3px 3px 0 var(--hard-shadow);
-  animation: appear 150ms var(--ease-out);
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+  transform-origin: calc(100% - 55px) top;
+  pointer-events: none;
+  transition:
+    opacity 120ms var(--ease-out),
+    transform 120ms var(--ease-out);
 }
-.exportMenu button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
+.exportMenu[data-open="true"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  transition-duration: 180ms;
+}
+.exportOptions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.exportAction {
+  min-width: 0;
+}
+.exportActionButton {
   width: 100%;
-  padding: 8px 10px;
-  border-radius: 4px;
+  min-height: 44px;
+  padding: 10px 8px;
+  border: 2px solid var(--edge);
+  border-radius: 5px;
+  box-shadow: 2px 2px 0 var(--hard-shadow);
+  background: var(--wash);
   color: var(--ink);
   font-size: 12px;
-  font-weight: 550;
-  text-align: left;
+  font-weight: 600;
+  transition: transform 100ms var(--ease-out);
 }
-.exportMenu p {
-  padding: 5px 10px;
+.exportButtonContent {
+  display: grid;
+}
+.exportButtonState {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 160ms var(--ease-out),
+    transform 160ms var(--ease-out);
+}
+.exportButtonState[data-active="false"] {
+  opacity: 0;
+  transform: translateY(3px) scale(0.97);
+}
+.exportTooltip {
+  max-width: 220px;
+  background: var(--ink);
+  color: var(--surface);
+  border: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.exportError {
+  display: block;
+  margin-top: 9px;
   font-size: 11px;
-  color: var(--muted);
-  white-space: normal;
+  color: var(--ink);
+}
+.exportMenu[data-motion="false"],
+.exportAction[data-motion="false"] *,
+.exportTooltip[data-motion="false"] {
+  transition: none;
 }
 .diagram {
   position: relative;
   margin-top: 30px;
+}
+.diagram[data-opening="true"] {
+  min-height: 40vh;
 }
 .graphLayer {
   opacity: 1;
@@ -468,8 +518,7 @@
   }
   .stop:hover,
   .actionButton:not(.primary):hover:not(:disabled),
-  .exportMenu button:hover:not(:disabled),
-  .editRepository:hover,
+  .exportActionButton:hover:not(:disabled),
   .recovery button:hover {
     background: var(--wash);
     color: var(--ink);
@@ -481,18 +530,9 @@
 @media (prefers-reduced-motion: no-preference) {
   .primary:active:not(:disabled),
   .stop:active,
-  .actionButton:active:not(:disabled),
-  .editRepository:active {
+  .actionButton:active:not(:disabled) {
     transform: translate(2px, 2px);
     box-shadow: none;
-  }
-}
-@media (max-width: 1080px) {
-  .resultToolbar {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .actions {
-    justify-content: flex-start;
   }
 }
 @media (max-width: 640px) {
@@ -518,23 +558,20 @@
   .resultToolbar {
     padding-top: 10px;
   }
-  .resultIdentity {
-    padding: 7px 10px;
-  }
-  .resultIdentity h1 {
+  .repositoryTitle {
     font-size: 16px;
   }
-  .resultIdentity > svg {
-    width: 18px;
+  .resultActivity {
+    margin-top: 24px;
   }
-  .editRepository {
-    padding: 8px;
-    font-size: 12px;
+  .resultActivity .activityFacts {
+    gap: 8px 18px;
   }
-  .editRepository > svg {
-    display: none;
+  .resultActivity .excerpt {
+    font-size: 13px;
   }
   .actions {
+    width: 100%;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
@@ -543,22 +580,14 @@
     width: 100%;
     padding-inline: 10px;
   }
-  .resultMetadata {
-    justify-content: flex-start;
-    column-gap: 18px;
-    row-gap: 4px;
-  }
   .exportMenu {
     left: 0;
     right: auto;
+    transform-origin: 55px top;
   }
-}
-@keyframes loadingHint {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
+  .exportActionButton {
+    padding-inline: 5px;
+    font-size: 11px;
   }
 }
 @keyframes pixels {
@@ -569,16 +598,6 @@
   }
   40% {
     opacity: 1;
-  }
-}
-@keyframes appear {
-  from {
-    opacity: 0;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -597,5 +616,13 @@
   }
   :global(.dark) .workspace {
     --muted: #cbbdd7;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .exportAction[data-motion="true"] .exportActionButton:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+    transition-duration: 140ms;
   }
 }

@@ -6,9 +6,6 @@ export default function Loading() {
       <span className="sr-only" role="status">
         Loading diagram
       </span>
-      <div className={styles.savedLoading} aria-hidden="true">
-        <span>Loading diagram…</span>
-      </div>
     </section>
   );
 }

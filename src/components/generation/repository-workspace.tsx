@@ -14,6 +14,7 @@ import { GenerationAuditPanel } from "~/components/generation-audit-panel";
 import { SponsorSlot } from "~/components/sponsor-slot";
 import { loadDiagramRenderer } from "./load-diagram-renderer";
 import { GenerationActivity } from "./generation-activity";
+import { DiagramMetadata } from "./diagram-metadata";
 import { GenerationFeedback } from "./generation-feedback";
 import { RepositorySource } from "./repository-source";
 import { RepositoryToolbar } from "./repository-toolbar";
@@ -62,7 +63,6 @@ export function RepositoryWorkspace({
   } = useDiagramPresentation(state, loading, lastGenerated, onRenderError);
   const [zooming, setZooming] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [editing, setEditing] = useState(false);
   const workspace = useRef<HTMLElement>(null);
   const work = useRef<HTMLDivElement>(null);
   const regenerate = useRef<HTMLButtonElement>(null);
@@ -94,7 +94,6 @@ export function RepositoryWorkspace({
   const regenerateDiagram = () => {
     focusRun.current = document.activeElement === regenerate.current;
     setShowHistory(false);
-    setEditing(false);
     onRegenerate();
   };
   const cancelGeneration = () => {
@@ -131,11 +130,7 @@ export function RepositoryWorkspace({
             regenerateDisabled={regenerateDisabled}
             regenerateRef={regenerate}
             getSvg={getSvg}
-            editing={editing}
-            toggleEditing={() => setEditing((value) => !value)}
             pending={!presented}
-            lastGenerated={result.lastGenerated}
-            cost={result.state.costSummary}
           />
         </div>
       </div>
@@ -172,6 +167,8 @@ export function RepositoryWorkspace({
       </div>
       <div
         id={historyId}
+        role="region"
+        aria-label="Generation activity"
         className={styles.fold}
         data-open={historyVisible}
         aria-hidden={!historyVisible}
@@ -179,7 +176,15 @@ export function RepositoryWorkspace({
       >
         <div className={styles.foldClip}>
           <div className={styles.resultActivity}>
-            {presented && <GenerationActivity state={presented.state} />}
+            {presented && (
+              <>
+                <GenerationActivity state={presented.state} />
+                <DiagramMetadata
+                  lastGenerated={presented.lastGenerated}
+                  cost={presented.state.costSummary}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -189,13 +194,9 @@ export function RepositoryWorkspace({
       <div
         className={styles.diagram}
         data-zooming={zooming}
+        data-opening={opening}
         aria-busy={(active || opening) && !presented}
       >
-        {opening && (
-          <div className={styles.savedLoading} aria-hidden="true">
-            <span>Loading diagram…</span>
-          </div>
-        )}
         {layers.map((layer) => {
           const visible = presented?.key === layer.key;
           const candidate = candidateKey === layer.key;

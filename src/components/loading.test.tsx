@@ -24,10 +24,10 @@ function openOverview() {
 describe("generation experience", () => {
   it("shows an accessible route loading state", () => {
     render(<Loading />);
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Loading diagram",
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("Loading diagram");
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveClass("sr-only");
+    expect(screen.queryByText("Loading diagram…")).not.toBeInTheDocument();
   });
   it("keeps the saved overview optional and escapes markup", () => {
     render(

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { DiagramStreamState } from "~/features/diagram/types";
 import { ArchitectureNotes } from "./architecture-notes";
+import { architectureText } from "./architecture-text";
 import { generationStep } from "./progress";
 import styles from "./workspace.module.css";
 
@@ -20,7 +21,10 @@ export function GenerationActivity({ state }: { state: DiagramStreamState }) {
     "explanation",
     "explanation_chunk",
   ].includes(state.status);
-  const excerpt = state.explanation
+  const explanation = state.explanation
+    ? architectureText(state.explanation)
+    : "";
+  const excerpt = explanation
     ?.split("\n")
     .find((part) => part.trim().length > 30 && !/^#/.test(part.trim()))
     ?.replace(/\*\*|`/g, "")
@@ -28,31 +32,33 @@ export function GenerationActivity({ state }: { state: DiagramStreamState }) {
     .slice(0, 700);
   return (
     <>
-      {state.sourceFileCount !== undefined && (
-        <div className={styles.detailRow}>
-          <FileCode2 size={14} aria-hidden="true" />
-          {state.sourceFileCount} source{" "}
-          {state.sourceFileCount === 1 ? "file" : "files"} read
-          <Check size={13} aria-hidden="true" />
-        </div>
-      )}
-      {step >= 2 && state.explanation && (
-        <div className={styles.detailRow}>
-          <Layers2 size={14} aria-hidden="true" /> Architecture analyzed
-          <Check size={13} aria-hidden="true" />
-        </div>
-      )}
-      {state.graph && (
-        <div className={styles.detailRow}>
-          <GitBranch size={14} aria-hidden="true" />
-          {state.graph.nodes.length} components · {state.graph.edges.length}{" "}
-          connections
-        </div>
-      )}
-      {state.explanation && (
+      <div className={styles.activityFacts}>
+        {state.sourceFileCount !== undefined && (
+          <div className={styles.detailRow}>
+            <FileCode2 size={14} aria-hidden="true" />
+            {state.sourceFileCount} source{" "}
+            {state.sourceFileCount === 1 ? "file" : "files"} read
+            <Check size={13} aria-hidden="true" />
+          </div>
+        )}
+        {step >= 2 && state.explanation && (
+          <div className={styles.detailRow}>
+            <Layers2 size={14} aria-hidden="true" /> Architecture analyzed
+            <Check size={13} aria-hidden="true" />
+          </div>
+        )}
+        {state.graph && (
+          <div className={styles.detailRow}>
+            <GitBranch size={14} aria-hidden="true" />
+            {state.graph.nodes.length} components · {state.graph.edges.length}{" "}
+            connections
+          </div>
+        )}
+      </div>
+      {explanation && (
         <div className={styles.excerpt}>
           {excerpt && <p>{excerpt}</p>}
-          <ArchitectureNotes text={state.explanation} streaming={streaming} />
+          <ArchitectureNotes text={explanation} streaming={streaming} />
         </div>
       )}
     </>

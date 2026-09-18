@@ -73,6 +73,8 @@ describe("repository generation workspace", () => {
     expect(screen.queryByText("Drawing your diagram")).not.toBeInTheDocument();
     expect(screen.queryByText("12 source files read")).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Loading diagram");
+    expect(screen.getByRole("status")).toHaveClass("sr-only");
+    expect(screen.queryByText("Loading diagram…")).not.toBeInTheDocument();
     expect(renders.get("old")?.zoomingEnabled).toBe(false);
     finish("old");
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
@@ -91,7 +93,7 @@ describe("repository generation workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Exit zoom" }));
     expect(renders.get("old")?.zoomingEnabled).toBe(false);
   });
-  it("keeps saved generation time and actual cost visible without opening Activity", () => {
+  it("keeps saved generation time and cost in Activity, including after a cancelled replacement", () => {
     const savedAt = new Date("2026-09-18T08:32:40Z");
     const cost = {
       kind: "actual" as const,
@@ -108,15 +110,24 @@ describe("repository generation workspace", () => {
         state={{ ...cached, costSummary: cost }}
       />,
     );
-    expect(screen.getByText("Actual cost: $0.0076 USD")).toBeVisible();
+    expect(
+      screen.queryByText("Actual cost: $0.0076 USD"),
+    ).not.toBeInTheDocument();
+    finish("old");
+    expect(
+      screen.queryByRole("region", { name: "Generation activity" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+    expect(
+      screen.getByRole("region", { name: "Generation activity" }),
+    ).toHaveTextContent("Actual cost: $0.0076 USD");
     expect(document.querySelector("time")).toHaveAttribute(
       "dateTime",
       savedAt.toISOString(),
     );
-    finish("old");
     expect(screen.getByRole("button", { name: "Activity" })).toHaveAttribute(
       "aria-expanded",
-      "false",
+      "true",
     );
     expect(screen.getByText("Actual cost: $0.0076 USD")).toBeVisible();
     rerender(
@@ -145,19 +156,16 @@ describe("repository generation workspace", () => {
       screen.queryByRole("button", { name: "Activity" }),
     ).not.toBeInTheDocument();
   });
-  it("edits the repository in place and returns keyboard focus on cancel", () => {
+  it("presents the repository as a direct link without an edit control", () => {
     render(<RepositoryWorkspace {...props} state={cached} />);
     finish("old");
-    fireEvent.click(screen.getByRole("button", { name: "Change repository" }));
-    const input = screen.getByRole("textbox", { name: "GitHub repository" });
-    expect(input).toHaveValue("acme/demo");
-    expect(input).toHaveFocus();
-    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
-    fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "acme/demo" })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/demo",
+    );
     expect(
-      screen.getByRole("button", { name: "Change repository" }),
-    ).toHaveFocus();
+      screen.queryByRole("button", { name: "Change repository" }),
+    ).not.toBeInTheDocument();
     visible("old");
   });
   it("keeps the previous result through streaming and waits for the replacement render", () => {

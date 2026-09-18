@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
-import { ChevronDown, GitBranch, Pencil, RotateCcw, Scan } from "lucide-react";
-import type { GenerationCostSummary } from "~/features/diagram/cost";
+import type { RefObject } from "react";
+import { ChevronDown, RotateCcw, Scan } from "lucide-react";
 import { DiagramExport } from "./diagram-export";
-import { DiagramMetadata } from "./diagram-metadata";
-import { RepositoryForm } from "./repository-form";
 import styles from "./workspace.module.css";
 
 export function RepositoryToolbar({
@@ -20,11 +17,7 @@ export function RepositoryToolbar({
   regenerateDisabled,
   regenerateRef,
   getSvg,
-  editing,
-  toggleEditing,
   pending,
-  lastGenerated,
-  cost,
 }: {
   repository: string;
   diagram: string;
@@ -37,49 +30,19 @@ export function RepositoryToolbar({
   regenerateDisabled: boolean;
   regenerateRef: RefObject<HTMLButtonElement | null>;
   getSvg: () => SVGSVGElement | null;
-  editing: boolean;
-  toggleEditing: () => void;
   pending: boolean;
-  lastGenerated?: Date;
-  cost?: GenerationCostSummary;
 }) {
-  const [owner, name] = repository.split("/");
-  const editButton = useRef<HTMLButtonElement>(null);
-  const wasEditing = useRef(false);
-  useEffect(() => {
-    if (!editing && wasEditing.current)
-      editButton.current?.focus({ preventScroll: true });
-    wasEditing.current = editing;
-  }, [editing]);
   return (
     <div className={styles.resultToolbar}>
-      {editing ? (
-        <RepositoryForm initialValue={repository} onClose={toggleEditing} />
-      ) : (
-        <div className={styles.resultIdentity}>
-          <GitBranch size={24} aria-hidden="true" />
-          <h1>
-            <a
-              href={`https://github.com/${repository}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <span>{owner}/</span>
-              <strong>{name}</strong>
-            </a>
-          </h1>
-          <button
-            ref={editButton}
-            className={styles.editRepository}
-            type="button"
-            aria-label="Change repository"
-            aria-expanded={editing}
-            onClick={toggleEditing}
-          >
-            <Pencil size={15} aria-hidden="true" /> Edit
-          </button>
-        </div>
-      )}
+      <h1 className={styles.repositoryTitle}>
+        <a
+          href={`https://github.com/${repository}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {repository}
+        </a>
+      </h1>
       <div className={styles.actions}>
         <button
           type="button"
@@ -117,7 +80,6 @@ export function RepositoryToolbar({
           <RotateCcw size={13} aria-hidden="true" /> Regenerate
         </button>
       </div>
-      <DiagramMetadata lastGenerated={lastGenerated} cost={cost} />
     </div>
   );
 }
