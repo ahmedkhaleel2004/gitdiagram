@@ -1,0 +1,165 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin-top: 16px;
+  padding: 8px 12px;
+  border: 2px solid hsl(var(--foreground));
+  border-radius: 5px;
+  background: hsl(var(--background));
+  box-shadow: 2px 2px 0 hsl(var(--foreground));
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  transition: background-color 150ms ease;
+}
+.trigger svg {
+  width: 14px;
+  height: 14px;
+}
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: calc(100% - 48px);
+  max-width: 1100px;
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  padding: 0;
+  border: 2px solid hsl(var(--foreground));
+  border-radius: 8px;
+  background: hsl(var(--background));
+  box-shadow: 7px 7px 0 #000;
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+}
+.heading {
+  flex-shrink: 0;
+  padding: 25px 76px 23px 28px;
+}
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+}
+.description {
+  margin-top: 7px;
+  color: hsl(var(--neo-soft-text));
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.dialog > button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  top: 20px;
+  right: 20px;
+  border: 2px solid hsl(var(--foreground));
+  border-radius: 5px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  opacity: 1;
+}
+.dialog > button svg {
+  width: 18px;
+  height: 18px;
+}
+.imageContainer {
+  min-height: 0;
+  overflow: auto;
+  border-block: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  background: hsl(var(--neo-panel));
+}
+.image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 66dvh;
+  object-fit: contain;
+}
+.imageStage {
+  position: relative;
+}
+.highlight {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  stroke: #ef4444;
+  stroke-width: 2.5px;
+}
+.footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 28px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.footer p {
+  color: hsl(var(--neo-soft-text));
+}
+.footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.footer svg {
+  width: 15px;
+  height: 15px;
+}
+.dialog :is(a, button):focus-visible {
+  outline: 3px solid hsl(var(--neo-link));
+  outline-offset: 4px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .trigger:hover,
+  .dialog > button:hover {
+    background: hsl(var(--neo-panel-muted));
+  }
+  .footer a:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+}
+@media (max-width: 720px) {
+  .dialog {
+    width: calc(100% - 24px);
+    max-height: calc(100dvh - 32px);
+    box-shadow: 4px 4px 0 #000;
+  }
+  .heading {
+    padding: 22px 64px 20px 20px;
+  }
+  .title {
+    font-size: 21px;
+  }
+  .description {
+    font-size: 13px;
+  }
+  .dialog > button {
+    top: 16px;
+    right: 14px;
+  }
+  .footer {
+    flex-wrap: wrap;
+    gap: 0 12px;
+    padding: 12px 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trigger {
+    transition: none;
+  }
+}

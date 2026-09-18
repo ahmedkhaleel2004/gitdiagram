@@ -1,21 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowUpRight, Check, Copy, Mail } from "lucide-react";
 import { useState } from "react";
-import { cn } from "~/lib/utils";
-
-type SponsorEmailActionsProps = {
-  email: string;
-  mailto: string;
-  className?: string;
-};
+import { Check, Copy, Mail } from "lucide-react";
+import styles from "./sponsor-page.module.css";
 
 export function SponsorEmailActions({
   email,
   mailto,
-  className,
-}: SponsorEmailActionsProps) {
+}: {
+  email: string;
+  mailto: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -29,26 +24,18 @@ export function SponsorEmailActions({
   };
 
   return (
-    <div className={cn("flex flex-col gap-3 sm:flex-row", className)}>
-      <Link
-        href={mailto}
-        className="neo-button inline-flex min-h-[48px] items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-black"
-      >
-        <Mail className="h-4 w-4" aria-hidden="true" />
-        Email Ahmed to sponsor
-        <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-      </Link>
+    <div className={styles.contactActions}>
+      <a href={mailto} className={`neo-button ${styles.contactPrimary}`}>
+        <Mail aria-hidden="true" />
+        Email Ahmed
+      </a>
       <button
         type="button"
         onClick={handleCopy}
-        className="browse-muted-button inline-flex min-h-[48px] items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-black"
+        className={`browse-muted-button ${styles.contactCopy}`}
       >
-        {copied ? (
-          <Check className="h-4 w-4" aria-hidden="true" />
-        ) : (
-          <Copy className="h-4 w-4" aria-hidden="true" />
-        )}
-        {copied ? "Copied email" : "Copy email"}
+        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+        <span aria-live="polite">{copied ? "Copied email" : "Copy email"}</span>
       </button>
     </div>
   );
