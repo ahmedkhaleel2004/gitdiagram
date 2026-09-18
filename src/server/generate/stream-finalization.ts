@@ -59,6 +59,7 @@ export async function finalizeGenerationStream(
     // interrupted, never clamp measured usage back down to that reservation.
     const actualCommittedTokens =
       params.accounting.hasCompleteMeasuredUsage &&
+      params.accounting.completedUnmeasuredTokenEstimate === 0 &&
       !params.streamState.wasCancelled
         ? measuredCommittedTokens
         : Math.max(
@@ -158,6 +159,12 @@ export function logGenerationFinished(params: {
       source_file_count: params.audit.sourcePaths?.length ?? 0,
       unavailable_source_count: params.audit.unavailableSourceCount ?? 0,
       cost_usd: params.audit.finalCost?.amountUsd,
+      cost_is_estimate: params.audit.finalCost?.kind === "estimate",
+      slow_request_retries: params.audit.stageUsages.filter(
+        (stage) =>
+          stage.stage === "explanation" &&
+          stage.costSummary.kind === "estimate",
+      ).length,
       visibility: params.storageVisibility,
       input_tokens: totalUsage.inputTokens,
       output_tokens: totalUsage.outputTokens,

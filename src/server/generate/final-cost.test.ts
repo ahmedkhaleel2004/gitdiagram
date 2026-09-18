@@ -104,4 +104,31 @@ describe("createFinalGenerationCostSummary", () => {
     );
     expect(result.kind).toBe("estimate");
   });
+  it("does not discard interrupted-request estimates when a later stage also lacks usage", () => {
+    const estimate = createEstimate();
+    const extra = {
+      ...estimate.costSummary,
+      amountUsd: 0.02,
+      usage: { inputTokens: 400, outputTokens: 8000, totalTokens: 8400 },
+    };
+    const result = createFinalGenerationCostSummary({
+      model: "gpt-5.6-luna",
+      estimate,
+      actualUsages: [],
+      hasCompleteMeasuredUsage: false,
+      graphAttemptCount: 1,
+      stageUsages: [
+        {
+          stage: "explanation",
+          attempt: 1,
+          model: "gpt-5.6-luna",
+          costSummary: extra,
+          createdAt: "2026-09-18T00:00:00Z",
+        },
+      ],
+    });
+    expect(result.kind).toBe("estimate");
+    expect(result.amountUsd).toBeCloseTo(0.03);
+    expect(result.usage.totalTokens).toBe(9900);
+  });
 });

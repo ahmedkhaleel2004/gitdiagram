@@ -24,14 +24,26 @@ export function excerptSource(text: string, budget: number): string {
     }
     imports.push({ names, source: match[2]! });
   }
+  for (const match of text.matchAll(
+    /^[\t ]*import\s+([A-Za-z_$][\w$]*)\s+from\s*["']([^"']+)["']/gm,
+  )) {
+    importedNames.add(match[1]!);
+    imports.push({ names: [match[1]!], source: match[2]! });
+  }
   const importBudget = imports.length
     ? Math.min(1000, Math.floor(budget / 4))
     : 0;
   const excerptBudget = budget - importBudget;
+  const references = (line: string) => [
+    ...[...line.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)].map(
+      (match) => match[1]!,
+    ),
+    ...[...line.matchAll(/<([A-Z][\w$]*)(?=[\s/>])/g)].map(
+      (match) => match[1]!,
+    ),
+  ];
   const callsImportedFunction = (line: string) =>
-    [...line.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)].some((match) =>
-      importedNames.has(match[1]!),
-    );
+    references(line).some((name) => importedNames.has(name));
   const windows: Array<{ start: number; end: number; score: number }> = [
     { start: 0, end: Math.min(8, lines.length), score: 100 },
   ];
@@ -60,7 +72,7 @@ export function excerptSource(text: string, budget: number): string {
         end: Math.min(lines.length, index + 7),
         score: bookkeeping
           ? 35
-          : operation || /\bawait\s+\w+\s*\(/.test(line)
+          : operation || /\bawait\s+\w+\s*\(|<[A-Z][\w$]*[\s/>]/.test(line)
             ? 110
             : 65,
       });
@@ -136,11 +148,7 @@ export function excerptSource(text: string, budget: number): string {
   }
   output.push("[end of excerpts; unsampled lines omitted]");
   const excerpt = output.join("\n");
-  const calledNames = new Set(
-    [...excerpt.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)].map(
-      (match) => match[1]!,
-    ),
-  );
+  const calledNames = new Set(references(excerpt));
   const declarations: string[] = [];
   let importCharacters = 80;
   for (const entry of imports) {

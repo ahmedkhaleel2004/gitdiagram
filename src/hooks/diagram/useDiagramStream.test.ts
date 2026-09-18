@@ -295,3 +295,29 @@ it("retains useful analysis when the server reports a failure", async () => {
   expect(result.current.state.status).toBe("error");
   expect(result.current.state.explanation).toBe("Useful architecture analysis");
 });
+
+it("replaces a cancelled attempt's buffered overview instead of joining two generations", async () => {
+  streamDiagramGenerationMock.mockImplementation(async (_params, handlers) => {
+    await handlers.onMessage({
+      status: "explanation_chunk",
+      chunk: "Abandoned draft",
+    });
+    await handlers.onMessage({
+      status: "explanation",
+      explanation: "",
+      message: "Retrying a slow model request...",
+    });
+    await handlers.onMessage({
+      status: "explanation_chunk",
+      chunk: "Fresh overview",
+    });
+    await handlers.onMessage({ status: "graph" });
+  });
+  const { result } = renderHook(() =>
+    useDiagramStream({ username: "acme", repo: "demo", onComplete: vi.fn() }),
+  );
+  await act(async () => {
+    await result.current.runGeneration();
+  });
+  expect(result.current.state.explanation).toBe("Fresh overview");
+});

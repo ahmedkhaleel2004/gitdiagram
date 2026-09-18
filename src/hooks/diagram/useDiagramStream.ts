@@ -115,9 +115,12 @@ export function useDiagramStream({
         case "graph_validating":
         case "diagram_compiling":
           flushPendingExplanation();
+          if (data.explanation !== undefined)
+            buffers.explanation = data.explanation;
           setState((prev) => ({
             ...prev,
             status: data.status,
+            explanation: data.explanation ?? prev.explanation,
             sourceFileCount: data.source_file_count ?? prev.sourceFileCount,
             sessionId: data.session_id ?? prev.sessionId,
             message: data.message,

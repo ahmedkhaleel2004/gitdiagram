@@ -983,4 +983,103 @@ describe("POST /api/generate/stream", () => {
       });
     },
   );
+  it("recovers a slow Luna stream once, resets partial text, and accounts for cancelled usage", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.getModel.mockReturnValue("gpt-5.6-luna");
+      mockEstimate(1000);
+      mocks.admitQuota.mockResolvedValue({
+        admitted: true,
+        reservation: {
+          quotaDateUtc: "2026-09-18",
+          quotaBucket: "anonymous",
+          reservedTokens: 30_000,
+          quotaResetAt: "2026-09-19T00:00:00Z",
+        },
+      });
+      const usage = {
+        inputTokens: 1000,
+        outputTokens: 1000,
+        totalTokens: 2000,
+        serviceTier: "priority",
+      };
+      const output = JSON.stringify({
+        explanation: "Fresh overview",
+        graph: {
+          groups: [],
+          nodes: [
+            {
+              id: "entry",
+              label: "Entry",
+              groupId: null,
+              path: "src/index.ts",
+              shape: "box",
+            },
+          ],
+          edges: [],
+        },
+      });
+      let firstSignal: AbortSignal | undefined;
+      mocks.streamCompletion.mockReset();
+      mocks.streamCompletion
+        .mockImplementationOnce(async ({ signal }: { signal: AbortSignal }) => {
+          firstSignal = signal;
+          return {
+            stream: (async function* () {
+              yield '{"explanation":"Abandoned';
+              await new Promise((_, reject) => {
+                signal.addEventListener("abort", () => reject(signal.reason), {
+                  once: true,
+                });
+              });
+            })(),
+            usagePromise: Promise.resolve(null),
+          };
+        })
+        .mockResolvedValueOnce({
+          stream: (async function* () {
+            yield output;
+          })(),
+          usagePromise: Promise.resolve(usage),
+        });
+      const response = await POST(request());
+      const body = response.text();
+      await vi.advanceTimersByTimeAsync(18_001);
+      const events = readSseEvents(await body);
+      expect(firstSignal?.aborted).toBe(true);
+      expect(mocks.streamCompletion).toHaveBeenCalledTimes(2);
+      expect(mocks.streamCompletion.mock.calls[1]?.[0]).toMatchObject({
+        model: "gpt-5.6-luna",
+        reasoningEffort: "medium",
+      });
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          status: "explanation",
+          explanation: "",
+          message: "Retrying a slow model request...",
+        }),
+      );
+      expect(events.find((event) => event.status === "complete")).toMatchObject(
+        {
+          explanation: "Fresh overview",
+          cost_summary: {
+            kind: "estimate",
+            approximate: true,
+            usage: {
+              inputTokens: 2000,
+              outputTokens: 9000,
+              totalTokens: 11_000,
+            },
+          },
+        },
+      );
+      expect(mocks.finalizeQuota).toHaveBeenCalledWith(
+        expect.objectContaining({ committedTokens: 11_000 }),
+      );
+      expect(mocks.generateStructuredOutput).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

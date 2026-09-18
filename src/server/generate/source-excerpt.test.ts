@@ -56,4 +56,15 @@ describe("architecture excerpts", () => {
     expect(excerpt).toContain("const graph = render(input);");
     expect(excerpt).not.toContain('unused from "@domain/engine"');
   });
+  it("keeps imported UI integration boundaries expressed as JSX", () => {
+    const text = [
+      'import SharedSession from "./shared-session";',
+      ...Array.from({ length: 200 }, (_, i) => `// other behavior ${i}`),
+      "return <SharedSession document={document} />;",
+      ...Array.from({ length: 200 }, (_, i) => `// remaining behavior ${i}`),
+    ].join("\n");
+    const excerpt = excerptSource(text, 1700);
+    expect(excerpt).toContain('SharedSession from "./shared-session"');
+    expect(excerpt).toContain("<SharedSession document={document} />");
+  });
 });

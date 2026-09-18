@@ -198,4 +198,47 @@ describe("bounded source ingestion", () => {
       expect.objectContaining({ redirect: "error" }),
     );
   });
+  it("recovers immutable source after a branch move without leaking credentials to the CDN", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url.startsWith("https://raw.")
+        ? new Response("new branch content")
+        : body(source),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await fetchSourceContext({
+      username: "owner",
+      repo: "repo",
+      githubData: repo(),
+      selectedPaths: ["src/main.ts"],
+    });
+    expect(result.paths).toEqual(["src/main.ts"]);
+    expect(result.text).toContain(source);
+    expect(result.text).not.toContain("new branch content");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://api.github.com/repos/owner/repo/git/blobs/${blobHash(source)}`,
+      expect.objectContaining({
+        redirect: "error",
+        headers: { Authorization: "Bearer public-server-token" },
+      }),
+    );
+  });
+  it("bounds branch-move recovery to two immutable blob requests", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url.startsWith("https://raw.") ? new Response("changed") : body(source),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const paths = ["a.ts", "b.ts", "c.ts", "d.ts"];
+    const result = await fetchSourceContext({
+      username: "owner",
+      repo: "repo",
+      githubData: repo(paths),
+      selectedPaths: paths,
+    });
+    expect(result.paths).toHaveLength(2);
+    expect(result.unavailableCount).toBe(2);
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url.startsWith("https://api."))
+        .length,
+    ).toBe(2);
+  });
 });

@@ -48,6 +48,15 @@ async function readBoundedBytes(
   return Buffer.concat(chunks);
 }
 
+function matchesBlob(bytes: Buffer, sha: string): boolean {
+  return (
+    createHash(sha.length === 64 ? "sha256" : "sha1")
+      .update(`blob ${bytes.length}\0`)
+      .update(bytes)
+      .digest("hex") === sha
+  );
+}
+
 async function readBlob(params: {
   username: string;
   repo: string;
@@ -85,6 +94,7 @@ async function readBlob(params: {
   const sourceBytes = Buffer.from(data.content, "base64");
   if (sourceBytes.length > MAX_SOURCE_FILE_BYTES || sourceBytes.includes(0))
     return null;
+  if (!matchesBlob(sourceBytes, params.blob.sha)) return null;
   const text = new TextDecoder("utf-8", { fatal: true }).decode(sourceBytes);
   return { path: params.path, text, truncated: false };
 }
@@ -99,7 +109,7 @@ async function readPublicSource(params: {
   path: string;
   blob: SourceBlob;
   signal: AbortSignal;
-}): Promise<SourceExcerpt | null> {
+}): Promise<SourceExcerpt | "changed" | null> {
   const url = `https://raw.githubusercontent.com/${encodeURIComponent(params.username)}/${encodeURIComponent(params.repo)}/${encodeURIComponent(params.branch)}/${params.path.split("/").map(encodeURIComponent).join("/")}`;
   const response = await fetch(url, {
     signal: params.signal,
@@ -108,11 +118,7 @@ async function readPublicSource(params: {
   });
   const bytes = await readBoundedBytes(response, MAX_SOURCE_FILE_BYTES);
   if (!bytes || bytes.includes(0)) return null;
-  const hash = createHash(params.blob.sha.length === 64 ? "sha256" : "sha1")
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
-  if (hash !== params.blob.sha) return null;
+  if (!matchesBlob(bytes, params.blob.sha)) return "changed";
   return {
     path: params.path,
     text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
@@ -153,6 +159,7 @@ export async function fetchSourceContext(params: {
     ? await getGitHubApiHeaders({ githubPat: params.githubPat })
     : {};
   let next = 0;
+  let changedSourceRecoveries = 0;
   await Promise.all(
     Array.from({ length: 3 }, async () => {
       while (next < paths.length && !signal.aborted) {
@@ -166,15 +173,42 @@ export async function fetchSourceContext(params: {
         )
           continue;
         try {
-          result[index] = params.githubData.isPrivate
-            ? await readBlob({ ...params, path, blob, headers, signal })
-            : await readPublicSource({
-                ...params,
-                branch: params.githubData.defaultBranch,
-                path,
-                blob,
-                signal,
-              });
+          if (params.githubData.isPrivate) {
+            result[index] = await readBlob({
+              ...params,
+              path,
+              blob,
+              headers,
+              signal,
+            });
+          } else {
+            const source = await readPublicSource({
+              ...params,
+              branch: params.githubData.defaultBranch,
+              path,
+              blob,
+              signal,
+            });
+            if (source === "changed") {
+              // A fresh commit or stale CDN entry can hide the most important
+              // file. Recover its immutable blob with at most two REST reads,
+              // inside the same ingestion deadline. Ordinary CDN failures do
+              // not fan out into a dozen quota-consuming API requests.
+              if (changedSourceRecoveries++ < 2) {
+                result[index] = await readBlob({
+                  ...params,
+                  path,
+                  blob,
+                  signal,
+                  headers: await getGitHubApiHeaders({
+                    githubPat: params.githubData.usedPublicFallback
+                      ? undefined
+                      : params.githubPat,
+                  }),
+                });
+              }
+            } else result[index] = source;
+          }
         } catch {
           params.signal?.throwIfAborted();
         }

@@ -35,6 +35,7 @@ import {
 
 export interface GenerationUsageAccounting {
   actualUsages: GenerationTokenUsage[];
+  // Completed stages; cancelled requests retain separate cost/token estimates.
   hasCompleteMeasuredUsage: boolean;
   completedUnmeasuredTokenEstimate: number;
   pendingModelRequestTokenEstimate: number;

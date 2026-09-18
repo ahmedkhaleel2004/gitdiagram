@@ -27,7 +27,11 @@ export function createFinalGenerationCostSummary(params: {
     const measured = params.stageUsages
       ?.filter((stage) => stage.stage !== "estimate")
       .map((stage) => stage.costSummary);
-    if (measured?.length) return combineCostSummaries(measured);
+    if (measured?.length)
+      return combineCostSummaries(
+        measured,
+        measured.find((cost) => cost.approximate)?.note,
+      );
     return createCostSummary({
       kind: "actual",
       model: params.model,
@@ -59,6 +63,12 @@ export function createFinalGenerationCostSummary(params: {
   return combineCostSummaries(
     [
       params.estimate.costSummary,
+      ...(params.stageUsages
+        ?.filter(
+          (stage) =>
+            stage.stage !== "estimate" && stage.costSummary.kind === "estimate",
+        )
+        .map((stage) => stage.costSummary) ?? []),
       createCostSummary({
         kind: "estimate",
         model: params.model,

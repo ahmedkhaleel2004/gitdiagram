@@ -39,6 +39,8 @@ import {
 } from "~/server/generate/cancellation";
 import {
   EXPLANATION_REASONING_EFFORT,
+  EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+  ARCHITECTURE_SLOW_RETRY_MS,
   ARCHITECTURE_REASONING_EFFORT,
   EXPLANATION_TEXT_VERBOSITY,
 } from "~/server/generate/generation-policy";
@@ -60,11 +62,13 @@ import {
   type GenerationUsageAccounting,
 } from "~/server/generate/graph-planner";
 import {
+  getGenerationServiceTier,
   getModel,
   getProvider,
   shouldUseExactInputTokenCount,
   usesSinglePassArchitecture,
 } from "~/server/generate/model-config";
+import { withSlowRequestRetry } from "~/server/generate/slow-request-retry";
 import { streamCompletion } from "~/server/generate/openai";
 import {
   SYSTEM_FIRST_PROMPT,
@@ -551,103 +555,165 @@ export async function POST(request: Request) {
           if (quotaReservation) {
             await markComplimentaryQuotaStarted(quotaReservation);
           }
-          accounting.pendingModelRequestTokenEstimate = complimentaryEstimate
-            ? buildComplimentaryStageTokenEstimate(complimentaryEstimate, {
-                stage: "explanation",
-              })
-            : 0;
+          const explanationInputTokens = estimate.explanationInputTokens;
           const explanationStartedAt = performance.now();
           let recordedFirstExplanationChunk = false;
-          const explanationStream = await streamCompletion({
-            provider,
-            model: analysisModel,
-            systemPrompt: singlePass
-              ? SYSTEM_ARCHITECTURE_PROMPT
-              : SYSTEM_FIRST_PROMPT,
-            ...(singlePass ? { outputSchema: architectureOutputSchema } : {}),
-            userPrompt: toTaggedMessage({
-              file_tree: context.fileTree,
-              readme: context.readme,
-              source_files: sources.text,
-            }),
-            apiKey,
-            reasoningEffort: singlePass
-              ? ARCHITECTURE_REASONING_EFFORT
-              : EXPLANATION_REASONING_EFFORT,
-            textVerbosity: EXPLANATION_TEXT_VERBOSITY,
+          await withSlowRequestRetry({
             signal: generationAbortController.signal,
-            clientRequestId: `${audit.sessionId}:explanation`,
-          });
-          for await (const chunk of coalesceTextChunks(
-            explanationStream.stream,
-          )) {
-            throwIfAborted(generationAbortController.signal);
-            explanationResponse += chunk;
-            const progress = singlePass
-              ? readArchitectureProgress(explanationResponse)
-              : null;
-            const visibleChunk = progress
-              ? progress.text.slice(streamedExplanationLength)
-              : chunk;
-            if (visibleChunk && !recordedFirstExplanationChunk) {
-              recordTiming("explanation_first_chunk", explanationStartedAt);
-              recordedFirstExplanationChunk = true;
-            }
-            if (visibleChunk)
-              await send({
-                status: "explanation_chunk",
-                session_id: audit.sessionId,
-                chunk: visibleChunk,
+            retryAfterMs: singlePass ? ARCHITECTURE_SLOW_RETRY_MS : undefined,
+            onRetry: async () => {
+              // Disconnecting a foreground response cancels it, but OpenAI
+              // does not return its partial usage. Keep that spend visible as
+              // an estimate and include it in quota settlement.
+              const interruptedCost = createCostSummary({
+                kind: "estimate",
+                approximate: true,
+                model: analysisModel,
+                usage: {
+                  inputTokens: explanationInputTokens,
+                  outputTokens: EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+                  totalTokens:
+                    explanationInputTokens +
+                    EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+                  cacheWriteTokens: explanationInputTokens,
+                  serviceTier: getGenerationServiceTier({
+                    provider,
+                    model: analysisModel,
+                    apiKey,
+                  }),
+                },
+                note: "Includes estimated usage for a cancelled slow request; the provider did not return its token usage.",
               });
-            if (progress)
-              streamedExplanationLength = Math.max(
-                streamedExplanationLength,
-                progress.text.length,
-              );
-            if (progress?.complete && !graphProgressAnnounced) {
-              graphProgressAnnounced = true;
+              accounting.completedUnmeasuredTokenEstimate +=
+                interruptedCost.usage.totalTokens;
+              accounting.pendingModelRequestTokenEstimate = 0;
+              audit = withStageUsage(audit, {
+                stage: "explanation",
+                attempt: 1,
+                model: analysisModel,
+                costSummary: interruptedCost,
+                createdAt: new Date().toISOString(),
+              });
               audit = withTimelineEvent(
                 audit,
-                "graph",
-                "Mapping repository architecture...",
+                "explanation",
+                "Retrying a slow model request...",
               );
+              explanationResponse = "";
+              streamedExplanationLength = 0;
+              graphProgressAnnounced = false;
               await send({
-                status: "graph",
+                status: "explanation",
                 session_id: audit.sessionId,
-                message: "Mapping repository architecture...",
+                explanation: "",
+                message: "Retrying a slow model request...",
               });
-            }
-          }
+            },
+            run: async (signal, attempt) => {
+              accounting.pendingModelRequestTokenEstimate =
+                complimentaryEstimate
+                  ? buildComplimentaryStageTokenEstimate(
+                      complimentaryEstimate,
+                      {
+                        stage: "explanation",
+                      },
+                    )
+                  : 0;
+              const explanationStream = await streamCompletion({
+                provider,
+                model: analysisModel,
+                systemPrompt: singlePass
+                  ? SYSTEM_ARCHITECTURE_PROMPT
+                  : SYSTEM_FIRST_PROMPT,
+                ...(singlePass
+                  ? { outputSchema: architectureOutputSchema }
+                  : {}),
+                userPrompt: toTaggedMessage({
+                  file_tree: context.fileTree,
+                  readme: context.readme,
+                  source_files: sources.text,
+                }),
+                apiKey,
+                reasoningEffort: singlePass
+                  ? ARCHITECTURE_REASONING_EFFORT
+                  : EXPLANATION_REASONING_EFFORT,
+                textVerbosity: EXPLANATION_TEXT_VERBOSITY,
+                signal,
+                clientRequestId: `${audit.sessionId}:explanation${attempt === 1 ? "" : ":retry"}`,
+              });
+              for await (const chunk of coalesceTextChunks(
+                explanationStream.stream,
+              )) {
+                throwIfAborted(generationAbortController.signal);
+                explanationResponse += chunk;
+                const progress = singlePass
+                  ? readArchitectureProgress(explanationResponse)
+                  : null;
+                const visibleChunk = progress
+                  ? progress.text.slice(streamedExplanationLength)
+                  : chunk;
+                if (visibleChunk && !recordedFirstExplanationChunk) {
+                  recordTiming("explanation_first_chunk", explanationStartedAt);
+                  recordedFirstExplanationChunk = true;
+                }
+                if (visibleChunk)
+                  await send({
+                    status: "explanation_chunk",
+                    session_id: audit.sessionId,
+                    chunk: visibleChunk,
+                  });
+                if (progress)
+                  streamedExplanationLength = Math.max(
+                    streamedExplanationLength,
+                    progress.text.length,
+                  );
+                if (progress?.complete && !graphProgressAnnounced) {
+                  graphProgressAnnounced = true;
+                  audit = withTimelineEvent(
+                    audit,
+                    "graph",
+                    "Mapping repository architecture...",
+                  );
+                  await send({
+                    status: "graph",
+                    session_id: audit.sessionId,
+                    message: "Mapping repository architecture...",
+                  });
+                }
+              }
+              let explanationUsage: GenerationTokenUsage | null = null;
+              try {
+                explanationUsage = await explanationStream.usagePromise;
+              } catch {
+                accounting.hasCompleteMeasuredUsage = false;
+              }
+              if (explanationUsage) {
+                accounting.actualUsages.push(explanationUsage);
+                accounting.pendingModelRequestTokenEstimate = 0;
+                audit = withStageUsage(audit, {
+                  stage: "explanation",
+                  attempt,
+                  model: analysisModel,
+                  costSummary: createCostSummary({
+                    kind: "actual",
+                    model: analysisModel,
+                    usage: explanationUsage,
+                    approximate: false,
+                  }),
+                  createdAt: new Date().toISOString(),
+                });
+              } else {
+                accounting.hasCompleteMeasuredUsage = false;
+                accounting.completedUnmeasuredTokenEstimate +=
+                  accounting.pendingModelRequestTokenEstimate;
+                accounting.pendingModelRequestTokenEstimate = 0;
+              }
+            },
+          });
           recordTiming(
             singlePass ? "architecture" : "explanation",
             explanationStartedAt,
           );
-          let explanationUsage: GenerationTokenUsage | null = null;
-          try {
-            explanationUsage = await explanationStream.usagePromise;
-          } catch {
-            accounting.hasCompleteMeasuredUsage = false;
-          }
-          if (explanationUsage) {
-            accounting.actualUsages.push(explanationUsage);
-            accounting.pendingModelRequestTokenEstimate = 0;
-            audit = withStageUsage(audit, {
-              stage: "explanation",
-              model: analysisModel,
-              costSummary: createCostSummary({
-                kind: "actual",
-                model: analysisModel,
-                usage: explanationUsage,
-                approximate: false,
-              }),
-              createdAt: new Date().toISOString(),
-            });
-          } else {
-            accounting.hasCompleteMeasuredUsage = false;
-            accounting.completedUnmeasuredTokenEstimate +=
-              accounting.pendingModelRequestTokenEstimate;
-            accounting.pendingModelRequestTokenEstimate = 0;
-          }
 
           const architecture = singlePass
             ? architectureOutputSchema.parse(JSON.parse(explanationResponse))
