@@ -233,6 +233,12 @@
     .dark .browse-muted-button {
       box-shadow: 3px 3px 0 0 #0d0a19 !important;
     }
+
+    .neo-panel.home-main-card {
+      border: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+    }
   }
 
   .neo-lift:active {

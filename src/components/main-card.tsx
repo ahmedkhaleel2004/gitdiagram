@@ -84,7 +84,7 @@ export default function MainCard({
     <div
       className={
         isHome
-          ? "neo-panel relative w-full max-w-3xl rounded-lg !bg-[hsl(var(--neo-panel))] p-4 sm:p-8"
+          ? "neo-panel home-main-card relative w-full max-w-3xl rounded-lg !bg-[hsl(var(--neo-panel))] sm:p-8"
           : styles.toolbar
       }
     >
