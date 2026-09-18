@@ -3,6 +3,10 @@ import {
   selectAnalysisModel,
 } from "~/server/generate/repository-context";
 import { fetchSourceContext } from "~/server/generate/source-context";
+import {
+  architectureOutputSchema,
+  readArchitectureProgress,
+} from "~/server/generate/architecture-output";
 import { after } from "next/server";
 
 import type { GenerationTokenUsage } from "~/features/diagram/cost";
@@ -57,9 +61,13 @@ import {
   getModel,
   getProvider,
   shouldUseExactInputTokenCount,
+  usesSinglePassArchitecture,
 } from "~/server/generate/model-config";
 import { streamCompletion } from "~/server/generate/openai";
-import { SYSTEM_FIRST_PROMPT } from "~/server/generate/prompts";
+import {
+  SYSTEM_FIRST_PROMPT,
+  SYSTEM_ARCHITECTURE_PROMPT,
+} from "~/server/generate/prompts";
 import type { SuccessfulDiagramState } from "~/server/storage/generation-persistence";
 import {
   createGenerationSessionAudit,
@@ -361,6 +369,11 @@ export async function POST(request: Request) {
             apiKey,
             pathTypes: githubData.pathTypes,
           });
+          const singlePass = usesSinglePassArchitecture({
+            provider,
+            model,
+            apiKey,
+          });
           const sourceStartedAt = performance.now();
           const sources = await fetchSourceContext({
             username,
@@ -532,6 +545,8 @@ export async function POST(request: Request) {
           });
 
           let explanationResponse = "";
+          let streamedExplanationLength = 0;
+          let graphProgressAnnounced = false;
           if (quotaReservation) {
             await markComplimentaryQuotaStarted(quotaReservation);
           }
@@ -545,7 +560,10 @@ export async function POST(request: Request) {
           const explanationStream = await streamCompletion({
             provider,
             model: analysisModel,
-            systemPrompt: SYSTEM_FIRST_PROMPT,
+            systemPrompt: singlePass
+              ? SYSTEM_ARCHITECTURE_PROMPT
+              : SYSTEM_FIRST_PROMPT,
+            ...(singlePass ? { outputSchema: architectureOutputSchema } : {}),
             userPrompt: toTaggedMessage({
               file_tree: context.fileTree,
               readme: context.readme,
@@ -561,18 +579,46 @@ export async function POST(request: Request) {
             explanationStream.stream,
           )) {
             throwIfAborted(generationAbortController.signal);
-            if (!recordedFirstExplanationChunk) {
+            explanationResponse += chunk;
+            const progress = singlePass
+              ? readArchitectureProgress(explanationResponse)
+              : null;
+            const visibleChunk = progress
+              ? progress.text.slice(streamedExplanationLength)
+              : chunk;
+            if (visibleChunk && !recordedFirstExplanationChunk) {
               recordTiming("explanation_first_chunk", explanationStartedAt);
               recordedFirstExplanationChunk = true;
             }
-            explanationResponse += chunk;
-            await send({
-              status: "explanation_chunk",
-              session_id: audit.sessionId,
-              chunk,
-            });
+            if (visibleChunk)
+              await send({
+                status: "explanation_chunk",
+                session_id: audit.sessionId,
+                chunk: visibleChunk,
+              });
+            if (progress)
+              streamedExplanationLength = Math.max(
+                streamedExplanationLength,
+                progress.text.length,
+              );
+            if (progress?.complete && !graphProgressAnnounced) {
+              graphProgressAnnounced = true;
+              audit = withTimelineEvent(
+                audit,
+                "graph",
+                "Mapping repository architecture...",
+              );
+              await send({
+                status: "graph",
+                session_id: audit.sessionId,
+                message: "Mapping repository architecture...",
+              });
+            }
           }
-          recordTiming("explanation", explanationStartedAt);
+          recordTiming(
+            singlePass ? "architecture" : "explanation",
+            explanationStartedAt,
+          );
           let explanationUsage: GenerationTokenUsage | null = null;
           try {
             explanationUsage = await explanationStream.usagePromise;
@@ -600,10 +646,12 @@ export async function POST(request: Request) {
             accounting.pendingModelRequestTokenEstimate = 0;
           }
 
-          const explanation = extractTaggedSection(
-            explanationResponse,
-            "explanation",
-          );
+          const architecture = singlePass
+            ? architectureOutputSchema.parse(JSON.parse(explanationResponse))
+            : null;
+          const explanation =
+            architecture?.explanation ??
+            extractTaggedSection(explanationResponse, "explanation");
           if (!explanation.trim()) {
             throw new Error(
               "OpenAI explanation generation returned no usable output.",
@@ -618,6 +666,7 @@ export async function POST(request: Request) {
             apiKey,
             sessionId: audit.sessionId,
             explanation,
+            initialGraph: architecture?.graph,
             fileTree: context.fileTree,
             fileTreeLookup,
             signal: generationAbortController.signal,

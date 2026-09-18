@@ -1,4 +1,6 @@
-export const EXPLANATION_REASONING_EFFORT = "high" as const;
+// Source-grounded architecture mapping benefits more from a capable model than
+// a long hidden reasoning pass. Keep enough time for graph validation/rendering.
+export const EXPLANATION_REASONING_EFFORT = "low" as const;
 export const GRAPH_REASONING_EFFORT = "medium" as const;
 
 export const EXPLANATION_TEXT_VERBOSITY = "low" as const;

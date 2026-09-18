@@ -48,6 +48,7 @@ interface GenerateValidatedGraphParams {
   apiKey?: string;
   sessionId: string;
   explanation: string;
+  initialGraph?: DiagramGraph;
   fileTree: string;
   fileTreeLookup: Set<string>;
   signal: AbortSignal;
@@ -81,10 +82,13 @@ export async function generateValidatedGraph(
   void params.send({
     status: "graph_sent",
     session_id: params.sessionId,
-    message: `Sending graph planning request to ${params.model}...`,
+    message: params.initialGraph
+      ? "Validating repository graph..."
+      : `Sending graph planning request to ${params.model}...`,
   });
 
   for (let attempt = 1; attempt <= MAX_GRAPH_ATTEMPTS; attempt++) {
+    const initialGraph = attempt === 1 ? params.initialGraph : undefined;
     params.signal.throwIfAborted();
     const status = attempt === 1 ? "graph" : "graph_retry";
     const message =
@@ -100,45 +104,53 @@ export async function generateValidatedGraph(
       graph_attempts: audit.graphAttempts,
     });
 
-    params.accounting.pendingModelRequestTokenEstimate =
-      params.complimentaryEstimate
-        ? buildComplimentaryStageTokenEstimate(params.complimentaryEstimate, {
-            stage: "graph",
-            attempt,
-          })
-        : 0;
+    if (!initialGraph)
+      params.accounting.pendingModelRequestTokenEstimate =
+        params.complimentaryEstimate
+          ? buildComplimentaryStageTokenEstimate(params.complimentaryEstimate, {
+              stage: "graph",
+              attempt,
+            })
+          : 0;
     const graphStartedAt = performance.now();
     const {
       output: generatedGraph,
       rawText,
       usage,
-    } = await generateStructuredOutput({
-      provider: params.provider,
-      model: params.model,
-      systemPrompt: SYSTEM_GRAPH_PROMPT,
-      userPrompt: toTaggedMessage(
-        attempt === 1
-          ? { explanation: params.explanation }
-          : {
-              explanation: params.explanation,
-              file_tree: params.fileTree,
-              previous_graph: previousGraphRaw,
-              validation_feedback: validationFeedback,
-            },
-      ),
-      schema: diagramGraphSchema,
-      schemaName: "diagram_graph",
-      apiKey: params.apiKey,
-      reasoningEffort: GRAPH_REASONING_EFFORT,
-      textVerbosity: GRAPH_TEXT_VERBOSITY,
-      signal: params.signal,
-      clientRequestId: `${params.sessionId}:graph:${attempt}`,
-    });
+    } = initialGraph
+      ? {
+          output: initialGraph,
+          rawText: JSON.stringify(initialGraph),
+          usage: null,
+        }
+      : await generateStructuredOutput({
+          provider: params.provider,
+          model: params.model,
+          systemPrompt: SYSTEM_GRAPH_PROMPT,
+          userPrompt: toTaggedMessage(
+            attempt === 1
+              ? { explanation: params.explanation }
+              : {
+                  explanation: params.explanation,
+                  file_tree: params.fileTree,
+                  previous_graph: previousGraphRaw,
+                  validation_feedback: validationFeedback,
+                },
+          ),
+          schema: diagramGraphSchema,
+          schemaName: "diagram_graph",
+          apiKey: params.apiKey,
+          reasoningEffort: GRAPH_REASONING_EFFORT,
+          textVerbosity: GRAPH_TEXT_VERBOSITY,
+          signal: params.signal,
+          clientRequestId: `${params.sessionId}:graph:${attempt}`,
+        });
     const graph = normalizeKnownGraphPaths(
       generatedGraph,
       params.fileTreeLookup,
     );
-    params.recordTiming(`graph_attempt_${attempt}`, graphStartedAt);
+    if (!initialGraph)
+      params.recordTiming(`graph_attempt_${attempt}`, graphStartedAt);
 
     if (usage) {
       params.accounting.actualUsages.push(usage);
@@ -155,7 +167,7 @@ export async function generateValidatedGraph(
         }),
         createdAt: new Date().toISOString(),
       });
-    } else {
+    } else if (!initialGraph) {
       params.accounting.hasCompleteMeasuredUsage = false;
       params.accounting.completedUnmeasuredTokenEstimate +=
         params.accounting.pendingModelRequestTokenEstimate;

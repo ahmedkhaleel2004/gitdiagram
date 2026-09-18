@@ -4,11 +4,35 @@ import {
   getModel,
   getProvider,
   getProviderLabel,
+  getGenerationServiceTier,
   shouldUseExactInputTokenCount,
   supportsTextVerbosity,
 } from "~/server/generate/model-config";
 
 const ORIGINAL_ENV = { ...process.env };
+
+describe("generation service tier", () => {
+  it.each(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra-2026-07-09"])(
+    "uses Fast mode for managed %s requests",
+    (model) => {
+      expect(getGenerationServiceTier({ provider: "openai", model })).toBe(
+        "priority",
+      );
+    },
+  );
+  it("preserves standard billing for user keys and unsupported providers/models", () => {
+    for (const params of [
+      {
+        provider: "openai" as const,
+        model: "gpt-5.6-luna",
+        apiKey: "user-key",
+      },
+      { provider: "openai" as const, model: "gpt-5.4" },
+      { provider: "openrouter" as const, model: "openai/gpt-5.6-sol" },
+    ])
+      expect(getGenerationServiceTier(params)).toBe("default");
+  });
+});
 
 afterEach(() => {
   process.env = { ...ORIGINAL_ENV };

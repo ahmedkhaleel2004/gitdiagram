@@ -54,6 +54,7 @@ export function createFinalGenerationCostSummary(params: {
     totalTokens:
       (retryInputTokens + GRAPH_ESTIMATED_OUTPUT_TOKENS) * retryCount,
     cacheWriteTokens: retryInputTokens * retryCount,
+    serviceTier: params.estimate.graphServiceTier,
   };
   return combineCostSummaries(
     [

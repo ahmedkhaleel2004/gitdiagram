@@ -30,7 +30,8 @@ vi.mock("~/server/generate/github", () => ({
   REPOSITORY_TOO_LARGE_ERROR:
     "Repository is too large (>195k tokens) for analysis. Try a smaller repo.",
 }));
-vi.mock("~/server/generate/model-config", () => ({
+vi.mock("~/server/generate/model-config", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   getModel: vi.fn(() => "gpt-5.6-terra"),
   getProvider: vi.fn(() => "openai"),
   shouldUseExactInputTokenCount: vi.fn(() => true),

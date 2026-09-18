@@ -1,14 +1,16 @@
 import type { GithubData } from "./github";
-import type { AIProvider } from "./model-config";
+import { usesSinglePassArchitecture, type AIProvider } from "./model-config";
 
 export const MAX_SOURCE_CHARACTERS = 48_000;
 export const MAX_SOURCE_FILES = 12;
-export const MAX_SOURCE_FILE_BYTES = 96_000;
+// Framework entry points can be large (FastAPI routing, editor controllers).
+// Read them within a byte bound, then excerpt into the unchanged model budget.
+export const MAX_SOURCE_FILE_BYTES = 512_000;
 const MAX_TREE_CHARACTERS = 24_000;
 const MAX_README_CHARACTERS = 16_000;
 
 const EXCLUDED =
-  /(^|\/)(?:\.[^/]+|tests?|__tests__|testdata|fixtures?|examples?|samples?|docs?|documentation|benchmarks?|vendor|third_party|node_modules|dist|build|generated|migrations?|alembic|assets|locales?|translations?)(\/|$)|(?:\.test(?:-d)?|\.spec|\.generated|\.min)\.|(?:^|\/)(?:test\.[^/]+|bench(?:mark|marker)?\.[^/]+|test_[^/]+|[^/]+_test\.[^/]+)$/i;
+  /(^|\/)(?:\.[^/]+|tests?|__tests__|testdata|fixtures?|examples?(?:_src)?|samples?|docs?(?:_src)?|tutorials?(?:_src)?|documentation|bench|benchmarks?|vendor|third_party|node_modules|dist|build|generated|migrations?|alembic|assets|locales?|translations?)(\/|$)|(?:\.test(?:-d)?|\.spec|\.generated|\.min)\.|(?:^|\/)(?:test\.[^/]+|bench(?:mark|marker)?\.[^/]+|test_[^/]+|[^/]+_test\.[^/]+)$/i;
 const SOURCE =
   /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|kts|swift|cs|cpp|cc|c|h|hpp|rb|php|ex|exs|scala|clj|vue|svelte|proto|graphql)$/i;
 const MANIFEST =
@@ -28,7 +30,13 @@ function score(path: string): number {
   const name = path.split("/").at(-1) ?? path;
   let value = 20 - path.split("/").length;
   if (MANIFEST.test(path)) value += path.includes("/") ? 5 : 45;
-  if (/^(?:main|app|server|application|Program)\./i.test(name)) value += 28;
+  if (/^(?:main|apps?|server|applications?|Program)\./i.test(name)) value += 28;
+  // File-based frameworks put the actual request boundary in singular route
+  // files. Without this, generic client helpers crowd out the product's API.
+  if (/^(?:route|\+server|\+page\.server)\.[cm]?[jt]sx?$/i.test(name))
+    value += 32;
+  if (/page-client\.[cm]?[jt]sx?$/i.test(name)) value += 22;
+  if (/^use[A-Z].*\.[cm]?[jt]sx?$/.test(name)) value += 22;
   if (/^(?:index|lib|mod)\./i.test(name))
     value += path.split("/").length <= 3 ? 22 : 2;
   if (
@@ -38,7 +46,7 @@ function score(path: string): number {
   )
     value += 10;
   if (
-    /(?:webhook|router|routes|handler|controller|tasks|worker|review_service|rag_service|llm_service|embedding_service|pipeline|engine|manager|repository|storage|database|client|service)/i.test(
+    /(?:webhook|router|routes|routing|handler|controller|tasks|worker|review_service|rag_service|llm_service|embedding_service|pipeline|engine|manager|repository|storage|database|client|service)/i.test(
       name,
     )
   )
@@ -51,6 +59,13 @@ function score(path: string): number {
     value += 18;
   if (/(?:config|types|constants|utils|helpers|schema|models)/i.test(path))
     value -= 18;
+  if (/(?:analytics|telemetry|instrumentation|logger|logging)/i.test(name))
+    value -= 25;
+  if (/(?:^|\/)(?:healthz?|readyz?|livez?)(?:\/|\.)/i.test(path)) value -= 30;
+  if (
+    /(?:^|\/)scripts?\/(?:check|build|release|dev|lint|format)[-_.]/i.test(path)
+  )
+    value -= 35;
   if (/(?:activity|service)\.(?:kt|java)$/i.test(name)) value += 18;
   if (/^I[A-Z].*\.(?:java|kt|cs)$/.test(name) || /\.d\.ts$/.test(name))
     value -= 20;
@@ -140,12 +155,7 @@ export function selectAnalysisModel(params: {
   pathTypes: GithubData["pathTypes"];
 }): string {
   // Preserve custom providers/models and user-supplied key billing expectations.
-  if (
-    params.provider !== "openai" ||
-    params.apiKey ||
-    !/^gpt-5\.6-luna(?:-\d{4}-\d{2}-\d{2})?$/.test(params.model)
-  )
-    return params.model;
+  if (!usesSinglePassArchitecture(params)) return params.model;
   const sourcePaths = [...params.pathTypes]
     .filter(
       ([path, type]) =>
@@ -153,5 +163,5 @@ export function selectAnalysisModel(params: {
     )
     .map(([path]) => path);
   // Reserve the all-Luna path for genuinely small, single-purpose codebases.
-  return sourcePaths.length <= 8 ? params.model : "gpt-5.6-terra";
+  return sourcePaths.length <= 8 ? params.model : "gpt-5.6-sol";
 }

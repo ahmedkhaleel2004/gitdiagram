@@ -13,7 +13,7 @@ You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 
 ## Features
 
-- **Architecture-first diagrams:** converts a repository tree and README into a system-level graph instead of merely drawing folders.
+- **Architecture-first diagrams:** converts a repository tree, README, and bounded source excerpts into a system-level graph instead of merely drawing folders.
 - **Interactive source links:** click a component to open its real file or directory on GitHub.
 - **Streaming generation:** see the explanation arrive while the graph is planned.
 - **Private repositories:** provide a GitHub token locally in the browser; private artifacts use a separate protected storage namespace.
@@ -43,6 +43,8 @@ Vercel serves both the UI and the generation endpoints:
 - `/api/healthz` provides a lightweight deployment health check.
 
 Long-running generation uses a 300-second Vercel function budget with a shorter application deadline so quota reconciliation and persistence still have time to finish. Requests use explicit upstream deadlines, retries, structured logs, heartbeats, and distributed cancellation rather than process-local state.
+
+The default managed OpenAI pipeline uses one GPT-5.6 Sol request at low reasoning to produce a source-grounded graph and short streamed overview. Tiny repositories use Luna. Graphs are validated and compiled deterministically; Luna is called for a repair only when structural validation requires it. Managed GPT-5.6 requests explicitly use Fast mode (`service_tier: "priority"`); estimates include its premium, and final costs use the model and tier actually served. User-supplied keys retain standard service and their configured model. Explicit model overrides and OpenRouter retain the two-stage pipeline. Output token estimates reserve quota but do not cap provider output.
 
 The same Next.js application can also build into a minimal, non-root standalone Docker image for Railway. No Railway service, source connection, or Railway domain is kept live. The checked-in `Dockerfile` and `railway.json` are a cold recovery recipe that can recreate the full application later without reviving a second backend implementation. See [docs/deployment-failover.md](docs/deployment-failover.md).
 

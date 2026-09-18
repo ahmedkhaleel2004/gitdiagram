@@ -74,7 +74,8 @@ vi.mock("~/server/generate/github", () => ({
   REPOSITORY_TOO_LARGE_ERROR:
     "Repository is too large (>195k tokens) for analysis. Try a smaller repo.",
 }));
-vi.mock("~/server/generate/model-config", () => ({
+vi.mock("~/server/generate/model-config", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   getModel: mocks.getModel,
   getProvider: vi.fn(() => "openai"),
   getProviderLabel: vi.fn(() => "OpenAI"),
@@ -876,70 +877,110 @@ describe("POST /api/generate/stream", () => {
     });
     expect(finishLog).not.toContain("private-name");
   });
-  it("uses Terra analysis and Luna graph for a larger server-funded repo and sums both costs", async () => {
-    mocks.getModel.mockReturnValue("gpt-5.6-luna");
-    mocks.isComplimentaryGateEnabled.mockReturnValue(false);
-    mocks.shouldApplyComplimentaryGate.mockReturnValue(false);
-    const paths = Array.from({ length: 12 }, (_, i) => `src/component${i}.ts`);
-    mocks.getGithubData.mockResolvedValue({
-      defaultBranch: "main",
-      fileTree: paths.join("\n"),
-      pathTypes: new Map(paths.map((path) => [path, "blob"])),
-      readme: "Application",
-      isPrivate: false,
-      stargazerCount: 0,
-    });
-    mockEstimate(1000);
-    const usage = { inputTokens: 1000, outputTokens: 1000, totalTokens: 2000 };
-    mocks.streamCompletion.mockResolvedValue({
-      stream: (async function* () {
-        yield "<explanation>A sourced application brief.</explanation>";
-      })(),
-      usagePromise: Promise.resolve(usage),
-    });
-    const graph = {
-      groups: [],
-      nodes: [
-        {
-          id: "entry",
-          label: "Entry",
-          type: "module",
-          description: null,
-          groupId: null,
-          path: paths[0],
-          shape: null,
+  it.each([false, true])(
+    "generates architecture in one Sol request and only calls Luna for a needed repair (%s)",
+    async (repair) => {
+      mocks.getModel.mockReturnValue("gpt-5.6-luna");
+      mocks.isComplimentaryGateEnabled.mockReturnValue(false);
+      mocks.shouldApplyComplimentaryGate.mockReturnValue(false);
+      const paths = Array.from(
+        { length: 12 },
+        (_, i) => `src/component${i}.ts`,
+      );
+      mocks.getGithubData.mockResolvedValue({
+        defaultBranch: "main",
+        fileTree: paths.join("\n"),
+        pathTypes: new Map(paths.map((path) => [path, "blob"])),
+        readme: "Application",
+        isPrivate: false,
+        stargazerCount: 0,
+      });
+      mockEstimate(1000);
+      const usage = {
+        inputTokens: 1000,
+        outputTokens: 1000,
+        totalTokens: 2000,
+        serviceTier: "priority",
+      };
+      const graph = {
+        groups: [],
+        nodes: [
+          {
+            id: "entry",
+            label: "Entry",
+            type: "module",
+            description: null,
+            groupId: null,
+            path: paths[0],
+            shape: null,
+          },
+        ],
+        edges: [],
+      };
+      const explanation = 'A sourced application brief with "quoted" paths.';
+      const initialGraph = repair
+        ? {
+            ...graph,
+            edges: [
+              {
+                from: "missing",
+                to: "entry",
+                label: null,
+                description: null,
+                style: null,
+              },
+            ],
+          }
+        : graph;
+      const output = JSON.stringify({ explanation, graph: initialGraph });
+      mocks.streamCompletion.mockResolvedValue({
+        stream: (async function* () {
+          for (let i = 0; i < output.length; i += 17)
+            yield output.slice(i, i + 17);
+        })(),
+        usagePromise: Promise.resolve(usage),
+      });
+      mocks.generateStructuredOutput.mockResolvedValue({
+        output: graph,
+        rawText: JSON.stringify(graph),
+        usage,
+      });
+      const response = await POST(request());
+      const events = readSseEvents(await response.text());
+      const terminal = events.find((event) => event.status === "complete");
+      expect(
+        events
+          .filter((e) => e.status === "explanation_chunk")
+          .map((e) => e.chunk)
+          .join(""),
+      ).toBe(explanation);
+      expect(mocks.streamCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "gpt-5.6-sol",
+          userPrompt: expect.stringContaining("<source_files>"),
+        }),
+      );
+      expect(mocks.generateStructuredOutput).toHaveBeenCalledTimes(
+        repair ? 1 : 0,
+      );
+      if (repair)
+        expect(mocks.generateStructuredOutput).toHaveBeenCalledWith(
+          expect.objectContaining({
+            model: "gpt-5.6-luna",
+            userPrompt: expect.stringContaining("<validation_feedback>"),
+          }),
+        );
+      expect(terminal).toMatchObject({
+        cost_summary: {
+          kind: "actual",
+          amountUsd: repair ? 0.0508 : 0.048,
+          pricingModel: repair ? "gpt-5.6-sol + gpt-5.6-luna" : "gpt-5.6-sol",
         },
-      ],
-      edges: [],
-    };
-    mocks.generateStructuredOutput.mockResolvedValue({
-      output: graph,
-      rawText: JSON.stringify(graph),
-      usage,
-    });
-    const response = await POST(request());
-    const terminal = readSseEvents(await response.text()).find(
-      (event) => event.status === "complete",
-    );
-    expect(mocks.streamCompletion).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: "gpt-5.6-terra",
-        userPrompt: expect.stringContaining("<source_files>"),
-      }),
-    );
-    expect(mocks.generateStructuredOutput).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gpt-5.6-luna" }),
-    );
-    expect(terminal).toMatchObject({
-      cost_summary: {
-        kind: "actual",
-        amountUsd: 0.0154,
-        pricingModel: "gpt-5.6-terra + gpt-5.6-luna",
-      },
-      latest_session_audit: {
-        model: "gpt-5.6-luna",
-        analysisModel: "gpt-5.6-terra",
-      },
-    });
-  });
+        latest_session_audit: {
+          model: "gpt-5.6-luna",
+          analysisModel: "gpt-5.6-sol",
+        },
+      });
+    },
+  );
 });

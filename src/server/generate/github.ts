@@ -196,6 +196,10 @@ async function fetchJsonResult<T>(
       JSON.stringify({
         event: "generate.github.request_failed",
         status: response.status,
+        request_id: response.headers.get("x-github-request-id"),
+        rate_limit_remaining: response.headers.get("x-ratelimit-remaining"),
+        rate_limit_reset: response.headers.get("x-ratelimit-reset"),
+        retry_after: response.headers.get("retry-after"),
         body: (await response.text()).slice(0, 500),
       }),
     );

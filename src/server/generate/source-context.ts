@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { excerptSource } from "./source-excerpt";
 import { getGitHubApiHeaders } from "../github-auth";
 import type { GithubData, SourceBlob } from "./github";
@@ -17,6 +18,34 @@ export interface SourceContext {
   text: string;
   paths: string[];
   unavailableCount: number;
+}
+
+async function readBoundedBytes(
+  response: Response,
+  limit: number,
+): Promise<Buffer | null> {
+  if (!response.ok || !response.body) {
+    await response.body?.cancel();
+    return null;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks);
 }
 
 async function readBlob(params: {
@@ -40,24 +69,9 @@ async function readBlob(params: {
     await response.body?.cancel();
     return null;
   }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      size += chunk.value.byteLength;
-      if (size > MAX_SOURCE_FILE_BYTES * 2) {
-        await reader.cancel();
-        return null;
-      }
-      chunks.push(chunk.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const data = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+  const bytes = await readBoundedBytes(response, MAX_SOURCE_FILE_BYTES * 2);
+  if (!bytes) return null;
+  const data = JSON.parse(bytes.toString("utf8")) as {
     encoding?: string;
     content?: string;
     size?: number;
@@ -68,10 +82,42 @@ async function readBlob(params: {
     (data.size ?? 0) > MAX_SOURCE_FILE_BYTES
   )
     return null;
-  const bytes = Buffer.from(data.content, "base64");
-  if (bytes.length > MAX_SOURCE_FILE_BYTES || bytes.includes(0)) return null;
-  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  const sourceBytes = Buffer.from(data.content, "base64");
+  if (sourceBytes.length > MAX_SOURCE_FILE_BYTES || sourceBytes.includes(0))
+    return null;
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(sourceBytes);
   return { path: params.path, text, truncated: false };
+}
+
+// Public content delivery avoids spending REST quota on each source file.
+// Verify the Git blob hash so a branch move cannot mix tree and file versions.
+// No credentials are sent to this host; private repositories stay on the API.
+async function readPublicSource(params: {
+  username: string;
+  repo: string;
+  branch: string;
+  path: string;
+  blob: SourceBlob;
+  signal: AbortSignal;
+}): Promise<SourceExcerpt | null> {
+  const url = `https://raw.githubusercontent.com/${encodeURIComponent(params.username)}/${encodeURIComponent(params.repo)}/${encodeURIComponent(params.branch)}/${params.path.split("/").map(encodeURIComponent).join("/")}`;
+  const response = await fetch(url, {
+    signal: params.signal,
+    cache: "no-store",
+    redirect: "error",
+  });
+  const bytes = await readBoundedBytes(response, MAX_SOURCE_FILE_BYTES);
+  if (!bytes || bytes.includes(0)) return null;
+  const hash = createHash(params.blob.sha.length === 64 ? "sha256" : "sha1")
+    .update(`blob ${bytes.length}\0`)
+    .update(bytes)
+    .digest("hex");
+  if (hash !== params.blob.sha) return null;
+  return {
+    path: params.path,
+    text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    truncated: false,
+  };
 }
 
 export async function fetchSourceContext(params: {
@@ -103,12 +149,9 @@ export async function fetchSourceContext(params: {
       paths: [],
       unavailableCount: paths.length,
     };
-  const headers = await getGitHubApiHeaders({
-    githubPat:
-      params.githubData.usedPublicFallback && !params.githubData.isPrivate
-        ? undefined
-        : params.githubPat,
-  });
+  const headers = params.githubData.isPrivate
+    ? await getGitHubApiHeaders({ githubPat: params.githubPat })
+    : {};
   let next = 0;
   await Promise.all(
     Array.from({ length: 3 }, async () => {
@@ -119,17 +162,19 @@ export async function fetchSourceContext(params: {
         if (
           !blob ||
           blob.size > MAX_SOURCE_FILE_BYTES ||
-          !/^[a-f0-9]{40,64}$/.test(blob.sha)
+          !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(blob.sha)
         )
           continue;
         try {
-          result[index] = await readBlob({
-            ...params,
-            path,
-            blob,
-            headers,
-            signal,
-          });
+          result[index] = params.githubData.isPrivate
+            ? await readBlob({ ...params, path, blob, headers, signal })
+            : await readPublicSource({
+                ...params,
+                branch: params.githubData.defaultBranch,
+                path,
+                blob,
+                signal,
+              });
         } catch {
           params.signal?.throwIfAborted();
         }

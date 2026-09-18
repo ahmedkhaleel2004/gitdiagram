@@ -9,7 +9,7 @@ export function excerptSource(text: string, budget: number): string {
   ];
   lines.forEach((line, index) => {
     if (
-      /(?:constructor\s*\(|\b(?:onCreate|__init__|main|setup|initialize|wsgi_app|full_dispatch_request|dispatch_request|handle_request|ServeHTTP|create_app)\s*\(|func\s+New\w*\s*\()/i.test(
+      /(?:constructor\s*\(|\b(?:onCreate|__init__|main|setup|initialize|wsgi_app|full_dispatch_request|dispatch_request|handle_request|get_request_handler|run_endpoint_function|ServeHTTP|create_app|POST|GET|PUT|DELETE|PATCH)\s*\(|func\s+New\w*\s*\()/i.test(
         line,
       )
     ) {

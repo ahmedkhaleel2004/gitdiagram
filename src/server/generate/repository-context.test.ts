@@ -5,6 +5,7 @@ import {
   prepareRepositoryContext,
   selectAnalysisModel,
   selectSourcePaths,
+  MAX_SOURCE_FILE_BYTES,
 } from "./repository-context";
 
 function repository(paths: string[]): GithubData {
@@ -19,6 +20,55 @@ function repository(paths: string[]): GithubData {
 }
 
 describe("repository evidence preparation", () => {
+  it("keeps large framework entry points eligible while bounding fetched bytes", () => {
+    const data = repository([
+      "fastapi/applications.py",
+      "fastapi/routing.py",
+      "src/generated-client.ts",
+    ]);
+    data.sourceBlobs = new Map([
+      ["fastapi/applications.py", { sha: "a".repeat(40), size: 220_000 }],
+      ["fastapi/routing.py", { sha: "b".repeat(40), size: 180_000 }],
+      [
+        "src/generated-client.ts",
+        { sha: "c".repeat(40), size: MAX_SOURCE_FILE_BYTES + 1 },
+      ],
+    ]);
+    expect(selectSourcePaths(data)).toEqual([
+      "fastapi/applications.py",
+      "fastapi/routing.py",
+    ]);
+  });
+  it("samples file-based API entry points and their client lifecycle before peripheral helpers", () => {
+    const selected = selectSourcePaths(
+      repository([
+        "package.json",
+        "src/app/[owner]/[repo]/repo-page-client.tsx",
+        "src/app/api/generate/stream/route.ts",
+        "src/app/api/generate/cancel/route.ts",
+        "src/app/api/diagram-state/route.ts",
+        "src/app/api/healthz/route.ts",
+        "src/hooks/useDiagram.ts",
+        "src/lib/analytics-client.ts",
+        "scripts/check-performance-budgets.mjs",
+        ...Array.from({ length: 20 }, (_, i) => `src/helpers/client_${i}.ts`),
+      ]),
+    );
+    expect(selected).toEqual(
+      expect.arrayContaining([
+        "src/app/[owner]/[repo]/repo-page-client.tsx",
+        "src/app/api/generate/stream/route.ts",
+        "src/app/api/generate/cancel/route.ts",
+        "src/app/api/diagram-state/route.ts",
+        "src/hooks/useDiagram.ts",
+      ]),
+    );
+    expect(selected).not.toContain("scripts/check-performance-budgets.mjs");
+    expect(
+      selected.indexOf("src/app/api/generate/stream/route.ts"),
+    ).toBeLessThan(selected.indexOf("src/lib/analytics-client.ts"));
+    expect(selected.slice(0, 6)).not.toContain("src/app/api/healthz/route.ts");
+  });
   it("keeps runtime stages instead of letting schemas and maintenance crowd them out", () => {
     const paths = [
       "pyproject.toml",
@@ -56,6 +106,9 @@ describe("repository evidence preparation", () => {
     "vendor/server.go",
     "dist/index.js",
     "assets/x.js",
+    "bench/index.js",
+    "docs_src/tutorial/main.py",
+    "examples_src/server/main.py",
   ])("excludes sensitive, generated and maintenance source %s", (path) => {
     expect(isArchitectureSource(path)).toBe(false);
   });
@@ -82,7 +135,7 @@ describe("analysis model routing", () => {
   const application = repository(
     Array.from({ length: 20 }, (_, i) => `src/component${i}.ts`),
   );
-  it("keeps tiny libraries on Luna and uses Terra to analyze larger implementations", () => {
+  it("keeps tiny libraries on Luna and uses Sol to analyze larger implementations", () => {
     expect(
       selectAnalysisModel({
         provider: "openai",
@@ -96,7 +149,7 @@ describe("analysis model routing", () => {
         model: "gpt-5.6-luna",
         pathTypes: application.pathTypes,
       }),
-    ).toBe("gpt-5.6-terra");
+    ).toBe("gpt-5.6-sol");
   });
   it("preserves custom model and BYOK choices", () => {
     for (const params of [

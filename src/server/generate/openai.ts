@@ -9,6 +9,7 @@ import {
 } from "~/server/generate/errors";
 import {
   getProviderLabel,
+  getGenerationServiceTier,
   supportsTextVerbosity,
   type AIProvider,
 } from "~/server/generate/model-config";
@@ -114,6 +115,7 @@ interface StreamCompletionParams {
   apiKey?: string;
   reasoningEffort?: ReasoningEffort;
   textVerbosity?: TextVerbosity;
+  outputSchema?: ZodType;
   signal?: AbortSignal;
   clientRequestId?: string;
 }
@@ -211,6 +213,7 @@ export async function streamCompletion({
   apiKey,
   reasoningEffort,
   textVerbosity,
+  outputSchema,
   signal,
   clientRequestId,
 }: StreamCompletionParams): Promise<StreamCompletionResult> {
@@ -219,13 +222,35 @@ export async function streamCompletion({
     .create(
       {
         model,
-        // Pin standard pricing instead of inheriting a project-level Fast setting.
-        ...(provider === "openai" ? { service_tier: "default" as const } : {}),
+        ...(provider === "openai"
+          ? {
+              service_tier: getGenerationServiceTier({
+                provider,
+                model,
+                apiKey,
+              }),
+            }
+          : {}),
         stream: true,
         input: buildMessages(systemPrompt, userPrompt),
         ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-        ...(textVerbosity && supportsTextVerbosity(provider, model)
-          ? { text: { verbosity: textVerbosity } }
+        ...(outputSchema ||
+        (textVerbosity && supportsTextVerbosity(provider, model))
+          ? {
+              text: {
+                ...(outputSchema
+                  ? {
+                      format: zodTextFormat(
+                        outputSchema,
+                        "repository_architecture",
+                      ),
+                    }
+                  : {}),
+                ...(textVerbosity && supportsTextVerbosity(provider, model)
+                  ? { verbosity: textVerbosity }
+                  : {}),
+              },
+            }
           : {}),
       },
       buildRequestOptions({ provider, signal, clientRequestId }),
@@ -382,7 +407,15 @@ export async function generateStructuredOutput<T>({
     const response = await client.responses.parse(
       {
         model,
-        ...(provider === "openai" ? { service_tier: "default" as const } : {}),
+        ...(provider === "openai"
+          ? {
+              service_tier: getGenerationServiceTier({
+                provider,
+                model,
+                apiKey,
+              }),
+            }
+          : {}),
         input: buildMessages(systemPrompt, userPrompt),
         text: {
           format: zodTextFormat(schema, schemaName),

@@ -1,4 +1,5 @@
 export type AIProvider = "openai" | "openrouter";
+export type GenerationServiceTier = "default" | "priority";
 
 const DEFAULT_PROVIDER: AIProvider = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
@@ -36,6 +37,31 @@ export function supportsTextVerbosity(
   model: string,
 ): boolean {
   return provider === "openai" && GPT_56_MODEL_PATTERN.test(model.trim());
+}
+
+/** Fast mode is funded by GitDiagram, never silently charged to a user's key. */
+export function getGenerationServiceTier(params: {
+  provider: AIProvider;
+  model: string;
+  apiKey?: string;
+}): GenerationServiceTier {
+  return params.provider === "openai" &&
+    !params.apiKey?.trim() &&
+    GPT_56_MODEL_PATTERN.test(params.model.trim())
+    ? "priority"
+    : "default";
+}
+
+export function usesSinglePassArchitecture(params: {
+  provider: AIProvider;
+  model: string;
+  apiKey?: string;
+}): boolean {
+  return (
+    params.provider === "openai" &&
+    !params.apiKey?.trim() &&
+    /^gpt-5\.6-luna(?:-\d{4}-\d{2}-\d{2})?$/.test(params.model)
+  );
 }
 
 export function shouldUseExactInputTokenCount(params: {

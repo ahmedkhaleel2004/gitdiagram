@@ -5,9 +5,7 @@ import {
   type ReasoningEffort,
 } from "~/server/generate/openai";
 import {
-  EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
   EXPLANATION_REASONING_EFFORT,
-  GRAPH_ESTIMATED_OUTPUT_TOKENS,
   GRAPH_REASONING_EFFORT,
 } from "~/server/generate/generation-policy";
 import {
@@ -17,10 +15,14 @@ import {
 import {
   SYSTEM_FIRST_PROMPT,
   SYSTEM_GRAPH_PROMPT,
+  SYSTEM_ARCHITECTURE_PROMPT,
 } from "~/server/generate/prompts";
 import {
   type AIProvider,
   supportsExactInputTokenCount,
+  getGenerationServiceTier,
+  usesSinglePassArchitecture,
+  type GenerationServiceTier,
 } from "~/server/generate/model-config";
 
 interface CountPromptInputTokensParams {
@@ -50,6 +52,7 @@ export interface GenerationEstimateResult {
   explanationInputTokens: number;
   graphStaticInputTokens: number;
   graphRepairStaticInputTokens: number | null;
+  graphServiceTier?: GenerationServiceTier;
 }
 
 async function countPromptInputTokens({
@@ -117,6 +120,12 @@ export async function estimateGenerationCost(params: {
   signal?: AbortSignal;
   clientRequestId?: string;
 }): Promise<GenerationEstimateResult> {
+  const singlePass = usesSinglePassArchitecture(params);
+  const analysisServiceTier = getGenerationServiceTier({
+    ...params,
+    model: params.analysisModel ?? params.model,
+  });
+  const graphServiceTier = getGenerationServiceTier(params);
   const explanationPrompt = toTaggedMessage({
     file_tree: params.fileTree,
     readme: params.readme,
@@ -137,7 +146,9 @@ export async function estimateGenerationCost(params: {
       countPromptInputTokens({
         provider: params.provider,
         model: params.analysisModel ?? params.model,
-        systemPrompt: SYSTEM_FIRST_PROMPT,
+        systemPrompt: singlePass
+          ? SYSTEM_ARCHITECTURE_PROMPT
+          : SYSTEM_FIRST_PROMPT,
         userPrompt: explanationPrompt,
         apiKey: params.apiKey,
         reasoningEffort: EXPLANATION_REASONING_EFFORT,
@@ -178,7 +189,9 @@ export async function estimateGenerationCost(params: {
     ]);
 
   const noteParts = [
-    "Estimate assumes one graph-planning attempt and the estimated output usage; actual usage may be higher.",
+    singlePass
+      ? "Estimate assumes one architecture request and the estimated output usage; repairs and actual usage may cost more."
+      : "Estimate assumes one graph-planning attempt and the estimated output usage; actual usage may be higher.",
   ];
   if (
     explanationCount.usedFallback ||
@@ -193,6 +206,9 @@ export async function estimateGenerationCost(params: {
   const costSummary = createEstimateCostSummary({
     model: params.model,
     analysisModel: params.analysisModel,
+    analysisServiceTier,
+    graphServiceTier,
+    singlePass,
     explanationInputTokens:
       explanationCount.inputTokens + (params.sourceTokenReserve ?? 0),
     graphStaticInputTokens: graphStaticCount.inputTokens,
@@ -204,19 +220,21 @@ export async function estimateGenerationCost(params: {
     params.model,
     costSummary.usage.inputTokens,
     costSummary.usage.outputTokens,
+    graphServiceTier,
   );
 
   return {
     costSummary,
+    graphServiceTier,
     estimatedInputTokens: costSummary.usage.inputTokens,
-    estimatedOutputTokens:
-      EXPLANATION_ESTIMATED_OUTPUT_TOKENS + GRAPH_ESTIMATED_OUTPUT_TOKENS,
+    estimatedOutputTokens: costSummary.usage.outputTokens,
     pricingModel: costSummary.pricingModel,
     pricing,
     analysisPricing: estimateTextTokenCostUsd(
       params.analysisModel ?? params.model,
       0,
       0,
+      analysisServiceTier,
     ).pricing,
     explanationInputTokens:
       explanationCount.inputTokens + (params.sourceTokenReserve ?? 0),

@@ -13,6 +13,35 @@ vi.mock("~/server/generate/openai", () => ({
 import { estimateGenerationCost } from "~/server/generate/cost-estimate";
 
 describe("estimateGenerationCost", () => {
+  it("prices one managed architecture request and leaves BYOK at standard stage rates", async () => {
+    const params = {
+      provider: "openai" as const,
+      model: "gpt-5.6-luna",
+      analysisModel: "gpt-5.6-sol",
+      fileTree: "src/main.ts",
+      readme: "Demo",
+      username: "acme",
+      repo: "demo",
+    };
+    const managed = await estimateGenerationCost(params);
+    const ownKey = await estimateGenerationCost({
+      ...params,
+      apiKey: "user-key",
+    });
+    expect(managed.costSummary.amountUsd).toBeCloseTo(0.321);
+    expect(managed.estimatedOutputTokens).toBe(8000);
+    expect(ownKey.estimatedOutputTokens).toBe(14000);
+    expect(managed.analysisPricing).toEqual({
+      inputPerMillionUsd: 8,
+      outputPerMillionUsd: 40,
+    });
+    expect(managed.pricing).toEqual({
+      inputPerMillionUsd: 0.4,
+      outputPerMillionUsd: 2.4,
+    });
+    expect(managed.graphServiceTier).toBe("priority");
+    expect(ownKey.graphServiceTier).toBe("default");
+  });
   beforeEach(() => {
     countInputTokens.mockReset();
     countInputTokens.mockImplementation(
@@ -58,7 +87,7 @@ describe("estimateGenerationCost", () => {
         userPrompt.includes("<file_tree>"),
     );
 
-    expect(explanationCall?.reasoningEffort).toBe("high");
+    expect(explanationCall?.reasoningEffort).toBe("low");
     expect(firstGraphCall?.reasoningEffort).toBe("medium");
     expect(repairGraphCall?.reasoningEffort).toBe("medium");
     expect(firstGraphCall?.userPrompt).not.toContain("<repo_owner>");

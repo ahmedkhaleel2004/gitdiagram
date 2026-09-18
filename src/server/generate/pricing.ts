@@ -115,12 +115,22 @@ export function estimateTextTokenCostUsd(
   model: string,
   inputTokens: number,
   outputTokens: number,
+  serviceTier?: string,
 ): { costUsd: number; pricingModel: string; pricing: ModelPricing } {
   const pricingModel = assertModelPricingAvailable(model);
-  const pricing = MODEL_PRICING[pricingModel];
-  if (!pricing) {
+  const basePricing = MODEL_PRICING[pricingModel];
+  if (!basePricing) {
     throw new ModelPricingUnavailableError();
   }
+  const multiplier =
+    /^gpt-5\.6-(?:luna|terra|sol)$/.test(pricingModel) &&
+    (serviceTier === "priority" || serviceTier === "fast")
+      ? 2
+      : 1;
+  const pricing = {
+    inputPerMillionUsd: basePricing.inputPerMillionUsd * multiplier,
+    outputPerMillionUsd: basePricing.outputPerMillionUsd * multiplier,
+  };
   const inputCost =
     (Math.max(inputTokens, 0) / 1_000_000) * pricing.inputPerMillionUsd;
   const outputCost =
@@ -253,8 +263,16 @@ export function createEstimateCostSummary(params: {
   approximate: boolean;
   note?: string;
   graphAttemptCount?: number;
+  analysisServiceTier?: string;
+  graphServiceTier?: string;
+  singlePass?: boolean;
 }): GenerationCostSummary {
-  const stage = (model: string, inputTokens: number, outputTokens: number) =>
+  const stage = (
+    model: string,
+    inputTokens: number,
+    outputTokens: number,
+    serviceTier?: string,
+  ) =>
     createCostSummary({
       kind: "estimate",
       model,
@@ -264,6 +282,7 @@ export function createEstimateCostSummary(params: {
         outputTokens,
         totalTokens: inputTokens + outputTokens,
         cacheWriteTokens: inputTokens,
+        ...(serviceTier ? { serviceTier } : {}),
       },
     });
   return combineCostSummaries(
@@ -272,12 +291,19 @@ export function createEstimateCostSummary(params: {
         params.analysisModel ?? params.model,
         params.explanationInputTokens,
         EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+        params.analysisServiceTier,
       ),
-      stage(
-        params.model,
-        params.graphStaticInputTokens + EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
-        GRAPH_ESTIMATED_OUTPUT_TOKENS * (params.graphAttemptCount ?? 1),
-      ),
+      ...(params.singlePass
+        ? []
+        : [
+            stage(
+              params.model,
+              params.graphStaticInputTokens +
+                EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+              GRAPH_ESTIMATED_OUTPUT_TOKENS * (params.graphAttemptCount ?? 1),
+              params.graphServiceTier,
+            ),
+          ]),
     ],
     params.note ??
       "Estimate assumes one graph-planning attempt, uncached writes and the estimated output usage; actual usage may be higher.",
