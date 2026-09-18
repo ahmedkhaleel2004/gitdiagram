@@ -1,4 +1,5 @@
-.workspace {
+.workspace,
+.controlsTheme {
   --paper: hsl(var(--background));
   --surface: hsl(var(--neo-panel));
   --wash: hsl(var(--neo-panel-muted));
@@ -9,6 +10,8 @@
   --hard-shadow: #33203f;
   --accent: hsl(var(--neo-link));
   color: var(--ink);
+}
+.workspace {
   width: 100%;
   max-width: 1200px;
   margin-inline: auto;
@@ -16,7 +19,8 @@
   font-size: 13px;
   line-height: 1.5;
 }
-:global(.dark) .workspace {
+:global(.dark) .workspace,
+:global(.dark) .controlsTheme {
   --surface: #26202f;
   --wash: #302638;
   --ink: #eee3f7;
@@ -316,7 +320,8 @@
 .generatedTime[data-hydrated="false"] {
   visibility: hidden;
 }
-.workspace button:disabled {
+.workspace button:disabled,
+.actionButton:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
@@ -482,14 +487,6 @@
   align-items: center;
   gap: 12px;
 }
-.recovery button,
-.recovery a {
-  min-height: 40px;
-  padding: 8px 10px;
-  font-size: 12px;
-  color: var(--ink);
-  border-radius: 5px;
-}
 .diagnostics {
   margin-top: 32px;
   color: var(--muted);
@@ -501,7 +498,8 @@
 }
 .workspace button:focus-visible,
 .workspace a:focus-visible,
-.workspace summary:focus-visible {
+.workspace summary:focus-visible,
+.actionButton:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
 }
@@ -512,8 +510,7 @@
   }
   .stop:hover,
   .actionButton:not(.primary):hover:not(:disabled),
-  .exportActionButton:hover:not(:disabled),
-  .recovery button:hover {
+  .exportActionButton:hover:not(:disabled) {
     background: var(--wash);
     color: var(--ink);
   }
@@ -593,7 +590,9 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .workspace *,
-  .workspace *::after {
+  .workspace *::after,
+  .controlsTheme *,
+  .controlsTheme *::after {
     animation: none !important;
     transition: none !important;
   }

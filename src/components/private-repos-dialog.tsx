@@ -9,7 +9,7 @@ import {
 } from "~/hooks/use-credential-setting";
 import { GITHUB_REPO_URL } from "~/lib/site";
 
-import { Button } from "./ui/button";
+import controls from "./generation/workspace.module.css";
 import {
   Dialog,
   DialogContent,
@@ -96,7 +96,9 @@ export function PrivateReposDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="ph-no-capture neo-panel max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-lg p-5 sm:max-w-md sm:p-6">
+      <DialogContent
+        className={`ph-no-capture neo-panel ${controls.controlsTheme} max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-lg p-5 sm:max-w-md sm:p-6`}
+      >
         <DialogHeader className="text-left">
           <DialogTitle className="pr-6 text-xl font-bold">
             GitHub access
@@ -121,27 +123,27 @@ export function PrivateReposDialog({
               href={tokenUrl.toString()}
               target="_blank"
               rel="noopener noreferrer"
-              className="neo-button inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-4"
+              className={`${controls.actionButton} ${controls.primary} w-full`}
             >
               Create token on GitHub
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
             </a>
-            <Button
+            <button
               type="button"
               onClick={() => void copyPrompt()}
-              className="neo-button-muted min-h-11 w-full"
+              className={`${controls.actionButton} w-full`}
             >
               {copyStatus === "copied" ? (
-                <Check aria-hidden="true" />
+                <Check size={16} aria-hidden="true" />
               ) : (
-                <Copy aria-hidden="true" />
+                <Copy size={16} aria-hidden="true" />
               )}
               <span aria-live="polite">
                 {copyStatus === "copied"
                   ? "Copied! Paste into your AI"
                   : "Copy prompt for my AI"}
               </span>
-            </Button>
+            </button>
             {copyStatus === "failed" && (
               <div className="space-y-2">
                 <p role="alert" className="text-sm">
@@ -228,26 +230,26 @@ export function PrivateReposDialog({
                 Clear token
               </button>
             )}
-            <div className="ml-auto flex gap-3">
-              <Button
+            <div className="ml-auto grid grid-cols-2 gap-3">
+              <button
                 type="button"
                 onClick={onClose}
                 disabled={isPending}
-                className="neo-button-muted min-h-11 px-4 py-2"
+                className={controls.actionButton}
               >
                 Cancel
-              </Button>
-              <Button
+              </button>
+              <button
                 type="submit"
                 disabled={pat.trim().length === 0 || isPending}
-                className="neo-button min-h-11 px-4 py-2 disabled:opacity-50"
+                className={`${controls.actionButton} ${controls.primary}`}
               >
                 {isPending
                   ? "Saving..."
                   : repository
                     ? "Save & retry"
                     : "Save token"}
-              </Button>
+              </button>
             </div>
           </div>
         </form>

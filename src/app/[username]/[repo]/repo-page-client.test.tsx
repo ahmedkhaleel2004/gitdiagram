@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiagramStreamState } from "~/features/diagram/types";
 import RepoPageClient from "./repo-page-client";
+import controls from "~/components/generation/workspace.module.css";
 const { warningToast } = vi.hoisted(() => ({ warningToast: vi.fn() }));
 const useDiagram = vi.fn();
 const retry = vi.fn();
@@ -167,10 +168,10 @@ describe("RepoPageClient", () => {
       ).not.toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: "Add GitHub access" }),
-      ).toHaveClass("neo-button");
+      ).toHaveClass(controls.actionButton!, controls.primary!);
       expect(
         screen.getByRole("link", { name: "Open repository on GitHub" }),
-      ).toHaveClass("neo-button-muted");
+      ).toHaveClass(controls.actionButton!);
     },
   );
 });
