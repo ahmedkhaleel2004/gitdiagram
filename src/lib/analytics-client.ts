@@ -32,10 +32,8 @@ function getPostHog() {
       disable_session_recording: false,
       enable_recording_console_log: false,
       session_recording: {
-        // 0.5% sustains ~22k sessions/day within the 5k monthly free allowance.
-        // The project UI only supports whole percentages. Its 10s minimum
-        // duration and separate $0 billing cap also apply to this sample.
-        sampleRate: 0.005,
+        // Sampling (25%) and the 10s minimum are managed in PostHog settings.
+        // The separate $0 billing cap stops ingestion at the free allowance.
         maskAllInputs: true,
         blockSelector:
           ".ph-no-capture, input[type='hidden'], input[type='file']",

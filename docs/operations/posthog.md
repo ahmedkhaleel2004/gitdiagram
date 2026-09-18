@@ -21,17 +21,23 @@ exhausted. Data dropped while capped is not recovered later. Caps are independen
 of sampling; keep them at zero when changing collection settings. Check the live
 billing page for the current period and allowances.
 
-Replay samples **0.5% of sessions** in `src/lib/analytics-client.ts`. This local
-setting overrides the project's 1% setting (the API accepts only two decimal places).
+Replay samples **25% of sessions**, managed in PostHog project settings. The client
+does not override this rate, so changes do not require a deployment.
 The project also requires **10 seconds minimum duration**, enforced with strict
 minimum duration in the SDK. No URL or event triggers bypass the sample.
 
-The measured September 17 peak was 22,372 sessions/day. At 0.5%, sustaining that
-peak for 30 days yields about 3,356 recordings, or 4,195 with another 25% traffic
-increase, before the duration filter. The pre-spike baseline was about 12,600
-sessions/month, so this deliberately conservative setting records fewer sessions
-when traffic settles. Review traffic before raising it; the billing cap still
-protects spend if projections are wrong. Sampling is random, not a quota guarantee.
+The 88 complete days before the September 16 surge averaged 436 sessions/day;
+the maximum was 1,065. The most recent 60 pre-spike days averaged about 12,600
+sessions per 30 days. At 25%, this yields about 3,160 recordings per month,
+or 4,110 with another 30% traffic increase, before the duration filter.
+
+The September 17 peak was 22,372 sessions, and September 18 remained elevated at
+roughly 650–800 sessions/hour when checked. This rate deliberately prioritizes more
+recordings over spreading them across the entire billing period: sustained surge
+traffic could exhaust 5,000 recordings in 1–2 days. The $0 cap then stops ingestion
+until the allowance resets. This is fixed sampling, not adaptive sampling; do not
+assume it will automatically decrease during a spike. The earlier 0.5% rate was
+replaced at the user's request because it was too conservative for normal traffic.
 
 ## Recording boundaries
 
