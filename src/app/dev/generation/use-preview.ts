@@ -13,17 +13,14 @@ export const APPROACHES = [
   {
     id: "inline",
     label: "Inline",
-    description: "One quiet line. Everything else unfolds.",
   },
   {
     id: "thread",
     label: "Thread",
-    description: "Follow the work as the architecture takes shape.",
   },
   {
     id: "canvas",
     label: "Canvas",
-    description: "An open workspace with a small, floating dock.",
   },
 ] as const;
 export type Approach = (typeof APPROACHES)[number]["id"];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Check, CircleAlert, GitBranch, Pause } from "lucide-react";
+import { Check, CircleAlert, Pause } from "lucide-react";
 import type { DiagramStreamState } from "~/features/diagram/types";
 import type { Approach } from "./use-preview";
 import {
@@ -131,11 +131,6 @@ export function ConceptWorkspace({
           onComplete={handleComplete}
           onError={handleError}
         />
-        {approach === "canvas" && !diagram && (
-          <div className={styles.canvasLabel} aria-hidden="true">
-            gitdiagram <span>/ workspace</span>
-          </div>
-        )}
       </div>
     </section>
   );
@@ -168,6 +163,8 @@ function GenerationFeedback({
   stream: DiagramStreamState;
   active: boolean;
 }) {
+  if (!title) return null;
+
   return (
     <div className={styles.feedback}>
       <div className={styles.statusLine}>
@@ -179,10 +176,8 @@ function GenerationFeedback({
           )
         ) : ready ? (
           <Check size={17} aria-hidden="true" />
-        ) : started ? (
-          <ActivityMark active={!quiet} />
         ) : (
-          <GitBranch size={19} aria-hidden="true" />
+          <ActivityMark active={!quiet} />
         )}
         <h2
           key={title}
@@ -203,28 +198,26 @@ function GenerationFeedback({
           </span>
         )}
       </div>
-      <p className={styles.description}>{description}</p>
+      {description && <p className={styles.description}>{description}</p>}
       {hasPrevious && started && (
-        <span className={styles.previousLabel}>
-          Previous diagram stays available
-        </span>
+        <span className={styles.previousLabel}>Showing previous diagram</span>
       )}
-      {started && approach !== "thread" && (
-        <ActivityDetails
-          stream={stream}
-          seconds={seconds}
-          active={active}
-          ready={ready}
-        />
-      )}
-      {started && approach === "thread" && (
-        <WorkThread
-          stream={stream}
-          seconds={seconds}
-          active={active}
-          ready={ready}
-        />
-      )}
+      {started &&
+        (approach === "thread" ? (
+          <WorkThread
+            stream={stream}
+            seconds={seconds}
+            active={active}
+            ready={ready}
+          />
+        ) : (
+          <ActivityDetails
+            stream={stream}
+            seconds={seconds}
+            active={active}
+            ready={ready}
+          />
+        ))}
     </div>
   );
 }

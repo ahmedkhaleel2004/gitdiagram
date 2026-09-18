@@ -157,7 +157,7 @@ export function WorkThread({
       {step >= 2 && (
         <div className={styles.threadMilestone}>
           <Check size={13} aria-hidden="true" />
-          <span>Architecture understood</span>
+          <span>Architecture analyzed</span>
         </div>
       )}
       {excerpt && (
@@ -172,7 +172,7 @@ export function WorkThread({
       {ready && (
         <div className={styles.threadMilestone}>
           <Check size={13} aria-hidden="true" />
-          <span>Diagram ready to explore</span>
+          <span>Diagram ready</span>
         </div>
       )}
     </div>

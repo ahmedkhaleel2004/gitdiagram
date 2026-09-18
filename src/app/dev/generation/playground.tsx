@@ -71,9 +71,6 @@ export default function GenerationPlayground({
           <span>Controls</span>
         </button>
       </div>
-      <p className={styles.caption}>
-        {APPROACHES.find((item) => item.id === approach)?.description}
-      </p>
       {showControls && (
         <PreviewControls
           preview={preview}
@@ -95,9 +92,6 @@ export default function GenerationPlayground({
         onCancel={() => dispatch({ type: "cancel" })}
         onRegenerate={() => dispatch({ type: "regenerate" })}
       />
-      <p className={styles.footerNote}>
-        Switch designs at any point. Your place in the preview stays the same.
-      </p>
     </main>
   );
 }

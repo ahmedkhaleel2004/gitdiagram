@@ -54,7 +54,6 @@ export function conceptState({
       renderFailed,
       ready,
       quiet,
-      hasPrevious,
     }),
   };
 }
@@ -77,7 +76,6 @@ export function conceptCopy({
   renderFailed,
   ready,
   quiet,
-  hasPrevious,
 }: {
   stream: DiagramStreamState;
   seconds: number;
@@ -86,48 +84,38 @@ export function conceptCopy({
   renderFailed: boolean;
   ready: boolean;
   quiet: boolean;
-  hasPrevious: boolean;
 }) {
   if (cancelled)
     return {
       title: "Generation stopped",
-      description: "Start again whenever you’re ready.",
+      description: "",
     };
   if (renderFailed)
     return {
       title: "Couldn’t display the diagram",
-      description: "The diagram couldn’t be displayed. Try again.",
+      description: "Try generating it again.",
     };
   if (stream.status === "error")
     return {
       title: "Connection interrupted",
-      description: "The diagram wasn’t finished. Try the connection again.",
+      description: "Try again to restart generation.",
     };
   if (ready)
     return {
-      title: "Your diagram is ready",
+      title: "Diagram ready",
       description: `${stream.graph?.nodes.length ?? 8} components · ${stream.graph?.edges.length ?? 8} connections`,
     };
   if (quiet)
     return {
       title: "Waiting for an update",
-      description: "The connection is quiet. Waiting for the next update.",
+      description: "No recent updates from the server.",
     };
-  if (!started)
-    return hasPrevious
-      ? {
-          title: "A fresh look at your repository",
-          description: "Generate a new map while this one stays in view.",
-        }
-      : {
-          title: "Your code, connected.",
-          description: "An architecture map you can explore.",
-        };
+  if (!started) return { title: "", description: "" };
   const description =
     seconds >= 20 && generationStep(stream.status) < 2
       ? "Still working · receiving updates"
       : seconds >= 3
-        ? "12 source files in context"
+        ? "12 source files read"
         : "Fetching the README and source files";
   return { title: stageLabel(stream.status), description };
 }

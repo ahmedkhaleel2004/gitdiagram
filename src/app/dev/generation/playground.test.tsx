@@ -130,7 +130,7 @@ describe.each<Approach>(["inline", "thread", "canvas"])(
       );
       act(() => renders.get("replacement")?.onRenderComplete?.());
       expect(
-        screen.getByRole("heading", { name: "Your diagram is ready" }),
+        screen.getByRole("heading", { name: "Diagram ready" }),
       ).toBeInTheDocument();
       rerender(<ConceptWorkspace {...base} approach={approach} runId={2} />);
       expect(
@@ -141,7 +141,7 @@ describe.each<Approach>(["inline", "thread", "canvas"])(
       ).toHaveAttribute("aria-hidden", "false");
       act(() => renders.get("replacement")?.onRenderComplete?.());
       expect(
-        screen.getByRole("heading", { name: "Your diagram is ready" }),
+        screen.getByRole("heading", { name: "Diagram ready" }),
       ).toBeInTheDocument();
     });
     it("keeps the previous diagram usable until its replacement has actually rendered", () => {
@@ -163,7 +163,7 @@ describe.each<Approach>(["inline", "thread", "canvas"])(
         screen.getByTestId("chart-replacement").parentElement,
       ).toHaveAttribute("aria-hidden", "false");
       expect(
-        screen.getByRole("heading", { name: "Your diagram is ready" }),
+        screen.getByRole("heading", { name: "Diagram ready" }),
       ).toBeInTheDocument();
     });
     it("retains the previous diagram when the new render fails or the request is cancelled", () => {

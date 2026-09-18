@@ -1,5 +1,5 @@
 :global(body:has([data-generation-tester])) {
-  background: #f3edf8;
+  background: hsl(var(--background));
 }
 :global(.dark body:has([data-generation-tester])) {
   background: #1a1520;
@@ -19,10 +19,10 @@
 }
 .tester {
   --text: #3b2e47;
-  --muted: #7e6e8a;
-  --line: #dcd1e6;
-  --panel: #fcfaff;
-  --wash: #e9e0f1;
+  --muted: #6d5282;
+  --line: hsl(var(--neo-button) / 0.4);
+  --panel: hsl(var(--neo-panel));
+  --wash: hsl(var(--neo-panel-muted));
   max-width: 1040px;
   margin: 0 auto;
   padding: 36px 32px 20px;
@@ -108,12 +108,6 @@
   min-height: 40px;
   padding: 8px 0 8px 12px;
   border-radius: 8px;
-}
-.caption {
-  margin-top: 13px;
-  color: var(--muted);
-  font-size: 11px;
-  min-height: 18px;
 }
 .tester > section {
   margin-top: 18px;
@@ -216,12 +210,6 @@
   border: 0;
   border-radius: 50%;
 }
-.footerNote {
-  text-align: center;
-  margin: 18px 0 0;
-  font-size: 10px;
-  color: var(--muted);
-}
 .tester button:focus-visible,
 .tester select:focus-visible,
 .timeline input:focus-visible {
@@ -273,9 +261,6 @@
     justify-content: center;
     padding: 0;
   }
-  .caption {
-    font-size: 10px;
-  }
   .controlRow {
     gap: 8px 12px;
   }
@@ -292,9 +277,6 @@
   }
   .reset {
     order: 4;
-  }
-  .footerNote {
-    font-size: 9px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

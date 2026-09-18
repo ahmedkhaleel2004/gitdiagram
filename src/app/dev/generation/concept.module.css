@@ -1,11 +1,11 @@
 .concept {
-  --paper: #f5f0f9;
-  --surface: #fcfaff;
-  --wash: #ece3f5;
+  --paper: hsl(var(--background));
+  --surface: hsl(var(--neo-panel));
+  --wash: hsl(var(--neo-panel-muted));
   --ink: #33283e;
-  --muted: #766982;
-  --line: #dcd1e6;
-  --accent: #8452b5;
+  --muted: #6d5282;
+  --line: hsl(var(--neo-button) / 0.4);
+  --accent: hsl(var(--neo-link));
   --shadow: 0 3px 5px #51306c04, 0 12px 40px #51306c07;
   color: var(--ink);
   width: 100%;
@@ -94,8 +94,8 @@
     transform 150ms var(--ease-out);
 }
 .generate {
-  color: #fff;
-  background: #8753bd;
+  color: #281439;
+  background: hsl(var(--neo-button));
   box-shadow: inset 0 1px 0 #ffffff25;
 }
 :global(.dark) .generate {
@@ -330,19 +330,6 @@
   border-top: 0;
   margin-top: 8px;
 }
-.canvasLabel {
-  position: absolute;
-  top: 24px;
-  left: 26px;
-  font-weight: 550;
-  font-size: 12px;
-}
-.canvasLabel span {
-  font-weight: 400;
-  color: var(--muted);
-  margin-left: 4px;
-}
-
 /* Inline: the repository field and one small, aligned activity line. */
 .concept[data-approach="inline"] .stage {
   padding: 110px 0 24px;
@@ -543,7 +530,7 @@
 }
 @media (hover: hover) and (pointer: fine) {
   .generate:hover {
-    background: #7743ad;
+    background: hsl(var(--neo-button-hover));
   }
   :global(.dark) .generate:hover {
     background: #c79be9;
