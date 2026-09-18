@@ -213,12 +213,19 @@
   font-size: 14px;
   line-height: 1.8;
 }
+.placements {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 30px 56px;
+}
 .placements > article {
-  padding: 25px 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding-bottom: 25px;
   border-bottom: 1px solid var(--quiet-line);
 }
-.placements > article:first-child {
-  padding-top: 0;
+.placements article > button {
+  justify-self: start;
 }
 .placementHeading {
   display: flex;
@@ -263,13 +270,14 @@
   line-height: 1.65;
   color: var(--muted);
 }
+.fitList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 56px;
+}
 .fitList > li {
-  padding: 9px 0;
   font-size: 14px;
   line-height: 1.7;
-}
-.fitList > li:first-child {
-  padding-top: 0;
 }
 .privacy {
   margin-top: 25px;
@@ -375,6 +383,10 @@
   .placementHeading > p > span {
     font-size: 40px;
   }
+  .placements,
+  .fitList {
+    column-gap: 36px;
+  }
   .offerHeading {
     gap: 40px;
   }
@@ -455,6 +467,10 @@
   }
   .sectionIntro {
     margin-top: 15px;
+  }
+  .placements,
+  .fitList {
+    grid-template-columns: minmax(0, 1fr);
   }
   .offer {
     margin-top: 45px;
