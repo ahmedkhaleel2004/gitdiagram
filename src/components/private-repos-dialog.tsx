@@ -59,7 +59,7 @@ export function PrivateReposDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="neo-panel p-6 sm:max-w-md">
+      <DialogContent className="ph-no-capture neo-panel p-6 sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-black dark:text-neutral-100">
             Enter GitHub Personal Access Token

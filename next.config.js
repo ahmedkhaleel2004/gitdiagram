@@ -6,8 +6,8 @@ const isDevelopment = process.env.NODE_ENV !== "production";
 //
 // `script-src` keeps 'unsafe-inline' because Next.js emits inline bootstrap
 // scripts; tightening it further requires nonces, which need a middleware that
-// can stamp each response. PostHog is same-origin via the /phx9a rewrite and
-// runs with `disable_external_dependency_loading`, so it needs no exception.
+// can stamp each response. PostHog and its recorder extensions are same-origin
+// via the /phx9a rewrite, so they need no CSP exception.
 const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,

@@ -4,7 +4,6 @@ import { Suspense, useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ThemeProvider } from "next-themes";
 
-import { WebVitals } from "~/components/web-vitals";
 import { migrateLegacyCredentialStorage } from "~/features/credentials/api";
 import { captureAnalyticsEvent } from "~/lib/analytics-client";
 
@@ -54,12 +53,9 @@ function AnalyticsAfterCredentialMigration() {
   }
 
   return (
-    <>
-      <Suspense fallback={null}>
-        <PostHogPageviewTracker />
-      </Suspense>
-      <WebVitals />
-    </>
+    <Suspense fallback={null}>
+      <PostHogPageviewTracker />
+    </Suspense>
   );
 }
 

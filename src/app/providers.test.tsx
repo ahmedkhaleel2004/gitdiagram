@@ -6,7 +6,6 @@ import { CSPostHogProvider } from "~/app/providers";
 const mocks = vi.hoisted(() => ({
   captureAnalyticsEvent: vi.fn(),
   migrateLegacyCredentialStorage: vi.fn(),
-  webVitals: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -15,12 +14,6 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("next-themes", () => ({
   ThemeProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
-vi.mock("~/components/web-vitals", () => ({
-  WebVitals: () => {
-    mocks.webVitals();
-    return null;
-  },
 }));
 vi.mock("~/features/credentials/api", () => ({
   migrateLegacyCredentialStorage: mocks.migrateLegacyCredentialStorage,
@@ -55,11 +48,12 @@ describe("CSPostHogProvider credential migration gate", () => {
     expect(screen.getByText("Application content")).toBeInTheDocument();
     expect(mocks.migrateLegacyCredentialStorage).toHaveBeenCalledOnce();
     expect(mocks.captureAnalyticsEvent).not.toHaveBeenCalled();
-    expect(mocks.webVitals).not.toHaveBeenCalled();
 
     completeMigration(true);
 
-    await waitFor(() => expect(mocks.webVitals).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(mocks.captureAnalyticsEvent).toHaveBeenCalledOnce(),
+    );
     expect(mocks.captureAnalyticsEvent).toHaveBeenCalledWith("$pageview", {
       $current_url: "http://localhost:3000/browse?q=react",
     });
@@ -79,6 +73,5 @@ describe("CSPostHogProvider credential migration gate", () => {
       expect(mocks.migrateLegacyCredentialStorage).toHaveBeenCalledOnce(),
     );
     expect(mocks.captureAnalyticsEvent).not.toHaveBeenCalled();
-    expect(mocks.webVitals).not.toHaveBeenCalled();
   });
 });

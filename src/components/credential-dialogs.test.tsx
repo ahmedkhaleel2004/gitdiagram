@@ -57,6 +57,7 @@ describe("credential dialogs", () => {
     await waitFor(() => expect(mocks.getCredentialStatus).toHaveBeenCalled());
     const input = screen.getByLabelText("OpenAI API key");
     expect(input).toHaveValue("");
+    expect(input.closest(".ph-no-capture")).toBe(screen.getByRole("dialog"));
 
     fireEvent.change(input, { target: { value: "sk-browser-entry" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Key" }));
@@ -120,7 +121,9 @@ describe("credential dialogs", () => {
       expect(mocks.clearCredential).toHaveBeenCalledWith("github_pat"),
     );
 
-    fireEvent.change(screen.getByLabelText("GitHub personal access token"), {
+    const input = screen.getByLabelText("GitHub personal access token");
+    expect(input.closest(".ph-no-capture")).toBe(screen.getByRole("dialog"));
+    fireEvent.change(input, {
       target: { value: "github_pat_fine_grained" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Token" }));
