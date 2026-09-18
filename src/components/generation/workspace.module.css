@@ -1,0 +1,530 @@
+.workspace {
+  --paper: hsl(var(--background));
+  --surface: hsl(var(--neo-panel));
+  --wash: hsl(var(--neo-panel-muted));
+  --ink: #291b35;
+  --muted: #6d5282;
+  --line: #a17bbd;
+  --edge: #33203f;
+  --hard-shadow: #33203f;
+  --accent: hsl(var(--neo-link));
+  color: var(--ink);
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding: 32px 24px 48px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+:global(.dark) .workspace {
+  --surface: #26202f;
+  --wash: #302638;
+  --ink: #eee3f7;
+  --muted: #ab9cb8;
+  --line: #75588c;
+  --edge: #9677ae;
+  --hard-shadow: #09060e;
+  --accent: #c49bed;
+}
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 360ms var(--ease-out),
+    opacity 180ms ease;
+}
+.fold[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.foldClip {
+  min-height: 0;
+  overflow: hidden;
+}
+.toolbarFold[data-open="true"] > .foldClip {
+  overflow: visible;
+}
+.work {
+  padding: 110px 5px 20px 0;
+}
+.workspace[data-has-diagram="true"] .work {
+  padding-top: 32px;
+}
+.source {
+  width: min(100%, 630px);
+  margin-inline: auto;
+}
+.repositoryControl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 9px 10px 9px 18px;
+  border: 2px solid var(--edge);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 4px 4px 0 var(--hard-shadow);
+}
+.repositoryControl > svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.repositoryName {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.repositoryName > span {
+  color: var(--muted);
+}
+.repositoryName strong {
+  font-weight: 650;
+}
+.primary,
+.stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex-shrink: 0;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1.5px solid #33203f;
+  border-radius: 5px;
+  box-shadow: 2px 2px 0 var(--hard-shadow);
+  font-size: 12px;
+  font-weight: 600;
+  color: #261333;
+  background: hsl(var(--neo-button));
+  transition:
+    background-color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+.stop {
+  width: 42px;
+  padding: 0;
+  border-color: var(--edge);
+  color: var(--ink);
+  background: var(--wash);
+}
+.feedback {
+  width: min(100%, 604px);
+  margin: 24px auto 0;
+  padding: 0 8px;
+}
+.statusLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+.statusLine > svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.statusTitle {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.elapsed {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.description {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 5px 0 0 27px;
+  overflow-wrap: anywhere;
+}
+.previousLabel {
+  margin: 8px 0 0 27px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.activityMark {
+  width: 17px;
+  height: 17px;
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: repeat(3, 3px);
+  grid-template-rows: repeat(3, 3px);
+  gap: 3px;
+  align-content: center;
+}
+.activityMark i {
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0.24;
+  animation: pixels 1.6s ease-in-out infinite;
+}
+.activityMark i:nth-child(3n + 1) {
+  animation-delay: -0.5s;
+}
+.activityMark i:nth-child(3n + 2) {
+  animation-delay: -0.25s;
+}
+.activityMark i:nth-child(2n) {
+  animation-delay: -0.8s;
+}
+.activityMark[data-active="false"] i {
+  animation: none;
+  opacity: 0.4;
+}
+.details {
+  margin: 17px 0 0 27px;
+}
+.details summary {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  width: fit-content;
+  min-height: 36px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  list-style: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.details summary::-webkit-details-marker {
+  display: none;
+}
+.details summary svg {
+  transition: transform 180ms var(--ease-out);
+}
+.details[open] summary svg {
+  transform: rotate(180deg);
+}
+.detailBody {
+  padding: 7px 0 2px 13px;
+  border-left: 2px solid var(--line);
+}
+.detailRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 31px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.detailRow > svg {
+  flex-shrink: 0;
+}
+.detailRow > svg:last-child:not(:first-child) {
+  margin-left: auto;
+  color: var(--accent);
+}
+.excerpt {
+  margin-top: 17px;
+  max-width: 480px;
+  font-size: 12px;
+  line-height: 1.85;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.excerpt > p {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.excerpt > div {
+  border-top: 0;
+  margin-top: 8px;
+}
+.metadata {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+.resultToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+.repositoryLink {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+.repositoryLink a {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.repositoryLink svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.editRepository {
+  flex-shrink: 0;
+  padding: 10px;
+  border-radius: 5px;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+.actions button[aria-expanded="true"],
+.actions button[aria-pressed="true"] {
+  background: var(--wash);
+  color: var(--ink);
+}
+.actions button[aria-expanded="true"] > svg:last-child {
+  transform: rotate(180deg);
+}
+.actions .primary {
+  margin-left: 7px;
+  background: hsl(var(--neo-button));
+  color: #261333;
+  font-weight: 600;
+}
+.workspace button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.resultActivity {
+  margin: 18px 0 0;
+  max-width: 600px;
+  padding: 6px 0 6px 16px;
+  border-left: 2px solid var(--line);
+}
+.exportControl {
+  position: relative;
+}
+.exportMenu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 7px);
+  right: 0;
+  width: 190px;
+  padding: 6px;
+  border: 1.5px solid var(--edge);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 3px 3px 0 var(--hard-shadow);
+  animation: appear 150ms var(--ease-out);
+}
+.exportMenu button {
+  width: 100%;
+  justify-content: flex-start;
+  color: var(--ink);
+}
+.exportMenu p {
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: normal;
+}
+.diagram {
+  position: relative;
+  margin-top: 30px;
+}
+.graphLayer {
+  opacity: 1;
+  transition: opacity 240ms ease;
+}
+.graphLayer[data-diagram-visible="false"] {
+  position: absolute;
+  inset: 0 0 auto;
+  opacity: 0;
+  pointer-events: none;
+}
+.chart {
+  width: 100%;
+  padding: 0;
+}
+.chart > div:last-child {
+  border-color: var(--line);
+  background: transparent;
+  border-radius: 8px;
+}
+.chart :global(.pointer-events-auto) {
+  background: var(--surface);
+  border: 1.5px solid var(--edge);
+  border-radius: 5px;
+  box-shadow: 2px 2px 0 var(--hard-shadow);
+  color: var(--ink);
+  --tw-ring-shadow: 0 0 transparent;
+}
+.chart button {
+  min-height: 40px;
+}
+.recovery {
+  margin: 18px 0 0 27px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.recovery button,
+.recovery a {
+  min-height: 40px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--ink);
+  border-radius: 5px;
+}
+.diagnostics {
+  margin-top: 32px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.diagnostics > summary {
+  cursor: pointer;
+  padding-block: 10px;
+}
+.editForm {
+  padding: 22px 5px 8px 0;
+  max-width: 640px;
+}
+.workspace button:focus-visible,
+.workspace a:focus-visible,
+.workspace summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .primary:hover:not(:disabled),
+  .actions .primary:hover:not(:disabled) {
+    background: hsl(var(--neo-button-hover));
+  }
+  .stop:hover,
+  .actions button:hover:not(:disabled),
+  .editRepository:hover,
+  .recovery button:hover {
+    background: var(--wash);
+    color: var(--ink);
+  }
+  .details summary:hover {
+    color: var(--ink);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .primary:active:not(:disabled),
+  .stop:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+  }
+}
+@media (max-width: 760px) {
+  .resultToolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+@media (max-width: 640px) {
+  .workspace {
+    padding: 20px 18px 32px;
+  }
+  .work {
+    padding-top: 80px;
+  }
+  .repositoryControl {
+    gap: 9px;
+    padding-left: 12px;
+  }
+  .repositoryName > span {
+    display: none;
+  }
+  .statusTitle {
+    font-size: 12px;
+  }
+  .elapsed {
+    font-size: 10px;
+  }
+  .actions {
+    gap: 0;
+  }
+  .actions > button,
+  .actions > .exportControl > button {
+    min-height: 44px;
+    padding-inline: 7px;
+    font-size: 11px;
+    gap: 4px;
+  }
+  .actions > button > svg,
+  .actions > .exportControl > button > svg:first-child {
+    display: none;
+  }
+  .exportMenu {
+    right: -20px;
+  }
+}
+@keyframes pixels {
+  0%,
+  80%,
+  100% {
+    opacity: 0.24;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace *,
+  .workspace *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .activityMark i {
+    opacity: 0.6;
+  }
+}
+@media (prefers-contrast: more) {
+  .workspace {
+    --muted: #594967;
+  }
+  :global(.dark) .workspace {
+    --muted: #cbbdd7;
+  }
+}

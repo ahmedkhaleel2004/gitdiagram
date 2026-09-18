@@ -143,6 +143,8 @@ export function useDiagramStream({
           setState((prev) => ({
             status: "complete",
             startedAt: prev.startedAt,
+            lastActivityAt: prev.lastActivityAt,
+            sourceFileCount: prev.sourceFileCount,
             sessionId: data.session_id,
             costSummary: data.cost_summary,
             quotaResetAt: data.quota_reset_at,

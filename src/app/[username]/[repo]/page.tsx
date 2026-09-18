@@ -70,6 +70,7 @@ export default async function Repo({ params }: RepoPageProps) {
 
   return (
     <RepoPageClient
+      key={`${username.toLowerCase()}/${repo.toLowerCase()}`}
       username={username}
       repo={repo}
       initialState={initialState?.diagram ? initialState : null}

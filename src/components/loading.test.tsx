@@ -1,6 +1,5 @@
 import {
   cleanup,
-  act,
   fireEvent,
   render,
   screen,
@@ -23,93 +22,13 @@ function openOverview() {
 }
 
 describe("generation experience", () => {
-  it("shows immediate activity without invented progress or notes", () => {
-    render(
-      <Loading status="started" repository="acme/demo" onCancel={vi.fn()} />,
+  it("shows an accessible route loading state", () => {
+    render(<Loading />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Opening your diagram",
     );
-    expect(screen.getByRole("status")).toHaveTextContent("Reading the source");
-    expect(screen.getByText("Connecting")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Stop generation" }),
-    ).toBeEnabled();
-    expect(
-      screen.queryByRole("button", { name: "Architecture overview" }),
-    ).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
-
-  it("keeps a quiet model visibly connected when real keep-alives arrive", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-09-17T12:00:00Z"));
-    const start = Date.now();
-    const { rerender } = render(
-      <Loading
-        status="explanation"
-        startedAt={start}
-        lastActivityAt={start}
-        sourceFileCount={12}
-      />,
-    );
-    act(() => vi.advanceTimersByTime(40_000));
-    expect(screen.getByText("Waiting for updates")).toBeInTheDocument();
-    rerender(
-      <Loading
-        status="explanation"
-        startedAt={start}
-        lastActivityAt={Date.now()}
-        sourceFileCount={12}
-      />,
-    );
-    expect(screen.getByText("Still working")).toBeInTheDocument();
-    expect(screen.getByLabelText("40 seconds elapsed")).toHaveTextContent(
-      "0:40",
-    );
-    expect(
-      screen.getByText("12 source files · README and file tree"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Finding the connections",
-    );
-  });
-
-  it("keeps a graph retry in the build stage", () => {
-    render(<Loading status="graph_retry" explanation="Overview" />);
-    expect(screen.getByText("Build diagram").closest("li")).toHaveAttribute(
-      "aria-current",
-      "step",
-    );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "A few finishing touches",
-    );
-  });
-
-  it("reports a connection that never starts, but not a local rendering delay", () => {
-    const { rerender } = render(
-      <Loading status="started" elapsedSeconds={30} />,
-    );
-    expect(screen.getByText("Waiting for updates")).toBeInTheDocument();
-    rerender(<Loading status="diagram_compiling" elapsedSeconds={30} />);
-    expect(screen.queryByText("Waiting for updates")).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Drawing your diagram",
-    );
-  });
-
-  it("keeps streamed details out of the generation canvas", () => {
-    render(
-      <Loading
-        status="explanation_chunk"
-        explanation="A long architecture overview"
-      />,
-    );
-    expect(
-      screen.queryByText("A long architecture overview"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Architecture overview" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("keeps the saved overview optional and escapes markup", () => {
     render(
       <ArchitectureNotes
@@ -156,30 +75,5 @@ describe("generation experience", () => {
     fireEvent.click(screen.getByRole("button", { name: "Follow latest" }));
     expect(pane.scrollTop).toBe(1000);
     expect(pageScroll).not.toHaveBeenCalled();
-  });
-
-  it("replaces activity with recovery after a failure and preserves the overview", () => {
-    const retry = vi.fn();
-    render(
-      <Loading
-        status="error"
-        error="Connection ended"
-        explanation="Completed analysis"
-        recovery={<button onClick={retry}>Try again</button>}
-      />,
-    );
-    expect(screen.getByRole("alert")).toHaveTextContent("Connection ended");
-    expect(screen.queryByText("Connected")).not.toBeInTheDocument();
-    openOverview();
-    expect(screen.getByText("Completed analysis")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(retry).toHaveBeenCalledOnce();
-  });
-
-  it("calls cancellation immediately", () => {
-    const cancel = vi.fn();
-    render(<Loading status="started" onCancel={cancel} />);
-    fireEvent.click(screen.getByRole("button", { name: "Stop generation" }));
-    expect(cancel).toHaveBeenCalledOnce();
   });
 });

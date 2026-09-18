@@ -10,14 +10,12 @@ import { isExampleRepo } from "~/lib/exampleRepos";
 const {
   getCredentialStatus,
   getDiagramState,
-  useDiagramExport,
   runGeneration,
   cancelGeneration,
   setStreamState,
 } = vi.hoisted(() => ({
   getCredentialStatus: vi.fn(),
   getDiagramState: vi.fn(),
-  useDiagramExport: vi.fn(),
   runGeneration: vi.fn(),
   cancelGeneration: vi.fn(),
   setStreamState: vi.fn(),
@@ -103,10 +101,6 @@ vi.mock("~/hooks/diagram/useDiagramStream", () => ({
   },
 }));
 
-vi.mock("~/hooks/diagram/useDiagramExport", () => ({
-  useDiagramExport: (...args: unknown[]) => useDiagramExport(...args),
-}));
-
 vi.mock("~/lib/exampleRepos", () => ({
   isExampleRepo: vi.fn(() => false),
 }));
@@ -126,10 +120,6 @@ describe("useDiagram", () => {
       graph: null,
       latestSessionAudit: null,
       lastSuccessfulAt: null,
-    });
-    useDiagramExport.mockReturnValue({
-      handleCopy: vi.fn(),
-      handleExportImage: vi.fn(),
     });
     setStreamState.mockReset();
     runGeneration.mockImplementation(async () => {

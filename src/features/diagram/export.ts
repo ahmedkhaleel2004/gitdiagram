@@ -36,6 +36,7 @@ function downloadBlob(blob: Blob, filename: string) {
 
 export async function exportMermaidSvgAsPng(
   svgElement: SVGSVGElement,
+  backgroundColor = "white",
 ): Promise<void> {
   const bbox = svgElement.getBBox();
   const viewBox = svgElement.viewBox.baseVal;
@@ -71,7 +72,7 @@ export async function exportMermaidSvgAsPng(
       throw new Error("Unable to create an image export canvas.");
     }
 
-    context.fillStyle = "white";
+    context.fillStyle = backgroundColor;
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.scale(scale, scale);
     context.drawImage(image, 0, 0, width, height);

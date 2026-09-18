@@ -10,7 +10,6 @@ import type {
   DiagramStreamState,
 } from "~/features/diagram/types";
 import { useDiagramStream } from "~/hooks/diagram/useDiagramStream";
-import { useDiagramExport } from "~/hooks/diagram/useDiagramExport";
 import { isExampleRepo } from "~/lib/exampleRepos";
 
 type DiagramStateSyncMode = "foreground" | "background";
@@ -367,7 +366,6 @@ export function useDiagram(
 
   const diagram = state.diagram ?? "";
   const error = state.error ?? "";
-  const { handleCopy, handleExportImage } = useDiagramExport(diagram);
 
   const handleApiKeySaved = async () => {
     await runGenerationOperation(
@@ -401,12 +399,10 @@ export function useDiagram(
     error,
     loading,
     lastGenerated,
-    handleCopy,
     showApiKeyDialog,
     handleApiKeySaved,
     handleCloseApiKeyDialog,
     handleOpenApiKeyDialog,
-    handleExportImage,
     handleRegenerate,
     handleCancel,
     handleDiagramRenderError,

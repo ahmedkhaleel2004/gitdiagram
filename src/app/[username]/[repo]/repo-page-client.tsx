@@ -1,23 +1,18 @@
 "use client";
 
-import { loadDiagramRenderer } from "~/components/generation/load-diagram-renderer";
-
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { Key } from "lucide-react";
 import { toast } from "sonner";
 import type { DiagramStateResponse } from "~/features/diagram/types";
-import MainCard from "~/components/main-card";
-import Loading from "~/components/loading";
-import { DiagramResult } from "~/components/generation/diagram-result";
-import { GenerationAuditPanel } from "~/components/generation-audit-panel";
+import { RepositoryWorkspace } from "~/components/generation/repository-workspace";
+import { loadDiagramRenderer } from "~/components/generation/load-diagram-renderer";
 import { useDiagram } from "~/hooks/useDiagram";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
 import { useStarReminder } from "~/hooks/useStarReminder";
-import { SponsorSlot } from "~/components/sponsor-slot";
-import { Button } from "~/components/ui/button";
 import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
+import { isExampleRepo } from "~/lib/exampleRepos";
 
 const PrivateReposDialog = dynamic(
   () =>
@@ -40,26 +35,20 @@ export default function RepoPageClient({
   initialState = null,
   initialStateIsAuthoritative = false,
 }: RepoPageClientProps) {
-  const [zoomingEnabled, setZoomingEnabled] = useState(false);
-  const [diagramRendered, setDiagramRendered] = useState(false);
   const [showGithubAccess, setShowGithubAccess] = useState(false);
-
   useStarReminder();
-
   const normalizedUsername = username.toLowerCase();
   const normalizedRepo = repo.toLowerCase();
-
+  const repository = `${normalizedUsername}/${normalizedRepo}`;
   const {
     diagram,
     error,
     loading,
     lastGenerated,
     showApiKeyDialog,
-    handleCopy,
     handleApiKeySaved,
     handleCloseApiKeyDialog,
     handleOpenApiKeyDialog,
-    handleExportImage,
     handleRegenerate,
     handleCancel,
     handleDiagramRenderError,
@@ -70,12 +59,7 @@ export default function RepoPageClient({
     initialState,
     initialStateIsAuthoritative,
   );
-
   const hasDiagram = Boolean(diagram);
-  const hasError = Boolean(error || state.error);
-  const generating = loading || (hasDiagram && !diagramRendered && !hasError);
-  // Offer the personal-key escape hatch on any rate-limited generation, not
-  // only when the error text happens to mention an API key.
   const showApiKeyCta =
     state.errorCode === "RATE_LIMITED" ||
     Boolean(error?.includes("API key")) ||
@@ -89,147 +73,51 @@ export default function RepoPageClient({
   ].includes(state.errorCode ?? "");
 
   useEffect(() => {
-    if (hasDiagram || loading) {
-      void loadDiagramRenderer();
-    }
+    if (hasDiagram || loading) void loadDiagramRenderer();
   }, [hasDiagram, loading]);
-
-  const handleDiagramRenderComplete = useCallback(() => {
-    setDiagramRendered(true);
-  }, []);
-
   useEffect(() => {
-    setDiagramRendered(false);
-  }, [diagram]);
-
-  useEffect(() => {
-    if (!state.persistenceWarning) {
-      return;
-    }
-
+    if (!state.persistenceWarning) return;
     toast.warning("Diagram generated, but not saved", {
       description: state.persistenceWarning,
       duration: 8_000,
     });
   }, [state.persistenceWarning]);
 
-  const recoveryActions = (
-    <>
-      <Button onClick={() => void handleRegenerate()} className="px-4 py-2">
-        Try again
-      </Button>
-      {showGithubAccessCta && (
-        <Button onClick={() => setShowGithubAccess(true)} className="px-4 py-2">
-          GitHub Access
-        </Button>
-      )}
-      <a
-        href={`https://github.com/${encodeURIComponent(normalizedUsername)}/${encodeURIComponent(normalizedRepo)}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="neo-link self-center text-sm"
-      >
-        Open repository on GitHub
-      </a>
-      {showApiKeyCta && (
-        <Button onClick={handleOpenApiKeyDialog} className="px-4 py-2">
-          <Key className="mr-2 h-5 w-5" />
-          Use Your AI Key
-        </Button>
-      )}
-    </>
-  );
-
   return (
     <TooltipProvider delayDuration={500} skipDelayDuration={300}>
-      <main
-        className={`flex flex-col items-center p-4 ${generating ? "min-h-[calc(100svh-142px)] justify-center" : ""}`}
-      >
-        {!generating && (
-          <div className="flex w-full justify-center pt-8">
-            <MainCard
-              isHome={false}
-              username={normalizedUsername}
-              repo={normalizedRepo}
-              hasDiagram={hasDiagram}
-              onCopy={handleCopy}
-              lastGenerated={lastGenerated}
-              costSummary={state.costSummary}
-              onExportImage={handleExportImage}
-              onRegenerate={handleRegenerate}
-              zoomingEnabled={zoomingEnabled}
-              onZoomToggle={() => setZoomingEnabled((prev) => !prev)}
-              loading={loading}
-            />
-          </div>
-        )}
-        <div
-          className={`flex w-full flex-col items-center gap-8 ${generating ? "" : "mt-8"}`}
-        >
-          {loading ? (
-            <Loading
-              repository={`${normalizedUsername}/${normalizedRepo}`}
-              onCancel={handleCancel}
-              status={state.status}
-              startedAt={state.startedAt}
-              lastActivityAt={state.lastActivityAt}
-              sourceFileCount={state.sourceFileCount}
-              explanation={state.explanation}
-              graph={state.graph}
-            />
-          ) : (
-            <div className="flex w-full flex-col items-center gap-8">
-              {hasDiagram && (
-                <>
-                  <DiagramResult
-                    diagram={diagram}
-                    repository={`${normalizedUsername}/${normalizedRepo}`}
-                    explanation={state.explanation}
-                    graph={state.graph}
-                    startedAt={state.startedAt}
-                    zoomingEnabled={zoomingEnabled}
-                    onRenderError={handleDiagramRenderError}
-                    onRenderComplete={handleDiagramRenderComplete}
-                  />
-                  {diagramRendered && (
-                    <SponsorSlot
-                      surface="diagram"
-                      className="mx-4 mb-8 max-w-5xl sm:mb-12"
-                    />
-                  )}
-                </>
+      <main>
+        <RepositoryWorkspace
+          repository={repository}
+          state={state}
+          loading={loading}
+          lastGenerated={lastGenerated}
+          onRegenerate={() => void handleRegenerate()}
+          onCancel={handleCancel}
+          onRenderError={handleDiagramRenderError}
+          regenerateDisabled={isExampleRepo(normalizedUsername, normalizedRepo)}
+          recovery={
+            <>
+              {showGithubAccessCta && (
+                <button type="button" onClick={() => setShowGithubAccess(true)}>
+                  GitHub Access
+                </button>
               )}
-              {hasError && (
-                <div className="flex w-full flex-col items-center gap-6">
-                  {hasDiagram ? (
-                    <>
-                      <GenerationAuditPanel
-                        audit={state.latestSessionAudit}
-                        error={error || state.error}
-                      />
-                      <div className="flex flex-wrap justify-center gap-3">
-                        {recoveryActions}
-                      </div>
-                    </>
-                  ) : (
-                    <Loading
-                      status="error"
-                      repository={`${normalizedUsername}/${normalizedRepo}`}
-                      explanation={state.explanation}
-                      error={error || state.error}
-                      cancelled={state.errorCode === "GENERATION_CANCELLED"}
-                      recovery={recoveryActions}
-                    />
-                  )}
-                  {!hasDiagram && state.latestSessionAudit && (
-                    <GenerationAuditPanel audit={state.latestSessionAudit} />
-                  )}
-                </div>
+              {showApiKeyCta && (
+                <button type="button" onClick={handleOpenApiKeyDialog}>
+                  <Key className="mr-2 inline h-4 w-4" aria-hidden="true" />
+                  Use Your AI Key
+                </button>
               )}
-            </div>
-          )}
-        </div>
-
+              <a
+                href={`https://github.com/${repository}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open repository on GitHub
+              </a>
+            </>
+          }
+        />
         <ApiKeyDialog
           isOpen={showApiKeyDialog}
           onClose={handleCloseApiKeyDialog}

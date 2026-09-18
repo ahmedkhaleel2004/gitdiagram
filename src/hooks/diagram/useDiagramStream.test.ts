@@ -18,6 +18,7 @@ describe("useDiagramStream", () => {
       async (_params, handlers) => {
         await handlers.onMessage({
           status: "started",
+          source_file_count: 12,
           message: "starting",
           cost_summary: {
             kind: "estimate",
@@ -91,6 +92,7 @@ describe("useDiagramStream", () => {
     expect(result.current.state.diagram).toContain("flowchart TD");
     expect(result.current.state.graph?.nodes).toHaveLength(1);
     expect(result.current.state.costSummary?.kind).toBe("actual");
+    expect(result.current.state.sourceFileCount).toBe(12);
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(streamDiagramGenerationMock.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
