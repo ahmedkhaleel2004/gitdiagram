@@ -131,10 +131,10 @@ describe("repository evidence preparation", () => {
 });
 
 describe("analysis model routing", () => {
-  it("uses Sol for managed architecture regardless of repository size", () => {
+  it("keeps managed architecture on the affordable configured model", () => {
     expect(
       selectAnalysisModel({ provider: "openai", model: "gpt-5.6-luna" }),
-    ).toBe("gpt-5.6-sol");
+    ).toBe("gpt-5.6-luna");
   });
   it("preserves custom model and BYOK choices", () => {
     for (const params of [

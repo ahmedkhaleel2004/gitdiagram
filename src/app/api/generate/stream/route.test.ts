@@ -878,7 +878,7 @@ describe("POST /api/generate/stream", () => {
     expect(finishLog).not.toContain("private-name");
   });
   it.each([false, true])(
-    "generates architecture in one Sol request and only calls Luna for a needed repair (%s)",
+    "generates architecture in one Luna request and only makes another call for a needed repair (%s)",
     async (repair) => {
       mocks.getModel.mockReturnValue("gpt-5.6-luna");
       mocks.isComplimentaryGateEnabled.mockReturnValue(false);
@@ -956,7 +956,7 @@ describe("POST /api/generate/stream", () => {
       ).toBe(explanation);
       expect(mocks.streamCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: "gpt-5.6-sol",
+          model: "gpt-5.6-luna",
           userPrompt: expect.stringContaining("<source_files>"),
         }),
       );
@@ -973,12 +973,12 @@ describe("POST /api/generate/stream", () => {
       expect(terminal).toMatchObject({
         cost_summary: {
           kind: "actual",
-          amountUsd: repair ? 0.0508 : 0.048,
-          pricingModel: repair ? "gpt-5.6-sol + gpt-5.6-luna" : "gpt-5.6-sol",
+          amountUsd: repair ? 0.0056 : 0.0028,
+          pricingModel: "gpt-5.6-luna",
         },
         latest_session_audit: {
           model: "gpt-5.6-luna",
-          analysisModel: "gpt-5.6-sol",
+          analysisModel: "gpt-5.6-luna",
         },
       });
     },

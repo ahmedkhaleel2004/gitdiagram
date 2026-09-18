@@ -1,5 +1,5 @@
 import type { GithubData } from "./github";
-import { usesSinglePassArchitecture, type AIProvider } from "./model-config";
+import type { AIProvider } from "./model-config";
 
 export const MAX_SOURCE_CHARACTERS = 48_000;
 export const MAX_SOURCE_FILES = 12;
@@ -153,8 +153,6 @@ export function selectAnalysisModel(params: {
   model: string;
   apiKey?: string;
 }): string {
-  // Small repositories also need reliable scope selection: cheaper models
-  // inflated utility maps with build machinery in the quality benchmarks.
-  // Preserve explicit model/provider choices and user-supplied key billing.
-  return usesSinglePassArchitecture(params) ? "gpt-5.6-sol" : params.model;
+  // Honor the configured model for every stage; never silently escalate cost.
+  return params.model;
 }
