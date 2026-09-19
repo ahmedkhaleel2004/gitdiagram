@@ -3,7 +3,11 @@
 [Sent campaign dashboard](https://us.posthog.com/project/113380/dashboard/2114998)
 is in the existing private PostHog project. It shows total clicks, unique
 browsers, the $749 campaign fee divided by clicks so far, placement totals, and
-daily clicks by placement. It is not publicly shared.
+daily clicks by placement. A read-only share link exposes this campaign dashboard
+only, so Ahmed and Sent can use the same report and filters. Anyone with that link
+can view it; keep the token-bearing URL out of this public repository. The rest of
+the PostHog project remains private. Shared reports refresh periodically, so use
+the same report and refresh time when comparing figures.
 
 The Sent campaign runs from September 19, 2026 at 18:23:01 EDT to October 19 at
 18:23:01 EDT. Dedicated click capture went live September 19 at 19:29:40 EDT; it cannot
