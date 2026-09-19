@@ -78,7 +78,12 @@ these priority groups at the user's request for broader and targeted coverage.
   stripping query strings and fragments. Returning `null` for every callback also
   drops rrweb's viewport metadata, causing white-screen playback until a recorded
   viewport resize. Actual network entries are still rejected.
-- Recorder extensions use the existing same-origin `/phx9a` proxy; CSP is unchanged.
+- The SDK uses `posthog-js/full/no-external`, bundling replay, dead-click capture,
+  Web Vitals, and exception capture into the app's lazy-loaded JavaScript chunks.
+  This avoids separate recorder/extension filenames matched by uBlock Origin's
+  default filters. Remote configuration, flags, events, and replay uploads still
+  use the same-origin `/phx9a` proxy; CSP is unchanged. Explicitly blocking that
+  path or disabling JavaScript can still prevent collection.
 - Surveys are disabled in the client. No new user-facing surveys or experiments are
   launched by enabling telemetry.
 

@@ -40,7 +40,9 @@ function getPostHog() {
   if (!posthogKey) return null;
 
   posthogPromise ??= Promise.all([
-    import("posthog-js"),
+    // Bundle the recorder and capture extensions into Next.js chunks so their
+    // standalone filenames cannot be blocked independently of the SDK.
+    import("posthog-js/full/no-external"),
     import("posthog-js/customizations"),
     getReplayRegion(),
   ]).then(([{ default: posthog }, customizations, region]) => {
@@ -71,8 +73,8 @@ function getPostHog() {
         capture_unhandled_rejections: true,
         capture_console_errors: false,
       },
-      // Recorder and web-vitals extensions use the same first-party proxy.
-      disable_external_dependency_loading: false,
+      // Extensions are bundled above; config, flags and events still use the proxy.
+      disable_external_dependency_loading: true,
       disable_session_recording: false,
       enable_recording_console_log: false,
       session_recording: {

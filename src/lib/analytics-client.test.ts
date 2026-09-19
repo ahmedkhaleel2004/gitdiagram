@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
 }));
 
-vi.mock("posthog-js", () => ({ default: mocks }));
+vi.mock("posthog-js/full/no-external", () => ({ default: mocks }));
 vi.mock("posthog-js/customizations", () => ({
   setAllPersonProfilePropertiesAsPersonPropertiesForFlags:
     mocks.setDeviceProperties,
@@ -51,6 +51,10 @@ describe("replay targeting initialization", () => {
     await vi.waitFor(() => expect(mocks.capture).toHaveBeenCalledTimes(2));
     expect(mocks.fetch).toHaveBeenCalledOnce();
     expect(mocks.init).toHaveBeenCalledOnce();
+    expect(mocks.init.mock.calls[0]![1]).toMatchObject({
+      disable_external_dependency_loading: true,
+      disable_session_recording: false,
+    });
     expect(mocks.setPersonPropertiesForFlags).toHaveBeenCalledWith(
       { replay_region_country: "US", replay_region_code: "WA" },
       false,
