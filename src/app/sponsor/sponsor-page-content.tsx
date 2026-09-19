@@ -39,15 +39,14 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
     <main className={styles.page}>
       <section className={styles.hero}>
         <h1>
-          Bring developers
+          Advertise on
           <br />
-          <span>to your product.</span>
+          <span>GitDiagram.</span>
         </h1>
         <p className={styles.introduction}>
-          GitDiagram had{" "}
-          <strong>{content.monthlyVisitors} tracked unique visitors</strong> in
-          the last 30 days. Reach developers as they explore GitHub
-          repositories, with placements that link directly to your website.
+          GitDiagram had <strong>{content.monthlyVisitors} visitors</strong> in
+          the last 30 days. Advertise your product on the homepage, repository
+          diagrams, browse catalog, and GitHub README.
         </p>
         <p className={styles.offerSummary}>
           <span>
@@ -85,9 +84,8 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
             <time dateTime={content.asOf}>Updated {content.updatedAt}.</time>
           </p>
           <p>
-            Figures refresh about every five minutes. The 30-day window ends at
-            the time shown. Visitors are unique within each window. Pageviews
-            measure site traffic, not sponsor impressions.
+            Numbers update about every five minutes. Each visitor is counted
+            once per time period. Pageviews count views of pages, not ads.
           </p>
         </div>
       </section>

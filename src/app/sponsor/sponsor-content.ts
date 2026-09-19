@@ -44,9 +44,9 @@ const date = (value: string, includeTime = false) =>
 export function createSponsorContent(stats: SponsorStats) {
   const monthly: SponsorMetric[] = [
     {
-      label: "Tracked unique visitors",
+      label: "Visitors",
       value: format(stats.monthlyVisitors),
-      detail: "Unique, across GitDiagram",
+      detail: "Across GitDiagram",
     },
     {
       label: "Pageviews",
@@ -56,14 +56,14 @@ export function createSponsorContent(stats: SponsorStats) {
     {
       label: "Repo page visitors",
       value: format(stats.repoVisitors),
-      detail: "Unique visitors to repository pages",
+      detail: "Visitors to repository pages",
     },
   ];
   const lifetime: SponsorMetric[] = [
     {
-      label: "Tracked unique visitors",
+      label: "Visitors",
       value: format(stats.lifetimeVisitors),
-      detail: `Tracked since ${date(stats.trackedSince)}`,
+      detail: `Since ${date(stats.trackedSince)}`,
     },
     {
       label: "Pageviews",
@@ -86,7 +86,7 @@ export function createSponsorContent(stats: SponsorStats) {
         src: "/sponsor-previews/diagram.png",
         width: 2344,
         height: 1260,
-        highlight: { x: 14, y: 1018, width: 2310, height: 170 },
+        highlight: { x: 20, y: 1018, width: 2304, height: 140 },
         alt: "The FastAPI architecture diagram with the full-width sponsor slot directly beneath it.",
         caption: "A full-width placement beneath the generated diagram.",
       },
@@ -100,7 +100,7 @@ export function createSponsorContent(stats: SponsorStats) {
         src: "/sponsor-previews/home.png",
         width: 1794,
         height: 1346,
-        highlight: { x: 186, y: 1056, width: 1420, height: 148 },
+        highlight: { x: 199, y: 1084, width: 1396, height: 120 },
         alt: "GitDiagram’s homepage with the sponsor slot below the repository input and example repositories.",
         caption: "Inside the repository lookup panel, below the examples.",
       },
@@ -114,7 +114,7 @@ export function createSponsorContent(stats: SponsorStats) {
         src: "/sponsor-previews/browse.png",
         width: 2388,
         height: 1434,
-        highlight: { x: 58, y: 1098, width: 2276, height: 184 },
+        highlight: { x: 48, y: 924, width: 2292, height: 188 },
         alt: "GitDiagram’s browse catalog with a dedicated sponsor row between the first two repository listings.",
         caption: "A dedicated row immediately after the first repository.",
       },
@@ -126,9 +126,9 @@ export function createSponsorContent(stats: SponsorStats) {
         "A sponsor mention near the top of GitDiagram’s GitHub README, linking directly to your product.",
       preview: {
         src: "/sponsor-previews/readme.png",
-        width: 1804,
+        width: 1756,
         height: 1000,
-        highlight: { x: 60, y: 330, width: 1714, height: 76 },
+        highlight: { x: 40, y: 333, width: 1676, height: 48 },
         alt: "GitDiagram’s README on GitHub with the sponsor mention between the introduction and Features section.",
         caption: "Below the introduction, before the Features section.",
       },
