@@ -14,7 +14,7 @@ export function Footer() {
           </Link>
           <span className="mx-2 text-black dark:text-neutral-100">/</span>
           <Link href="/sponsor" className="neo-link hover:underline">
-            Sponsor
+            Advertise
           </Link>
         </span>
       </div>

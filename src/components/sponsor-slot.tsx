@@ -27,19 +27,19 @@ const sponsorCopy: Record<
   }
 > = {
   home: {
-    label: "Homepage sponsor slot",
-    body: "Reach developers before they diagram a repository.",
-    cta: "Sponsor",
+    label: "Homepage ad space",
+    body: "Advertise your product here.",
+    cta: "Advertise",
   },
   diagram: {
-    label: "Repo diagram sponsor slot",
-    body: "Reach developers while they inspect codebase architecture.",
-    cta: "Sponsor this spot",
+    label: "Repository diagram ad space",
+    body: "Advertise your product here.",
+    cta: "Advertise",
   },
   browse: {
-    label: "Browse catalog sponsor slot",
-    body: "Reach developers browsing public repository diagrams.",
-    cta: "Sponsor",
+    label: "Browse catalog ad space",
+    body: "Advertise your product here.",
+    cta: "Advertise",
   },
 };
 
@@ -115,7 +115,7 @@ export function SponsorSlot({ surface, className }: SponsorSlotProps) {
       />
       <span className="min-w-0 flex-1">
         <span className="block text-[10px] leading-none font-black tracking-[0.16em] text-[hsl(var(--neo-soft-text))] uppercase dark:text-neutral-300">
-          {sponsor.isActive ? "Sponsored" : "Sponsor slot"}
+          {sponsor.isActive ? "Sponsored" : "Ad space"}
         </span>
         <span className="mt-1 block text-sm leading-5 font-semibold text-black dark:text-neutral-100">
           <span className="font-black">{sponsor.name}</span>
@@ -155,7 +155,7 @@ export function SponsorCatalogRow() {
             />
             <span className="min-w-0">
               <span className="block text-[10px] leading-none font-black tracking-[0.16em] text-[hsl(var(--neo-soft-text))] uppercase dark:text-neutral-300">
-                {sponsor.isActive ? "Sponsored" : "Sponsor slot"}
+                {sponsor.isActive ? "Sponsored" : "Ad space"}
               </span>
               <span className="mt-1 block text-base leading-tight font-black tracking-tight text-black sm:text-[1.15rem] dark:text-neutral-50">
                 {sponsor.name}

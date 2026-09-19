@@ -9,7 +9,7 @@ Turn any public or private GitHub repository into an interactive architecture di
 
 You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 
-> **Sponsor slot:** Reach developers while they are actively exploring codebases. [Sponsor GitDiagram](https://gitdiagram.com/sponsor).
+> **Ad space:** Advertise your product here. [Advertise on GitDiagram](https://gitdiagram.com/sponsor).
 
 ## Features
 
