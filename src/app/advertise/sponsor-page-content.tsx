@@ -2,6 +2,7 @@ import { ArrowDown } from "lucide-react";
 import { SponsorEmailActions } from "./sponsor-email-actions";
 import { SponsorPlacementPreview } from "./sponsor-placement-preview";
 import {
+  SPONSOR_AVAILABILITY,
   SPONSOR_EMAIL,
   SPONSOR_EMAIL_ADDRESS,
   SPONSOR_PRICE,
@@ -57,6 +58,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
             All four placements included
           </span>
         </p>
+        <p className={styles.availability}>{SPONSOR_AVAILABILITY}</p>
         <div className={styles.heroActions}>
           <SponsorEmailActions
             email={SPONSOR_EMAIL_ADDRESS}
@@ -168,7 +170,8 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
               mailto={SPONSOR_EMAIL}
             />
             <p className={styles.availability}>
-              Available now. Email Ahmed to agree on the dates and creative.
+              {SPONSOR_AVAILABILITY} Email Ahmed to agree on the dates and
+              creative.
             </p>
           </div>
           <p className={styles.terms}>

@@ -16,7 +16,13 @@ type SponsorSlotProps = {
   className?: string;
 };
 
-const activeSponsor: ActiveSponsor | null = null;
+const activeSponsor: ActiveSponsor | null = {
+  name: "Sent",
+  body: "SMS, WhatsApp, and RCS through one API.",
+  href: "https://www.sent.dm/en?utm_source=gitdiagram&utm_medium=sponsorship&utm_campaign=sent_30_days",
+  cta: "Try Sent",
+  logoSrc: "/sponsors/sent-logo-round.png",
+};
 
 const sponsorCopy: Record<
   SponsorSurface,
@@ -55,7 +61,7 @@ function getSponsor(surface: SponsorSurface) {
     name: sponsor?.name ?? placeholderSponsor.name,
     body: sponsor?.body ?? copy.body,
     cta: sponsor?.cta ?? copy.cta,
-    href: sponsor?.href ?? "/advertise",
+    href: sponsor ? `${sponsor.href}&utm_content=${surface}` : "/advertise",
     logoText: sponsor?.logoText ?? placeholderSponsor.logoText,
     logoSrc: sponsor?.logoSrc,
     isActive: Boolean(sponsor),
@@ -71,14 +77,22 @@ function SponsorLogo({
   logoText?: string;
   logoSrc?: string;
 }) {
+  if (logoSrc) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoSrc}
+        alt=""
+        width={32}
+        height={32}
+        className="h-8 w-8 shrink-0 object-contain"
+      />
+    );
+  }
+
   return (
     <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border-[2px] border-black bg-[hsl(var(--neo-button))] text-sm font-black text-black">
-      {logoSrc ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={logoSrc} alt="" className="h-full w-full object-cover" />
-      ) : (
-        (logoText ?? name.slice(0, 2))
-      )}
+      {logoText ?? name.slice(0, 2)}
     </span>
   );
 }
@@ -89,7 +103,7 @@ function linkProps(href: string) {
   return {
     href,
     target: isExternal ? "_blank" : undefined,
-    rel: isExternal ? "noreferrer" : undefined,
+    rel: isExternal ? "sponsored noopener noreferrer" : undefined,
   };
 }
 
@@ -100,7 +114,9 @@ export function SponsorSlot({ surface, className }: SponsorSlotProps) {
   return (
     <a
       {...linkProps(sponsor.href)}
-      aria-label={copy.label}
+      aria-label={
+        sponsor.isActive ? `Sponsored by ${sponsor.name}` : copy.label
+      }
       className={cn(
         "neo-lift group flex items-center gap-3 rounded-md border-[2px] border-black bg-[hsl(var(--neo-input-bg))] px-3 py-2 text-left shadow-[3px_3px_0_0_#000] dark:bg-[hsl(var(--neo-panel-muted))]",
         surface === "diagram" &&
@@ -139,7 +155,9 @@ export function SponsorCatalogRow() {
 
   return (
     <tr
-      aria-label={copy.label}
+      aria-label={
+        sponsor.isActive ? `Sponsored by ${sponsor.name}` : copy.label
+      }
       className="block border-b border-black/15 bg-[hsl(var(--neo-panel-muted))]/60 align-middle lg:table-row dark:border-white/10"
     >
       <td colSpan={4} className="block p-0 lg:table-cell">

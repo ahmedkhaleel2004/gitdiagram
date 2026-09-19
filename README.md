@@ -9,7 +9,9 @@ Turn any public or private GitHub repository into an interactive architecture di
 
 You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 
-> **Ad space:** Advertise your product here. [Advertise on GitDiagram](https://gitdiagram.com/advertise).
+> <a href="https://www.sent.dm/en?utm_source=gitdiagram&amp;utm_medium=sponsorship&amp;utm_campaign=sent_30_days&amp;utm_content=readme"><img src="./public/sponsors/sent-logo.png" alt="Sent" width="104" /></a>
+>
+> **Sponsored by Sent.** SMS, WhatsApp, and RCS through one API. [Try Sent →](https://www.sent.dm/en?utm_source=gitdiagram&utm_medium=sponsorship&utm_campaign=sent_30_days&utm_content=readme)
 
 ## Features
 
