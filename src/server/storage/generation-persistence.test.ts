@@ -116,13 +116,7 @@ describe("persistGenerationResult", () => {
       "/acme/demo/opengraph-image",
     );
     expect(mocks.revalidatePath).toHaveBeenCalledWith(
-      "/acme/demo/twitter-image",
-    );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith(
       "/Acme/Demo/opengraph-image",
-    );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith(
-      "/Acme/Demo/twitter-image",
     );
     expect(mocks.revalidateTag).toHaveBeenCalledWith(
       "public-diagram-state:acme:demo",
@@ -143,13 +137,10 @@ describe("persistGenerationResult", () => {
       await task();
     }
 
-    expect(mocks.revalidatePath).toHaveBeenCalledTimes(3);
+    expect(mocks.revalidatePath).toHaveBeenCalledTimes(2);
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/acme/demo");
     expect(mocks.revalidatePath).toHaveBeenCalledWith(
       "/acme/demo/opengraph-image",
-    );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith(
-      "/acme/demo/twitter-image",
     );
   });
 });

@@ -24,6 +24,7 @@ vi.mock("~/server/storage/distributed-lock", () => ({
 
 import {
   getPublicDiagramPreview,
+  getStoredDiagramState,
   toStoredSessionSummary,
   writeDiagramArtifact,
   writePublicDiagramPreview,
@@ -186,6 +187,44 @@ describe("writeDiagramArtifact", () => {
         waitMs: 30_000,
       }),
     );
+  });
+});
+
+describe("reading older artifacts", () => {
+  it("compacts duplicate audit payloads without losing the canonical diagram or modifying storage", async () => {
+    vi.clearAllMocks();
+    process.env.R2_PUBLIC_BUCKET = "test-public-bucket";
+    const artifact = createArtifact({
+      sessionId: "legacy",
+      createdAt: "2026-07-13T12:00:00Z",
+      updatedAt: "2026-07-13T12:01:00Z",
+      diagram: "flowchart TD; A-->B",
+    });
+    artifact.latestSessionSummary.explanation = "Duplicate explanation";
+    artifact.latestSessionSummary.sourcePaths = ["src/main.ts"];
+    storageMocks.getJsonObject.mockResolvedValue(artifact);
+
+    const result = await getStoredDiagramState({
+      username: "acme",
+      repo: "demo",
+    });
+
+    expect(result).toMatchObject({
+      diagram: artifact.diagram,
+      explanation: artifact.explanation,
+      graph: artifact.graph,
+      lastSuccessfulAt: artifact.lastSuccessfulAt,
+      latestSessionAudit: {
+        sessionId: "legacy",
+        graph: null,
+        graphAttempts: [],
+        timeline: [],
+        sourcePaths: ["src/main.ts"],
+      },
+    });
+    expect(result?.latestSessionAudit).not.toHaveProperty("explanation");
+    expect(artifact.latestSessionSummary.graph).toBe(graph);
+    expect(storageMocks.putJsonObject).not.toHaveBeenCalled();
   });
 });
 

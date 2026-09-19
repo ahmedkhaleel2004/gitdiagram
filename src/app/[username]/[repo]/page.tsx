@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
+import { permanentRedirect } from "next/navigation";
 import { SITE_URL } from "~/lib/site";
 import { getStoredDiagramState } from "~/server/storage/artifact-store";
-import { getPublicDiagramStateCacheTag } from "~/server/storage/repo-page-cache";
+import {
+  getPublicDiagramStateCacheTag,
+  getRepoPagePath,
+} from "~/server/storage/repo-page-cache";
 import RepoPageClient from "./repo-page-client";
 
 type RepoPageProps = {
@@ -10,8 +14,8 @@ type RepoPageProps = {
 };
 
 // Successful generations invalidate the page and data tag on demand. Keep
-// unchanged diagrams warm between crawls instead of rebuilding every 5 minutes.
-export const revalidate = 1800;
+// unchanged diagrams warm; this interval is only the fallback refresh.
+export const revalidate = 21600;
 export const dynamicParams = true;
 
 export function generateStaticParams() {
@@ -39,6 +43,13 @@ export async function generateMetadata({
   params,
 }: RepoPageProps): Promise<Metadata> {
   const { username, repo } = await params;
+  const repositoryPath = getRepoPagePath(username, repo);
+  const image = {
+    url: `${SITE_URL}${repositoryPath}/opengraph-image`,
+    width: 1200,
+    height: 630,
+    alt: "GitDiagram repository preview",
+  };
   const title = `${username}/${repo} Diagram | GitDiagram`;
   const description = `Interactive architecture diagram for ${username}/${repo}.`;
 
@@ -46,26 +57,31 @@ export async function generateMetadata({
     title,
     description,
     alternates: {
-      canonical: `/${username}/${repo}`,
+      canonical: repositoryPath,
     },
     openGraph: {
       title,
       description,
-      url: `${SITE_URL}/${username}/${repo}`,
+      url: `${SITE_URL}${repositoryPath}`,
       siteName: "GitDiagram",
       type: "website",
+      images: [image],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
       creator: "@ahmedkhaleel2004",
+      images: [image],
     },
   };
 }
 
 export default async function Repo({ params }: RepoPageProps) {
   const { username, repo } = await params;
+  if (username !== username.toLowerCase() || repo !== repo.toLowerCase()) {
+    permanentRedirect(getRepoPagePath(username, repo));
+  }
   const initialState = await getCachedPublicDiagramState(username, repo);
 
   return (

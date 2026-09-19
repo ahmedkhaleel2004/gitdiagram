@@ -11,6 +11,20 @@ const REJECTION_HEADERS = {
  */
 export function proxy(request: NextRequest): NextResponse {
   if (!request.headers.has("next-action")) {
+    // Only mixed-case repository URLs enter this branch in production. Keep
+    // query parameters (including PostHog campaign attribution) on redirects.
+    if (request.method === "GET" || request.method === "HEAD") {
+      const url = request.nextUrl.clone();
+      const path = url.pathname;
+      if (
+        !/^\/(?:api|phx9a|_next)\//i.test(path) &&
+        /^\/[^/]+\/[^/]+(?:\/opengraph-image)?\/?$/.test(path) &&
+        path !== path.toLowerCase()
+      ) {
+        url.pathname = path.toLowerCase();
+        return NextResponse.redirect(url, 308);
+      }
+    }
     return NextResponse.next();
   }
 
@@ -26,5 +40,8 @@ export const config = {
       source: "/:path*",
       has: [{ type: "header", key: "next-action" }],
     },
+    // Case-sensitive lookahead avoids running Proxy on ordinary lowercase
+    // pages, APIs, PostHog ingestion, or assets merely to normalize a URL.
+    "/((?!api/|phx9a/|_next/)(?=[^/]*[A-Z]|[^/]+/[^/]*[A-Z])[^/]+/[^/]+(?:/opengraph-image)?)",
   ],
 };

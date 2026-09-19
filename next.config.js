@@ -37,6 +37,11 @@ const config = {
     // Support replacing github.com in a file, branch, issue or pull-request URL.
     return [
       {
+        source: "/:username/:repo/twitter-image",
+        destination: "/:username/:repo/opengraph-image",
+        permanent: true,
+      },
+      {
         source:
           "/:username/:repo/:view(tree|blob|issues|pull|pulls|commit|commits|releases|actions)/:path*",
         destination: "/:username/:repo",

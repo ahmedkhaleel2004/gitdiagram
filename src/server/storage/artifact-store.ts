@@ -111,7 +111,9 @@ function toDiagramStateResponse(
     diagram: artifact.diagram,
     explanation: artifact.explanation,
     graph: artifact.graph,
-    latestSessionAudit: artifact.latestSessionSummary,
+    // Older artifacts predate compact summaries and can contain a second graph
+    // plus the entire event timeline. Normalize reads without rewriting R2.
+    latestSessionAudit: toStoredSessionSummary(artifact.latestSessionSummary),
     lastSuccessfulAt: artifact.lastSuccessfulAt,
   };
 }

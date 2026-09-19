@@ -129,11 +129,9 @@ export async function persistGenerationResult(params: {
             );
             revalidatePath(normalizedPath);
             revalidatePath(`${normalizedPath}/opengraph-image`);
-            revalidatePath(`${normalizedPath}/twitter-image`);
             if (requestedPath !== normalizedPath) {
               revalidatePath(requestedPath);
               revalidatePath(`${requestedPath}/opengraph-image`);
-              revalidatePath(`${requestedPath}/twitter-image`);
             }
             revalidateTag(
               getPublicDiagramStateCacheTag(params.username, params.repo),
