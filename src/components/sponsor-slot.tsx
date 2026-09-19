@@ -1,11 +1,11 @@
 import { ArrowUpRight } from "lucide-react";
+import { sponsorClickHref } from "~/lib/sponsor-campaign";
 import { cn } from "~/lib/utils";
 
 type SponsorSurface = "home" | "diagram" | "browse";
 type ActiveSponsor = {
   name: string;
   body: string;
-  href: string;
   cta: string;
   logoText?: string;
   logoSrc?: string;
@@ -19,7 +19,6 @@ type SponsorSlotProps = {
 const activeSponsor: ActiveSponsor | null = {
   name: "Sent",
   body: "SMS, WhatsApp, and RCS through one API.",
-  href: "https://www.sent.dm/en?utm_source=gitdiagram&utm_medium=sponsorship&utm_campaign=sent_30_days",
   cta: "Try Sent",
   logoSrc: "/sponsors/sent-logo-round.png",
 };
@@ -61,7 +60,7 @@ function getSponsor(surface: SponsorSurface) {
     name: sponsor?.name ?? placeholderSponsor.name,
     body: sponsor?.body ?? copy.body,
     cta: sponsor?.cta ?? copy.cta,
-    href: sponsor ? `${sponsor.href}&utm_content=${surface}` : "/advertise",
+    href: sponsor ? sponsorClickHref(surface) : "/advertise",
     logoText: sponsor?.logoText ?? placeholderSponsor.logoText,
     logoSrc: sponsor?.logoSrc,
     isActive: Boolean(sponsor),
@@ -97,13 +96,11 @@ function SponsorLogo({
   );
 }
 
-function linkProps(href: string) {
-  const isExternal = href.startsWith("http");
-
+function linkProps(href: string, isSponsored: boolean) {
   return {
     href,
-    target: isExternal ? "_blank" : undefined,
-    rel: isExternal ? "sponsored noopener noreferrer" : undefined,
+    target: isSponsored ? "_blank" : undefined,
+    rel: isSponsored ? "sponsored noopener noreferrer" : undefined,
   };
 }
 
@@ -113,7 +110,7 @@ export function SponsorSlot({ surface, className }: SponsorSlotProps) {
 
   return (
     <a
-      {...linkProps(sponsor.href)}
+      {...linkProps(sponsor.href, sponsor.isActive)}
       aria-label={
         sponsor.isActive ? `Sponsored by ${sponsor.name}` : copy.label
       }
@@ -162,7 +159,7 @@ export function SponsorCatalogRow() {
     >
       <td colSpan={4} className="block p-0 lg:table-cell">
         <a
-          {...linkProps(sponsor.href)}
+          {...linkProps(sponsor.href, sponsor.isActive)}
           className="group flex items-center justify-between gap-3 px-4 py-4 text-left lg:px-5"
         >
           <span className="flex min-w-0 items-center gap-3">

@@ -12,14 +12,14 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/"],
+        disallow: ["/api/", "/out/"],
       },
       {
         // Bulk repo/image crawls create disproportionate origin
         // traffic. Match the route-scoped WAF policy and prevent future crawls.
         userAgent: ["Amazonbot", "Brightbot"],
         allow: "/",
-        disallow: ["/api/", "/*/*"],
+        disallow: ["/api/", "/out/", "/*/*"],
       },
     ],
     sitemap: getSitemapUrls(SITE_URL, sitemapCount),
