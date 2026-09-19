@@ -13,7 +13,7 @@ export function Footer() {
             Ahmed Khaleel
           </Link>
           <span className="mx-2 text-black dark:text-neutral-100">/</span>
-          <Link href="/sponsor" className="neo-link hover:underline">
+          <Link href="/advertise" className="neo-link hover:underline">
             Advertise
           </Link>
         </span>

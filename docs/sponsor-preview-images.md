@@ -15,7 +15,7 @@ page content was substituted.
 Refresh these screenshots when a placement changes. Capture at 2x pixel density,
 include enough surrounding content to establish the location, and keep personal
 browser chrome and development controls outside the crop. Update the image
-dimensions and descriptions in `src/app/sponsor/sponsor-content.ts` if needed.
+dimensions and descriptions in `src/app/advertise/sponsor-content.ts` if needed.
 
 These are static placement illustrations. The sponsor page gets its audience
 and placement metrics separately from the existing live stats source.

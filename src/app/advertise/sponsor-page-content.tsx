@@ -39,14 +39,15 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
     <main className={styles.page}>
       <section className={styles.hero}>
         <h1>
-          Advertise on
+          Bring developers
           <br />
-          <span>GitDiagram.</span>
+          <span>to your product.</span>
         </h1>
         <p className={styles.introduction}>
-          GitDiagram had <strong>{content.monthlyVisitors} visitors</strong> in
-          the last 30 days. Advertise your product on the homepage, repository
-          diagrams, browse catalog, and GitHub README.
+          GitDiagram had{" "}
+          <strong>{content.monthlyVisitors} unique visitors</strong> in the last
+          30 days. Reach developers as they explore GitHub repositories, with
+          placements that link directly to your website.
         </p>
         <p className={styles.offerSummary}>
           <span>
@@ -84,8 +85,9 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
             <time dateTime={content.asOf}>Updated {content.updatedAt}.</time>
           </p>
           <p>
-            Numbers update about every five minutes. Each visitor is counted
-            once per time period. Pageviews count views of pages, not ads.
+            Figures refresh about every five minutes. The 30-day window ends at
+            the time shown. Visitors are unique within each window. Pageviews
+            measure site traffic, not ad impressions.
           </p>
         </div>
       </section>
@@ -122,7 +124,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
 
       <section className={styles.detailSection} aria-labelledby="fit-title">
         <div>
-          <h2 id="fit-title">Sponsor fit</h2>
+          <h2 id="fit-title">Who it’s for</h2>
           <p className={styles.sectionIntro}>
             If your customers build software, GitDiagram is a relevant place to
             introduce your product.
@@ -135,7 +137,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
             ))}
           </ul>
           <p className={styles.privacy}>
-            Sponsorship is clearly labeled, with no third-party ad scripts,
+            Advertising is clearly labeled, with no third-party ad scripts,
             tracking pixels, or popups.
           </p>
         </div>
@@ -148,7 +150,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
       >
         <div className={styles.offerHeading}>
           <div>
-            <h2 id="offer-title">30-day sponsorship.</h2>
+            <h2 id="offer-title">Advertise for 30 days</h2>
             <p className={styles.offerDescription}>
               Your logo, a short product description, and a link to your
               website. One fixed price covers the homepage, repository diagram
@@ -173,6 +175,8 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
             One-time payment before launch.
             <br />
             No automatic renewal.
+            <br />
+            Future bookings are priced separately.
           </p>
         </div>
       </section>

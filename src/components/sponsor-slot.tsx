@@ -55,7 +55,7 @@ function getSponsor(surface: SponsorSurface) {
     name: sponsor?.name ?? placeholderSponsor.name,
     body: sponsor?.body ?? copy.body,
     cta: sponsor?.cta ?? copy.cta,
-    href: sponsor?.href ?? "/sponsor",
+    href: sponsor?.href ?? "/advertise",
     logoText: sponsor?.logoText ?? placeholderSponsor.logoText,
     logoSrc: sponsor?.logoSrc,
     isActive: Boolean(sponsor),

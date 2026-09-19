@@ -1,8 +1,8 @@
 import type { SponsorStats } from "~/server/sponsor-stats";
 
 export const SPONSOR_EMAIL_ADDRESS = "ahmedkhaleel2004@gmail.com";
-export const SPONSOR_EMAIL = `mailto:${SPONSOR_EMAIL_ADDRESS}?subject=GitDiagram%20sponsor%20slot`;
-export const SPONSOR_PRICE = "$949";
+export const SPONSOR_EMAIL = `mailto:${SPONSOR_EMAIL_ADDRESS}?subject=Advertising%20on%20GitDiagram`;
+export const SPONSOR_PRICE = "$749";
 export const sponsorFits = [
   "AI coding tools and repo agents",
   "Code review, security, and dependency tools",
@@ -44,9 +44,9 @@ const date = (value: string, includeTime = false) =>
 export function createSponsorContent(stats: SponsorStats) {
   const monthly: SponsorMetric[] = [
     {
-      label: "Visitors",
+      label: "Unique visitors",
       value: format(stats.monthlyVisitors),
-      detail: "Across GitDiagram",
+      detail: "Unique, across GitDiagram",
     },
     {
       label: "Pageviews",
@@ -56,12 +56,12 @@ export function createSponsorContent(stats: SponsorStats) {
     {
       label: "Repo page visitors",
       value: format(stats.repoVisitors),
-      detail: "Visitors to repository pages",
+      detail: "Unique visitors to repository pages",
     },
   ];
   const lifetime: SponsorMetric[] = [
     {
-      label: "Visitors",
+      label: "Unique visitors",
       value: format(stats.lifetimeVisitors),
       detail: `Since ${date(stats.trackedSince)}`,
     },
@@ -81,13 +81,13 @@ export function createSponsorContent(stats: SponsorStats) {
       name: "Repo diagram pages",
       metric: { value: format(stats.repoPageviews), label: "pageviews" },
       description:
-        "A sponsor placement beneath generated architecture diagrams, with your logo, product description, and a link to your site.",
+        "An ad placement beneath generated architecture diagrams, with your logo, product description, and a link to your site.",
       preview: {
         src: "/sponsor-previews/diagram.png",
         width: 2344,
         height: 1260,
         highlight: { x: 20, y: 1018, width: 2304, height: 140 },
-        alt: "The FastAPI architecture diagram with the full-width sponsor slot directly beneath it.",
+        alt: "The FastAPI architecture diagram with the full-width ad space directly beneath it.",
         caption: "A full-width placement beneath the generated diagram.",
       },
     },
@@ -101,7 +101,7 @@ export function createSponsorContent(stats: SponsorStats) {
         width: 1794,
         height: 1346,
         highlight: { x: 199, y: 1084, width: 1396, height: 120 },
-        alt: "GitDiagram’s homepage with the sponsor slot below the repository input and example repositories.",
+        alt: "GitDiagram’s homepage with the ad space below the repository input and example repositories.",
         caption: "Inside the repository lookup panel, below the examples.",
       },
     },
@@ -109,13 +109,13 @@ export function createSponsorContent(stats: SponsorStats) {
       name: "Browse catalog",
       metric: { value: format(stats.browsePageviews), label: "pageviews" },
       description:
-        "A dedicated sponsor row among the public repository listings, with your logo, description, and link.",
+        "A dedicated ad row among the public repository listings, with your logo, description, and link.",
       preview: {
         src: "/sponsor-previews/browse.png",
         width: 2388,
         height: 1434,
         highlight: { x: 48, y: 924, width: 2292, height: 188 },
-        alt: "GitDiagram’s browse catalog with a dedicated sponsor row between the first two repository listings.",
+        alt: "GitDiagram’s browse catalog with a dedicated ad row between the first two repository listings.",
         caption: "A dedicated row immediately after the first repository.",
       },
     },
@@ -123,13 +123,13 @@ export function createSponsorContent(stats: SponsorStats) {
       name: "GitHub README",
       metric: { value: format(stats.githubStars), label: "GitHub stars" },
       description:
-        "A sponsor mention near the top of GitDiagram’s GitHub README, linking directly to your product.",
+        "An ad near the top of GitDiagram’s GitHub README, linking directly to your product.",
       preview: {
         src: "/sponsor-previews/readme.png",
         width: 1756,
         height: 1000,
         highlight: { x: 40, y: 333, width: 1676, height: 48 },
-        alt: "GitDiagram’s README on GitHub with the sponsor mention between the introduction and Features section.",
+        alt: "GitDiagram’s README on GitHub with the ad between the introduction and Features section.",
         caption: "Below the introduction, before the Features section.",
       },
     },

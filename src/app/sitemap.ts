@@ -35,8 +35,8 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
-      url: `${SITE_URL}/sponsor`,
-      lastModified: new Date("2026-05-13"),
+      url: `${SITE_URL}/advertise`,
+      lastModified: new Date("2026-09-19"),
       changeFrequency: "monthly",
       priority: 0.6,
     },

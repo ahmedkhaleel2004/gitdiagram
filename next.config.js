@@ -34,8 +34,13 @@ const config = {
   ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
   transpilePackages: ["@aws-sdk/client-s3"],
   async redirects() {
-    // Support replacing github.com in a file, branch, issue or pull-request URL.
     return [
+      {
+        source: "/sponsor",
+        destination: "/advertise",
+        permanent: true,
+      },
+      // Support replacing github.com in a file, branch, issue or pull-request URL.
       {
         source: "/:username/:repo/twitter-image",
         destination: "/:username/:repo/opengraph-image",
