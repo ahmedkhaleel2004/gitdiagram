@@ -6,7 +6,7 @@ browsers, the $749 campaign fee divided by clicks so far, placement totals, and
 daily clicks by placement. It is not publicly shared.
 
 The Sent campaign runs from September 19, 2026 at 18:23:01 EDT to October 19 at
-18:23:01 EDT. Dedicated click capture was added later on September 19; it cannot
+18:23:01 EDT. Dedicated click capture went live September 19 at 19:29:40 EDT; it cannot
 reconstruct earlier README clicks. The dashboard uses these fixed campaign dates
 and excludes events with `is_test: true`.
 
