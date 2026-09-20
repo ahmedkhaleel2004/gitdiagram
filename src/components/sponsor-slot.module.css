@@ -1,0 +1,158 @@
+.banner {
+  container-type: inline-size;
+  display: block;
+  border: 2px solid #000;
+  border-radius: 7px;
+  background: hsl(var(--neo-input-bg));
+  color: hsl(var(--foreground));
+  text-align: left;
+  text-decoration: none;
+  box-shadow: 2px 2px 0 #000;
+  transition: background-color 160ms ease;
+}
+
+.content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "brand end" "message message";
+  align-items: center;
+  gap: 10px 20px;
+  padding: 14px 16px;
+}
+
+.brand {
+  grid-area: brand;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.wordmark,
+.mark {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  min-height: 32px;
+}
+
+.wordmark img {
+  width: auto;
+  height: auto;
+  max-width: 136px;
+  max-height: 28px;
+  object-fit: contain;
+}
+
+.mark img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.message {
+  grid-area: message;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: hsl(var(--neo-soft-text));
+  overflow-wrap: anywhere;
+}
+
+.end {
+  grid-area: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.disclosure {
+  color: hsl(var(--neo-soft-text));
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 14px;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.arrow {
+  width: 14px;
+  height: 14px;
+  transition: transform 160ms var(--ease-out);
+}
+
+.embedded {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.banner:focus-visible {
+  outline: 3px solid hsl(var(--neo-link));
+  outline-offset: 4px;
+}
+
+:global(.dark) .banner {
+  background: hsl(var(--neo-panel-muted));
+}
+
+@container (max-width: 19rem) {
+  .content {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "brand" "message" "end";
+    row-gap: 8px;
+  }
+
+  .end {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+}
+
+@container (min-width: 36rem) {
+  .content {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "brand message end";
+    column-gap: 24px;
+    padding-block: 14px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .banner:hover {
+    background: hsl(var(--neo-panel));
+  }
+
+  :global(.dark) .banner:hover {
+    background: hsl(var(--neo-panel));
+  }
+
+  .banner:hover .arrow {
+    transform: translate(1px, -1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrow {
+    transition: none;
+  }
+
+  .banner:hover .arrow {
+    transform: none;
+  }
+}
