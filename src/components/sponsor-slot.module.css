@@ -166,6 +166,40 @@
     width: 12px;
     height: 12px;
   }
+
+  .embedded .content {
+    row-gap: 5px;
+    padding-block: 11px;
+  }
+
+  .embedded .brand {
+    font-size: 15px;
+  }
+
+  .embedded .wordmark,
+  .embedded .mark {
+    min-height: 26px;
+  }
+
+  .embedded .wordmark img {
+    max-width: 112px;
+    max-height: 24px;
+  }
+
+  .embedded .mark img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .embedded .message,
+  .embedded .action {
+    font-size: 13px;
+    line-height: 19px;
+  }
+
+  .embedded .message {
+    text-wrap: balance;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {
