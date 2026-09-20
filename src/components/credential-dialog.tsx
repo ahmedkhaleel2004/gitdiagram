@@ -105,7 +105,7 @@ export function CredentialDialog({
       }}
     >
       <DialogContent
-        className={`ph-no-capture neo-panel ${controls.controlsTheme} max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-lg p-5 sm:max-w-md sm:p-6`}
+        className={`neo-panel ${controls.controlsTheme} max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-lg p-5 sm:max-w-md sm:p-6`}
       >
         <DialogHeader className="text-left">
           <DialogTitle className="pr-6 text-xl font-bold">{title}</DialogTitle>
@@ -150,7 +150,7 @@ export function CredentialDialog({
               value={value}
               onChange={(event) => setValue(event.target.value)}
               disabled={isPending}
-              className="neo-input h-11 rounded-md px-3 py-2 text-base placeholder:font-normal placeholder:text-gray-600 dark:placeholder:text-neutral-400"
+              className="ph-no-capture neo-input h-11 rounded-md px-3 py-2 text-base placeholder:font-normal placeholder:text-gray-600 dark:placeholder:text-neutral-400"
               required
             />
             <p

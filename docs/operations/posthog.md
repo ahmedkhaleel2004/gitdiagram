@@ -86,8 +86,11 @@ reduced to the current rates on September 20 to preserve the remaining allowance
 
 - Analytics starts only after legacy credentials have been migrated out of browser
   storage, preserving the existing fail-closed migration gate.
-- Both credential dialogs have `ph-no-capture`, blocking their entire subtrees from
-  replay and autocapture. All inputs are masked; hidden/file inputs are blocked.
+- Only the secret input in each credential dialog has `ph-no-capture`, excluding
+  it from replay and autocapture while keeping the instructions, buttons, and
+  dialog layout visible. Blocking the entire dialog produces an empty box in
+  playback; older recordings cannot recover those omitted contents. All other
+  inputs remain masked; hidden/file inputs are blocked.
 - Console recording, request headers/bodies, and network capture are disabled.
 - The network redaction callback preserves PostHog's URL-only page metadata,
   stripping query strings and fragments. Returning `null` for every callback also

@@ -66,7 +66,8 @@ describe("credential dialogs", () => {
       selector: "input",
     });
     expect(input).toHaveValue("");
-    expect(input.closest(".ph-no-capture")).toBe(screen.getByRole("dialog"));
+    expect(input).toHaveClass("ph-no-capture");
+    expect(screen.getByRole("dialog").closest(".ph-no-capture")).toBeNull();
 
     fireEvent.change(input, { target: { value: "sk-browser-entry" } });
     fireEvent.click(screen.getByRole("button", { name: "Save & retry" }));
@@ -128,7 +129,8 @@ describe("credential dialogs", () => {
     );
 
     const input = screen.getByLabelText("GitHub personal access token");
-    expect(input.closest(".ph-no-capture")).toBe(screen.getByRole("dialog"));
+    expect(input).toHaveClass("ph-no-capture");
+    expect(screen.getByRole("dialog").closest(".ph-no-capture")).toBeNull();
     fireEvent.change(input, {
       target: { value: "github_pat_fine_grained" },
     });
