@@ -2,7 +2,7 @@ import type { SponsorStats } from "~/server/sponsor-stats";
 
 export const SPONSOR_EMAIL_ADDRESS = "ahmedkhaleel2004@gmail.com";
 export const SPONSOR_EMAIL = `mailto:${SPONSOR_EMAIL_ADDRESS}?subject=Advertising%20on%20GitDiagram`;
-export const SPONSOR_PRICE = "$749";
+export const SPONSOR_PRICE = "$999";
 export const SPONSOR_AVAILABILITY =
   "Currently sponsored by Sent. Next available: October 20, 2026.";
 export const sponsorFits = [
