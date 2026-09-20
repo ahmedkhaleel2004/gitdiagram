@@ -109,21 +109,6 @@
   background: hsl(var(--neo-panel-muted));
 }
 
-@container (max-width: 19rem) {
-  .content {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "brand" "message" "end";
-    row-gap: 8px;
-  }
-
-  .end {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-}
-
 @container (min-width: 36rem) {
   .content {
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -134,50 +119,50 @@
 }
 
 @container (max-width: 35.999rem) {
-  .banner:not(.embedded) .content {
+  .content {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas: "brand end" "message message";
     gap: 4px 12px;
     padding: 9px 12px;
   }
 
-  .banner:not(.embedded) .brand {
+  .brand {
     gap: 6px;
     font-size: 14px;
   }
 
-  .banner:not(.embedded) .wordmark,
-  .banner:not(.embedded) .mark {
+  .wordmark,
+  .mark {
     min-height: 22px;
   }
 
-  .banner:not(.embedded) .wordmark img {
+  .wordmark img {
     max-width: 104px;
     max-height: 20px;
   }
 
-  .banner:not(.embedded) .mark img {
+  .mark img {
     width: 22px;
     height: 22px;
   }
 
-  .banner:not(.embedded) .message {
+  .message {
     font-size: 12px;
     line-height: 18px;
   }
 
-  .banner:not(.embedded) .end {
+  .end {
     flex-direction: row;
     align-items: center;
     gap: 8px;
   }
 
-  .banner:not(.embedded) .action {
+  .action {
     font-size: 12px;
     line-height: 18px;
   }
 
-  .banner:not(.embedded) .arrow {
+  .arrow {
     width: 12px;
     height: 12px;
   }
