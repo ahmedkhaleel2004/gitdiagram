@@ -23,18 +23,32 @@ billing page for the current period and allowances.
 
 Replay uses two PostHog V2 recording groups (union, without duplicate recordings):
 
-- **Priority audiences: 100%, no minimum duration**, gated by the boolean feature
+- **Priority audiences: 5%, no minimum duration**, gated by the boolean feature
   flag [`replay-priority-audiences`](https://us.posthog.com/project/113380/feature_flags/896554).
   The flag matches any of: macOS in the US or Canada; any device in California,
   Washington, New York, Ontario, or British Columbia; London, UK and recognized
   London borough/locality names. Canada outside Ontario/BC is macOS only.
-- **General sample: 20%, 10 seconds minimum duration**, with no conditions.
+- **General sample: paused (0%)**, with no conditions. Its 10-second minimum
+  duration is retained for any future resumption.
 
 Both groups are managed in PostHog project settings, with strict minimum duration
-in the SDK. The legacy fallback is also 20% with a 10-second minimum. Do not add a
-client `sampleRate`, which would interfere with remote sampling controls. No URL
-or event triggers bypass these rules. To roll back, set
-`session_recording_trigger_groups` to `null`, retaining the legacy fallback.
+in the SDK. Both the V2 fallback and legacy sample rate are 0%, so clients falling
+back to legacy controls do not spend the remaining recording allowance. Do not add
+a client `sampleRate`, which would interfere with remote sampling controls. No URL
+or event triggers bypass these rules.
+
+These temporary reductions were applied September 20, 2026, with the audience
+flag unchanged (version 3). Billing showed 3,495 of 5,000 recordings used, while
+the replay store was slightly ahead at 3,536 at 05:28 Toronto time. The preceding
+24-hour audit found about 2,593 recordings, including roughly 1,055 priority
+recordings. At the same traffic level, 5% priority sampling with general capture
+paused projects to about 53 recordings/day and roughly 4,600 for the period.
+This is an estimate, not an allowance guarantee; keep the $0 billing cap.
+
+The current billing period ends October 10 at 01:41:45 UTC (October 9 at 21:41:45
+Toronto time). Review usage and sampling after traffic settles or the allowance
+resets. Rates do not automatically revert at renewal. Restore broader recording
+only after recalculating its expected usage from recent sessions.
 
 The SDK supplies browser/OS properties before its first flag evaluation using
 PostHog's official customization. `/api/analytics-context` adds only Vercel's
@@ -51,6 +65,7 @@ London borough code: those codes are unavailable during native flag evaluation.
 VPNs, missing geolocation, blockers, or closing before SDK initialization can
 prevent capture. macOS identifies Macs, not specifically MacBook hardware.
 
+The original 100% priority / 20% general rules were sized for pre-surge traffic.
 The 88 complete days before the September 16 surge averaged 436 sessions/day;
 the maximum was 1,065. The most recent 60 pre-spike days averaged about 12,600
 sessions per 30 days. Of 25,235 sessions in July 18–September 15, 2,530 matched
@@ -62,10 +77,10 @@ This uses historical PostHog geography as an estimate for Vercel region matching
 The September 17 peak was 22,372 sessions, and September 18 remained elevated at
 roughly 650–800 sessions/hour when checked. Sustained surge traffic could exhaust
 5,000 recordings in about a day. The $0 cap then stops ingestion, including
-priority recordings, until the allowance resets. The 100% rule is subject to that
-cap; it does not reserve quota for later priority sessions. This is fixed sampling,
-not adaptive sampling. The earlier 0.5% rate was raised to 25%, then replaced by
-these priority groups at the user's request for broader and targeted coverage.
+priority recordings, until the allowance resets. Priority rules do not reserve
+quota for later sessions. This is fixed sampling, not adaptive sampling. The
+earlier 0.5% rate was raised to 25%, then replaced by priority groups, which were
+reduced to the current rates on September 20 to preserve the remaining allowance.
 
 ## Recording boundaries
 
