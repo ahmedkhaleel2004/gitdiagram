@@ -2,8 +2,9 @@
 
 The images in `public/sponsor-previews` were captured on September 20, 2026
 from production GitDiagram and the public GitHub README. They show the active
-Sent campaign with the approved wordmark layout, smaller sponsorship label, and
-stacked tagline. No branding or page content was substituted.
+Sent campaign with the approved horizontal web banners, purple background, and
+sponsorship label beside the action. The README retains its wordmark placement.
+No branding or page content was substituted.
 
 | Image         | Source                                           | Framing                                                            |
 | ------------- | ------------------------------------------------ | ------------------------------------------------------------------ |
