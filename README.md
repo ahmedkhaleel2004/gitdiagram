@@ -9,9 +9,9 @@ Turn any public or private GitHub repository into an interactive architecture di
 
 You can also replace `hub` with `diagram` in a GitHub URL to open its diagram.
 
-> <a href="https://gitdiagram.com/out/sent-2026-09?placement=readme"><picture><source media="(prefers-color-scheme: dark)" srcset="./public/sponsors/sent-logo-dark.svg" /><img src="./public/sponsors/sent-logo.png" alt="Sent" width="104" /></picture></a>
+> <a href="https://gitdiagram.com/out/sent-2026-09?placement=readme"><picture><source media="(prefers-color-scheme: dark)" srcset="./public/sponsors/sent-logo-dark.svg" /><img src="./public/sponsors/sent-logo.png" alt="Sent" width="104" align="middle" /></picture></a>&nbsp;&nbsp; <sub>Sponsored</sub>
 >
-> **Sponsored by Sent.** SMS, WhatsApp, and RCS through one API. [Try Sent →](https://gitdiagram.com/out/sent-2026-09?placement=readme)
+> SMS, WhatsApp, and RCS through one API. [Try Sent →](https://gitdiagram.com/out/sent-2026-09?placement=readme)
 
 ## Features
 
