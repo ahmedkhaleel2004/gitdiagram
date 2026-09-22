@@ -41,7 +41,7 @@ import {
   EXPLANATION_REASONING_EFFORT,
   EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
   ARCHITECTURE_SLOW_RETRY_MS,
-  ARCHITECTURE_REASONING_EFFORT,
+  getArchitectureReasoningEffort,
   EXPLANATION_TEXT_VERBOSITY,
 } from "~/server/generate/generation-policy";
 import {
@@ -635,7 +635,7 @@ export async function POST(request: Request) {
                 }),
                 apiKey,
                 reasoningEffort: singlePass
-                  ? ARCHITECTURE_REASONING_EFFORT
+                  ? getArchitectureReasoningEffort(analysisModel)
                   : EXPLANATION_REASONING_EFFORT,
                 textVerbosity: EXPLANATION_TEXT_VERBOSITY,
                 signal,

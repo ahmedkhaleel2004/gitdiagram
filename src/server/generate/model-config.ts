@@ -2,10 +2,10 @@ export type AIProvider = "openai" | "openrouter";
 export type GenerationServiceTier = "default" | "priority";
 
 const DEFAULT_PROVIDER: AIProvider = "openai";
-const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
+const DEFAULT_OPENAI_MODEL = "gpt-6-luna";
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-terra";
-const GPT_56_MODEL_PATTERN =
-  /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/i;
+const MANAGED_OPENAI_MODEL_PATTERN =
+  /^gpt-(?:5\.6(?:-(?:sol|terra|luna))?|6-luna)(?:-\d{4}-\d{2}-\d{2})?$/i;
 
 function readEnvValue(name: string): string | undefined {
   const value = process.env[name]?.trim();
@@ -36,7 +36,9 @@ export function supportsTextVerbosity(
   provider: AIProvider,
   model: string,
 ): boolean {
-  return provider === "openai" && GPT_56_MODEL_PATTERN.test(model.trim());
+  return (
+    provider === "openai" && MANAGED_OPENAI_MODEL_PATTERN.test(model.trim())
+  );
 }
 
 /** Fast mode is funded by GitDiagram, never silently charged to a user's key. */
@@ -47,7 +49,7 @@ export function getGenerationServiceTier(params: {
 }): GenerationServiceTier {
   return params.provider === "openai" &&
     !params.apiKey?.trim() &&
-    GPT_56_MODEL_PATTERN.test(params.model.trim())
+    MANAGED_OPENAI_MODEL_PATTERN.test(params.model.trim())
     ? "priority"
     : "default";
 }
@@ -60,7 +62,7 @@ export function usesSinglePassArchitecture(params: {
   return (
     params.provider === "openai" &&
     !params.apiKey?.trim() &&
-    /^gpt-5\.6-luna(?:-\d{4}-\d{2}-\d{2})?$/.test(params.model)
+    /^gpt-(?:5\.6|6)-luna(?:-\d{4}-\d{2}-\d{2})?$/i.test(params.model.trim())
   );
 }
 

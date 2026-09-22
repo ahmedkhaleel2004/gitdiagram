@@ -3,7 +3,15 @@
 export const EXPLANATION_REASONING_EFFORT = "low" as const;
 // One recovery attempt leaves room for repository ingestion and rendering.
 export const ARCHITECTURE_SLOW_RETRY_MS = 18_000;
-export const ARCHITECTURE_REASONING_EFFORT = "medium" as const;
+// GPT-6 Luna overthinks this bounded extraction task at medium effort. Low
+// keeps its normal pass responsive; structural repairs still use medium.
+export function getArchitectureReasoningEffort(
+  model: string,
+): "low" | "medium" {
+  return /^gpt-6-luna(?:-\d{4}-\d{2}-\d{2})?$/i.test(model.trim())
+    ? "low"
+    : "medium";
+}
 export const GRAPH_REASONING_EFFORT = "medium" as const;
 
 export const EXPLANATION_TEXT_VERBOSITY = "low" as const;

@@ -32,6 +32,7 @@ interface RawResponseUsage {
 }
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
+  "gpt-6-luna": { inputPerMillionUsd: 0.1, outputPerMillionUsd: 0.5 },
   "gpt-5.6-sol": { inputPerMillionUsd: 4.0, outputPerMillionUsd: 20.0 },
   "gpt-5.6-terra": { inputPerMillionUsd: 2.0, outputPerMillionUsd: 12.0 },
   "gpt-5.6-luna": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 1.2 },
@@ -123,7 +124,7 @@ export function estimateTextTokenCostUsd(
     throw new ModelPricingUnavailableError();
   }
   const multiplier =
-    /^gpt-5\.6-(?:luna|terra|sol)$/.test(pricingModel) &&
+    /^gpt-(?:5\.6-(?:luna|terra|sol)|6-luna)$/.test(pricingModel) &&
     (serviceTier === "priority" || serviceTier === "fast")
       ? 2
       : 1;
@@ -225,7 +226,9 @@ export function createCostSummary(params: {
     params.usage.outputTokens,
   );
 
-  const is56 = /^gpt-5\.6-(?:luna|terra|sol)$/.test(pricingModel);
+  const supportsCachePricing = /^gpt-(?:5\.6-(?:luna|terra|sol)|6-luna)$/.test(
+    pricingModel,
+  );
   const reads = Math.min(
     Math.max(params.usage.cachedInputTokens ?? 0, 0),
     params.usage.inputTokens,
@@ -234,12 +237,12 @@ export function createCostSummary(params: {
     Math.max(params.usage.cacheWriteTokens ?? 0, 0),
     Math.max(0, params.usage.inputTokens - reads),
   );
-  const cacheAdjustment = is56
+  const cacheAdjustment = supportsCachePricing
     ? ((-0.9 * reads + 0.25 * writes) * pricing.inputPerMillionUsd) / 1_000_000
     : 0;
   const tier = params.usage.serviceTier;
   const tierMultiplier =
-    is56 && (tier === "fast" || tier === "priority") ? 2 : 1;
+    supportsCachePricing && (tier === "fast" || tier === "priority") ? 2 : 1;
   const unknownTier = Boolean(
     tier && !["default", "fast", "priority"].includes(tier),
   );

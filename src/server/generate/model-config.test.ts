@@ -7,19 +7,23 @@ import {
   getGenerationServiceTier,
   shouldUseExactInputTokenCount,
   supportsTextVerbosity,
+  usesSinglePassArchitecture,
 } from "~/server/generate/model-config";
 
 const ORIGINAL_ENV = { ...process.env };
 
 describe("generation service tier", () => {
-  it.each(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra-2026-07-09"])(
-    "uses Fast mode for managed %s requests",
-    (model) => {
-      expect(getGenerationServiceTier({ provider: "openai", model })).toBe(
-        "priority",
-      );
-    },
-  );
+  it.each([
+    "gpt-6-luna",
+    "gpt-6-luna-2026-09-22",
+    "gpt-5.6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra-2026-07-09",
+  ])("uses Fast mode for managed %s requests", (model) => {
+    expect(getGenerationServiceTier({ provider: "openai", model })).toBe(
+      "priority",
+    );
+  });
   it("preserves standard billing for user keys and unsupported providers/models", () => {
     for (const params of [
       {
@@ -48,10 +52,10 @@ describe("getProvider", () => {
 });
 
 describe("getModel", () => {
-  it("uses GPT-5.6 Luna as the OpenAI default", () => {
+  it("uses GPT-6 Luna as the OpenAI default", () => {
     delete process.env.OPENAI_MODEL;
 
-    expect(getModel("openai")).toBe("gpt-5.6-luna");
+    expect(getModel("openai")).toBe("gpt-6-luna");
   });
 
   it("preserves an explicit OpenAI model override", () => {
@@ -80,17 +84,21 @@ describe("shouldUseExactInputTokenCount", () => {
 
 describe("supportsTextVerbosity", () => {
   it.each([
+    "gpt-6-luna",
+    "gpt-6-luna-2026-09-22",
     "gpt-5.6",
     "gpt-5.6-sol",
     "gpt-5.6-terra",
     "gpt-5.6-luna",
     "gpt-5.6-terra-2026-07-09",
     " GPT-5.6-LUNA-2026-07-09 ",
-  ])("accepts the exact OpenAI GPT-5.6 family model %s", (model) => {
+  ])("accepts the supported OpenAI model %s", (model) => {
     expect(supportsTextVerbosity("openai", model)).toBe(true);
   });
 
   it.each([
+    ["openai", "gpt-6-luna-preview"],
+    ["openai", "gpt-6-unknown"],
     ["openai", "gpt-5.4"],
     ["openai", "gpt-5.6-pro"],
     ["openai", "gpt-5.6-terra-preview"],
@@ -99,6 +107,27 @@ describe("supportsTextVerbosity", () => {
     "rejects unsupported provider/model pair %s/%s",
     (provider, model) => {
       expect(supportsTextVerbosity(provider, model)).toBe(false);
+    },
+  );
+});
+
+describe("single-pass Luna architecture", () => {
+  it.each(["gpt-6-luna", "gpt-6-luna-2026-09-22", "gpt-5.6-luna"])(
+    "preserves one-pass generation and user-key billing for %s",
+    (model) => {
+      expect(usesSinglePassArchitecture({ provider: "openai", model })).toBe(
+        true,
+      );
+      const userKey = {
+        provider: "openai" as const,
+        model,
+        apiKey: "user-key",
+      };
+      expect(usesSinglePassArchitecture(userKey)).toBe(false);
+      expect(getGenerationServiceTier(userKey)).toBe("default");
+      expect(
+        usesSinglePassArchitecture({ provider: "openrouter", model }),
+      ).toBe(false);
     },
   );
 });

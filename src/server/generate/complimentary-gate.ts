@@ -14,7 +14,7 @@ import {
 } from "~/server/generate/pricing";
 
 const DEFAULT_DAILY_LIMIT_TOKENS = 10_000_000;
-const DEFAULT_MODEL_FAMILY = "gpt-5.6-luna";
+const DEFAULT_MODEL_FAMILY = "gpt-6-luna";
 const COMPLIMENTARY_QUOTA_BUCKET = "openai-complimentary-small-models";
 const QUOTA_FINALIZATION_ATTEMPTS = 2;
 const DEFAULT_DENIAL_MESSAGE =

@@ -71,6 +71,13 @@ describe("complimentary gate", () => {
     expect(modelMatchesComplimentaryFamily("not-a-real-model")).toBe(false);
   });
 
+  it("admits the new default family if the managed quota gate is enabled", () => {
+    delete process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY;
+    expect(modelMatchesComplimentaryFamily("gpt-6-luna")).toBe(true);
+    expect(modelMatchesComplimentaryFamily("gpt-6-luna-2026-09-22")).toBe(true);
+    expect(modelMatchesComplimentaryFamily("gpt-5.6-luna")).toBe(false);
+  });
+
   it("normalizes the configured complimentary family before matching", () => {
     process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY = "gpt-5.6-terra-2026-07-09";
 

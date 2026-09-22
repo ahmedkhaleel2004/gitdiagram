@@ -143,3 +143,58 @@ describe("mixed-model measured costs", () => {
     );
   });
 });
+
+describe("GPT-6 Luna pricing", () => {
+  it.each(["gpt-6-luna", "gpt-6-luna-2026-09-22", "openai/gpt-6-luna"])(
+    "resolves %s without falling back to an older model",
+    (model) => {
+      expect(resolvePricingModel(model)).toBe("gpt-6-luna");
+      expect(
+        estimateTextTokenCostUsd(model, 1_000_000, 1_000_000).costUsd,
+      ).toBeCloseTo(0.6);
+      expect(
+        estimateTextTokenCostUsd(model, 1_000_000, 1_000_000, "priority")
+          .costUsd,
+      ).toBeCloseTo(1.2);
+    },
+  );
+  it.each(["default", "priority", "fast"])(
+    "prices cache reads/writes at the returned %s tier",
+    (serviceTier) => {
+      const cost = createCostSummary({
+        kind: "actual",
+        model: "gpt-6-luna",
+        approximate: false,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 100,
+          totalTokens: 1100,
+          cachedInputTokens: 400,
+          cacheWriteTokens: 200,
+          serviceTier,
+        },
+      });
+      expect(cost.amountUsd).toBeCloseTo(
+        ((400 * 0.1 + 400 * 0.01 + 200 * 0.125 + 100 * 0.5) / 1e6) *
+          (serviceTier === "default" ? 1 : 2),
+        10,
+      );
+      expect(cost.approximate).toBe(false);
+    },
+  );
+  it("includes Fast cache-write pricing in a one-pass reservation", () => {
+    const cost = createEstimateCostSummary({
+      model: "gpt-6-luna",
+      singlePass: true,
+      explanationInputTokens: 1000,
+      graphStaticInputTokens: 200,
+      approximate: true,
+      analysisServiceTier: "priority",
+      graphServiceTier: "priority",
+    });
+    expect(cost.amountUsd).toBeCloseTo(
+      ((1000 * 0.125 + 8000 * 0.5) * 2) / 1e6,
+      10,
+    );
+  });
+});

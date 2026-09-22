@@ -61,40 +61,43 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("OpenAI Responses text verbosity", () => {
-  it("requests Fast for both managed stages and retains the tier actually served", async () => {
-    vi.stubEnv("OPENAI_API_KEY", "sk-managed-test");
-    openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
-    const stream = await streamCompletion({
-      provider: "openai",
-      model: "gpt-5.6-sol",
-      systemPrompt: "system",
-      userPrompt: "user",
-    });
-    await consume(stream.stream);
-    expect(openAiMocks.responsesCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ service_tier: "priority" }),
-      undefined,
-    );
-    openAiMocks.responsesParse.mockResolvedValue({
-      output_parsed: { ok: true },
-      output_text: '{"ok":true}',
-      service_tier: "default",
-      usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
-    });
-    const graph = await generateStructuredOutput({
-      provider: "openai",
-      model: "gpt-5.6-luna",
-      systemPrompt: "system",
-      userPrompt: "user",
-      schema: z.object({ ok: z.boolean() }),
-      schemaName: "test",
-    });
-    expect(openAiMocks.responsesParse).toHaveBeenCalledWith(
-      expect.objectContaining({ service_tier: "priority" }),
-      undefined,
-    );
-    expect(graph.usage?.serviceTier).toBe("default");
-  });
+  it.each(["gpt-5.6-luna", "gpt-6-luna"])(
+    "requests Fast for managed %s and retains the tier actually served",
+    async (model) => {
+      vi.stubEnv("OPENAI_API_KEY", "sk-managed-test");
+      openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
+      const stream = await streamCompletion({
+        provider: "openai",
+        model,
+        systemPrompt: "system",
+        userPrompt: "user",
+      });
+      await consume(stream.stream);
+      expect(openAiMocks.responsesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ service_tier: "priority" }),
+        undefined,
+      );
+      openAiMocks.responsesParse.mockResolvedValue({
+        output_parsed: { ok: true },
+        output_text: '{"ok":true}',
+        service_tier: "default",
+        usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+      });
+      const graph = await generateStructuredOutput({
+        provider: "openai",
+        model,
+        systemPrompt: "system",
+        userPrompt: "user",
+        schema: z.object({ ok: z.boolean() }),
+        schemaName: "test",
+      });
+      expect(openAiMocks.responsesParse).toHaveBeenCalledWith(
+        expect.objectContaining({ service_tier: "priority" }),
+        undefined,
+      );
+      expect(graph.usage?.serviceTier).toBe("default");
+    },
+  );
   it("bounds costly requests and attaches a production correlation id", async () => {
     openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
     const signal = new AbortController().signal;
