@@ -7,7 +7,7 @@ import type {
   BrowseQuery,
   RecentBrowseIndex,
 } from "~/features/browse/catalog";
-import { readRequiredEnv } from "./config";
+import { getObjectStorageBucket } from "./config";
 import { withDistributedLock } from "./distributed-lock";
 import {
   deleteObject,
@@ -89,7 +89,7 @@ export class BrowseIndexNotFoundError extends Error {
 }
 
 function getPublicBucket(): string {
-  return readRequiredEnv("R2_PUBLIC_BUCKET");
+  return getObjectStorageBucket("public");
 }
 
 function compareIsoDatesDescending(left: string, right: string) {

@@ -1,11 +1,19 @@
 import type * as S3Sdk from "@aws-sdk/client-s3";
+import type * as GcsSdk from "@google-cloud/storage";
+import type { Storage as GcsStorage } from "@google-cloud/storage";
 import { promisify } from "node:util";
 import { gunzip, gzip } from "node:zlib";
 
-import { assertLiveStorageAllowedForTests, readRequiredEnv } from "./config";
+import {
+  assertLiveStorageAllowedForTests,
+  getObjectStorageProvider,
+  readRequiredEnv,
+} from "./config";
 
 let client: S3Sdk.S3Client | null = null;
 let s3ModulePromise: Promise<typeof S3Sdk> | null = null;
+let gcsStorage: GcsStorage | null = null;
+let gcsModulePromise: Promise<typeof GcsSdk> | null = null;
 export const R2_REQUEST_TIMEOUT_MS = 10_000;
 
 const gzipAsync = promisify(gzip);
@@ -23,7 +31,17 @@ function requestOptions() {
 }
 
 async function getClient() {
-  assertLiveStorageAllowedForTests("R2");
+  const provider = getObjectStorageProvider();
+  assertLiveStorageAllowedForTests(provider === "gcs" ? "GCS" : "R2");
+
+  if (provider === "gcs") {
+    gcsModulePromise ??= import("@google-cloud/storage");
+    const gcs = await gcsModulePromise;
+    gcsStorage ??= new gcs.Storage({
+      projectId: process.env.GOOGLE_CLOUD_PROJECT?.trim() || undefined,
+    });
+    return { provider, gcsStorage, gcs };
+  }
 
   s3ModulePromise ??= import("@aws-sdk/client-s3");
   const s3 = await s3ModulePromise;
@@ -37,7 +55,7 @@ async function getClient() {
     },
   });
 
-  return { client, s3 };
+  return { provider, client, s3 };
 }
 
 function isNotFoundError(error: unknown): boolean {
@@ -45,7 +63,10 @@ function isNotFoundError(error: unknown): boolean {
     return false;
   }
 
+  const code = (error as { code?: unknown }).code;
   return (
+    code === 404 ||
+    code === "404" ||
     error.name === "NoSuchKey" ||
     error.name === "NotFound" ||
     error.message.includes("NotFound") ||
@@ -58,7 +79,15 @@ export async function getJsonObject<T>(
   key: string,
 ): Promise<T | null> {
   try {
-    const { client: storageClient, s3 } = await getClient();
+    const storage = await getClient();
+    if (storage.provider === "gcs") {
+      const [body] = await storage.gcsStorage
+        .bucket(bucket)
+        .file(key)
+        .download();
+      return JSON.parse(body.toString("utf8")) as T;
+    }
+    const { client: storageClient, s3 } = storage;
     const response = await storageClient.send(
       new s3.GetObjectCommand({
         Bucket: bucket,
@@ -86,7 +115,15 @@ export async function putJsonObject(
   key: string,
   payload: unknown,
 ): Promise<void> {
-  const { client: storageClient, s3 } = await getClient();
+  const storage = await getClient();
+  if (storage.provider === "gcs") {
+    await storage.gcsStorage.bucket(bucket).file(key).save(JSON.stringify(payload), {
+      resumable: false,
+      metadata: { contentType: "application/json" },
+    });
+    return;
+  }
+  const { client: storageClient, s3 } = storage;
   await storageClient.send(
     new s3.PutObjectCommand({
       Bucket: bucket,
@@ -103,7 +140,16 @@ export async function getGzipJsonObject<T>(
   key: string,
 ): Promise<T | null> {
   try {
-    const { client: storageClient, s3 } = await getClient();
+    const storage = await getClient();
+    if (storage.provider === "gcs") {
+      const [body] = await storage.gcsStorage
+        .bucket(bucket)
+        .file(key)
+        .download({ decompress: false });
+      if (!body.byteLength) return null;
+      return JSON.parse((await gunzipAsync(body)).toString("utf8")) as T;
+    }
+    const { client: storageClient, s3 } = storage;
     const response = await storageClient.send(
       new s3.GetObjectCommand({
         Bucket: bucket,
@@ -132,7 +178,22 @@ export async function getGzipJsonObjectWithEtag<T>(
   key: string,
 ): Promise<ObjectReadResult<T> | null> {
   try {
-    const { client: storageClient, s3 } = await getClient();
+    const storage = await getClient();
+    if (storage.provider === "gcs") {
+      const file = storage.gcsStorage.bucket(bucket).file(key);
+      const [[metadata], [body]] = await Promise.all([
+        file.getMetadata(),
+        file.download({ decompress: false }),
+      ]);
+      if (!body.byteLength) return null;
+      if (!metadata.generation) throw new Error(`GCS object ${key} did not include a generation.`);
+      const decompressed = await gunzipAsync(body);
+      return {
+        value: JSON.parse(decompressed.toString("utf8")) as T,
+        etag: String(metadata.generation),
+      };
+    }
+    const { client: storageClient, s3 } = storage;
     const response = await storageClient.send(
       new s3.GetObjectCommand({
         Bucket: bucket,
@@ -168,10 +229,25 @@ export async function putGzipJsonObject(
   payload: unknown,
   condition?: ObjectWriteCondition,
 ): Promise<void> {
-  const [body, { client: storageClient, s3 }] = await Promise.all([
+  const [body, storage] = await Promise.all([
     gzipAsync(JSON.stringify(payload)),
     getClient(),
   ]);
+
+  if (storage.provider === "gcs") {
+    const preconditionOpts = condition && "ifMatch" in condition
+      ? { ifGenerationMatch: condition.ifMatch }
+      : condition && "ifNoneMatch" in condition
+        ? { ifGenerationMatch: 0 }
+        : undefined;
+    await storage.gcsStorage.bucket(bucket).file(key).save(body, {
+      resumable: false,
+      metadata: { contentEncoding: "gzip", contentType: "application/json" },
+      ...(preconditionOpts ? { preconditionOpts } : {}),
+    });
+    return;
+  }
+  const { client: storageClient, s3 } = storage;
 
   await storageClient.send(
     new s3.PutObjectCommand({
@@ -190,7 +266,12 @@ export async function putGzipJsonObject(
 }
 
 export async function deleteObject(bucket: string, key: string): Promise<void> {
-  const { client: storageClient, s3 } = await getClient();
+  const storage = await getClient();
+  if (storage.provider === "gcs") {
+    await storage.gcsStorage.bucket(bucket).file(key).delete({ ignoreNotFound: true });
+    return;
+  }
+  const { client: storageClient, s3 } = storage;
   await storageClient.send(
     new s3.DeleteObjectCommand({
       Bucket: bucket,
@@ -200,7 +281,7 @@ export async function deleteObject(bucket: string, key: string): Promise<void> {
   );
 }
 
-export async function checkR2Bucket(bucket: string): Promise<void> {
+export async function checkStorageBucket(bucket: string): Promise<void> {
   // Exercise the same authenticated GetObject path used by the application.
   // A missing sentinel is a successful readiness result; permission failures
   // and transport errors still propagate.
@@ -209,3 +290,5 @@ export async function checkR2Bucket(bucket: string): Promise<void> {
     "_meta/gitdiagram-readiness-sentinel-does-not-exist.json",
   );
 }
+
+export const checkR2Bucket = checkStorageBucket;

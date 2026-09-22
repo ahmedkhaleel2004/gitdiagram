@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 
 import type { ArtifactVisibility } from "~/server/storage/types";
-import { readRequiredEnv } from "~/server/storage/config";
+import { getObjectStorageBucket, readRequiredEnv } from "~/server/storage/config";
 
 function normalizeSegment(value: string): string {
   return encodeURIComponent(value.trim().toLowerCase());
@@ -47,7 +47,7 @@ export function getPublicLocation(
 
   return {
     visibility: "public",
-    bucket: readRequiredEnv("R2_PUBLIC_BUCKET"),
+    bucket: getObjectStorageBucket("public"),
     artifactKey: `public/v1/${normalizedUsername}/${normalizedRepo}.json`,
     statusKey: `status:v1:public:${normalizedUsername}:${normalizedRepo}`,
   };
@@ -64,7 +64,7 @@ export function getPrivateLocation(
 
   return {
     visibility: "private",
-    bucket: readRequiredEnv("R2_PRIVATE_BUCKET"),
+    bucket: getObjectStorageBucket("private"),
     artifactKey: `private/v1/${namespace}/${normalizedUsername}/${normalizedRepo}.json`,
     statusKey: `status:v1:private:${namespace}:${normalizedUsername}:${normalizedRepo}`,
   };

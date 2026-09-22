@@ -34,6 +34,15 @@ Set these storage and coordination variables in `.env`:
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
 
+Alternatively, set `OBJECT_STORAGE_PROVIDER=gcs` and `GCS_BUCKET_NAME` (or
+separate `GCS_PUBLIC_BUCKET` and `GCS_PRIVATE_BUCKET`). Set
+`GOOGLE_CLOUD_PROJECT` if ADC cannot discover the project automatically.
+Authenticate with Google Application Default Credentials (ADC); the ADC identity
+needs object read/write access to the private bucket. Do not put a long-lived
+service-account key in `.env`. GitDiagram serves diagrams through its own routes.
+For local Redis, set
+`REDIS_URL=redis://127.0.0.1:6379` instead of the Upstash REST variables.
+
 Choose one AI provider:
 
 - OpenAI: `AI_PROVIDER=openai` and `OPENAI_API_KEY`

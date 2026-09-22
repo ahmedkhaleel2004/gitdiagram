@@ -1,7 +1,11 @@
 import { getProvider } from "~/server/generate/model-config";
-import { readRequiredEnv } from "~/server/storage/config";
-import { checkR2Bucket } from "~/server/storage/r2";
-import { checkUpstashConnection } from "~/server/storage/upstash";
+import {
+  getObjectStorageBucket,
+  getObjectStorageProvider,
+  readRequiredEnv,
+} from "~/server/storage/config";
+import { checkStorageBucket } from "~/server/storage/r2";
+import { checkRedisConnection } from "~/server/storage/upstash";
 
 export interface ReadinessResult {
   ok: boolean;
@@ -26,13 +30,17 @@ export async function checkReadiness(): Promise<ReadinessResult> {
   let privateBucket = "";
   let configuration = true;
   try {
-    publicBucket = readRequiredEnv("R2_PUBLIC_BUCKET");
-    privateBucket = readRequiredEnv("R2_PRIVATE_BUCKET");
-    readRequiredEnv("R2_ACCOUNT_ID");
-    readRequiredEnv("R2_ACCESS_KEY_ID");
-    readRequiredEnv("R2_SECRET_ACCESS_KEY");
-    readRequiredEnv("UPSTASH_REDIS_REST_URL");
-    readRequiredEnv("UPSTASH_REDIS_REST_TOKEN");
+    publicBucket = getObjectStorageBucket("public");
+    privateBucket = getObjectStorageBucket("private");
+    if (getObjectStorageProvider() !== "gcs") {
+      readRequiredEnv("R2_ACCOUNT_ID");
+      readRequiredEnv("R2_ACCESS_KEY_ID");
+      readRequiredEnv("R2_SECRET_ACCESS_KEY");
+    }
+    if (!process.env.REDIS_URL?.trim()) {
+      readRequiredEnv("UPSTASH_REDIS_REST_URL");
+      readRequiredEnv("UPSTASH_REDIS_REST_TOKEN");
+    }
     readRequiredEnv("CACHE_KEY_SECRET");
   } catch {
     configuration = false;
@@ -41,9 +49,9 @@ export async function checkReadiness(): Promise<ReadinessResult> {
   const provider = hasProviderKey();
   const [publicStorageResult, privateStorageResult, redisResult] = configuration
     ? await Promise.allSettled([
-        checkR2Bucket(publicBucket),
-        checkR2Bucket(privateBucket),
-        checkUpstashConnection(),
+        checkStorageBucket(publicBucket),
+        checkStorageBucket(privateBucket),
+        checkRedisConnection(),
       ])
     : [
         { status: "rejected" as const },
