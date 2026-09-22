@@ -2,8 +2,21 @@ import {
   assertLiveStorageAllowedForTests,
   readRequiredEnv,
 } from "~/server/storage/config";
+import { createClient } from "redis";
 
 const UPSTASH_REQUEST_TIMEOUT_MS = 5_000;
+let localRedisClient: ReturnType<typeof createClient> | null = null;
+
+async function getLocalRedisClient() {
+  const url = process.env.REDIS_URL?.trim();
+  if (!url) return null;
+  localRedisClient ??= createClient({
+    url,
+    socket: { connectTimeout: UPSTASH_REQUEST_TIMEOUT_MS },
+  });
+  if (!localRedisClient.isOpen) await localRedisClient.connect();
+  return localRedisClient;
+}
 
 function getBaseUrl() {
   return readRequiredEnv("UPSTASH_REDIS_REST_URL").replace(/\/$/, "");
@@ -17,7 +30,14 @@ function getHeaders(): HeadersInit {
 }
 
 async function execute<T>(path: string, body: unknown): Promise<T> {
-  assertLiveStorageAllowedForTests("Upstash");
+  assertLiveStorageAllowedForTests(
+    process.env.REDIS_URL?.trim() ? "Redis" : "Upstash",
+  );
+
+  const local = await getLocalRedisClient();
+  if (local) {
+    return (await local.sendCommand((body as unknown[]).map(String))) as T;
+  }
 
   const timeoutSignal = AbortSignal.timeout(UPSTASH_REQUEST_TIMEOUT_MS);
   let response: Response;
@@ -60,6 +80,16 @@ export async function upstashEval<T>(params: {
 }): Promise<T> {
   const keys = params.keys ?? [];
   const args = params.args ?? [];
+  assertLiveStorageAllowedForTests(
+    process.env.REDIS_URL?.trim() ? "Redis" : "Upstash",
+  );
+  const local = await getLocalRedisClient();
+  if (local) {
+    return (await local.eval(params.script, {
+      keys,
+      arguments: args.map(String),
+    })) as T;
+  }
   return execute<T>("", ["EVAL", params.script, keys.length, ...keys, ...args]);
 }
 
@@ -74,3 +104,5 @@ export async function checkUpstashConnection(): Promise<void> {
     throw new Error("Upstash did not return a valid readiness response.");
   }
 }
+
+export const checkRedisConnection = checkUpstashConnection;

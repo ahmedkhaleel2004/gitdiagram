@@ -6,8 +6,8 @@
 
 - **Application:** Next.js 16 App Router, React 19, TypeScript, Tailwind CSS, and Radix UI
 - **Generation API:** same-origin Next.js Route Handlers running on Vercel's Bun runtime
-- **Storage:** Cloudflare R2 for diagram artifacts
-- **Coordination:** Upstash Redis for quota accounting, cancellation, locks, and short-lived failure state
+- **Storage:** Cloudflare R2 or Google Cloud Storage for diagram artifacts
+- **Coordination:** Upstash Redis or local/managed Redis for quota accounting, cancellation, locks, and short-lived failure state
 - **AI:** OpenAI or OpenRouter through `AI_PROVIDER`
 - **Analytics:** PostHog
 - **Deployment:** Vercel is the only live runtime; an offline Railway/Docker recipe is retained for disaster recovery
@@ -44,8 +44,7 @@ The full Mermaid parser remains in the test suite as a compiler contract test. I
 
 ## State
 
-- **Successful public generations:** R2 object keyed by repository
-- **Successful private generations:** separate R2 namespace derived with a server-side secret
-- **Complimentary quota and active cancellation tokens:** Upstash Redis
-- **Terminal failures without a saved artifact:** short-lived Upstash state
+- **Successful public and private generations:** object storage keyed by repository, with private artifacts namespaced by an HMAC of the caller token
+- **Complimentary quota and active cancellation tokens:** Redis
+- **Terminal failures without a saved artifact:** short-lived Redis state
 - **Concurrent writes:** distributed lock plus newest-session-wins persistence

@@ -21,3 +21,29 @@ export function readRequiredEnv(name: string): string {
   }
   return value;
 }
+
+export type ObjectStorageProvider = "r2" | "gcs";
+
+export function getObjectStorageProvider(): ObjectStorageProvider {
+  const provider = process.env.OBJECT_STORAGE_PROVIDER?.trim().toLowerCase();
+  if (!provider || provider === "r2") return "r2";
+  if (provider === "gcs") return "gcs";
+  throw new Error(`Unsupported OBJECT_STORAGE_PROVIDER: ${provider}.`);
+}
+
+export function getObjectStorageBucket(kind: "public" | "private"): string {
+  const provider = getObjectStorageProvider();
+  const name =
+    provider === "gcs"
+      ? kind === "public"
+        ? "GCS_PUBLIC_BUCKET"
+        : "GCS_PRIVATE_BUCKET"
+      : kind === "public"
+        ? "R2_PUBLIC_BUCKET"
+        : "R2_PRIVATE_BUCKET";
+  return (
+    readEnv(name) ??
+    (provider === "gcs" ? readEnv("GCS_BUCKET_NAME") : undefined) ??
+    readRequiredEnv(name)
+  );
+}
