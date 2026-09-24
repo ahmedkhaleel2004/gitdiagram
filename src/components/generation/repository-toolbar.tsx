@@ -52,7 +52,7 @@ export function RepositoryToolbar({
         {video && (
           <button
             type="button"
-            className={styles.actionButton}
+            className={`${styles.actionButton} ${styles.primary}`}
             aria-expanded={video.open}
             aria-controls={video.id}
             onClick={video.toggle}

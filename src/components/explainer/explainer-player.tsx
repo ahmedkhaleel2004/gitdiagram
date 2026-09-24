@@ -1,8 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Maximize, Pause, Play, RotateCcw } from "lucide-react";
+import {
+  Captions,
+  CaptionsOff,
+  Maximize,
+  Minimize,
+  Pause,
+  Play,
+  RotateCcw,
+} from "lucide-react";
 import { ExplainerAudio, type SfxCue } from "~/features/explainer/audio-mixer";
+import { STAGE_PATH } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
 import styles from "./explainer-video.module.css";
 
@@ -11,10 +20,8 @@ type StageMessage =
   | { type: "ready"; duration: number; sfx: SfxCue[] }
   | { type: "error"; message: string };
 
-// Bump with any change under public/video-engine so a browser never pairs a
-// new plan with an engine it cached earlier.
-const ENGINE_VERSION = "8";
 const STAGE_TIMEOUT_MS = 20_000;
+const CAPTIONS_KEY = "gitdiagram.video.captions";
 
 const formatTime = (seconds: number) => {
   const whole = Math.max(0, Math.floor(seconds));
@@ -27,6 +34,7 @@ const formatTime = (seconds: number) => {
  * timeline to the audio clock so picture and sound cannot drift.
  */
 export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
+  const shell = useRef<HTMLDivElement>(null);
   const wrapper = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const audio = useRef<ExplainerAudio | null>(null);
@@ -37,6 +45,12 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   const [ended, setEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [captions, setCaptions] = useState(
+    () => window.localStorage.getItem(CAPTIONS_KEY) === "1",
+  );
+  // iPhone Safari cannot put an element in fullscreen; fill the window instead.
+  const [expanded, setExpanded] = useState(false);
+  const captionsRef = useRef(captions);
   const duration = artifact.timing.DURATION;
 
   const seekStage = useCallback(
@@ -88,6 +102,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
             spec: artifact.plan,
             meta: artifact.meta,
             timing: artifact.timing,
+            captions: captionsRef.current,
           },
           window.location.origin,
         );
@@ -168,6 +183,26 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
 
   const toggle = () => (playing ? pause() : void play());
 
+  const toggleCaptions = () => {
+    const next = !captions;
+    captionsRef.current = next;
+    setCaptions(next);
+    window.localStorage.setItem(CAPTIONS_KEY, next ? "1" : "0");
+    frame.current?.contentWindow?.postMessage(
+      { type: "captions", on: next },
+      window.location.origin,
+    );
+  };
+
+  const toggleFullscreen = () => {
+    const element = shell.current;
+    if (!element) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else if (document.fullscreenEnabled && element.requestFullscreen)
+      void element.requestFullscreen();
+    else setExpanded((value) => !value);
+  };
+
   // A fresh frame (new key) replays the whole stage handshake.
   const retry = () => {
     setError(null);
@@ -189,13 +224,17 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   };
 
   return (
-    <div>
+    <div
+      ref={shell}
+      className={styles.shell}
+      data-expanded={expanded ? "true" : undefined}
+    >
       <div ref={wrapper} className={styles.player}>
         <iframe
           key={attempt}
           ref={frame}
           className={styles.stage}
-          src={`/video-engine/stage.html?v=${ENGINE_VERSION}`}
+          src={STAGE_PATH}
           title={`${artifact.meta.owner}/${artifact.meta.repo} explainer video`}
           // Same-origin by design; the stage's own CSP (script files only,
           // no inline script, no network) is the boundary for model-written text.
@@ -267,10 +306,19 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
         <button
           type="button"
           className={styles.controlButton}
-          onClick={() => void wrapper.current?.requestFullscreen()}
-          aria-label="Full screen"
+          onClick={toggleCaptions}
+          aria-pressed={captions}
+          aria-label={captions ? "Hide captions" : "Show captions"}
         >
-          <Maximize size={17} />
+          {captions ? <Captions size={18} /> : <CaptionsOff size={18} />}
+        </button>
+        <button
+          type="button"
+          className={styles.controlButton}
+          onClick={toggleFullscreen}
+          aria-label={expanded ? "Exit full screen" : "Full screen"}
+        >
+          {expanded ? <Minimize size={17} /> : <Maximize size={17} />}
         </button>
       </div>
     </div>

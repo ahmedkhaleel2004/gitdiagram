@@ -12,6 +12,7 @@ import type {
 } from "~/features/explainer/types";
 import controls from "~/components/generation/workspace.module.css";
 import { ExplainerPlayer } from "./explainer-player";
+import { ExplainerShare } from "./explainer-share";
 import styles from "./explainer-video.module.css";
 
 const STAGES: Array<{ id: VideoGenerationStage; label: string }> = [
@@ -20,6 +21,9 @@ const STAGES: Array<{ id: VideoGenerationStage; label: string }> = [
   { id: "designing", label: "Designing scenes and recording the voice" },
   { id: "saving", label: "Saving" },
 ];
+
+// A stored video belongs to everyone; only local development can replace one.
+const CAN_REGENERATE = process.env.NODE_ENV === "development";
 
 type PanelState =
   | { kind: "loading" }
@@ -118,7 +122,7 @@ export function ExplainerVideo({
             Made in {(video.stats.totalMs / 1000).toFixed(0)}s
             {cost !== null ? ` · $${cost.toFixed(2)} model` : ""}
           </span>
-          {state.canGenerate && (
+          {CAN_REGENERATE && (
             <button
               type="button"
               className={styles.metaButton}
@@ -128,6 +132,7 @@ export function ExplainerVideo({
             </button>
           )}
         </div>
+        <ExplainerShare video={video} />
       </div>
     );
   }
@@ -171,26 +176,26 @@ export function ExplainerVideo({
       <div className={styles.empty}>
         <div className={styles.emptyTitle}>{repo}, in about a minute</div>
         <div className={styles.emptyText}>
-          A fast, narrated breakdown of how this codebase actually works: the
-          real code, the data flow and the decisions behind it.
+          A narrated one-minute tour: what the project does, how its parts fit
+          together, and a few of the decisions inside.
         </div>
         {state.kind === "error" && (
           <div className={styles.error}>{state.message}</div>
         )}
-        <button
-          type="button"
-          className={`${controls.actionButton} ${controls.primary}`}
-          onClick={generate}
-          disabled={!state.canGenerate}
-          title={
-            state.canGenerate
-              ? undefined
-              : "This server is not set up to generate explainer videos."
-          }
-        >
-          <Clapperboard size={15} aria-hidden="true" />
-          {state.kind === "error" ? "Try again" : "Make the video"}
-        </button>
+        {state.canGenerate ? (
+          <button
+            type="button"
+            className={`${controls.actionButton} ${controls.primary}`}
+            onClick={generate}
+          >
+            <Clapperboard size={15} aria-hidden="true" />
+            {state.kind === "error" ? "Try again" : "Make the video"}
+          </button>
+        ) : (
+          <div className={styles.emptyText}>
+            Making new videos is paused for today. Check back tomorrow.
+          </div>
+        )}
       </div>
     </div>
   );

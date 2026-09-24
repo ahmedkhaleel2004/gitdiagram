@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="196" height="28" viewBox="0 0 196 28" role="img" aria-label="Watch the one-minute video tour">
+  <title>Watch the one-minute video tour</title>
+  <rect x="1" y="1" width="194" height="26" rx="6" fill="#fdfaff" stroke="#17111f" stroke-width="2"/>
+  <path d="M7 1h25v26H7a6 6 0 0 1-6-6V7a6 6 0 0 1 6-6z" fill="#bd85fb" stroke="#17111f" stroke-width="2"/>
+  <path d="M13 8.5v11l8.5-5.5z" fill="#17111f"/>
+  <text x="41" y="18.5" font-family="Verdana,DejaVu Sans,Geneva,sans-serif" font-size="12" font-weight="700" fill="#17111f">1-minute video tour</text>
+</svg>

@@ -1,20 +1,10 @@
+import { MASTER_GAIN, SFX_PEAK_DB, sfxGain } from "./engine";
 import type { VideoArtifact } from "./types";
 
 // The browser is the mixing desk: narration clips on the beat clock and the
 // scene engine's sound effects. No music bed; the voice carries the film.
 
 const ENGINE = "/video-engine";
-// Measured peak of each effect (dBFS); hits are normalized to a -6 dB peak and
-// then set to the gain the scene engine asked for. Only short, untuned foley:
-// pitched chimes (check, reject, blip, resolve) read as dings over narration
-// and long beds (paper, typing) as scratching, so cues naming them are skipped.
-const SFX_PEAK_DB: Record<string, number> = {
-  pop: -5.3,
-  stamp: -10.4,
-  tick: -5.9,
-  whoosh: -0.7,
-};
-
 export interface SfxCue {
   name: string;
   t: number;
@@ -23,11 +13,7 @@ export interface SfxCue {
   rate?: number;
 }
 
-function dbToGain(db: number) {
-  return 10 ** (db / 20);
-}
-
-export function voiceClipUrl(artifact: VideoArtifact, index: number): string {
+function voiceClipUrl(artifact: VideoArtifact, index: number): string {
   const params = new URLSearchParams({
     username: artifact.meta.owner,
     repo: artifact.meta.repo,
@@ -60,7 +46,7 @@ export class ExplainerAudio {
     compressor.threshold.value = -10;
     compressor.ratio.value = 4;
     this.master = context.createGain();
-    this.master.gain.value = 0.9;
+    this.master.gain.value = MASTER_GAIN;
     this.master.connect(compressor).connect(context.destination);
 
     const decode = async (url: string) => {
@@ -103,6 +89,12 @@ export class ExplainerAudio {
     const master = this.master;
     if (!context || !master) return;
     this.stopSources();
+    // Safari mutes Web Audio under the iPhone's silent switch unless the page
+    // declares it plays media.
+    const session = (
+      navigator as Navigator & { audioSession?: { type: string } }
+    ).audioSession;
+    if (session) session.type = "playback";
     await context.resume();
     const now = context.currentTime + 0.05;
     const at = (time: number) => now + Math.max(0, time - from);
@@ -124,7 +116,7 @@ export class ExplainerAudio {
       source.buffer = buffer;
       source.playbackRate.value = cue.rate ?? 1;
       const gain = context.createGain();
-      gain.gain.value = dbToGain(-6 - (SFX_PEAK_DB[cue.name] ?? -6) + cue.gain);
+      gain.gain.value = sfxGain(cue.name, cue.gain);
       source.connect(gain).connect(master);
       source.start(at(cue.t));
       this.sources.push(source);

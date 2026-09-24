@@ -14,11 +14,38 @@
   box-shadow: 4px 4px 0 var(--hard-shadow);
   background: #f2e8ff;
 }
-.player:fullscreen {
+/* Fullscreen keeps the controls: the player and its bar go full-window together. */
+.shell:fullscreen,
+.shell[data-expanded="true"] {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+  background: #0b0810;
+}
+.shell[data-expanded="true"] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+.shell:fullscreen .player,
+.shell[data-expanded="true"] .player {
+  width: min(100%, calc((100dvh - 90px) * 16 / 9));
+  margin-inline: auto;
   border: 0;
   border-radius: 0;
   box-shadow: none;
-  background: #000;
+}
+.shell:fullscreen .controls,
+.shell[data-expanded="true"] .controls {
+  width: min(100%, calc((100dvh - 90px) * 16 / 9));
+  margin-inline: auto;
+}
+.shell:fullscreen .time,
+.shell[data-expanded="true"] .time {
+  color: #eee3f7;
 }
 
 .stage {
@@ -186,4 +213,61 @@
   .controls {
     gap: 8px;
   }
+}
+
+.share {
+  margin-top: 16px;
+}
+.shareRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.shareNote {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.share .error {
+  margin-top: 10px;
+  text-align: center;
+}
+@media (max-width: 640px) {
+  .shareRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* the shareable watch page */
+.watch {
+  max-width: 1100px;
+}
+.watchHead {
+  text-align: center;
+}
+.watchTitle {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 34px);
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.watchTitle strong {
+  font-weight: 800;
+}
+.watchSub {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+.watchLinks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 26px;
 }
