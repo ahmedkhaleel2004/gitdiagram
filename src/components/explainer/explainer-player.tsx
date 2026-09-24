@@ -47,8 +47,9 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   const [ended, setEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // Captions start on; only a visitor's own "off" choice is remembered.
   const [captions, setCaptions] = useState(
-    () => window.localStorage.getItem(CAPTIONS_KEY) === "1",
+    () => window.localStorage.getItem(CAPTIONS_KEY) !== "0",
   );
   // iPhone Safari cannot put an element in fullscreen; fill the window instead.
   const [expanded, setExpanded] = useState(false);
