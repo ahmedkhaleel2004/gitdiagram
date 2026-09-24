@@ -1,6 +1,13 @@
 import "server-only";
 
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { ENGINE_VERSION } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
@@ -9,6 +16,7 @@ import {
   getBinaryObject,
   getJsonObject,
   hasObject,
+  listObjects,
   presignObjectDownload,
   putBinaryObject,
   putJsonObject,
@@ -185,4 +193,44 @@ export async function renderDownloadUrl(
     versionedKey(owner, repo, artifact.createdAt, renderFile(name)),
     { filename, expiresInSeconds: 60 * 60 },
   );
+}
+
+/** Every repository with a stored video, newest first (for the sitemap). */
+export async function listStoredVideos(): Promise<
+  Array<{ owner: string; repo: string; updatedAt: Date | null }>
+> {
+  const pattern = /^video\/v1\/([^/]+)\/([^/]+)\/artifact\.json$/;
+  let objects: Array<{ key: string; lastModified: Date | null }>;
+  if (videoStoreBackend() === "local") {
+    const root = join(process.cwd(), ".video-cache", "video", "v1");
+    const owners = await readdir(root).catch(() => [] as string[]);
+    objects = (
+      await Promise.all(
+        owners.map(async (owner) =>
+          (await readdir(join(root, owner)).catch(() => [] as string[])).map(
+            (repo) => ({
+              key: `video/v1/${owner}/${repo}/artifact.json`,
+              lastModified: null,
+            }),
+          ),
+        ),
+      )
+    ).flat();
+  } else objects = await listObjects(bucket(), "video/v1/");
+  return objects
+    .flatMap((object) => {
+      const match = pattern.exec(object.key);
+      return match
+        ? [
+            {
+              owner: decodeURIComponent(match[1]!),
+              repo: decodeURIComponent(match[2]!),
+              updatedAt: object.lastModified,
+            },
+          ]
+        : [];
+    })
+    .sort(
+      (a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0),
+    );
 }

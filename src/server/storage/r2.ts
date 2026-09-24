@@ -136,6 +136,34 @@ export async function putBinaryObject(
   );
 }
 
+/** Every key under a prefix, with its last-modified time. */
+export async function listObjects(
+  bucket: string,
+  prefix: string,
+): Promise<Array<{ key: string; lastModified: Date | null }>> {
+  const { client: storageClient, s3 } = await getClient();
+  const objects: Array<{ key: string; lastModified: Date | null }> = [];
+  let token: string | undefined;
+  do {
+    const page = await storageClient.send(
+      new s3.ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: token,
+      }),
+      requestOptions(),
+    );
+    for (const item of page.Contents ?? [])
+      if (item.Key)
+        objects.push({
+          key: item.Key,
+          lastModified: item.LastModified ?? null,
+        });
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return objects;
+}
+
 export async function hasObject(bucket: string, key: string): Promise<boolean> {
   try {
     const { client: storageClient, s3 } = await getClient();
