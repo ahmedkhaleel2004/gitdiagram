@@ -17,6 +17,7 @@
 /* Fullscreen keeps the controls: the player and its bar go full-window together. */
 .shell:fullscreen,
 .shell[data-expanded="true"] {
+  container-type: size;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -30,9 +31,25 @@
   inset: 0;
   z-index: 1000;
 }
+/* The video is wider than it is tall, so a phone held upright shows it
+   sideways, filling the screen, as the phone's own video player does. */
+@media (orientation: portrait) and (hover: none) and (pointer: coarse) {
+  .shell[data-expanded="true"] {
+    inset: 0 auto auto 0;
+    width: 100dvh;
+    height: 100dvw;
+    transform: translateX(100dvw) rotate(90deg);
+    transform-origin: 0 0;
+    /* Turned a quarter clockwise: the screen's top edge is the shell's left. */
+    padding: max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-top));
+  }
+}
+/* 56px: the control bar and its gap. */
 .shell:fullscreen .player,
 .shell[data-expanded="true"] .player {
-  width: min(100%, calc((100dvh - 90px) * 16 / 9));
+  width: min(100%, calc((100cqh - 56px) * 16 / 9));
   margin-inline: auto;
   border: 0;
   border-radius: 0;
@@ -40,7 +57,7 @@
 }
 .shell:fullscreen .controls,
 .shell[data-expanded="true"] .controls {
-  width: min(100%, calc((100dvh - 90px) * 16 / 9));
+  width: min(100%, calc((100cqh - 56px) * 16 / 9));
   margin-inline: auto;
 }
 .shell:fullscreen .time,
@@ -48,15 +65,13 @@
   color: #eee3f7;
 }
 
+/* The frame is the player's size; the stage scales itself inside it. */
 .stage {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 1920px;
-  height: 1080px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   border: 0;
-  transform-origin: 0 0;
-  transform: scale(var(--stage-scale, 0.5));
   pointer-events: none;
 }
 
@@ -281,8 +296,11 @@
   }
 }
 
+/* No fill after the entrance: a transform left on the panel would pin the
+   full-window player inside the panel instead of the viewport. */
 .enter {
-  animation: fade-up 450ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) both;
+  animation: fade-up 450ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1))
+    backwards;
 }
 .shimmer {
   background-image: linear-gradient(
