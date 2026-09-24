@@ -1,5 +1,59 @@
 # Video lab — repository explainer videos
 
+## Any repo → video: `pipeline/`
+
+```bash
+bun install                                   # playwright-core, for reading SFX cues
+node pipeline/run.mjs fastapi/fastapi         # → runs/fastapi__fastapi/fastapi__fastapi.mp4 + report.json
+node pipeline/rerender.mjs runs/<slug>        # re-render with the current engine; no model, no TTS
+node pipeline/snap.mjs runs/<slug>            # end-state snapshot of every scene (≈6 s)
+node pipeline/review.mjs runs/<slug>          # contact sheets from the final MP4
+```
+
+How it stays under two minutes and $2: the model writes a small **plan**, not a video.
+
+| Stage | File | What it does | Typical time |
+| --- | --- | --- | --- |
+| ingest | `pipeline/ingest.mjs` | GitHub API in parallel: metadata, recursive tree, README, and ~12 scored source files sent as head + declaration outline | 1 s |
+| plan | `pipeline/plan.mjs`, `prompt.mjs`, `schema.mjs` | One Claude Opus 5.5 call (`claude -p`, effort low, structured output) returns 8–10 beats: narration, a scene type from the library, real repo artifacts, and cue words. `normalize()` enforces limits and checks every path, cue and code line against the repo | 17–32 s |
+| voice | `pipeline/voice.mjs` | ElevenLabs `eleven_v3` per beat, 4 at a time, with timestamps; beats laid on one clock with structural pauses | 11 s |
+| render ∥ mix | `engine/`, `pipeline/mix.mjs` | HyperFrames renders the silent 1080p30 picture while the mixer reads the scene engine's SFX cues and mixes voice, ducked bed and effects to −16 LUFS | 34–37 s |
+| mux | `run.mjs` | Joins picture and sound | 0.1 s |
+
+The scene engine (`engine/engine.js`) is the reusable craft: 12 scene types (hook, stack, tree, flow,
+code, graph, checklist, stream, stats, compare, idea, close) in GitDiagram's visual language, with
+auto-layout, text fitting, syntax tint, an odometer, a graph layerer, a chapter rail, and the
+"one idea" card that is planted in the hook and flipped mid-video. Every reveal is keyed to the
+spoken word the plan cued.
+
+### Benchmark (2026-09-24, Apple M4, same code for every run)
+
+| Repo | Total | Plan | Voice | Render | Planner cost* | Video |
+| --- | --- | --- | --- | --- | --- | --- |
+| honojs/hono | 79.0 s | 32.0 s | 11.1 s | 34.8 s | $0.33 | 60.7 s |
+| fastapi/fastapi | 78.8 s | 31.7 s | 11.7 s | 34.2 s | $0.37 | 60.6 s |
+| ahmedkhaleel2004/gitdiagram | 77.1 s | 31.5 s | 10.9 s | 33.9 s | $0.30 | 56.8 s |
+| BurntSushi/ripgrep | 67.7 s | 18.7 s | 11.1 s | 36.9 s | $0.31 | 64.8 s |
+| psf/requests | 67.7 s | 20.0 s | 10.6 s | 36.1 s | $0.15 | 60.6 s |
+| sindresorhus/ky | 66.1 s | 19.4 s | 10.7 s | 34.9 s | $0.27 | 62.5 s |
+| charmbracelet/bubbletea | 65.5 s | 17.0 s | 10.8 s | 36.5 s | $0.21 | 60.5 s |
+
+\* Claude Opus 5.5 at API list prices as reported by `claude -p` (`costBasis: list`). Runs used the
+Claude subscription; on the API the same call is cheaper still, because the CLI writes a 1-hour
+cache at 2× input price. Narration adds ~450 ElevenLabs credits (≈ $0.08 on Starter) per video.
+Every plan passed validation with zero warnings; spot-checked facts (ripgrep's 0.082 s vs 2.935 s,
+requests' 300M downloads/week and 4,000,000+ dependents) match the READMEs.
+
+### Moving the planner to the Claude API
+
+`plan.mjs` is the only file that talks to Claude. Swap `claude -p` for the Anthropic SDK with the
+same `SYSTEM`, `userPrompt(ctx)`, and `SCHEMA` as `output_config.format` (json_schema), model
+`claude-opus-5-5`, effort `low`. Everything downstream consumes the same plan JSON.
+
+---
+
+## v1 (hand-made) notes
+
 Experiments toward "GitDiagram, but a ~60s narrated explainer video" for any GitHub
 repository. Each project is a [HyperFrames](https://hyperframes.heygen.com) composition
 (HTML + GSAP, rendered deterministically to MP4 by headless Chrome) plus a small set of

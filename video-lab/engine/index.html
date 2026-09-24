@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Repository explainer</title>
+    <link rel="stylesheet" href="engine.css" />
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="spec.js"></script>
+    <script src="timing.js"></script>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="60" data-width="1920" data-height="1080">
+      <div id="bg" class="layer">
+        <div id="bg-grid"></div>
+        <div id="bg-glow"></div>
+        <div id="bg-glow-2"></div>
+        <svg id="grain" width="1920" height="1080">
+          <filter id="noise">
+            <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" seed="7" />
+            <feColorMatrix type="saturate" values="0" />
+          </filter>
+          <rect width="1920" height="1080" filter="url(#noise)" />
+        </svg>
+      </div>
+      <div id="scenes" class="layer"></div>
+      <div id="note" data-layout-allow-overlap data-layout-allow-occlusion>
+        <div id="note-inner">
+          <div class="face" id="note-front"></div>
+          <div class="face" id="note-back"></div>
+        </div>
+      </div>
+      <div id="brand"></div>
+      <div id="rail" class="layer"></div>
+    </div>
+    <script src="engine.js"></script>
+  </body>
+</html>

@@ -1,0 +1,422 @@
+@font-face {
+  font-family: "Geist";
+  src: url("assets/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("assets/fonts/InstrumentSerif-Regular.woff2") format("woff2");
+  font-style: normal;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("assets/fonts/InstrumentSerif-Italic.woff2") format("woff2");
+  font-style: italic;
+}
+
+:root {
+  --paper: #f2e8ff;
+  --paper-2: #e6d5ff;
+  --card: #fdfaff;
+  --ink: #17111f;
+  --ink-2: #4e4463;
+  --purple: #bd85fb;
+  --purple-soft: #dcc2ff;
+  --purple-deep: #7a2be0;
+  --green: #0f7a48;
+  --green-soft: #cff2de;
+  --red: #b3263a;
+  --red-soft: #ffd9da;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+html,
+body {
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: var(--paper);
+}
+#root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Geist", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.layer {
+  position: absolute;
+  inset: 0;
+}
+.abs {
+  position: absolute;
+}
+.scene {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+.inner {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 46%;
+}
+.mono {
+  font-family: "Geist Mono", monospace;
+}
+.serif {
+  font-family: "Instrument Serif", serif;
+  font-weight: 400;
+}
+.it {
+  font-style: italic;
+}
+svg.wires {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: visible;
+}
+
+/* background */
+#bg-grid {
+  position: absolute;
+  left: -80px;
+  top: -80px;
+  width: 2080px;
+  height: 1240px;
+  background-image: radial-gradient(circle, rgba(23, 17, 31, 0.2) 2px, transparent 2.6px);
+  background-size: 40px 40px;
+}
+#bg-glow {
+  position: absolute;
+  left: 980px;
+  top: -420px;
+  width: 1400px;
+  height: 1100px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(189, 133, 251, 0.34), rgba(189, 133, 251, 0));
+}
+#bg-glow-2 {
+  position: absolute;
+  left: -520px;
+  top: 520px;
+  width: 1200px;
+  height: 900px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+}
+#grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.1;
+  mix-blend-mode: multiply;
+}
+
+/* components */
+.card {
+  position: absolute;
+  background: var(--card);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  box-shadow: 8px 8px 0 var(--ink);
+  overflow: hidden;
+}
+.panel-head {
+  height: 60px;
+  border-bottom: 3px solid var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 24px;
+  font: 600 20px/1 "Geist Mono", monospace;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  background: var(--paper-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.panel-head.caps {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.dots {
+  display: flex;
+  gap: 10px;
+}
+.dots i {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: var(--card);
+}
+.node {
+  position: absolute;
+  background: var(--card);
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 5px 5px 0 var(--ink);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 20px;
+  font: 650 26px/1.12 "Geist", sans-serif;
+  overflow: hidden;
+}
+.node .nl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.node small {
+  font: 500 18px/1.2 "Geist Mono", monospace;
+  color: var(--ink-2);
+  margin-top: 7px;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.node.purple {
+  background: var(--purple);
+}
+.node.purple small {
+  color: var(--ink);
+}
+.node.tint {
+  background: var(--purple-soft);
+}
+.node.ext {
+  border-style: dashed;
+  box-shadow: none;
+}
+.group {
+  position: absolute;
+  border: 3px solid var(--ink);
+  border-radius: 22px;
+  background: rgba(230, 213, 255, 0.55);
+}
+.group-tag {
+  position: absolute;
+  left: 18px;
+  top: 11px;
+  font: 600 18px/1 "Geist Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.hl {
+  position: absolute;
+  border-radius: 8px;
+  background: var(--purple-soft);
+  transform-origin: left center;
+}
+.badge {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.badge.ok {
+  background: var(--green-soft);
+}
+.badge.bad {
+  background: var(--red-soft);
+}
+.pill {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 4px 4px 0 var(--ink);
+  padding: 0 22px;
+  height: 56px;
+  white-space: nowrap;
+}
+.pill.static {
+  position: static;
+}
+.label {
+  position: absolute;
+  font: 600 20px/1 "Geist Mono", monospace;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.code {
+  font: 400 24px/44px "Geist Mono", monospace;
+  color: var(--ink);
+}
+.code .ln {
+  display: block;
+  width: max-content;
+  white-space: pre;
+}
+.tk-k {
+  color: var(--purple-deep);
+  font-weight: 650;
+}
+.tk-s {
+  color: #7a4a14;
+}
+.tk-c {
+  color: var(--ink-2);
+  font-style: italic;
+}
+.tk-n {
+  color: #0d6e7a;
+}
+.clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.clamp3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.hw {
+  display: inline-block;
+  line-height: 1;
+}
+.digits {
+  display: inline-flex;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+.digit {
+  display: inline-block;
+  overflow: hidden;
+  position: relative;
+}
+.digit .strip {
+  display: flex;
+  flex-direction: column;
+}
+
+/* chrome */
+#brand {
+  position: absolute;
+  left: 120px;
+  top: 50px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font: 700 26px/1 "Geist", sans-serif;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+#brand span {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+#rail-base,
+#rail-prog {
+  position: absolute;
+  top: 992px;
+  height: 4px;
+  border-radius: 2px;
+}
+#rail-base {
+  background: rgba(23, 17, 31, 0.18);
+}
+#rail-prog {
+  background: var(--purple-deep);
+  transform-origin: left center;
+}
+.station {
+  position: absolute;
+  top: 982px;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.sdot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: var(--card);
+  display: block;
+}
+.slabel {
+  font: 600 20px/1 "Geist Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* the idea card */
+#note {
+  position: absolute;
+  left: 300px;
+  top: 270px;
+  width: 1320px;
+  height: 540px;
+  perspective: 2400px;
+}
+#note-inner {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+.face {
+  position: absolute;
+  inset: 0;
+  border: 5px solid var(--ink);
+  border-radius: 26px;
+  box-shadow: 16px 16px 0 var(--ink);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  align-items: center;
+}
+#note-front {
+  background: var(--purple);
+  padding: 0 90px;
+  gap: 60px;
+}
+#note-back {
+  visibility: hidden;
+  background: var(--card);
+  transform: rotateY(180deg);
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 0 110px;
+}
