@@ -46,12 +46,15 @@ type StageWindow = Window & { __renderSeek: (time: number) => void };
 let unpacking: Promise<string> | null = null;
 
 /**
- * Launch Chromium with its profile in `userDataDir`, which the caller removes.
- * Puppeteer's own temporary profile is left behind whenever Chromium does not
- * exit cleanly (common with --single-process), and on a warm instance those
- * fill /tmp until Chromium cannot start.
+ * Launch Chromium with everything it writes kept in `dir`, which the caller
+ * removes. Left to itself it keeps its profile and, with no /dev/shm on
+ * Vercel, its shared memory in /tmp, and does not always clean up after
+ * --single-process; on a warm instance that filled /tmp (about 300 MB free
+ * after Chromium's own unpacked files) until every render crashed.
  */
-async function launchBrowser(userDataDir: string): Promise<Browser> {
+async function launchBrowser(dir: string): Promise<Browser> {
+  const userDataDir = join(dir, "profile");
+  const env = { ...process.env, TMPDIR: dir };
   const puppeteer = (await import("puppeteer-core")).default;
   if (process.env.VERCEL) {
     const chromium = (await import("@sparticuz/chromium")).default;
@@ -67,6 +70,7 @@ async function launchBrowser(userDataDir: string): Promise<Browser> {
       executablePath: await unpacking,
       headless: "shell",
       userDataDir,
+      env,
     });
   }
   const executablePath = process.env.VIDEO_RENDER_CHROME_PATH?.trim();
@@ -74,7 +78,12 @@ async function launchBrowser(userDataDir: string): Promise<Browser> {
     throw new Error(
       "Set VIDEO_RENDER_CHROME_PATH to a headless Chromium to render locally.",
     );
-  return puppeteer.launch({ executablePath, headless: "shell", userDataDir });
+  return puppeteer.launch({
+    executablePath,
+    headless: "shell",
+    userDataDir,
+    env,
+  });
 }
 
 async function closeBrowser(browser: Browser | null) {
@@ -294,7 +303,7 @@ export async function renderVideoSegment(params: {
   const dir = await mkdtemp(join(tmpdir(), "explainer-"));
   let browser: Browser | null = null;
   try {
-    browser = await launchBrowser(join(dir, "profile"));
+    browser = await launchBrowser(dir);
     const ffmpeg = await ffmpegPath();
     const { page, sfx } = await openStage(
       browser,
@@ -451,7 +460,7 @@ export async function renderExplainerPoster(params: {
   const dir = await mkdtemp(join(tmpdir(), "explainer-"));
   let browser: Browser | null = null;
   try {
-    browser = await launchBrowser(join(dir, "profile"));
+    browser = await launchBrowser(dir);
     const { page } = await openStage(
       browser,
       origin,
