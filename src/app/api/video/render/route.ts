@@ -61,8 +61,12 @@ export async function POST(request: Request): Promise<Response> {
   if (format === "poster") {
     if (!isTrustedVideoCaller(request))
       return jsonErrorResponse("Forbidden.", 403);
-    await storePoster(artifact, new URL(request.url).origin);
-    return events([{ status: "complete" }]);
+    const stored = await storePoster(artifact, new URL(request.url).origin);
+    return events([
+      stored
+        ? { status: "complete" }
+        : { status: "error", error: "The poster could not be rendered." },
+    ]);
   }
   const name = format === "vertical" ? "vertical.mp4" : "landscape.mp4";
   if (await hasRender(artifact, name)) return events([{ status: "complete" }]);

@@ -32,6 +32,12 @@ const FRAMES: Record<
 
 type StageWindow = Window & { __renderSeek: (time: number) => void };
 
+// @sparticuz/chromium unpacks Chromium and its fonts into /tmp, and treats a
+// path as ready as soon as it exists. Two renders starting together on a cold
+// instance would launch from half-written files, and the damage outlives the
+// request, so every render on an instance shares one unpacking.
+let unpacking: Promise<string> | null = null;
+
 async function launchBrowser(): Promise<Browser> {
   const puppeteer = (await import("puppeteer-core")).default;
   if (process.env.VERCEL) {
@@ -39,9 +45,13 @@ async function launchBrowser(): Promise<Browser> {
     // The default graphics mode emulates a GPU on the CPU (SwiftShader), which
     // is far slower for a 2D page than Chrome's own software renderer.
     chromium.setGraphicsMode = false;
+    unpacking ??= chromium.executablePath().catch((error: unknown) => {
+      unpacking = null;
+      throw error;
+    });
     return puppeteer.launch({
       args: [...chromium.args, "--disable-gpu"],
-      executablePath: await chromium.executablePath(),
+      executablePath: await unpacking,
       headless: "shell",
     });
   }
