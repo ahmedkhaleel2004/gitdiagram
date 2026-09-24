@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { BrowseTabs } from "~/components/browse-tabs";
-import { VideoGrid } from "~/components/explainer/video-grid";
+import { VideoCatalog } from "~/components/explainer/video-catalog";
 import { getVideoCatalog } from "~/server/explainer/catalog";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 
@@ -31,7 +31,7 @@ export default async function WatchIndexPage() {
             together, and a few of the decisions inside.
           </p>
         </section>
-        <VideoGrid cards={cards} />
+        <VideoCatalog cards={cards} />
       </div>
     </main>
   );

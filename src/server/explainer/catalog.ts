@@ -44,8 +44,8 @@ async function loadCatalog(): Promise<VideoCard[]> {
       });
     }
   }
-  // The most starred projects first: they are the ones most people know.
-  return cards.sort((a, b) => b.stars - a.stars);
+  // Newest first, as listed; /watch sorts and filters on the client.
+  return cards;
 }
 
 export const getVideoCatalog = unstable_cache(

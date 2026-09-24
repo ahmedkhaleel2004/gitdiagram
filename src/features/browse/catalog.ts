@@ -24,8 +24,10 @@ export interface BrowseQuery {
   page?: string | number | null;
 }
 
-export interface BrowsePageResult {
-  items: BrowseIndexEntry[];
+export interface BrowsePageResult<
+  T extends BrowseIndexEntry = BrowseIndexEntry,
+> {
+  items: T[];
   total: number;
   page: number;
   pageSize: number;
@@ -47,15 +49,17 @@ interface NormalizedBrowseQuery {
   minStars: number;
 }
 
-interface PreparedBrowseEntry {
-  entry: BrowseIndexEntry;
+interface PreparedBrowseEntry<T extends BrowseIndexEntry = BrowseIndexEntry> {
+  entry: T;
   lastSuccessfulAtTimestamp: number;
   repoKey: string;
 }
 
-export interface PreparedBrowseIndex {
-  preparedEntries: PreparedBrowseEntry[];
-  sortedEntries: Map<BrowseSort, PreparedBrowseEntry[]>;
+export interface PreparedBrowseIndex<
+  T extends BrowseIndexEntry = BrowseIndexEntry,
+> {
+  preparedEntries: PreparedBrowseEntry<T>[];
+  sortedEntries: Map<BrowseSort, PreparedBrowseEntry<T>[]>;
 }
 
 export function toRepoKey(entry: Pick<BrowseIndexEntry, "username" | "repo">) {
@@ -127,10 +131,10 @@ export function normalizeBrowseQuery(
   };
 }
 
-export function prepareBrowseIndex(
-  entries: BrowseIndexEntry[],
+export function prepareBrowseIndex<T extends BrowseIndexEntry>(
+  entries: T[],
   initialSort?: BrowseSort,
-): PreparedBrowseIndex {
+): PreparedBrowseIndex<T> {
   const preparedEntries = entries.map((entry) => ({
     entry,
     lastSuccessfulAtTimestamp: Date.parse(entry.lastSuccessfulAt),
@@ -145,10 +149,10 @@ export function prepareBrowseIndex(
   };
 }
 
-function getSortedPreparedEntries(
-  index: PreparedBrowseIndex,
+function getSortedPreparedEntries<T extends BrowseIndexEntry>(
+  index: PreparedBrowseIndex<T>,
   sort: BrowseSort,
-): PreparedBrowseEntry[] {
+): PreparedBrowseEntry<T>[] {
   const cachedEntries = index.sortedEntries.get(sort);
   if (cachedEntries) {
     return cachedEntries;
@@ -192,10 +196,11 @@ function getSortedPreparedEntries(
   return sortedEntries;
 }
 
-export function getBrowsePageFromPreparedIndex(
-  index: PreparedBrowseIndex,
+export function getBrowsePageFromPreparedIndex<T extends BrowseIndexEntry>(
+  index: PreparedBrowseIndex<T>,
   query: BrowseQuery,
-): BrowsePageResult {
+  pageSize = BROWSE_PAGE_SIZE,
+): BrowsePageResult<T> {
   const {
     sort,
     q,
@@ -215,17 +220,17 @@ export function getBrowsePageFromPreparedIndex(
   );
 
   const total = filteredEntries.length;
-  const totalPages = Math.max(1, Math.ceil(total / BROWSE_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(requestedPage, totalPages);
-  const startIndex = (page - 1) * BROWSE_PAGE_SIZE;
+  const startIndex = (page - 1) * pageSize;
 
   return {
     items: filteredEntries
-      .slice(startIndex, startIndex + BROWSE_PAGE_SIZE)
+      .slice(startIndex, startIndex + pageSize)
       .map(({ entry }) => entry),
     total,
     page,
-    pageSize: BROWSE_PAGE_SIZE,
+    pageSize,
     totalPages,
     sort,
     q,
@@ -233,11 +238,16 @@ export function getBrowsePageFromPreparedIndex(
   };
 }
 
-export function getBrowsePageFromEntries(
-  entries: BrowseIndexEntry[],
+export function getBrowsePageFromEntries<T extends BrowseIndexEntry>(
+  entries: T[],
   query: BrowseQuery,
-): BrowsePageResult {
-  return getBrowsePageFromPreparedIndex(prepareBrowseIndex(entries), query);
+  pageSize = BROWSE_PAGE_SIZE,
+): BrowsePageResult<T> {
+  return getBrowsePageFromPreparedIndex(
+    prepareBrowseIndex(entries),
+    query,
+    pageSize,
+  );
 }
 
 export function getBrowsePageFromRecentIndex(
@@ -311,7 +321,8 @@ export function buildBrowseHref(
   query: Pick<BrowsePageResult, "q" | "sort" | "minStars"> & {
     page?: number;
   },
+  pathname = "/browse",
 ) {
   const queryString = buildBrowseSearchParams(query).toString();
-  return queryString ? `/browse?${queryString}` : "/browse";
+  return queryString ? `${pathname}?${queryString}` : pathname;
 }

@@ -9,6 +9,7 @@ import type {
   BrowsePageResult,
   BrowseIndexEntry,
 } from "~/features/browse/catalog";
+import { BrowseCatalogPagination } from "~/components/browse-catalog-pagination";
 import { BrowseDiagramPreview } from "~/components/browse-diagram-preview";
 import {
   formatGeneratedAt,
@@ -70,8 +71,6 @@ export function BrowseCatalogResults({
   const showingStart =
     result.total === 0 ? 0 : (result.page - 1) * result.pageSize + 1;
   const showingEnd = Math.min(result.total, result.page * result.pageSize);
-  const hasPreviousPage = result.page > 1;
-  const hasNextPage = result.page < result.totalPages;
 
   return (
     <>
@@ -179,35 +178,11 @@ export function BrowseCatalogResults({
         </table>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-[hsl(var(--neo-soft-text))] dark:text-neutral-300">
-          Page {result.page} of {result.totalPages}
-        </p>
-        <div className="flex gap-2 sm:gap-3">
-          <button
-            type="button"
-            onClick={() => handlePageChange(result.page - 1)}
-            disabled={!hasPreviousPage}
-            className={`browse-muted-button inline-flex min-h-11 items-center justify-center rounded-md px-3 py-2 text-sm font-semibold lg:px-4 lg:py-2 lg:text-sm ${
-              hasPreviousPage ? "" : "cursor-not-allowed opacity-50"
-            }`}
-          >
-            Previous
-          </button>
-          <button
-            type="button"
-            onClick={() => handlePageChange(result.page + 1)}
-            disabled={!hasNextPage}
-            className={`inline-flex min-h-11 items-center justify-center rounded-md px-3 py-2 text-sm font-semibold lg:px-4 lg:py-2 lg:text-sm ${
-              hasNextPage
-                ? "neo-button"
-                : "cursor-not-allowed border-[3px] border-black bg-[hsl(var(--neo-button))] opacity-50 dark:border-[#1a0d30]"
-            }`}
-          >
-            Next
-          </button>
-        </div>
-      </div>
+      <BrowseCatalogPagination
+        onPageChange={handlePageChange}
+        page={result.page}
+        totalPages={result.totalPages}
+      />
 
       {desktopHoverEnabled && hoverPreview && typeof document !== "undefined"
         ? createPortal(
