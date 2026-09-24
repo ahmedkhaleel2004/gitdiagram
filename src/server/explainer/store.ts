@@ -2,6 +2,7 @@ import "server-only";
 
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { ENGINE_VERSION } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
 import { readRequiredEnv } from "~/server/storage/config";
 import {
@@ -26,6 +27,11 @@ const clipName = (index: number) =>
   `beat-${String(index).padStart(2, "0")}.mp3`;
 
 export type RenderName = "landscape.mp4" | "vertical.mp4" | "poster.jpg";
+
+// Renders are drawn by the scene engine, so an engine change makes new ones:
+// the engine version is part of every render's file name.
+const renderFile = (name: RenderName) =>
+  name.replace(/\.(mp4|jpg)$/, `.e${ENGINE_VERSION}.$1`);
 
 /** A video's version is its creation time; it names the folder its files live in. */
 export function videoVersion(createdAt: string): string | null {
@@ -124,7 +130,9 @@ export async function readRender(
   name: RenderName,
 ): Promise<Buffer | null> {
   const { owner, repo } = artifact.meta;
-  return readObject(versionedKey(owner, repo, artifact.createdAt, name));
+  return readObject(
+    versionedKey(owner, repo, artifact.createdAt, renderFile(name)),
+  );
 }
 
 export async function hasRender(
@@ -132,7 +140,7 @@ export async function hasRender(
   name: RenderName,
 ): Promise<boolean> {
   const { owner, repo } = artifact.meta;
-  const key = versionedKey(owner, repo, artifact.createdAt, name);
+  const key = versionedKey(owner, repo, artifact.createdAt, renderFile(name));
   if (videoStoreBackend() === "local") {
     try {
       await stat(localPath(key));
@@ -150,7 +158,7 @@ export async function writeRender(
   body: Buffer,
 ) {
   const { owner, repo } = artifact.meta;
-  const key = versionedKey(owner, repo, artifact.createdAt, name);
+  const key = versionedKey(owner, repo, artifact.createdAt, renderFile(name));
   if (videoStoreBackend() === "local") return writeLocal(key, body);
   await putBinaryObject(
     bucket(),
@@ -174,7 +182,7 @@ export async function renderDownloadUrl(
   const { owner, repo } = artifact.meta;
   return presignObjectDownload(
     bucket(),
-    versionedKey(owner, repo, artifact.createdAt, name),
+    versionedKey(owner, repo, artifact.createdAt, renderFile(name)),
     { filename, expiresInSeconds: 60 * 60 },
   );
 }

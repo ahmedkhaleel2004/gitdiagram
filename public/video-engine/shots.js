@@ -824,6 +824,7 @@ function build() {
         var line = h("div", "", "position:absolute;left:" + (r.x + 10) + "px;top:" + (r.y + r.h / 2 - 2) + "px;width:" + (r.w - 20) + "px;height:5px;border-radius:3px;background:#b3263a;transform-origin:left center;z-index:4", first.layer);
         tl.fromTo(line, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power2.out" }, t);
         tl.to(first.el, { opacity: 0.55, duration: 0.3 }, t + 0.1);
+        (first.strikes = first.strikes || []).push(line);
         sfx("tick", t, -16);
         break;
       case "pulse":
@@ -841,6 +842,12 @@ function build() {
         if (!first || !first.swaps || !first.swaps.length) return;
         var next = first.swaps.shift();
         var old = first.current;
+        // New words are not struck out: a replacement clears any strike.
+        if (first.strikes && first.strikes.length) {
+          tl.to(first.strikes, { opacity: 0, duration: 0.2 }, t);
+          tl.to(first.el, { opacity: 1, duration: 0.25 }, t + 0.1);
+          first.strikes = [];
+        }
         tl.to(old, { opacity: 0, y: -22, duration: 0.2, ease: "power2.in" }, t);
         tl.fromTo(next, { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.28, ease: "power3.out" }, t + 0.12);
         first.current = next;
@@ -888,9 +895,11 @@ function build() {
         var cx = (x0 + x1) / 2;
         var cy = (y0 + y1) / 2;
         tl.to(sc.cam, { scale: s, x: 960 - s * cx, y: 540 - s * cy, duration: 0.75, ease: "power3.inOut" }, t);
+        sc.focused = true;
         break;
       case "reset":
         tl.to(sc.cam, { scale: 1, x: 0, y: 0, duration: 0.65, ease: "power3.inOut" }, t);
+        sc.focused = false;
         break;
     }
   }
@@ -932,6 +941,12 @@ function build() {
     sc.beats.forEach(function (bi, j) {
       var beat = beats[bi];
       var floor = j === 0 ? sc.tIn + 0.3 : TB[bi].start - 0.05;
+      // A beat that adds elements while the camera is pushed in pulls back
+      // first, so nothing new appears off camera.
+      if (j > 0 && sc.focused && beat.elements.length && !beat.actions.some(function (a) { return a.do === "focus"; })) {
+        tl.to(sc.cam, { scale: 1, x: 0, y: 0, duration: 0.6, ease: "power3.inOut" }, TB[bi].start - 0.25);
+        sc.focused = false;
+      }
       var stagger = 0;
       beat.elements.forEach(function (e) {
         var cued = cueTime(bi, e.at);
