@@ -512,14 +512,15 @@
     padding: 0 6px;
     border: 2px solid #000;
     border-radius: 999px;
-    /* Yellow, not the purple of the buttons it sits in, so it always stands out. */
+    --new-badge-fill: hsl(var(--neo-button));
     background: linear-gradient(
       110deg,
-      #fde047 0%,
-      #fde047 40%,
-      #fefce8 50%,
-      #fde047 60%,
-      #fde047 100%
+      var(--new-badge-fill) 0%,
+      var(--new-badge-fill) 38%,
+      #fbcfe8 48%,
+      #fde68a 52%,
+      var(--new-badge-fill) 62%,
+      var(--new-badge-fill) 100%
     );
     background-size: 260% 100%;
     box-shadow: 2px 2px 0 #000;
@@ -529,6 +530,11 @@
     letter-spacing: 0.08em;
     line-height: 1;
     animation: new-badge-shine 3.2s ease-in-out infinite;
+  }
+  /* Inside a purple button, a lighter purple so the badge never matches it. */
+  .neo-button .new-badge,
+  .new-badge-light {
+    --new-badge-fill: hsl(270 100% 92%);
   }
 }
 

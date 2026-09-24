@@ -60,7 +60,7 @@ export function RepositoryToolbar({
           >
             <Clapperboard size={14} aria-hidden="true" />
             Video
-            <NewBadge />
+            <NewBadge className="new-badge-light" />
           </button>
         )}
         <button
