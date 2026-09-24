@@ -2,9 +2,10 @@ import type { SponsorStats } from "~/server/sponsor-stats";
 
 export const SPONSOR_EMAIL_ADDRESS = "ahmedkhaleel2004@gmail.com";
 export const SPONSOR_EMAIL = `mailto:${SPONSOR_EMAIL_ADDRESS}?subject=Advertising%20on%20GitDiagram`;
-export const SPONSOR_PRICE = "$999";
+export const SHARED_SPONSOR_PRICE = "$999";
+export const EXCLUSIVE_SPONSOR_PRICE = "$2,499";
 export const SPONSOR_AVAILABILITY =
-  "Currently sponsored by Sent. Next available: October 20, 2026.";
+  "New campaigns available from late November 2026.";
 export const sponsorFits = [
   "AI coding tools and repo agents",
   "Code review, security, and dependency tools",
@@ -125,7 +126,7 @@ export function createSponsorContent(stats: SponsorStats) {
       name: "GitHub README",
       metric: { value: format(stats.githubStars), label: "GitHub stars" },
       description:
-        "An ad near the top of GitDiagram’s GitHub README, linking directly to your product.",
+        "Included in the exclusive package: an ad near the top of GitDiagram’s GitHub README, linking directly to your product.",
       preview: {
         src: "/sponsor-previews/readme.png",
         width: 1756,

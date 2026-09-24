@@ -1,11 +1,10 @@
 import { ArrowDown } from "lucide-react";
-import { SponsorEmailActions } from "./sponsor-email-actions";
+import { SponsorBookings } from "./sponsor-bookings";
+import { SponsorOffers } from "./sponsor-offers";
 import { SponsorPlacementPreview } from "./sponsor-placement-preview";
 import {
   SPONSOR_AVAILABILITY,
-  SPONSOR_EMAIL,
-  SPONSOR_EMAIL_ADDRESS,
-  SPONSOR_PRICE,
+  SHARED_SPONSOR_PRICE,
   sponsorFits,
   type SponsorContent,
   type SponsorMetric,
@@ -50,20 +49,24 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
           30 days. Reach developers as they explore GitHub repositories, with
           placements that link directly to your website.
         </p>
+        <SponsorBookings />
         <p className={styles.offerSummary}>
           <span>
-            <strong>{SPONSOR_PRICE} USD</strong> · 30 days
+            From <strong>{SHARED_SPONSOR_PRICE} USD</strong> / 30 days
           </span>
           <span className={styles.offerSummaryDetails}>
-            All four placements included
+            Shared or exclusive
           </span>
         </p>
         <p className={styles.availability}>{SPONSOR_AVAILABILITY}</p>
         <div className={styles.heroActions}>
-          <SponsorEmailActions
-            email={SPONSOR_EMAIL_ADDRESS}
-            mailto={SPONSOR_EMAIL}
-          />
+          <a
+            href="#sponsor-offer"
+            className={`neo-button ${styles.contactPrimary}`}
+          >
+            View packages
+            <ArrowDown aria-hidden="true" />
+          </a>
           <a href="#sponsor-placements" className={styles.textLink}>
             See the placements
             <ArrowDown aria-hidden="true" />
@@ -145,44 +148,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
         </div>
       </section>
 
-      <section
-        className={styles.offer}
-        id="sponsor-offer"
-        aria-labelledby="offer-title"
-      >
-        <div className={styles.offerHeading}>
-          <div>
-            <h2 id="offer-title">Advertise for 30 days</h2>
-            <p className={styles.offerDescription}>
-              Your logo, a short product description, and a link to your
-              website. One fixed price covers the homepage, repository diagram
-              pages, browse catalog, and GitHub README for 30 days.
-            </p>
-          </div>
-          <p className={styles.price}>
-            {SPONSOR_PRICE} <span>USD / 30 days</span>
-          </p>
-        </div>
-        <div className={styles.offerActions}>
-          <div>
-            <SponsorEmailActions
-              email={SPONSOR_EMAIL_ADDRESS}
-              mailto={SPONSOR_EMAIL}
-            />
-            <p className={styles.availability}>
-              {SPONSOR_AVAILABILITY} Email Ahmed to agree on the dates and
-              creative.
-            </p>
-          </div>
-          <p className={styles.terms}>
-            One-time payment before launch.
-            <br />
-            No automatic renewal.
-            <br />
-            Future bookings are priced separately.
-          </p>
-        </div>
-      </section>
+      <SponsorOffers />
     </main>
   );
 }
