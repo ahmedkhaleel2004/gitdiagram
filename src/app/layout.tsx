@@ -5,6 +5,8 @@ import { type Metadata } from "next";
 import { Header } from "~/components/header";
 import { Footer } from "~/components/footer";
 import { CSPostHogProvider } from "./providers";
+import { InitialSponsorCampaignProvider } from "~/hooks/use-sponsor-campaign";
+import { activeSponsorCampaign } from "~/lib/sponsor-campaign";
 import { SITE_URL } from "~/lib/site";
 
 export const metadata: Metadata = {
@@ -79,9 +81,13 @@ export default function RootLayout({
     >
       <body className="flex min-h-screen flex-col">
         <CSPostHogProvider>
-          <Header />
-          <div className="flex-grow">{children}</div>
-          <Footer />
+          <InitialSponsorCampaignProvider
+            campaignId={activeSponsorCampaign()?.id ?? null}
+          >
+            <Header />
+            <div className="flex-grow">{children}</div>
+            <Footer />
+          </InitialSponsorCampaignProvider>
         </CSPostHogProvider>
       </body>
     </html>

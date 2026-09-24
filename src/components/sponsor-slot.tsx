@@ -17,6 +17,7 @@ function SponsorBanner({
   className,
   embedded = false,
   campaignId,
+  confirmed,
   surface,
 }: {
   creative: SponsorCreative;
@@ -24,10 +25,12 @@ function SponsorBanner({
   className?: string;
   embedded?: boolean;
   campaignId?: string;
+  confirmed: boolean;
   surface: SponsorSurface;
 }) {
   const { logo } = creative;
-  useSponsorImpression(campaignId, surface);
+  // Only count the campaign the schedule check confirmed, not a stale render.
+  useSponsorImpression(confirmed ? campaignId : undefined, surface);
 
   return (
     <a
@@ -89,7 +92,7 @@ export function SponsorSlot({
   surface: SponsorSurface;
   className?: string;
 }) {
-  const campaign = useSponsorCampaign();
+  const { campaign, confirmed } = useSponsorCampaign();
   const creative = campaign && sponsorCreatives[campaign.id];
   if (!campaign || !creative)
     return (
@@ -102,6 +105,7 @@ export function SponsorSlot({
   return (
     <SponsorBanner
       campaignId={campaign.id}
+      confirmed={confirmed}
       surface={surface}
       creative={creative}
       href={sponsorClickHref(surface, campaign.id)}
@@ -111,7 +115,7 @@ export function SponsorSlot({
 }
 
 export function SponsorCatalogRow() {
-  const campaign = useSponsorCampaign();
+  const { campaign, confirmed } = useSponsorCampaign();
   const creative = campaign && sponsorCreatives[campaign.id];
   return (
     <tr
@@ -122,6 +126,7 @@ export function SponsorCatalogRow() {
         {campaign && creative ? (
           <SponsorBanner
             campaignId={campaign.id}
+            confirmed={confirmed}
             surface="browse"
             creative={creative}
             href={sponsorClickHref("browse", campaign.id)}

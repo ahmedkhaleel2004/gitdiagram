@@ -112,6 +112,17 @@ const config = {
           },
         ],
       },
+      // Sponsor logos sit in the first screen, so skip the revalidation round
+      // trip on repeat visits. Give a changed logo a new file name.
+      {
+        source: "/sponsors/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
       {
         source: "/:path*",
         headers: [

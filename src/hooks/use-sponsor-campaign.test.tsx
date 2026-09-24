@@ -1,6 +1,9 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { useSponsorCampaign } from "./use-sponsor-campaign";
+import {
+  InitialSponsorCampaignProvider,
+  useSponsorCampaign,
+} from "./use-sponsor-campaign";
 import { coderabbitCampaign, sentCampaign } from "~/lib/sponsor-campaign";
 
 afterEach(() => {
@@ -28,11 +31,11 @@ it("uses server time despite a wrong browser clock and hands over in an already 
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
   });
-  expect(hook.result.current?.id).toBe(sentCampaign.id);
+  expect(hook.result.current.campaign?.id).toBe(sentCampaign.id);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(100);
   });
-  expect(hook.result.current?.id).toBe(coderabbitCampaign.id);
+  expect(hook.result.current.campaign?.id).toBe(coderabbitCampaign.id);
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
@@ -47,6 +50,37 @@ it("handles invalid schedule responses with a bounded retry instead of a busy lo
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1000);
   });
-  expect(hook.result.current?.id).toBe(sentCampaign.id);
+  expect(hook.result.current.campaign?.id).toBe(sentCampaign.id);
   expect(fetcher).toHaveBeenCalledOnce();
+});
+
+it("starts from the rendered campaign and only confirms it after the schedule check", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-24T12:00:00Z"));
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    Response.json({
+      campaignId: coderabbitCampaign.id,
+      serverTime: Date.now(),
+      nextTransition: null,
+    }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const hook = renderHook(() => useSponsorCampaign(), {
+    wrapper: ({ children }) => (
+      <InitialSponsorCampaignProvider campaignId={sentCampaign.id}>
+        {children}
+      </InitialSponsorCampaignProvider>
+    ),
+  });
+  expect(hook.result.current).toMatchObject({
+    campaign: { id: sentCampaign.id },
+    confirmed: false,
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(hook.result.current).toMatchObject({
+    campaign: { id: coderabbitCampaign.id },
+    confirmed: true,
+  });
 });

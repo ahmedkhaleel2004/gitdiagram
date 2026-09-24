@@ -1,16 +1,48 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   activeSponsorCampaign,
   findSponsorCampaign,
 } from "~/lib/sponsor-campaign";
 
+const InitialSponsorCampaignContext = createContext<string | null>(null);
+
+// The layout renders the campaign scheduled at render time, so the banner is in
+// the first HTML instead of appearing after hydration and a network round trip.
+export function InitialSponsorCampaignProvider({
+  campaignId,
+  children,
+}: {
+  campaignId: string | null;
+  children: ReactNode;
+}) {
+  return createElement(
+    InitialSponsorCampaignContext,
+    { value: campaignId },
+    children,
+  );
+}
+
 // Resolve against server time, independently of page/CDN caches or browser clocks.
+// The rendered campaign may be stale, so it is only `confirmed` after that check.
 export function useSponsorCampaign() {
-  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const initialCampaignId = useContext(InitialSponsorCampaignContext);
+  const [schedule, setSchedule] = useState({
+    campaignId: initialCampaignId,
+    confirmed: false,
+  });
 
   useEffect(() => {
+    const setCampaignId = (campaignId: string | null) =>
+      setSchedule({ campaignId, confirmed: true });
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     let controller: AbortController | undefined;
@@ -79,5 +111,10 @@ export function useSponsorCampaign() {
     };
   }, []);
 
-  return campaignId ? findSponsorCampaign(campaignId) : undefined;
+  return {
+    campaign: schedule.campaignId
+      ? findSponsorCampaign(schedule.campaignId)
+      : undefined,
+    confirmed: schedule.confirmed,
+  };
 }
