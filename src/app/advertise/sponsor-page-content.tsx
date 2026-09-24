@@ -1,10 +1,13 @@
 import { ArrowDown } from "lucide-react";
-import { SponsorBookings } from "./sponsor-bookings";
-import { SponsorOffers } from "./sponsor-offers";
+import Image from "next/image";
+import { SponsorEmailActions } from "./sponsor-email-actions";
 import { SponsorPlacementPreview } from "./sponsor-placement-preview";
 import {
   SPONSOR_AVAILABILITY,
-  SHARED_SPONSOR_PRICE,
+  SPONSOR_EMAIL,
+  SPONSOR_EMAIL_ADDRESS,
+  SPONSOR_PRICE,
+  SPONSOR_EXCLUSIVE_PRICE,
   sponsorFits,
   type SponsorContent,
   type SponsorMetric,
@@ -49,24 +52,20 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
           30 days. Reach developers as they explore GitHub repositories, with
           placements that link directly to your website.
         </p>
-        <SponsorBookings />
         <p className={styles.offerSummary}>
           <span>
-            From <strong>{SHARED_SPONSOR_PRICE} USD</strong> / 30 days
+            From <strong>{SPONSOR_PRICE} USD</strong> · 30 days
           </span>
           <span className={styles.offerSummaryDetails}>
-            Shared or exclusive
+            Shared or exclusive placements
           </span>
         </p>
         <p className={styles.availability}>{SPONSOR_AVAILABILITY}</p>
         <div className={styles.heroActions}>
-          <a
-            href="#sponsor-offer"
-            className={`neo-button ${styles.contactPrimary}`}
-          >
-            View packages
-            <ArrowDown aria-hidden="true" />
-          </a>
+          <SponsorEmailActions
+            email={SPONSOR_EMAIL_ADDRESS}
+            mailto={SPONSOR_EMAIL}
+          />
           <a href="#sponsor-placements" className={styles.textLink}>
             See the placements
             <ArrowDown aria-hidden="true" />
@@ -148,7 +147,80 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
         </div>
       </section>
 
-      <SponsorOffers />
+      <section
+        className={styles.offer}
+        id="sponsor-offer"
+        aria-labelledby="offer-title"
+      >
+        <p className={styles.bookingNote}>
+          <span>October 20 campaign booked by</span>
+          <Image
+            src="/sponsors/coderabbit-wordmark.svg"
+            alt="CodeRabbit"
+            width={2152}
+            height={314}
+            className={styles.bookingLogoLight}
+            unoptimized
+          />
+          <Image
+            src="/sponsors/coderabbit-wordmark-white.svg"
+            alt="CodeRabbit"
+            width={2152}
+            height={313}
+            className={styles.bookingLogoDark}
+            unoptimized
+          />
+        </p>
+        <div className={styles.offerHeading}>
+          <div>
+            <h2 id="offer-title">Advertise for 30 days</h2>
+            <p className={styles.offerDescription}>
+              New campaigns start from late November 2026, after CodeRabbit’s
+              run. Choose a shared website spot or an exclusive campaign.
+            </p>
+          </div>
+        </div>
+        <dl className={styles.planList}>
+          <div>
+            <dt>Shared website spot</dt>
+            <dd className={styles.planPrice}>
+              {SPONSOR_PRICE} <span>USD / 30 days</span>
+            </dd>
+            <dd className={styles.planDescription}>
+              Homepage, repo diagrams, and browse catalog. A 50/50 rotation with
+              one other sponsor, with one ad shown at a time. Website only.
+            </dd>
+          </div>
+          <div>
+            <dt>Exclusive campaign</dt>
+            <dd className={styles.planPrice}>
+              {SPONSOR_EXCLUSIVE_PRICE} <span>USD / 30 days</span>
+            </dd>
+            <dd className={styles.planDescription}>
+              Your brand is the only advertiser across the homepage, repo
+              diagrams, browse catalog, and GitHub README.
+            </dd>
+          </div>
+        </dl>
+        <div className={styles.offerActions}>
+          <div>
+            <SponsorEmailActions
+              email={SPONSOR_EMAIL_ADDRESS}
+              mailto={SPONSOR_EMAIL}
+            />
+            <p className={styles.availability}>
+              Email Ahmed to agree on dates and creative before payment.
+            </p>
+          </div>
+          <p className={styles.terms}>
+            One-time payment before launch.
+            <br />
+            No automatic renewal.
+            <br />
+            Future bookings are priced separately.
+          </p>
+        </div>
+      </section>
     </main>
   );
 }
