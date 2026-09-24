@@ -11,6 +11,15 @@
   transition: background-color 160ms ease;
 }
 
+.vacant {
+  display: flex;
+  align-items: center;
+  min-height: 78px;
+  padding: 14px 16px;
+  color: hsl(var(--neo-soft-text));
+  font-size: 13px;
+}
+
 .content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

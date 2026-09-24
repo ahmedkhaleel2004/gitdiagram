@@ -72,7 +72,7 @@ describe("sponsor click redirects", () => {
           $ip: null,
         },
       });
-      expect(sponsorClickHref(placement)).toBe(
+      expect(sponsorClickHref(placement, "sent-2026-09")).toBe(
         `/out/sent-2026-09?placement=${placement}`,
       );
     },
@@ -149,9 +149,12 @@ describe("sponsor click redirects", () => {
       expect(
         (
           await GET(
-            new NextRequest(`${origin}${sponsorClickHref("home")}`, {
-              headers: { "user-agent": browser },
-            }),
+            new NextRequest(
+              `${origin}${sponsorClickHref("home", "sent-2026-09")}`,
+              {
+                headers: { "user-agent": browser },
+              },
+            ),
             context,
           )
         ).status,
