@@ -5,15 +5,13 @@ import type { VideoArtifact } from "./types";
 
 const ENGINE = "/video-engine";
 // Measured peak of each effect (dBFS); hits are normalized to a -6 dB peak and
-// then set to the gain the scene engine asked for. Only soft, untuned foley:
-// pitched chimes (check, reject, blip, resolve) read as dings over narration,
-// so cues naming them are skipped.
+// then set to the gain the scene engine asked for. Only short, untuned foley:
+// pitched chimes (check, reject, blip, resolve) read as dings over narration
+// and long beds (paper, typing) as scratching, so cues naming them are skipped.
 const SFX_PEAK_DB: Record<string, number> = {
-  paper: -1.3,
   pop: -5.3,
   stamp: -10.4,
   tick: -5.9,
-  typing: -4.3,
   whoosh: -0.7,
 };
 
@@ -21,6 +19,8 @@ export interface SfxCue {
   name: string;
   t: number;
   gain: number;
+  /** Playback rate; the engine varies it so repeats never sound identical. */
+  rate?: number;
 }
 
 function dbToGain(db: number) {
@@ -122,6 +122,7 @@ export class ExplainerAudio {
       if (!buffer || cue.t < from - 0.02) continue;
       const source = context.createBufferSource();
       source.buffer = buffer;
+      source.playbackRate.value = cue.rate ?? 1;
       const gain = context.createGain();
       gain.gain.value = dbToGain(-6 - (SFX_PEAK_DB[cue.name] ?? -6) + cue.gain);
       source.connect(gain).connect(master);

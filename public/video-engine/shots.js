@@ -16,17 +16,45 @@ function build() {
   var note = document.getElementById("note");
   if (note) note.style.display = "none";
 
-  // ---------- sound: soft untuned foley only; the throttle keeps it sparse ----------
+  // ---------- sound ----------
+  // Builders ask for hits freely; mixSfx (run once the film is built) keeps a
+  // sparse, varied few: short untuned foley only, the scene change plus at most
+  // three hits a scene, never the same sound twice within three seconds, and
+  // every repeat slightly re-pitched so nothing sounds copy-pasted.
   var SFX = (window.__SFX = []);
-  var lastAny = -1;
-  var lastByName = {};
-  function sfx(name, t, gain) {
-    t = Math.max(0, t);
-    if (t - lastAny < 0.45 && t >= lastAny) return;
-    if (lastByName[name] !== undefined && Math.abs(t - lastByName[name]) < 0.9) return;
-    lastAny = t;
-    lastByName[name] = t;
-    SFX.push({ name: name, t: Number(t.toFixed(3)), gain: gain || 0 });
+  var sfxWanted = [];
+  var sfxScene = 0;
+  var SFX_RANK = { whoosh: 3, stamp: 2, pop: 1, tick: 0 };
+  function sfx(name, t, gain, rate, transition) {
+    sfxWanted.push({ name: name, t: Math.max(0, t), gain: gain || 0, rate: rate || 1, scene: sfxScene, transition: Boolean(transition) });
+  }
+  function mixSfx() {
+    var PER_SCENE = 3;
+    var perScene = {};
+    var picked = [];
+    sfxWanted
+      .slice()
+      .sort(function (a, b) {
+        return b.transition - a.transition || SFX_RANK[b.name] - SFX_RANK[a.name] || a.t - b.t;
+      })
+      .forEach(function (c) {
+        if (!c.transition && (perScene[c.scene] || 0) >= PER_SCENE) return;
+        for (var i = 0; i < picked.length; i++) {
+          var gap = Math.abs(picked[i].t - c.t);
+          if (gap < 0.7 || (picked[i].name === c.name && gap < 3)) return;
+        }
+        if (!c.transition) perScene[c.scene] = (perScene[c.scene] || 0) + 1;
+        picked.push(c);
+      });
+    var RATE = [1, 0.93, 1.07, 0.96, 1.11, 0.9];
+    var GAIN = [0, -1.5, -0.5, -2.5, -1];
+    var seen = {};
+    picked
+      .sort(function (a, b) { return a.t - b.t; })
+      .forEach(function (c) {
+        var k = (seen[c.name] = (seen[c.name] || 0) + 1) - 1;
+        SFX.push({ name: c.name, t: Number(c.t.toFixed(3)), gain: c.gain + GAIN[k % GAIN.length], rate: Number((c.rate * RATE[k % RATE.length]).toFixed(3)) });
+      });
   }
 
   // ---------- DOM + text ----------
@@ -337,7 +365,7 @@ function build() {
         riseIn(el, t, { y: 26 });
         lineEls.forEach(function (n, i) { typeIn(n, t + 0.18 + i * 0.05, Math.min(0.26, 0.04 + (n.textContent || "").length * 0.006)); });
         (e.focus || []).forEach(function (n) { var b = bar(n); if (b) tl.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t + 0.5); });
-        sfx("typing", t + 0.15, -18);
+        sfx("pop", t + 0.05, -17, 0.8);
       },
     };
   };
@@ -375,7 +403,7 @@ function build() {
             at += 0.06;
           }
         });
-        sfx("typing", t + 0.2, -17);
+        sfx("pop", t + 0.05, -17, 0.8);
       },
     };
   };
@@ -419,7 +447,7 @@ function build() {
     var ns = Math.max(16, Math.min(Math.floor(H * 0.34), Math.floor((e.w * U - 90) / (name.length * 0.6)), 30));
     fitText(h("div", "mono", "font:650 " + ns + "px/1.15 'Geist Mono';white-space:nowrap", col, esc(name)), null, 13);
     if (dir) h("div", "mono", "margin-top:4px;font:500 " + Math.max(13, ns - 8) + "px/1.2 'Geist Mono';color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis", col, esc(dir + "/"));
-    return { el: el, enter: function (t) { riseIn(el, t, { x: -40, y: 0, d: 0.36 }); sfx("paper", t, -19); } };
+    return { el: el, enter: function (t) { riseIn(el, t, { x: -40, y: 0, d: 0.36 }); sfx("pop", t, -17, 0.9); } };
   };
   B.tree = function (e, layer) {
     var el = place(layer, e, cardStyle());
@@ -448,7 +476,7 @@ function build() {
         riseIn(el, t, { y: 26 });
         rows.forEach(function (r, i) { riseIn(r, t + 0.15 + i * 0.04, { x: -14, y: 0, d: 0.26 }); });
         (e.focus || []).forEach(function (i) { var b = bar(i); if (b) tl.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t + 0.5); });
-        sfx("paper", t + 0.1, -20);
+        sfx("pop", t + 0.05, -17, 0.8);
       },
     };
   };
@@ -490,7 +518,7 @@ function build() {
       enter: function (t) {
         riseIn(el, t, { y: 26 });
         rows.forEach(function (r, i) { riseIn(r, t + 0.2 + i * 0.07, { x: -12, y: 0, d: 0.28 }); });
-        sfx("paper", t + 0.1, -20);
+        sfx("pop", t + 0.05, -17, 0.8);
       },
     };
   };
@@ -587,7 +615,7 @@ function build() {
     bar.innerHTML = '<div class="dots"><i></i><i></i><i></i></div>';
     var field = h("div", "mono", "position:relative;flex:1;min-width:0;height:34px;border:2px solid " + INK + ";border-radius:999px;overflow:hidden", bar);
     var url = h("div", "", "position:absolute;left:16px;right:16px;top:0;line-height:30px;font:500 18px/30px 'Geist Mono';white-space:nowrap;overflow:hidden;text-overflow:ellipsis", field, esc(e.url || ""));
-    return { el: el, label: url, labelHost: field, enter: function (t) { riseIn(el, t, { y: 40 }); sfx("paper", t, -19); } };
+    return { el: el, label: url, labelHost: field, enter: function (t) { riseIn(el, t, { y: 40 }); sfx("pop", t, -17, 0.8); } };
   };
   B.request = function (e, layer) {
     var W = e.w * U;
@@ -615,7 +643,7 @@ function build() {
         riseIn(el, t, { x: -60, y: 0, d: 0.38 });
         if (status) popIn(status, t + 0.35, { from: 0.3 });
         bodyLines.forEach(function (b, i) { tl.fromTo(b, { opacity: 0 }, { opacity: 1, duration: 0.15 }, t + 0.3 + i * 0.05); });
-        sfx("paper", t, -19);
+        sfx("pop", t, -17, 0.85);
       },
     };
   };
@@ -840,7 +868,7 @@ function build() {
         var n = first.built.pending.shift();
         tl.set(n, { opacity: 1 }, t);
         typeIn(n, t, Math.min(0.6, 0.05 + (n.textContent || "").length * 0.015));
-        sfx("typing", t, -18);
+        sfx("tick", t, -18);
         break;
       case "flow":
         if (first && first.built.flow) first.built.flow(t, sc.tOut - 0.3);
@@ -863,7 +891,6 @@ function build() {
         var cx = (x0 + x1) / 2;
         var cy = (y0 + y1) / 2;
         tl.to(sc.cam, { scale: s, x: 960 - s * cx, y: 540 - s * cy, duration: 0.75, ease: "power3.inOut" }, t);
-        sfx("whoosh", t, -19);
         break;
       case "reset":
         tl.to(sc.cam, { scale: 1, x: 0, y: 0, duration: 0.65, ease: "power3.inOut" }, t);
@@ -887,7 +914,8 @@ function build() {
     tl.fromTo(drift, { scale: 1 }, { scale: 1.015, duration: Math.max(0.5, sc.tOut - sc.tIn), ease: "none" }, sc.tIn);
     transitionOut(inner, (scenes[k + 1] && scenes[k + 1].transition) || "zoom", sc.tOut);
     tl.set(sec, { visibility: "hidden" }, sc.tOut);
-    if (k > 0) sfx("whoosh", sc.tIn - 0.04, -16);
+    sfxScene = k;
+    if (k > 0) sfx("whoosh", sc.tIn - 0.04, -17, 1, true);
 
     // Actions that later need prepared DOM (swaps, counts, typed lines).
     var future = {};
@@ -985,6 +1013,7 @@ function build() {
   words.forEach(function (sp, k) { tl.fromTo(sp, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, endAt + 0.1 + k * 0.06); });
   riseIn(sign, endAt + 0.5, { y: 20, d: 0.5 });
 
+  mixSfx();
   tl.to({}, { duration: 0.01 }, DUR - 0.01);
   window.__timelines.main = tl;
 }
