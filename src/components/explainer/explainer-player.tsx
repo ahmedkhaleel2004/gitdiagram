@@ -72,6 +72,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   // Full window: the page behind must not scroll, and Escape leaves.
   useEffect(() => {
     if (!expanded) return;
+    const element = shell.current;
     const root = document.documentElement;
     const overflow = root.style.overflow;
     root.style.overflow = "hidden";
@@ -82,6 +83,20 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     return () => {
       root.style.overflow = overflow;
       window.removeEventListener("keydown", onKey);
+      // Safari tints its status bar and toolbar from the full-window player
+      // and keeps that black after it shrinks back, until the element leaves
+      // the page. Take it out of layout for two frames, holding its space.
+      const parent = element?.parentElement;
+      if (!element || !parent) return;
+      const minHeight = parent.style.minHeight;
+      parent.style.minHeight = `${parent.offsetHeight}px`;
+      element.style.display = "none";
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          element.style.display = "";
+          parent.style.minHeight = minHeight;
+        }),
+      );
     };
   }, [expanded]);
 
