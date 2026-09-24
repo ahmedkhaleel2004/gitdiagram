@@ -136,6 +136,41 @@ export async function putBinaryObject(
   );
 }
 
+export async function hasObject(bucket: string, key: string): Promise<boolean> {
+  try {
+    const { client: storageClient, s3 } = await getClient();
+    await storageClient.send(
+      new s3.HeadObjectCommand({ Bucket: bucket, Key: key }),
+      requestOptions(),
+    );
+    return true;
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/** A short-lived signed GET URL that downloads the object under `filename`. */
+export async function presignObjectDownload(
+  bucket: string,
+  key: string,
+  options: { filename: string; expiresInSeconds: number },
+): Promise<string> {
+  const { client: storageClient, s3 } = await getClient();
+  const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+  return getSignedUrl(
+    storageClient,
+    new s3.GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ResponseContentDisposition: `attachment; filename="${options.filename.replace(/[^\w.-]/g, "_")}"`,
+    }),
+    { expiresIn: options.expiresInSeconds },
+  );
+}
+
 export async function getGzipJsonObject<T>(
   bucket: string,
   key: string,

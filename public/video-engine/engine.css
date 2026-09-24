@@ -420,3 +420,157 @@ svg.wires {
   align-items: flex-start;
   padding: 0 110px;
 }
+
+/* captions: the spoken beat, words lit as they are said */
+#captions {
+  position: absolute;
+  left: 50%;
+  bottom: 46px;
+  transform: translateX(-50%);
+  max-width: 1500px;
+  width: max-content;
+  padding: 12px 28px 14px;
+  border-radius: 16px;
+  background: rgba(23, 17, 31, 0.88);
+  color: #fdfaff;
+  font: 600 40px/1.3 "Geist", sans-serif;
+  letter-spacing: -0.01em;
+  text-align: center;
+  z-index: 30;
+  opacity: 0;
+  pointer-events: none;
+}
+#captions span {
+  opacity: 0.5;
+}
+#captions span.on {
+  opacity: 1;
+}
+
+/* vertical 9:16 frame: title on top, the stage in the middle, big captions below */
+html.vertical,
+html.vertical body {
+  width: 1080px;
+  height: 1920px;
+}
+html.vertical body {
+  position: relative;
+  background: var(--paper);
+  background-image: radial-gradient(circle, rgba(23, 17, 31, 0.14) 2px, transparent 2.6px);
+  background-size: 40px 40px;
+}
+html.vertical #root {
+  position: absolute;
+  left: 0;
+  top: 610px;
+  width: 1920px;
+  height: 1080px;
+  transform: scale(0.5625);
+  transform-origin: 0 0;
+  border-top: 5px solid var(--ink);
+  border-bottom: 5px solid var(--ink);
+}
+html.vertical #brand {
+  display: none;
+}
+#vtop {
+  position: absolute;
+  left: 80px;
+  right: 80px;
+  top: 150px;
+}
+#vrepo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font: 600 34px/1 "Geist Mono", monospace;
+  color: var(--ink-2);
+}
+#vglyph {
+  display: block;
+  width: 44px;
+  height: 44px;
+}
+#vtitle {
+  margin-top: 34px;
+  font: 400 124px/0.98 "Instrument Serif", serif;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#vsub {
+  margin-top: 18px;
+  font: 500 38px/1.2 "Geist", sans-serif;
+  color: var(--purple-deep);
+}
+#vcaptions {
+  position: absolute;
+  left: 70px;
+  right: 70px;
+  top: 1300px;
+  height: 420px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+html.vertical #captions {
+  position: static;
+  transform: none;
+  max-width: none;
+  width: auto;
+  padding: 0;
+  background: none;
+  color: var(--ink);
+  font: 650 66px/1.28 "Geist", sans-serif;
+}
+html.vertical #captions span {
+  opacity: 0.28;
+}
+html.vertical #captions span.on {
+  opacity: 1;
+}
+#vfoot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 120px;
+  text-align: center;
+  font: 600 32px/1 "Geist Mono", monospace;
+  color: var(--ink-2);
+}
+
+/* poster: a still with a play button, used for link previews */
+#poster {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+  background: rgba(242, 232, 255, 0.35);
+}
+#poster-play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 210px;
+  height: 210px;
+  padding-left: 14px;
+  border: 7px solid var(--ink);
+  border-radius: 50%;
+  background: var(--purple);
+  box-shadow: 12px 12px 0 var(--ink);
+}
+#poster-tag {
+  padding: 16px 30px;
+  border: 4px solid var(--ink);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 6px 6px 0 var(--ink);
+  font: 700 38px/1 "Geist", sans-serif;
+  color: var(--ink);
+}

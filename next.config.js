@@ -44,9 +44,27 @@ const videoStagePolicy = [
   "frame-ancestors 'self'",
 ].join("; ");
 
+// Explainer videos are rendered to MP4 in headless Chromium with ffmpeg. Both
+// ship native binaries that must stay out of the bundle and be traced into the
+// functions that launch them.
+const videoRenderFiles = [
+  "./node_modules/@sparticuz/chromium/bin/**",
+  "./node_modules/ffmpeg-static/ffmpeg",
+];
+
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: false,
+  serverExternalPackages: [
+    "@sparticuz/chromium",
+    "puppeteer-core",
+    "ffmpeg-static",
+  ],
+  outputFileTracingIncludes: {
+    "/api/video/render": videoRenderFiles,
+    "/api/video/render/segment": videoRenderFiles,
+    "/api/video/generate": videoRenderFiles,
+  },
   allowedDevOrigins: ["127.0.0.1"],
   ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
   transpilePackages: ["@aws-sdk/client-s3"],

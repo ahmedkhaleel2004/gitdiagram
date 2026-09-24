@@ -94,7 +94,7 @@ export interface VideoTiming {
   beats: Array<{ start: number; end: number; words: VideoWord[] }>;
 }
 
-export interface VideoGenerationStats {
+interface VideoGenerationStats {
   totalMs: number;
   readMs: number;
   planMs: number;
@@ -129,4 +129,9 @@ export type VideoGenerationStage =
 export type VideoGenerationEvent =
   | { status: VideoGenerationStage; elapsedMs: number }
   | { status: "complete"; artifact: VideoArtifact }
+  | { status: "error"; error: string };
+
+export type VideoRenderEvent =
+  | { status: "rendering"; progress: number }
+  | { status: "complete" }
   | { status: "error"; error: string };

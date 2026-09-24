@@ -16,6 +16,8 @@ const querySchema = z.object({
   username: githubUsernameSchema,
   repo: githubRepoSchema,
   beat: z.coerce.number().int().min(0).max(31),
+  // The video's createdAt: clips live under their video's version folder.
+  v: z.iso.datetime(),
 });
 
 export async function GET(request: Request): Promise<Response> {
@@ -26,23 +28,23 @@ export async function GET(request: Request): Promise<Response> {
     username: url.searchParams.get("username"),
     repo: url.searchParams.get("repo"),
     beat: url.searchParams.get("beat"),
+    v: url.searchParams.get("v"),
   });
   if (!parsed.success)
     return jsonErrorResponse("Invalid narration request.", 400);
   const clip = await readVoiceClip(
     parsed.data.username,
     parsed.data.repo,
+    parsed.data.v,
     parsed.data.beat,
   );
   if (!clip) return jsonErrorResponse("Narration not found.", 404);
   return new Response(new Uint8Array(clip), {
     headers: {
       "Content-Type": "audio/mpeg",
-      // The player adds the artifact's createdAt as ?v=, so a regenerated
-      // video gets new URLs and each clip can be cached indefinitely.
-      "Cache-Control": url.searchParams.has("v")
-        ? "public, max-age=31536000, immutable"
-        : "no-store",
+      // A clip URL names its video version, so its bytes never change and
+      // the CDN and browsers can keep it forever.
+      "Cache-Control": "public, max-age=31536000, s-maxage=31536000, immutable",
       "X-Content-Type-Options": "nosniff",
     },
   });

@@ -1,11 +1,13 @@
-// The live player's stage. The parent page owns audio and the clock; this frame
-// only builds the scene timeline from the plan it is sent and seeks it on request.
+// The stage. In the live player the parent page owns audio and the clock; this
+// frame only builds the scene timeline from the plan it is sent and seeks it on
+// request. The MP4 renderer drives the same stage frame by frame.
 (function () {
   window.__timelines = {};
   var timeline = null;
   var failed = false;
   // The frame URL carries the engine version so a deploy never meets a stale engine.
   var version = new URLSearchParams(window.location.search).get("v") || "0";
+  var captions = null;
 
   function post(message) {
     window.parent.postMessage(message, window.location.origin);
@@ -17,15 +19,102 @@
     post({ type: "error", message: String(message || "Stage error").slice(0, 300) });
   }
 
-  function waitForTimeline() {
+  function el(tag, id, parent, text) {
+    var node = document.createElement(tag);
+    if (id) node.id = id;
+    if (text != null) node.textContent = text;
+    (parent || document.body).appendChild(node);
+    return node;
+  }
+
+  var GLYPH =
+    '<svg width="100%" height="100%" viewBox="0 0 46 46" fill="none" stroke="#17111f" stroke-width="3.5"><rect x="3" y="3" width="16" height="16" rx="3" fill="#bd85fb"/><rect x="27" y="3" width="16" height="16" rx="3" fill="#fdfaff"/><rect x="15" y="27" width="16" height="16" rx="3" fill="#dcc2ff"/><path d="M19 11 H27 M35 19 V23 H23 V27"/></svg>';
+
+  // ---------- captions: the current beat's words, lit as they are spoken ----------
+  function setupCaptions(host) {
+    captions = { box: el("div", "captions", host), beat: -1, words: [], on: true };
+  }
+
+  function updateCaptions(t) {
+    if (!captions) return;
+    var beats = window.TIMING.beats;
+    var index = -1;
+    for (var i = 0; i < beats.length; i++) {
+      if (t >= beats[i].start - 0.12 && t <= beats[i].end + 0.35) {
+        index = i;
+        break;
+      }
+    }
+    if (!captions.on || index < 0) {
+      captions.box.style.opacity = "0";
+      return;
+    }
+    if (index !== captions.beat) {
+      captions.beat = index;
+      captions.box.textContent = "";
+      var text = String((window.SPEC.beats[index] || {}).narration || "");
+      captions.words = text.split(/\s+/).filter(Boolean).map(function (word, k) {
+        if (k) captions.box.appendChild(document.createTextNode(" "));
+        return el("span", "", captions.box, word);
+      });
+    }
+    // Timing words line up with the narration's whitespace-separated words.
+    var timed = beats[index].words;
+    captions.words.forEach(function (span, k) {
+      var spoken = timed[k] ? timed[k].s <= t : t >= beats[index].end;
+      span.className = spoken ? "on" : "";
+    });
+    captions.box.style.opacity = "1";
+  }
+
+  // ---------- vertical (9:16) frame for Shorts, Reels and TikTok ----------
+  function setupVertical() {
+    document.documentElement.classList.add("vertical");
+    var meta = window.META || {};
+    var top = el("div", "vtop");
+    var repo = el("div", "vrepo", top);
+    el("span", "vglyph", repo).innerHTML = GLYPH;
+    el("span", "", repo, (meta.owner || "") + "/" + (meta.repo || ""));
+    var title = el("div", "vtitle", top, String((window.SPEC || {}).title || meta.repo || ""));
+    // Largest size at which the title fits on one line; ellipsis only as a last resort.
+    for (var size = 124; size > 64 && title.scrollWidth > title.clientWidth; size -= 4) title.style.fontSize = size + "px";
+    el("div", "vsub", top, "explained in about a minute");
+    var captionHost = el("div", "vcaptions");
+    el("div", "vfoot", null, "gitdiagram.com/" + (meta.owner || "") + "/" + (meta.repo || ""));
+    return captionHost;
+  }
+
+  // ---------- poster: a still with a play button, for link previews ----------
+  function showPoster() {
+    var overlay = el("div", "poster", document.getElementById("root"));
+    var button = el("div", "poster-play", overlay);
+    button.innerHTML = '<svg viewBox="0 0 24 24" width="92" height="92"><path d="M8 5.5v13l11-6.5z" fill="#17111f"/></svg>';
+    el("div", "poster-tag", overlay, "Watch the one-minute video");
+  }
+
+  function seek(time) {
+    var t = Math.max(0, Math.min(Number(time) || 0, timeline.duration()));
+    timeline.seek(t);
+    updateCaptions(t);
+  }
+
+  function waitForTimeline(options) {
     if (failed) return;
     var built = window.__timelines.main;
     if (!built) {
-      setTimeout(waitForTimeline, 30);
+      setTimeout(function () {
+        waitForTimeline(options);
+      }, 30);
       return;
     }
     timeline = built;
-    timeline.seek(0);
+    var captionHost = options.layout === "vertical" ? setupVertical() : document.getElementById("root");
+    setupCaptions(captionHost);
+    captions.on = options.captions;
+    if (options.poster) showPoster();
+    seek(0);
+    // The renderer seeks directly, frame by frame, without a message round trip.
+    window.__renderSeek = seek;
     post({ type: "ready", duration: timeline.duration(), sfx: window.__SFX || [] });
   }
 
@@ -42,14 +131,21 @@
         fail("The scene engine failed to load.");
       };
       document.body.appendChild(engine);
-      waitForTimeline();
+      waitForTimeline({
+        captions: Boolean(message.captions),
+        layout: message.layout === "vertical" ? "vertical" : "landscape",
+        poster: Boolean(message.poster),
+      });
     } else if (message.type === "seek" && timeline) {
-      timeline.seek(Math.max(0, Math.min(Number(message.time) || 0, timeline.duration())));
+      seek(message.time);
+    } else if (message.type === "captions" && captions) {
+      captions.on = Boolean(message.on);
+      if (timeline) updateCaptions(timeline.time());
     }
   });
 
-  // Engines build inside document.fonts.ready.then(...), so a bad plan surfaces
-  // as a rejected promise, not an error event; report both.
+  // Engines build inside a font-loading promise, so a bad plan surfaces as a
+  // rejected promise, not an error event; report both.
   window.addEventListener("error", function (event) {
     fail(event.message);
   });

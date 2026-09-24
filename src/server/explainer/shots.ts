@@ -12,7 +12,7 @@ const num: JsonSchema = { type: "number" };
 const bool: JsonSchema = { type: "boolean" };
 const arr = (items: JsonSchema): JsonSchema => ({ type: "array", items });
 
-export const SHOT_KINDS = [
+const SHOT_KINDS = [
   "heading",
   "text",
   "code",
@@ -193,7 +193,7 @@ const clamp = (n: number, lo: number, hi: number) =>
 const words = (sentence: string) =>
   sentence.split(/\s+/).map(normalizeWord).filter(Boolean);
 
-export interface ScriptBeat {
+interface ScriptBeat {
   scene: string;
   narration: string;
   brief: string;

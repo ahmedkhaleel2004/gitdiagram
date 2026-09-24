@@ -1,0 +1,3 @@
+# The video engine runs as plain browser scripts with its own conventions
+# (excluded from lint and typecheck too); gsap.min.js is vendored.
+public/video-engine/

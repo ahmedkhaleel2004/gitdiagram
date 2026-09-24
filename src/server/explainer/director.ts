@@ -20,7 +20,7 @@ import {
   type Script,
 } from "./shots";
 
-export const DEFAULT_VIDEO_MODEL = "claude-opus-5-5";
+const DEFAULT_VIDEO_MODEL = "claude-opus-5-5";
 // USD per million tokens at API list prices; cache writes cost 1.25×, reads 0.1×.
 const PRICING: Record<string, { input: number; output: number }> = {
   "claude-opus-5-5": { input: 4, output: 20 },
@@ -28,7 +28,7 @@ const PRICING: Record<string, { input: number; output: number }> = {
   "claude-sonnet-5": { input: 2, output: 10 },
 };
 
-export interface ModelUsage {
+interface ModelUsage {
   calls: number;
   inputTokens: number;
   outputTokens: number;
@@ -37,7 +37,7 @@ export interface ModelUsage {
 
 type Json = Record<string, unknown>;
 
-export function videoModel(): string {
+function videoModel(): string {
   return process.env.VIDEO_PLANNER_MODEL?.trim() || DEFAULT_VIDEO_MODEL;
 }
 

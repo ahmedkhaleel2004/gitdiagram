@@ -11,8 +11,12 @@ const DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
 // Natural pace. Sped-up takes (1.18 was tried) clip the pauses between
 // sentences and sound rushed; the script is written short enough instead.
 const DEFAULT_SPEED = 1;
-// ElevenLabs Starter allows four concurrent requests; one beat per request.
-const CONCURRENCY = 4;
+// Parallel scene takes. ElevenLabs caps concurrent requests by plan (Free 2,
+// Starter 3-4, Creator 5); a 429 is retried with backoff, so this only trades speed.
+const CONCURRENCY = Math.max(
+  1,
+  Number.parseInt(process.env.VIDEO_TTS_CONCURRENCY ?? "", 10) || 4,
+);
 const LEAD_IN_SECONDS = 0.4;
 const TAIL_SECONDS = 3.6;
 // A breath between scenes, where the picture changes.
@@ -33,6 +37,48 @@ export interface Narration {
 
 export function isNarrationConfigured(): boolean {
   return Boolean(process.env.ELEVENLABS_API_KEY?.trim());
+}
+
+// A video takes about 800 credits; keep room for runs already in flight.
+const MIN_CREDITS = Math.max(
+  0,
+  Number.parseInt(process.env.VIDEO_MIN_TTS_CREDITS ?? "", 10) || 2_000,
+);
+let creditsCache: { at: number; remaining: number | null } | null = null;
+
+/**
+ * Whether the voice account can narrate another video. The balance is read
+ * live (cached five minutes per instance) so new videos stop cleanly instead
+ * of failing halfway once the credits run out. An unreadable balance counts as
+ * enough: narration itself will then report the real error.
+ */
+export async function hasNarrationCredits(): Promise<boolean> {
+  if (!creditsCache || Date.now() - creditsCache.at > 5 * 60_000) {
+    let remaining: number | null = null;
+    try {
+      const response = await fetch(`${ELEVENLABS_API}/v1/user/subscription`, {
+        headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY?.trim() ?? "" },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (response.ok) {
+        const body = (await response.json()) as {
+          character_count?: number;
+          character_limit?: number;
+        };
+        if (
+          typeof body.character_count === "number" &&
+          typeof body.character_limit === "number"
+        )
+          remaining = body.character_limit - body.character_count;
+      }
+    } catch {
+      remaining = null;
+    }
+    creditsCache = { at: Date.now(), remaining };
+  }
+  return (
+    creditsCache.remaining === null || creditsCache.remaining >= MIN_CREDITS
+  );
 }
 
 async function speak(
