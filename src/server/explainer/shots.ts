@@ -4,7 +4,13 @@ import type {
   ShotElement,
   ShotPlan,
 } from "~/features/explainer/types";
-import { clip, normalizeWord, type PlanRepositoryFacts } from "./text";
+import {
+  clip,
+  normalizeWord,
+  spokenLine,
+  writtenLine,
+  type PlanRepositoryFacts,
+} from "./text";
 
 type JsonSchema = Record<string, unknown>;
 const str: JsonSchema = { type: "string" };
@@ -195,7 +201,10 @@ const words = (sentence: string) =>
 
 interface ScriptBeat {
   scene: string;
+  /** What the captions show and cues match: no delivery tags. */
   narration: string;
+  /** What the voice reads: the narration with its delivery tags. */
+  spoken: string;
   brief: string;
 }
 export interface Script {
@@ -210,7 +219,8 @@ export function normalizeScript(raw: unknown, name: string): Script {
     .slice(0, 22)
     .map((beat) => ({
       scene: clip(beat.scene, 24) || "s",
-      narration: text(beat.narration).replace(/\s+/g, " ").trim(),
+      narration: writtenLine(text(beat.narration)),
+      spoken: spokenLine(text(beat.narration)),
       brief: clip(beat.brief, 900),
     }))
     .filter((beat) => beat.narration);

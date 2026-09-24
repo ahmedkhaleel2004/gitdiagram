@@ -5,11 +5,14 @@ import { normalizeWord } from "./text";
 
 const ELEVENLABS_API = "https://api.elevenlabs.io";
 const DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"; // "Chris": warm, conversational
-// multilingual_v2 honors `speed` (eleven_v3 ignores it) and accepts the
-// previous/next-text hints that keep prosody continuous across scene takes.
-const DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
-// Natural pace. Sped-up takes (1.18 was tried) clip the pauses between
-// sentences and sound rushed; the script is written short enough instead.
+// eleven_v3 acts: it varies pace and pitch with the sense of a line, runs
+// through lists and holds on an ellipsis, and performs the script's delivery
+// tags. It ignores `speed` and the previous/next-text hints, so those only go
+// to the older models (multilingual_v2 via VIDEO_TTS_MODEL), which read the
+// plain narration because they would speak a tag aloud.
+const DEFAULT_TTS_MODEL = "eleven_v3";
+// Natural pace for the older models. Sped-up takes (1.18 was tried) clip the
+// pauses between sentences and sound rushed.
 const DEFAULT_SPEED = 1;
 // Parallel scene takes. ElevenLabs caps concurrent requests by plan (Free 2,
 // Starter 3-4, Creator 5); a 429 is retried with backoff, so this only trades speed.
@@ -81,13 +84,16 @@ export async function hasNarrationCredits(): Promise<boolean> {
   );
 }
 
+const ttsModel = () => process.env.VIDEO_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
+
 async function speak(
   text: string,
   context: { previous?: string; next?: string },
   signal?: AbortSignal,
 ): Promise<{ audio: Buffer; alignment: Alignment }> {
   const voice = process.env.VIDEO_TTS_VOICE_ID?.trim() || DEFAULT_VOICE_ID;
-  const model = process.env.VIDEO_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
+  const model = ttsModel();
+  const v3 = model === "eleven_v3";
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(
       `${ELEVENLABS_API}/v1/text-to-speech/${voice}/with-timestamps?output_format=mp3_44100_128`,
@@ -101,19 +107,21 @@ async function speak(
           text,
           model_id: model,
           seed: 7,
-          ...(model !== "eleven_v3" && context.previous
+          ...(!v3 && context.previous
             ? { previous_text: context.previous }
             : {}),
-          ...(model !== "eleven_v3" && context.next
-            ? { next_text: context.next }
-            : {}),
-          voice_settings: {
-            stability: 0.45,
-            similarity_boost: 0.8,
-            style: 0.15,
-            use_speaker_boost: true,
-            speed: Number(process.env.VIDEO_TTS_SPEED) || DEFAULT_SPEED,
-          },
+          ...(!v3 && context.next ? { next_text: context.next } : {}),
+          // v3 stability is Creative (0), Natural (0.5) or Robust (1). Creative
+          // is livelier but can drift off script, which an unattended run can't catch.
+          voice_settings: v3
+            ? { stability: 0.5, similarity_boost: 0.8, use_speaker_boost: true }
+            : {
+                stability: 0.45,
+                similarity_boost: 0.8,
+                style: 0.15,
+                use_speaker_boost: true,
+                speed: Number(process.env.VIDEO_TTS_SPEED) || DEFAULT_SPEED,
+              },
         }),
         signal,
       },
@@ -137,7 +145,11 @@ async function speak(
   }
 }
 
-/** Words with clock times and their character offset in the spoken text. */
+/**
+ * Words with clock times and their character offset in the spoken text. Delivery
+ * tags come back in the alignment as characters too; they are skipped, so the
+ * words line up one to one with the caption's.
+ */
 function spokenWords(
   alignment: Alignment,
   offset: number,
@@ -147,6 +159,7 @@ function spokenWords(
   let s = 0;
   let e = 0;
   let from = -1;
+  let inTag = false;
   const flush = () => {
     if (from >= 0)
       words.push({
@@ -160,6 +173,11 @@ function spokenWords(
   };
   for (let index = 0; index < alignment.characters.length; index++) {
     const character = alignment.characters[index]!;
+    if (character === "[" || inTag) {
+      inTag = character !== "]";
+      flush();
+      continue;
+    }
     if (/\s/.test(character)) {
       flush();
       continue;
@@ -180,10 +198,11 @@ function spokenWords(
  * in parallel, then split the take back into beats with the character timestamps.
  */
 export async function narrateBeats(
-  beats: Array<{ narration: string; scene: string }>,
+  beats: Array<{ narration: string; spoken: string; scene: string }>,
   signal?: AbortSignal,
   onTake?: () => void,
 ): Promise<Narration> {
+  const tagged = ttsModel() === "eleven_v3";
   const scenes: Array<{
     text: string;
     beats: Array<{ index: number; from: number; to: number }>;
@@ -194,9 +213,8 @@ export async function narrateBeats(
       scene = { text: "", beats: [] };
       scenes.push(scene);
     }
-    const line = /[.!?…]$/.test(beat.narration)
-      ? beat.narration
-      : `${beat.narration}.`;
+    const said = tagged ? beat.spoken : beat.narration;
+    const line = /[.!?…]$/.test(said) ? said : `${said}.`;
     if (scene.text) scene.text += " ";
     scene.beats.push({
       index,

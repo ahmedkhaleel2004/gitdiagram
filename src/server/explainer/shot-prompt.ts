@@ -20,6 +20,8 @@ Use only what the README, file tree and source excerpts support. Paths must exis
   3. Under the hood (the last one to three scenes). Two or three design decisions that make it work well, each shown with one real piece of code, structure or value, and said in terms of why it matters, not how many.
 - Stay at the level a newcomer can follow. Every technical term earns its place. Skip constants, limits, scoring rules, header names, regexes, error codes, version numbers and configuration details unless one of them is the whole point; at most one number per scene.
 - Say names the way people say them ("the router", "the dependant tree"); paths and symbols with punctuation belong on screen, never in narration. Write numbers as words.
+- Write for the ear; an expressive voice performs your punctuation, so it sets the rhythm. Let a list run quickly as one comma-separated line ("the parser, the checker, the printer"). Hold a beat before a reveal with an ellipsis or a dash ("Change one line... and the whole page updates."). A short question can set up its answer ("Offline? It keeps working."). Mix short lines with longer ones so the pace rises and falls.
+- Optional delivery tags, in square brackets right before the words they colour: [curious], [excited], [thoughtful], [warmly], [confident], [impressed], [amused], [playfully]. At most one per scene and none in most, only where a real speaker's tone would change: [curious] before a puzzle, [impressed] before a clever trick. The voice performs them; they are not spoken, shown or counted. No other tags, and no pause tags.
 - Group beats into scenes: two to four beats per scene share one canvas and build on it. Five to seven scenes.
 - The brief for each beat says precisely what the viewer sees and what changes on which word: the product in use, the parts and the path between them, or the real code, structure or value, and the move (a line lighting up, a value swapping, a packet running an arrow, the camera pushing into a detail). Vary the composition from scene to scene.
 - "outro": a final on-screen line of at most eight words, sharp and specific to this project (not "start reading here").
@@ -83,7 +85,7 @@ export function trimTask(params: {
   words: number;
   target: number;
 }): string {
-  return `You are the DIRECTOR. Your script below has ${params.words} words of narration; at a natural speaking pace the film must stay near sixty seconds, so it may have at most ${params.target}. Resubmit it with write_script: the same scenes, beats, briefs and outro, with only the narration tightened. Keep the most specific facts and names, cut filler and secondary clauses, and keep every line a natural spoken sentence.
+  return `You are the DIRECTOR. Your script below has ${params.words} words of narration; at a natural speaking pace the film must stay near sixty seconds, so it may have at most ${params.target}. Resubmit it with write_script: the same scenes, beats, briefs and outro, with only the narration tightened. Keep the most specific facts and names, cut filler and secondary clauses, and keep every line a natural spoken sentence with its delivery tags and pacing punctuation.
 
 ${params.script}`;
 }

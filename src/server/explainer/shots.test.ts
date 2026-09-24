@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeScript, normalizeShots, scriptWordCount } from "./shots";
-import { clip } from "./text";
+import { clip, normalizeWord } from "./text";
 
 const facts = {
   name: "demo",
@@ -238,5 +238,51 @@ describe("explainer shots", () => {
 
   it("counts the narration words that set the film's length", () => {
     expect(scriptWordCount(script)).toBe(21);
+  });
+
+  it("matches cue words through ellipses", () => {
+    expect(
+      ["Lambda...", "…and", "...then", ".env", "v1.2."].map(normalizeWord),
+    ).toEqual(["lambda", "and", "then", ".env", "v1.2"]);
+  });
+
+  it("gives the voice delivery tags but keeps them out of captions and cues", () => {
+    const tagged = normalizeScript(
+      {
+        beats: [
+          {
+            scene: "a",
+            narration: "[Curious] Private repos? Those work too.",
+            brief: "",
+          },
+          {
+            scene: "a",
+            narration: "Swap it[short pause]... and [laughs] done",
+            brief: "",
+          },
+          {
+            scene: "b",
+            narration: "A [impressed]clever trick [oops.",
+            brief: "",
+          },
+          { scene: "b", narration: "[warmly]", brief: "" },
+          { scene: "b", narration: "Plain line.", brief: "" },
+        ],
+      },
+      "demo",
+    );
+    expect(tagged.beats.map((beat) => beat.spoken)).toEqual([
+      "[curious] Private repos? Those work too.",
+      "Swap it ... and done",
+      "A [impressed] clever trick oops.",
+      "Plain line.",
+    ]);
+    expect(tagged.beats.map((beat) => beat.narration)).toEqual([
+      "Private repos? Those work too.",
+      "Swap it ... and done",
+      "A clever trick oops.",
+      "Plain line.",
+    ]);
+    expect(scriptWordCount(tagged)).toBe(16);
   });
 });

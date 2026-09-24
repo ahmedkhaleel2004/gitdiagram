@@ -159,7 +159,14 @@ export function createFilmWriters(input: RepositoryContextInput) {
       const trimmed = normalizeScript(
         await write(
           trimTask({
-            script: JSON.stringify(script),
+            // As written, delivery tags included, so the trim keeps them.
+            script: JSON.stringify({
+              ...script,
+              beats: script.beats.map(({ spoken, ...beat }) => ({
+                ...beat,
+                narration: spoken,
+              })),
+            }),
             words,
             target: SCRIPT_WORD_TARGET,
           }),
