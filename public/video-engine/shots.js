@@ -789,6 +789,53 @@ function build() {
     popIn(el, t, { from: 0.2, ease: "back.out(3)" });
     sfx("pop", t, -16);
   }
+  // Where the camera pushes in for a focus. Nothing else on screen may end up
+  // half in frame (that reads as a glitch): the view shifts to push it fully
+  // out while keeping the targets in, or takes it in too. A push-in that would
+  // barely zoom is skipped.
+  function focusView(targets, sc) {
+    var box = null;
+    function grow(q) {
+      box = box ? { x0: Math.min(box.x0, q.x), y0: Math.min(box.y0, q.y), x1: Math.max(box.x1, q.x + q.w), y1: Math.max(box.y1, q.y + q.h) } : { x0: q.x, y0: q.y, x1: q.x + q.w, y1: q.y + q.h };
+    }
+    targets.forEach(function (it) { grow(rectOf(it)); });
+    var others = Object.keys(sc.items)
+      .map(function (id) { return sc.items[id]; })
+      .filter(function (it) { return targets.indexOf(it) < 0 && !it.gone && it.pos && isFinite(it.pos.x); });
+    for (var pass = 0; pass < 6; pass++) {
+      var s = Math.min(1.7, Math.min((1920 * 0.68) / (box.x1 - box.x0), (1080 * 0.68) / (box.y1 - box.y0)));
+      if (s < 1.08) return null;
+      var hw = 960 / s, hh = 540 / s;
+      var cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
+      var cut = null;
+      for (var k = 0; k < others.length && !cut; k++) {
+        var q = rectOf(others[k]);
+        var ix = Math.max(0, Math.min(q.x + q.w, cx + hw) - Math.max(q.x, cx - hw));
+        var iy = Math.max(0, Math.min(q.y + q.h, cy + hh) - Math.max(q.y, cy - hh));
+        var frac = (ix * iy) / Math.max(1, q.w * q.h);
+        if (frac > 0.01 && frac < 0.97) cut = q;
+      }
+      if (!cut) return { s: s, cx: cx, cy: cy };
+      // Push it fully out along one axis if the targets still fit.
+      var shifted = false;
+      if (cut.x >= box.x1 && cut.x - 16 - 2 * hw >= box.x0 - 60) { cx = cut.x - 16 - hw; shifted = true; }
+      else if (cut.x + cut.w <= box.x0 && cut.x + cut.w + 16 + 2 * hw <= box.x1 + 60) { cx = cut.x + cut.w + 16 + hw; shifted = true; }
+      else if (cut.y >= box.y1 && cut.y - 16 - 2 * hh >= box.y0 - 40) { cy = cut.y - 16 - hh; shifted = true; }
+      else if (cut.y + cut.h <= box.y0 && cut.y + cut.h + 16 + 2 * hh <= box.y1 + 40) { cy = cut.y + cut.h + 16 + hh; shifted = true; }
+      if (shifted) {
+        var clean = others.every(function (it) {
+          var r = rectOf(it);
+          var jx = Math.max(0, Math.min(r.x + r.w, cx + hw) - Math.max(r.x, cx - hw));
+          var jy = Math.max(0, Math.min(r.y + r.h, cy + hh) - Math.max(r.y, cy - hh));
+          var f = (jx * jy) / Math.max(1, r.w * r.h);
+          return f <= 0.01 || f >= 0.97;
+        });
+        if (clean) return { s: s, cx: cx, cy: cy };
+      }
+      grow(cut);
+    }
+    return null;
+  }
   function applyAction(a, t, sc, bi) {
     var items = sc.items;
     var targets = (a.target || []).map(function (id) { return items[id]; }).filter(Boolean);
@@ -886,15 +933,9 @@ function build() {
         break;
       case "focus":
         if (!targets.length) return;
-        var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-        targets.forEach(function (it) {
-          var q = rectOf(it);
-          x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x + q.w); y1 = Math.max(y1, q.y + q.h);
-        });
-        var s = Math.max(1.1, Math.min(1.7, Math.min((1920 * 0.68) / (x1 - x0), (1080 * 0.68) / (y1 - y0))));
-        var cx = (x0 + x1) / 2;
-        var cy = (y0 + y1) / 2;
-        tl.to(sc.cam, { scale: s, x: 960 - s * cx, y: 540 - s * cy, duration: 0.75, ease: "power3.inOut" }, t);
+        var view = focusView(targets, sc);
+        if (!view) break;
+        tl.to(sc.cam, { scale: view.s, x: 960 - view.s * view.cx, y: 540 - view.s * view.cy, duration: 0.75, ease: "power3.inOut" }, t);
         sc.focused = true;
         break;
       case "reset":
