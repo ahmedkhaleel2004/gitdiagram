@@ -512,14 +512,14 @@
     padding: 0 6px;
     border: 2px solid #000;
     border-radius: 999px;
+    /* Yellow, not the purple of the buttons it sits in, so it always stands out. */
     background: linear-gradient(
       110deg,
-      hsl(var(--neo-button)) 0%,
-      hsl(var(--neo-button)) 38%,
-      #fbcfe8 48%,
-      #fde68a 52%,
-      hsl(var(--neo-button)) 62%,
-      hsl(var(--neo-button)) 100%
+      #fde047 0%,
+      #fde047 40%,
+      #fefce8 50%,
+      #fde047 60%,
+      #fde047 100%
     );
     background-size: 260% 100%;
     box-shadow: 2px 2px 0 #000;
