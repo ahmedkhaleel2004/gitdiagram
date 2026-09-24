@@ -9,7 +9,12 @@ import { Menu, X } from "lucide-react";
 import { GitHubIcon } from "~/components/icons/github-icon";
 import { GITHUB_REPO_URL } from "~/lib/site";
 
+import { NewBadge } from "./new-badge";
 import { ThemeToggle } from "./theme-toggle";
+
+// Explainer videos are on per deployment; while they are new, the header
+// links their page with a badge.
+const VIDEOS_ENABLED = process.env.NEXT_PUBLIC_VIDEO_EXPLAINER === "1";
 
 const loadApiKeyDialog = () =>
   import("./api-key-dialog").then((module) => module.ApiKeyDialog);
@@ -125,6 +130,15 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
           </button>
         </div>
         <nav className="hidden items-center gap-6 sm:flex">
+          {VIDEOS_ENABLED && (
+            <Link
+              href="/watch"
+              className="flex items-center gap-1.5 text-sm font-semibold text-black transition-colors duration-150 hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
+            >
+              Videos
+              <NewBadge />
+            </Link>
+          )}
           <Link
             href="/browse"
             className="text-sm font-medium text-black transition-colors duration-150 hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
@@ -181,6 +195,16 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
               className="neo-panel mobile-menu-panel pointer-events-auto ml-auto w-full max-w-[18rem] rounded-lg p-3"
             >
               <nav className="flex flex-col gap-2">
+                {VIDEOS_ENABLED && (
+                  <Link
+                    href="/watch"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="neo-button inline-flex min-h-[48px] items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
+                  >
+                    Videos
+                    <NewBadge />
+                  </Link>
+                )}
                 {!isBrowsePage ? (
                   <Link
                     href="/browse"

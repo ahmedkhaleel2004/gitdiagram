@@ -19,7 +19,7 @@ function readLimit(name: string, fallback: number): number {
 /** New videos the public may create per UTC day, across everyone. */
 const videoDailyLimit = () => readLimit("VIDEO_DAILY_LIMIT", 25);
 /** New videos one network may create per UTC day. */
-const videoNetworkDailyLimit = () => readLimit("VIDEO_IP_DAILY_LIMIT", 2);
+const videoNetworkDailyLimit = () => readLimit("VIDEO_IP_DAILY_LIMIT", 1);
 /** MP4 renders started per UTC day. Finished renders are cached and free to download. */
 const renderDailyLimit = () => readLimit("VIDEO_RENDER_DAILY_LIMIT", 300);
 const renderNetworkDailyLimit = () =>

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 
 import { getCachedBrowsePage } from "~/server/browse-index-cache";
 import { BrowseCatalog } from "~/components/browse-catalog";
+import { BrowseTabs } from "~/components/browse-tabs";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { BrowseQuery } from "~/features/browse/catalog";
 
@@ -71,6 +72,7 @@ export default async function BrowsePage({
     <main className="px-4 pt-5 pb-8 sm:px-8 sm:py-10">
       <div className="mx-auto max-w-6xl">
         <section className="mb-5 max-w-3xl sm:mb-8">
+          <BrowseTabs active="diagrams" />
           <h1 className="text-4xl leading-[1.05] font-bold tracking-tight text-balance sm:text-5xl">
             Browse diagrams
           </h1>

@@ -4,6 +4,7 @@ import type { RefObject } from "react";
 import { ChevronDown, Clapperboard, RotateCcw, Scan } from "lucide-react";
 import { GitHubIcon } from "~/components/icons/github-icon";
 import { DiagramExport } from "./diagram-export";
+import { NewBadge } from "~/components/new-badge";
 import styles from "./workspace.module.css";
 
 export function RepositoryToolbar({
@@ -52,13 +53,14 @@ export function RepositoryToolbar({
         {video && (
           <button
             type="button"
-            className={`${styles.actionButton} ${styles.primary}`}
+            className={`${styles.actionButton} ${styles.primary} ${styles.videoToggle}`}
             aria-expanded={video.open}
             aria-controls={video.id}
             onClick={video.toggle}
           >
             <Clapperboard size={14} aria-hidden="true" />
             Video
+            <NewBadge />
           </button>
         )}
         <button

@@ -12,6 +12,10 @@ import {
   parseSameOriginJsonRequest,
 } from "~/server/http/same-origin-json";
 import {
+  canMakeVideosHere,
+  EARLY_ACCESS_MESSAGE,
+} from "~/server/explainer/audience";
+import {
   canGenerateVideos,
   isVideoExplainerEnabled,
 } from "~/server/explainer/config";
@@ -60,6 +64,9 @@ export async function POST(request: Request): Promise<Response> {
   const { username, repo } = parsed.data;
   const trusted = isTrustedVideoCaller(request);
   const production = process.env.NODE_ENV === "production";
+  // Early access: only desktops in a few places may start new videos.
+  if (!trusted && !canMakeVideosHere(request))
+    return jsonErrorResponse(EARLY_ACCESS_MESSAGE, 403);
 
   // A video, once made, is everyone's: only the operator may replace it.
   if (!isVideoAdmin(request) && production) {

@@ -34,12 +34,16 @@ const prefix = (username: string, repo: string) =>
 const clipName = (index: number) =>
   `beat-${String(index).padStart(2, "0")}.mp3`;
 
-export type RenderName = "landscape.mp4" | "vertical.mp4" | "poster.jpg";
+export type RenderName =
+  "landscape.mp4" | "vertical.mp4" | "poster.jpg" | "still.jpg";
 
-// Renders are drawn by the scene engine, so an engine change makes new ones:
-// the engine version is part of every render's file name.
+// MP4s are drawn by the scene engine, so an engine change makes new ones: the
+// engine version is part of their file names. Posters keep one name, since a
+// slightly older still beats a missing link preview.
 const renderFile = (name: RenderName) =>
-  name.replace(/\.(mp4|jpg)$/, `.e${ENGINE_VERSION}.$1`);
+  name.endsWith(".mp4")
+    ? name.replace(/\.mp4$/, `.e${ENGINE_VERSION}.mp4`)
+    : name;
 
 /** A video's version is its creation time; it names the folder its files live in. */
 export function videoVersion(createdAt: string): string | null {

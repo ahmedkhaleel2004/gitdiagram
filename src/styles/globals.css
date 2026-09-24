@@ -501,3 +501,49 @@
     transform: none;
   }
 }
+
+/* "NEW" badge for explainer videos: a small ink-bordered pill with a slow shine. */
+@layer components {
+  .new-badge {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border: 2px solid #000;
+    border-radius: 999px;
+    background: linear-gradient(
+      110deg,
+      hsl(var(--neo-button)) 0%,
+      hsl(var(--neo-button)) 38%,
+      #fbcfe8 48%,
+      #fde68a 52%,
+      hsl(var(--neo-button)) 62%,
+      hsl(var(--neo-button)) 100%
+    );
+    background-size: 260% 100%;
+    box-shadow: 2px 2px 0 #000;
+    color: #000;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    animation: new-badge-shine 3.2s ease-in-out infinite;
+  }
+}
+
+@keyframes new-badge-shine {
+  0% {
+    background-position: 100% 0;
+  }
+  60%,
+  100% {
+    background-position: -60% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new-badge {
+    animation: none;
+  }
+}

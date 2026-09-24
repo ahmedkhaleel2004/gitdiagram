@@ -337,7 +337,7 @@ describe("repository generation workspace", () => {
     );
     finish("old");
     expect(
-      screen.queryByRole("button", { name: "Video" }),
+      screen.queryByRole("button", { name: /^Video/ }),
     ).not.toBeInTheDocument();
     rerender(
       <RepositoryWorkspace
@@ -346,7 +346,7 @@ describe("repository generation workspace", () => {
         video={<p>explainer panel</p>}
       />,
     );
-    const toggle = screen.getByRole("button", { name: "Video" });
+    const toggle = screen.getByRole("button", { name: /^Video/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("explainer panel")).not.toBeInTheDocument();
     visible("old");

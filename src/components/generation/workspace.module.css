@@ -616,3 +616,25 @@
     transition-duration: 140ms;
   }
 }
+
+/* The Video toggle is new: three soft pulses when the page loads, then still. */
+@keyframes video-toggle-pulse {
+  0% {
+    box-shadow:
+      3px 3px 0 var(--hard-shadow),
+      0 0 0 0 rgba(168, 85, 247, 0.55);
+  }
+  100% {
+    box-shadow:
+      3px 3px 0 var(--hard-shadow),
+      0 0 0 12px rgba(168, 85, 247, 0);
+  }
+}
+.videoToggle[aria-expanded="false"] {
+  animation: video-toggle-pulse 1.6s ease-out 1s 3;
+}
+@media (prefers-reduced-motion: reduce) {
+  .videoToggle[aria-expanded="false"] {
+    animation: none;
+  }
+}

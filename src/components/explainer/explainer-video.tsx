@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { CircleAlert, Clapperboard } from "lucide-react";
 import {
   fetchExplainerVideo,
@@ -26,12 +27,27 @@ const STAGE_TITLES: Record<VideoGenerationStage, string> = {
   saving: "Saving the video",
 };
 
+function isTouchMac() {
+  return navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent);
+}
+
+const PAUSED: Record<"audience" | "limit", string> = {
+  audience:
+    "Making new videos is in early access in a few places for now. Every video already made is free to watch.",
+  limit:
+    "Today's free videos have all been made. Check back tomorrow; every video already made is free to watch.",
+};
+
 // A stored video belongs to everyone; only local development can replace one.
 const CAN_REGENERATE = process.env.NODE_ENV === "development";
 
 type PanelState =
   | { kind: "loading" }
-  | { kind: "empty"; canGenerate: boolean }
+  | {
+      kind: "empty";
+      canGenerate: boolean;
+      paused: "audience" | "limit" | null;
+    }
   | {
       kind: "generating";
       stage: VideoGenerationStage;
@@ -84,9 +100,14 @@ export function ExplainerVideo({
   useEffect(() => {
     const controller = new AbortController();
     fetchExplainerVideo(username, repo, controller.signal)
-      .then(({ video, canGenerate }) =>
+      .then(({ video, canGenerate, paused }) =>
         setState(
-          video ? { kind: "ready", video } : { kind: "empty", canGenerate },
+          video
+            ? { kind: "ready", video }
+            : // iPads report a desktop Mac to the server; early access is for desktops.
+              isTouchMac()
+              ? { kind: "empty", canGenerate: false, paused: "audience" }
+              : { kind: "empty", canGenerate, paused },
         ),
       )
       .catch((error: unknown) => {
@@ -202,6 +223,7 @@ export function ExplainerVideo({
     );
 
   const failed = state.kind === "error";
+  const paused = !failed && !state.canGenerate;
   return (
     <div className={`${controls.feedback} ${styles.enter}`}>
       <div className={controls.statusLine}>
@@ -219,25 +241,30 @@ export function ExplainerVideo({
       </div>
       {!failed && (
         <p className={controls.description}>
-          A narrated one-minute tour: what the project does, how its parts fit
-          together, and a few of the decisions inside.
+          {paused
+            ? PAUSED[state.paused ?? "limit"]
+            : "A narrated one-minute tour: what the project does, how its parts fit together, and a few of the decisions inside."}
         </p>
       )}
       <div className={styles.cta}>
-        {state.canGenerate ? (
-          <button
-            type="button"
+        {paused ? (
+          <Link
+            href="/watch"
             className={`${controls.actionButton} ${controls.primary}`}
-            onClick={generate}
           >
             <Clapperboard size={15} aria-hidden="true" />
-            {failed ? "Try again" : "Make the video"}
-          </button>
+            Watch the videos
+          </Link>
         ) : (
-          !failed && (
-            <span className={styles.note}>
-              Making new videos is paused for today. Check back tomorrow.
-            </span>
+          (state.canGenerate || failed) && (
+            <button
+              type="button"
+              className={`${controls.actionButton} ${controls.primary}`}
+              onClick={generate}
+            >
+              <Clapperboard size={15} aria-hidden="true" />
+              {failed ? "Try again" : "Make the video"}
+            </button>
           )
         )}
       </div>

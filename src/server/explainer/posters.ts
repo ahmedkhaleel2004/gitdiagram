@@ -11,8 +11,11 @@ import { writeRender } from "./store";
 export async function storePoster(artifact: VideoArtifact, origin: string) {
   const started = Date.now();
   try {
-    const poster = await renderExplainerPoster({ artifact, origin });
-    await writeRender(artifact, "poster.jpg", poster);
+    const { poster, still } = await renderExplainerPoster({ artifact, origin });
+    await Promise.all([
+      writeRender(artifact, "poster.jpg", poster),
+      writeRender(artifact, "still.jpg", still),
+    ]);
     console.info(
       JSON.stringify({
         event: "video.poster.stored",

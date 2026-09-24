@@ -12,6 +12,7 @@ import {
   canGenerateVideos,
   isVideoExplainerEnabled,
 } from "~/server/explainer/config";
+import { canMakeVideosHere } from "~/server/explainer/audience";
 import { videosLeftToday } from "~/server/explainer/limits";
 import { hasNarrationCredits } from "~/server/explainer/narration";
 import { readVideoArtifact } from "~/server/explainer/store";
@@ -25,18 +26,34 @@ const querySchema = z.object({
   repo: githubRepoSchema,
 });
 
-/** Whether a visitor could start a new video right now. */
-async function canStartVideo(): Promise<boolean> {
-  if (!canGenerateVideos()) return false;
-  if (process.env.NODE_ENV !== "production") return true;
+/**
+ * Whether this visitor could start a new video right now, and if not, why:
+ * "audience" (early access is limited to a few places) or "limit" (today's
+ * budget is spent).
+ */
+async function videoAvailability(
+  request: Request,
+): Promise<{ canGenerate: boolean; paused: "audience" | "limit" | null }> {
+  if (!canGenerateVideos()) return { canGenerate: false, paused: "limit" };
+  if (process.env.NODE_ENV !== "production") {
+    // Local preview of the paused states: VIDEO_PREVIEW_PAUSED=audience|limit.
+    const preview = process.env.VIDEO_PREVIEW_PAUSED;
+    return preview === "audience" || preview === "limit"
+      ? { canGenerate: false, paused: preview }
+      : { canGenerate: true, paused: null };
+  }
+  if (!canMakeVideosHere(request))
+    return { canGenerate: false, paused: "audience" };
   try {
     const [left, credits] = await Promise.all([
       videosLeftToday(),
       hasNarrationCredits(),
     ]);
-    return left > 0 && credits;
+    return left > 0 && credits
+      ? { canGenerate: true, paused: null }
+      : { canGenerate: false, paused: "limit" };
   } catch {
-    return false;
+    return { canGenerate: false, paused: "limit" };
   }
 }
 
@@ -52,7 +69,7 @@ export async function GET(request: Request): Promise<Response> {
   const video = await readVideoArtifact(parsed.data.username, parsed.data.repo);
   if (video)
     return Response.json(
-      { ok: true, video, canGenerate: false },
+      { ok: true, video, canGenerate: false, paused: null },
       {
         headers: {
           // A stored video changes only when the operator regenerates it.
@@ -62,7 +79,7 @@ export async function GET(request: Request): Promise<Response> {
       },
     );
   return Response.json(
-    { ok: true, video: null, canGenerate: await canStartVideo() },
+    { ok: true, video: null, ...(await videoAvailability(request)) },
     { headers: NO_STORE_RESPONSE_HEADERS },
   );
 }

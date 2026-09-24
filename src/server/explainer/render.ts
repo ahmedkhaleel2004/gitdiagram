@@ -381,13 +381,14 @@ export async function assembleMp4(params: {
 }
 
 /**
- * A 1200×675 still of the first scene, finished, with a play button: the image
- * link previews show on X, Reddit and chat apps.
+ * A 1200×675 still of the first scene, finished: with a play button (the
+ * poster link previews show on X, Reddit and chat apps) and without (the
+ * thumbnail on /watch, which draws its own).
  */
 export async function renderExplainerPoster(params: {
   artifact: VideoArtifact;
   origin: string;
-}): Promise<Buffer> {
+}): Promise<{ poster: Buffer; still: Buffer }> {
   const { artifact, origin } = params;
   const browser = await launchBrowser();
   try {
@@ -407,7 +408,14 @@ export async function renderExplainerPoster(params: {
       (at) => (window as unknown as StageWindow).__renderSeek(at),
       time,
     );
-    return Buffer.from(await page.screenshot({ type: "jpeg", quality: 86 }));
+    const poster = Buffer.from(
+      await page.screenshot({ type: "jpeg", quality: 86 }),
+    );
+    await page.evaluate(() => document.getElementById("poster")?.remove());
+    const still = Buffer.from(
+      await page.screenshot({ type: "jpeg", quality: 86 }),
+    );
+    return { poster, still };
   } finally {
     await browser.close().catch(() => undefined);
   }

@@ -7,6 +7,8 @@ import type {
 export interface ExplainerVideoState {
   video: VideoArtifact | null;
   canGenerate: boolean;
+  /** Why a visitor cannot start a video: early access, or today's budget. */
+  paused: "audience" | "limit" | null;
 }
 
 export type RenderFormat = "landscape" | "vertical";
@@ -22,11 +24,16 @@ export async function fetchExplainerVideo(
     ok?: boolean;
     video?: VideoArtifact | null;
     canGenerate?: boolean;
+    paused?: "audience" | "limit" | null;
     error?: string;
   };
   if (!response.ok || !body.ok)
     throw new Error(body.error ?? "Could not load the explainer video.");
-  return { video: body.video ?? null, canGenerate: Boolean(body.canGenerate) };
+  return {
+    video: body.video ?? null,
+    canGenerate: Boolean(body.canGenerate),
+    paused: body.paused ?? null,
+  };
 }
 
 /** POST a JSON body and relay each server-sent event from the response. */
@@ -104,7 +111,7 @@ export function streamExplainerRender(
 /** Where a stored render downloads from; the version pins the exact file. */
 export function renderFileUrl(
   video: VideoArtifact,
-  format: RenderFormat | "poster",
+  format: RenderFormat | "poster" | "still",
 ): string {
   const params = new URLSearchParams({
     username: video.meta.owner,

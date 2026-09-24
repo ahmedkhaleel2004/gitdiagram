@@ -20,16 +20,18 @@ export const maxDuration = 30;
 const querySchema = z.object({
   username: githubUsernameSchema,
   repo: githubRepoSchema,
-  format: z.enum(["landscape", "vertical", "poster"]),
+  format: z.enum(["landscape", "vertical", "poster", "still"]),
   // The video's createdAt: renders live under their video's version folder.
   v: z.iso.datetime(),
 });
 
-const FILES: Record<"landscape" | "vertical" | "poster", RenderName> = {
-  landscape: "landscape.mp4",
-  vertical: "vertical.mp4",
-  poster: "poster.jpg",
-};
+const FILES: Record<"landscape" | "vertical" | "poster" | "still", RenderName> =
+  {
+    landscape: "landscape.mp4",
+    vertical: "vertical.mp4",
+    poster: "poster.jpg",
+    still: "still.jpg",
+  };
 
 /**
  * A stored render. Posters stream (they are small and feed link previews);
@@ -51,7 +53,7 @@ export async function GET(request: Request): Promise<Response> {
   const name = FILES[format];
   const filename = `${artifact.meta.owner}-${artifact.meta.repo}-explained${format === "vertical" ? "-vertical" : ""}.mp4`;
 
-  if (format !== "poster") {
+  if (format === "landscape" || format === "vertical") {
     const signed = await renderDownloadUrl(version, name, filename);
     if (signed)
       return new Response(null, {
@@ -63,8 +65,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!body) return jsonErrorResponse("This file has not been made yet.", 404);
   return new Response(new Uint8Array(body), {
     headers: {
-      "Content-Type": format === "poster" ? "image/jpeg" : "video/mp4",
-      ...(format === "poster"
+      "Content-Type": name.endsWith(".jpg") ? "image/jpeg" : "video/mp4",
+      ...(name.endsWith(".jpg")
         ? {}
         : { "Content-Disposition": `attachment; filename="${filename}"` }),
       // The URL names the video version, so its bytes never change.
