@@ -21,6 +21,7 @@
     "perf:budget": "node scripts/check-performance-budgets.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "@aws-sdk/client-s3": "^3.1131.0",
     "@mermaid-js/layout-elk": "^0.2.3",
     "@radix-ui/react-dialog": "^1.1.23",

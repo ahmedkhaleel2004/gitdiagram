@@ -68,3 +68,6 @@ venv
 
 # vscode
 .vscode/
+
+# local explainer video artifacts (development)
+.video-cache/

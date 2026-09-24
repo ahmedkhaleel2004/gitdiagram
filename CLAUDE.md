@@ -41,6 +41,10 @@ Other routes: `/api/generate/cost` (pre-run estimate), `/api/generate/cancel` (d
 
 `generation-policy.ts` centralizes model/token/effort constants; `model-config.ts` selects the provider (`AI_PROVIDER` = openai | openrouter — both via the OpenAI SDK); `pricing.ts` + `complimentary-gate.ts` handle cost accounting and the free-tier daily token gate.
 
+### Explainer videos (feature-flagged)
+
+`VIDEO_EXPLAINER_ENABLED=1` + `NEXT_PUBLIC_VIDEO_EXPLAINER=1` add a **Video** toggle to the repo toolbar; the diagram stays the default view. `/api/video/generate` (`src/server/video/generate.ts`) reads the repo with the diagram pipeline's own GitHub/source-selection modules, asks Claude (`planner.ts`, a non-strict tool call — the plan schema is too large for strict structured output) for a narrated scene plan, validates it against the real tree (`plan-schema.ts`), narrates each beat with ElevenLabs (`narration.ts`), and stores plan + clips (`store.ts`: `.video-cache/` locally, R2 `video/v1/` in production). Nothing is rendered server-side: `src/components/video/explainer-player.tsx` plays the scene engine (`public/video-engine/`, HTML + GSAP) in a same-origin iframe with its own strict CSP and mixes audio with Web Audio, seeking the scene timeline to the audio clock every frame. `video-lab/` holds the offline MP4 pipeline and benchmarks for the same engine.
+
 ### Layering
 
 - `src/server/` — server-only code (imports `server-only`): generation pipeline, GitHub auth (`github-auth.ts` supports single PAT, PAT pool, or GitHub App), storage, HTTP guards, OG image generation.
@@ -60,3 +64,13 @@ Copy `.env.example` → `.env`. Minimum to run generation locally: R2 vars, `CAC
 - Prettier with `prettier-plugin-tailwindcss` (`bun run format:write`); ESLint 9 flat config (`eslint.config.mjs`).
 - Server code must not leak into client bundles — keep it under `src/server/` behind `server-only`.
 - Diagram output safety is defense-in-depth (server validation → deterministic compiler → client sanitization); changes to any layer should keep the others intact and are covered by `mermaid-security.test.ts` and the compiler contract tests.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

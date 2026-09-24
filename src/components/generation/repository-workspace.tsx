@@ -33,6 +33,7 @@ export function RepositoryWorkspace({
   onRenderError,
   regenerateDisabled = false,
   recovery,
+  video,
 }: {
   repository: string;
   state: DiagramStreamState;
@@ -43,6 +44,8 @@ export function RepositoryWorkspace({
   onRenderError: (message: string) => void;
   regenerateDisabled?: boolean;
   recovery?: ReactNode;
+  /** Optional explainer video panel; the diagram stays the default view. */
+  video?: ReactNode;
 }) {
   const {
     presented,
@@ -63,6 +66,9 @@ export function RepositoryWorkspace({
   } = useDiagramPresentation(state, loading, lastGenerated, onRenderError);
   const [zooming, setZooming] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
+  const videoId = useId();
+  const videoVisible = Boolean(video) && toolbarVisible && showVideo;
   const workspace = useRef<HTMLElement>(null);
   const work = useRef<HTMLDivElement>(null);
   const regenerate = useRef<HTMLButtonElement>(null);
@@ -131,9 +137,32 @@ export function RepositoryWorkspace({
             regenerateRef={regenerate}
             getSvg={getSvg}
             pending={!presented}
+            video={
+              video
+                ? {
+                    id: videoId,
+                    open: videoVisible,
+                    toggle: () => setShowVideo((value) => !value),
+                  }
+                : undefined
+            }
           />
         </div>
       </div>
+      {video && (
+        <div
+          id={videoId}
+          role="region"
+          aria-label="Explainer video"
+          className={styles.fold}
+          data-open={videoVisible}
+          aria-hidden={!videoVisible}
+          inert={!videoVisible}
+        >
+          {/* Mounted only while open, so closing it stops playback and frees audio. */}
+          <div className={styles.foldClip}>{videoVisible && video}</div>
+        </div>
+      )}
       <div
         ref={work}
         className={styles.fold}

@@ -18,13 +18,30 @@ const contentSecurityPolicy = [
   "font-src 'self' data:",
   "connect-src 'self'",
   "worker-src 'self' blob:",
-  "frame-src 'none'",
+  // Same-origin frames only: the explainer video stage (/video-engine).
+  "frame-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
   // Safari upgrades localhost assets to HTTPS too, which breaks HTTP dev servers.
   ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
+].join("; ");
+
+// The explainer stage renders model-written text, so it gets a stricter policy
+// than the app: only same-origin script files run (no inline scripts or
+// handlers), nothing can be fetched, and only our own pages may frame it.
+const videoStagePolicy = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'none'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'self'",
 ].join("; ");
 
 /** @type {import("next").NextConfig} */
@@ -90,6 +107,17 @@ const config = {
           {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=(), payment=()",
+          },
+        ],
+      },
+      // Must follow the catch-all rule: later rules override the same header.
+      {
+        source: "/video-engine/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: videoStagePolicy },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=3600, stale-while-revalidate=86400",
           },
         ],
       },

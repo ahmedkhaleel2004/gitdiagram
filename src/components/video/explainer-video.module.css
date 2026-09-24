@@ -1,0 +1,189 @@
+.panel {
+  width: min(100%, 1040px);
+  margin: 26px auto 8px;
+  padding: 0 5px 0 0;
+}
+
+.player {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 2px solid var(--edge);
+  border-radius: 10px;
+  box-shadow: 4px 4px 0 var(--hard-shadow);
+  background: #f2e8ff;
+}
+.player:fullscreen {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #000;
+}
+
+.stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  border: 0;
+  transform-origin: 0 0;
+  transform: scale(var(--stage-scale, 0.5));
+  pointer-events: none;
+}
+
+.surface {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.surface:focus-visible {
+  outline: 3px solid hsl(var(--neo-link));
+  outline-offset: -3px;
+}
+
+.bigPlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border: 3px solid #17111f;
+  border-radius: 50%;
+  background: #bd85fb;
+  box-shadow: 4px 4px 0 #17111f;
+  color: #17111f;
+  transition: transform 160ms var(--ease-out);
+}
+.surface:hover .bigPlay {
+  transform: scale(1.05);
+}
+.surface:active .bigPlay {
+  transform: scale(0.97);
+}
+
+.loading {
+  font-size: 13px;
+  font-weight: 650;
+  color: #4e4463;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.controlButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  box-shadow: 3px 3px 0 var(--hard-shadow);
+  color: var(--ink);
+  background: var(--surface);
+}
+.controlButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.scrubber {
+  flex: 1;
+  min-width: 0;
+  accent-color: hsl(var(--neo-link));
+  cursor: pointer;
+}
+.time {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 34px 20px;
+  border: 2px dashed var(--edge);
+  border-radius: 10px;
+  text-align: center;
+}
+.emptyTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.emptyText {
+  max-width: 460px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.step[data-state="active"] {
+  color: var(--ink);
+}
+.step[data-state="done"] {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 20px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.metaButton {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 650;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.error {
+  font-size: 13px;
+  color: #b3263a;
+}
+
+@media (max-width: 640px) {
+  .bigPlay {
+    width: 58px;
+    height: 58px;
+  }
+  .controls {
+    gap: 8px;
+  }
+}

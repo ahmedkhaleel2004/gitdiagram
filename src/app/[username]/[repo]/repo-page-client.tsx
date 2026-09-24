@@ -16,6 +16,17 @@ import { isExampleRepo } from "~/lib/exampleRepos";
 import { githubAccessTitle } from "~/features/diagram/github-access";
 import controls from "~/components/generation/workspace.module.css";
 
+const ExplainerVideo = dynamic(
+  () =>
+    import("~/components/video/explainer-video").then(
+      (module) => module.ExplainerVideo,
+    ),
+  { ssr: false },
+);
+
+// Explainer videos are opt-in per deployment while the feature is tested.
+const VIDEO_EXPLAINER_ENABLED = process.env.NEXT_PUBLIC_VIDEO_EXPLAINER === "1";
+
 const PrivateReposDialog = dynamic(
   () =>
     import("~/components/private-repos-dialog").then(
@@ -91,6 +102,14 @@ export default function RepoPageClient({
           onCancel={handleCancel}
           onRenderError={handleDiagramRenderError}
           regenerateDisabled={isExampleRepo(normalizedUsername, normalizedRepo)}
+          video={
+            VIDEO_EXPLAINER_ENABLED ? (
+              <ExplainerVideo
+                username={normalizedUsername}
+                repo={normalizedRepo}
+              />
+            ) : undefined
+          }
           recovery={
             <>
               {showGithubAccessCta && (

@@ -98,6 +98,44 @@ export async function putJsonObject(
   );
 }
 
+export async function getBinaryObject(
+  bucket: string,
+  key: string,
+): Promise<Buffer | null> {
+  try {
+    const { client: storageClient, s3 } = await getClient();
+    const response = await storageClient.send(
+      new s3.GetObjectCommand({ Bucket: bucket, Key: key }),
+      requestOptions(),
+    );
+    const bytes = await response.Body?.transformToByteArray();
+    return bytes ? Buffer.from(bytes) : null;
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function putBinaryObject(
+  bucket: string,
+  key: string,
+  body: Buffer,
+  contentType: string,
+): Promise<void> {
+  const { client: storageClient, s3 } = await getClient();
+  await storageClient.send(
+    new s3.PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+    requestOptions(),
+  );
+}
+
 export async function getGzipJsonObject<T>(
   bucket: string,
   key: string,

@@ -41,6 +41,8 @@ const dir = resolve(flag("out", join(LAB, "runs", slug)));
 mkdirSync(dir, { recursive: true });
 
 // Copy the engine template while the model plans.
+// The scene engine is shared with the web player (public/video-engine); the lab adds the render shell.
+cpSync(join(LAB, "..", "public", "video-engine"), dir, { recursive: true });
 cpSync(join(LAB, "engine"), dir, { recursive: true });
 
 let planned;

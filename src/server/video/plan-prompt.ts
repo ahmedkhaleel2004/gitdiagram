@@ -1,6 +1,7 @@
-// The planner's instructions. The model writes the video; a fixed scene engine draws it.
+// The explainer planner's instructions. The model writes the plan; the scene engine draws it.
+// Kept in step with video-lab/pipeline/prompt.mjs, where the prompt is benchmarked.
 
-export const SYSTEM = `You write and direct a roughly 60-second explainer video about one GitHub repository. It should feel like a sharp senior engineer onboarding a new teammate: what the project does, how its main pieces fit together, and the one or two implementation ideas that make the codebase make sense. The viewer should learn something real.
+export const VIDEO_PLANNER_SYSTEM = `You write and direct a roughly 60-second explainer video about one GitHub repository. It should feel like a sharp senior engineer onboarding a new teammate: what the project does, how its main pieces fit together, and the one or two implementation ideas that make the codebase make sense. The viewer should learn something real.
 
 You do not draw anything. You return a JSON plan; a scene engine renders it with narration, illustration, typography, motion and sound. Your job is the story, the words, and choosing which real artifacts from the repository appear on screen.
 
@@ -50,21 +51,35 @@ Use at least five different scene types. Never use the same type in two consecut
 - startHere: {path: the real folder or file a newcomer should open first, files: 2-5 real file names inside it}.
 - architecture: the whole system as a graph for the closing frame: 4-8 nodes, groups 0-3, edges up to 10 (same shapes as the graph scene, without cues).`;
 
-export function userPrompt(ctx) {
-  const m = ctx.meta;
-  const files = ctx.files.map((f) => `### ${f.path}\n\`\`\`\n${f.text}\n\`\`\``).join("\n\n");
-  return `Repository: ${ctx.owner}/${ctx.repo} (${ctx.url})
-Description: ${m.description || "(none)"}
-Stars: ${m.stars}. Primary language: ${m.language}. Languages: ${m.languages.join(", ")}. Topics: ${m.topics.join(", ") || "(none)"}. License: ${m.license || "(none)"}.
+export interface VideoPromptInput {
+  owner: string;
+  repo: string;
+  url: string;
+  description: string;
+  stars: number;
+  language: string;
+  topics: string[];
+  readme: string;
+  fileTree: string;
+  treeTruncated: boolean;
+  sourceText: string;
+}
 
-## README
-${ctx.readme || "(no README)"}
-
-## File tree${ctx.treeTruncated ? " (GitHub truncated this tree)" : ""}
-${ctx.treeText}
-
-## Selected source files (long files show their opening and an outline of later declarations)
-${files}
-
-Write the video plan now.`;
+export function videoPlannerPrompt(input: VideoPromptInput): string {
+  return [
+    `Repository: ${input.owner}/${input.repo} (${input.url})`,
+    `Description: ${input.description || "(none)"}`,
+    `Stars: ${input.stars}. Primary language: ${input.language || "(unknown)"}. Topics: ${input.topics.join(", ") || "(none)"}.`,
+    "",
+    "## README",
+    input.readme || "(no README)",
+    "",
+    `## File tree${input.treeTruncated ? " (excerpt; large repositories are trimmed)" : ""}`,
+    input.fileTree,
+    "",
+    "## Selected source files (excerpts)",
+    input.sourceText,
+    "",
+    "Write the video plan now.",
+  ].join("\n");
 }

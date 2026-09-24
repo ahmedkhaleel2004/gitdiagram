@@ -331,6 +331,34 @@ describe("repository generation workspace", () => {
     ).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
   });
+  it("keeps the diagram as the default view and opens the explainer video on request", () => {
+    const { rerender } = render(
+      <RepositoryWorkspace {...props} state={cached} />,
+    );
+    finish("old");
+    expect(
+      screen.queryByRole("button", { name: "Video" }),
+    ).not.toBeInTheDocument();
+    rerender(
+      <RepositoryWorkspace
+        {...props}
+        state={cached}
+        video={<p>explainer panel</p>}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: "Video" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("explainer panel")).not.toBeInTheDocument();
+    visible("old");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      document.getElementById(toggle.getAttribute("aria-controls")!),
+    ).toHaveTextContent("explainer panel");
+    visible("old");
+    fireEvent.click(toggle);
+    expect(screen.queryByText("explainer panel")).not.toBeInTheDocument();
+  });
   it("retains example regeneration protection", () => {
     render(
       <RepositoryWorkspace {...props} regenerateDisabled state={cached} />,

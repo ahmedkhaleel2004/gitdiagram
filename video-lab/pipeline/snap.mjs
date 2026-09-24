@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const LAB = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = resolve(process.argv[2]);
-for (const f of ["engine.js", "engine.css"]) cpSync(join(LAB, "engine", f), join(dir, f));
+for (const f of ["engine.js", "engine.css"]) cpSync(join(LAB, "..", "public", "video-engine", f), join(dir, f));
 const T = JSON.parse(readFileSync(join(dir, "timing.js"), "utf8").replace(/^window\.TIMING = /, "").replace(/;\s*$/, ""));
 const mid = process.argv.includes("--mid");
 const at = T.beats.map((b, i) => (mid ? (b.start + b.end) / 2 : Math.max(b.start, (T.beats[i + 1]?.start ?? T.DURATION) - 0.7)).toFixed(2));

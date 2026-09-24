@@ -1,7 +1,7 @@
 "use client";
 
 import type { RefObject } from "react";
-import { ChevronDown, RotateCcw, Scan } from "lucide-react";
+import { ChevronDown, Clapperboard, RotateCcw, Scan } from "lucide-react";
 import { GitHubIcon } from "~/components/icons/github-icon";
 import { DiagramExport } from "./diagram-export";
 import styles from "./workspace.module.css";
@@ -19,6 +19,7 @@ export function RepositoryToolbar({
   regenerateRef,
   getSvg,
   pending,
+  video,
 }: {
   repository: string;
   diagram: string;
@@ -32,6 +33,7 @@ export function RepositoryToolbar({
   regenerateRef: RefObject<HTMLButtonElement | null>;
   getSvg: () => SVGSVGElement | null;
   pending: boolean;
+  video?: { id: string; open: boolean; toggle: () => void };
 }) {
   return (
     <div className={styles.resultToolbar}>
@@ -47,6 +49,18 @@ export function RepositoryToolbar({
         </a>
       </h1>
       <div className={styles.actions}>
+        {video && (
+          <button
+            type="button"
+            className={styles.actionButton}
+            aria-expanded={video.open}
+            aria-controls={video.id}
+            onClick={video.toggle}
+          >
+            <Clapperboard size={14} aria-hidden="true" />
+            Video
+          </button>
+        )}
         <button
           type="button"
           className={styles.actionButton}
