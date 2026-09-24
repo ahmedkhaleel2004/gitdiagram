@@ -6,5 +6,10 @@
       "path": "/api/internal/browse-index/drain",
       "schedule": "*/5 * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/video/render/segment/route.ts": {
+      "memory": 4096
+    }
+  }
 }

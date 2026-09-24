@@ -896,8 +896,14 @@ function build() {
   }
 
   // ---------- assemble ----------
-  tl.fromTo("#bg-grid", { x: 0, y: 0 }, { x: -40, y: -40, duration: DUR, ease: "none" }, 0);
-  tl.fromTo("#bg-glow", { scale: 1, opacity: 0.85 }, { scale: 1.12, opacity: 1, duration: 5, ease: "sine.inOut", yoyo: true, repeat: Math.max(0, Math.floor(DUR / 5) - 1) }, 0);
+  // Offline renders paint on the CPU, where any motion that spans the whole
+  // frame (background drift, glow pulse, scene drift) repaints every pixel of
+  // every frame; they are near invisible after compression, so renders hold them.
+  var RENDER = document.documentElement.classList.contains("render");
+  if (!RENDER) {
+    tl.fromTo("#bg-grid", { x: 0, y: 0 }, { x: -40, y: -40, duration: DUR, ease: "none" }, 0);
+    tl.fromTo("#bg-glow", { scale: 1, opacity: 0.85 }, { scale: 1.12, opacity: 1, duration: 5, ease: "sine.inOut", yoyo: true, repeat: Math.max(0, Math.floor(DUR / 5) - 1) }, 0);
+  }
 
   scenes.forEach(function (sc, k) {
     var sec = h("section", "scene", "", stage);
@@ -908,7 +914,7 @@ function build() {
     sc.items = {};
     tl.set(sec, { visibility: "visible" }, sc.tIn);
     transitionIn(inner, sc.transition, sc.tIn);
-    tl.fromTo(drift, { scale: 1 }, { scale: 1.015, duration: Math.max(0.5, sc.tOut - sc.tIn), ease: "none" }, sc.tIn);
+    if (!RENDER) tl.fromTo(drift, { scale: 1 }, { scale: 1.015, duration: Math.max(0.5, sc.tOut - sc.tIn), ease: "none" }, sc.tIn);
     transitionOut(inner, (scenes[k + 1] && scenes[k + 1].transition) || "zoom", sc.tOut);
     tl.set(sec, { visibility: "hidden" }, sc.tOut);
     sfxScene = k;

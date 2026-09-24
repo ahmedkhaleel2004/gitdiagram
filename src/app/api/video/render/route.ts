@@ -81,7 +81,7 @@ export async function POST(request: Request): Promise<Response> {
     if (process.env.NODE_ENV === "production") {
       releaseLock = await tryVideoLock(
         `render:${artifact.repository}:${artifact.createdAt}:${format}`,
-        15 * 60_000,
+        6 * 60_000,
       );
       if (!releaseLock) {
         if (reservation?.ok) await reservation.refund();
