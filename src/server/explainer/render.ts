@@ -36,8 +36,11 @@ async function launchBrowser(): Promise<Browser> {
   const puppeteer = (await import("puppeteer-core")).default;
   if (process.env.VERCEL) {
     const chromium = (await import("@sparticuz/chromium")).default;
+    // The default graphics mode emulates a GPU on the CPU (SwiftShader), which
+    // is far slower for a 2D page than Chrome's own software renderer.
+    chromium.setGraphicsMode = false;
     return puppeteer.launch({
-      args: chromium.args,
+      args: [...chromium.args, "--disable-gpu"],
       executablePath: await chromium.executablePath(),
       headless: "shell",
     });
