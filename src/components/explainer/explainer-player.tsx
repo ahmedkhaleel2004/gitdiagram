@@ -37,7 +37,6 @@ const formatTime = (seconds: number) => {
  */
 export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   const shell = useRef<HTMLDivElement>(null);
-  const wrapper = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const audio = useRef<ExplainerAudio | null>(null);
   const scrubber = useRef<HTMLInputElement>(null);
@@ -53,6 +52,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   );
   // iPhone Safari cannot put an element in fullscreen; fill the window instead.
   const [expanded, setExpanded] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const captionsRef = useRef(captions);
   const duration = artifact.timing.DURATION;
 
@@ -69,19 +69,27 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     [duration],
   );
 
-  // Scale the fixed 1920×1080 stage to whatever width the page gives it.
+  // Full window: the page behind must not scroll, and Escape leaves.
   useEffect(() => {
-    const element = wrapper.current;
-    if (!element) return;
-    const resize = () =>
-      element.style.setProperty(
-        "--stage-scale",
-        String(element.clientWidth / 1920),
-      );
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(element);
-    return () => observer.disconnect();
+    if (!expanded) return;
+    const root = document.documentElement;
+    const overflow = root.style.overflow;
+    root.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      root.style.overflow = overflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [expanded]);
+
+  useEffect(() => {
+    const onChange = () =>
+      setFullscreen(document.fullscreenElement === shell.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
   // Hand the plan to the stage, then load the audio the stage says it needs.
@@ -201,9 +209,10 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     const element = shell.current;
     if (!element) return;
     if (document.fullscreenElement) void document.exitFullscreen();
+    else if (expanded) setExpanded(false);
     else if (document.fullscreenEnabled && element.requestFullscreen)
-      void element.requestFullscreen();
-    else setExpanded((value) => !value);
+      element.requestFullscreen().catch(() => setExpanded(true));
+    else setExpanded(true);
   };
 
   // A fresh frame (new key) replays the whole stage handshake.
@@ -232,7 +241,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
       className={styles.shell}
       data-expanded={expanded ? "true" : undefined}
     >
-      <div ref={wrapper} className={styles.player}>
+      <div className={styles.player}>
         <iframe
           key={attempt}
           ref={frame}
@@ -323,9 +332,15 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
           type="button"
           className={styles.controlButton}
           onClick={toggleFullscreen}
-          aria-label={expanded ? "Exit full screen" : "Full screen"}
+          aria-label={
+            expanded || fullscreen ? "Exit full screen" : "Full screen"
+          }
         >
-          {expanded ? <Minimize size={17} /> : <Maximize size={17} />}
+          {expanded || fullscreen ? (
+            <Minimize size={17} />
+          ) : (
+            <Maximize size={17} />
+          )}
         </button>
       </div>
     </div>

@@ -92,6 +92,24 @@
     el("div", "poster-tag", overlay, "Watch the one-minute video");
   }
 
+  // ---------- live player: scale the stage to the frame ----------
+  // Offline renders open the stage at 1920×1080 on its own; the player frames
+  // it at whatever size the page shows it. WebKit gives every GPU layer a
+  // full-size 1920×1080 buffer whatever the scale, so the stage keeps to 2D
+  // transforms and paints into one frame-sized surface instead: 3D ones cost
+  // an iPhone over half a gigabyte, and zooming the page crashed the tab.
+  function fitToFrame() {
+    if (window.parent === window) return;
+    var root = document.documentElement;
+    root.classList.add("fit");
+    gsap.config({ force3D: false });
+    var fit = function () {
+      root.style.setProperty("--fit", String(window.innerWidth / 1920));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+  }
+
   function seek(time) {
     var t = Math.max(0, Math.min(Number(time) || 0, timeline.duration()));
     timeline.seek(t);
@@ -132,7 +150,7 @@
       };
       document.body.appendChild(engine);
       // Offline renders (MP4s, posters) run in software on machines without a
-      // GPU: skip the full-frame noise filter, which would repaint every frame
+      // GPU: skip the full-frame noise layer, which would re-blend every frame
       // and is invisible after video compression anyway.
       if (message.render) document.documentElement.classList.add("render");
       waitForTimeline({
@@ -158,5 +176,6 @@
     fail(reason && reason.message ? reason.message : reason);
   });
 
+  fitToFrame();
   post({ type: "stage-ready" });
 })();

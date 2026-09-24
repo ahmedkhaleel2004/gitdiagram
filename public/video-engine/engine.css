@@ -120,11 +120,14 @@ svg.wires {
   border-radius: 50%;
   background: radial-gradient(closest-side, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
 }
+/* A pre-rendered noise tile (feTurbulence, baseFrequency 0.85, 3 octaves):
+   a live filter re-runs over the whole frame whenever the page zooms. */
 #grain {
   position: absolute;
   inset: 0;
   opacity: 0.1;
   mix-blend-mode: multiply;
+  background: url("assets/grain.png") 0 0 / 128px 128px;
 }
 
 /* components */
@@ -421,9 +424,25 @@ svg.wires {
   padding: 0 110px;
 }
 
-/* offline renders: no full-frame noise filter (see stage.js) */
+/* offline renders: no full-frame noise (see stage.js) */
 html.render #grain {
   display: none;
+}
+
+/* live player: the frame is only as big as the player, and the 1920×1080
+   stage scales down inside it (see stage.js). A full-size frame shrunk by the
+   page instead is still painted at full size, times the screen's pixel
+   density, which exhausts a phone's memory as soon as the page zooms. */
+html.fit,
+html.fit body {
+  width: 100%;
+  height: 100%;
+}
+html.fit #root {
+  width: 1920px;
+  height: 1080px;
+  transform: scale(var(--fit, 1));
+  transform-origin: 0 0;
 }
 
 /* captions: the spoken beat, words lit as they are said */

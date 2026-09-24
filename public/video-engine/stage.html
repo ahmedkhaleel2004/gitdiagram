@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>GitDiagram explainer stage</title>
-    <link rel="stylesheet" href="engine.css?v=13" />
+    <link rel="stylesheet" href="engine.css?v=14" />
     <script src="assets/vendor/gsap.min.js"></script>
   </head>
   <body>
@@ -13,18 +13,12 @@
         <div id="bg-grid"></div>
         <div id="bg-glow"></div>
         <div id="bg-glow-2"></div>
-        <svg id="grain" width="1920" height="1080">
-          <filter id="noise">
-            <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" seed="7" />
-            <feColorMatrix type="saturate" values="0" />
-          </filter>
-          <rect width="1920" height="1080" filter="url(#noise)" />
-        </svg>
+        <div id="grain"></div>
       </div>
       <div id="scenes" class="layer"></div>
       <div id="brand"></div>
       <div id="rail" class="layer"></div>
     </div>
-    <script src="stage.js?v=13"></script>
+    <script src="stage.js?v=14"></script>
   </body>
 </html>
