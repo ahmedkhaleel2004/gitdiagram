@@ -38,7 +38,13 @@ type StageWindow = Window & { __renderSeek: (time: number) => void };
 // request, so every render on an instance shares one unpacking.
 let unpacking: Promise<string> | null = null;
 
-async function launchBrowser(): Promise<Browser> {
+/**
+ * Launch Chromium with its profile in `userDataDir`, which the caller removes.
+ * Puppeteer's own temporary profile is left behind whenever Chromium does not
+ * exit cleanly (common with --single-process), and on a warm instance those
+ * fill /tmp until Chromium cannot start.
+ */
+async function launchBrowser(userDataDir: string): Promise<Browser> {
   const puppeteer = (await import("puppeteer-core")).default;
   if (process.env.VERCEL) {
     const chromium = (await import("@sparticuz/chromium")).default;
@@ -53,6 +59,7 @@ async function launchBrowser(): Promise<Browser> {
       args: [...chromium.args, "--disable-gpu"],
       executablePath: await unpacking,
       headless: "shell",
+      userDataDir,
     });
   }
   const executablePath = process.env.VIDEO_RENDER_CHROME_PATH?.trim();
@@ -60,7 +67,12 @@ async function launchBrowser(): Promise<Browser> {
     throw new Error(
       "Set VIDEO_RENDER_CHROME_PATH to a headless Chromium to render locally.",
     );
-  return puppeteer.launch({ executablePath, headless: "shell" });
+  return puppeteer.launch({ executablePath, headless: "shell", userDataDir });
+}
+
+async function closeBrowser(browser: Browser | null) {
+  await browser?.close().catch(() => undefined);
+  browser?.process()?.kill("SIGKILL");
 }
 
 async function ffmpegPath(): Promise<string> {
@@ -245,8 +257,9 @@ export async function renderVideoSegment(params: {
   const { artifact, format, origin } = params;
   const frame = FRAMES[format];
   const dir = await mkdtemp(join(tmpdir(), "explainer-"));
-  const browser = await launchBrowser();
+  let browser: Browser | null = null;
   try {
+    browser = await launchBrowser(join(dir, "profile"));
     const ffmpeg = await ffmpegPath();
     const { page, sfx } = await openStage(
       browser,
@@ -325,7 +338,7 @@ export async function renderVideoSegment(params: {
     );
     return { mp4: await readFile(out), sfx };
   } finally {
-    await browser.close().catch(() => undefined);
+    await closeBrowser(browser);
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
@@ -400,8 +413,10 @@ export async function renderExplainerPoster(params: {
   origin: string;
 }): Promise<{ poster: Buffer; still: Buffer }> {
   const { artifact, origin } = params;
-  const browser = await launchBrowser();
+  const dir = await mkdtemp(join(tmpdir(), "explainer-"));
+  let browser: Browser | null = null;
   try {
+    browser = await launchBrowser(join(dir, "profile"));
     const { page } = await openStage(
       browser,
       origin,
@@ -427,6 +442,7 @@ export async function renderExplainerPoster(params: {
     );
     return { poster, still };
   } finally {
-    await browser.close().catch(() => undefined);
+    await closeBrowser(browser);
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
