@@ -3,6 +3,7 @@ import "server-only";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
+  lstat,
   mkdtemp,
   readdir,
   readFile,
@@ -91,6 +92,29 @@ async function closeBrowser(browser: Browser | null) {
   browser?.process()?.kill("SIGKILL");
 }
 
+/** Each /tmp entry with its size in MB, largest first. */
+async function tmpUsage(): Promise<string[]> {
+  const size = async (path: string, depth: number): Promise<number> => {
+    const info = await lstat(path).catch(() => null);
+    if (!info?.isDirectory() || depth > 4) return info?.size ?? 0;
+    const names = await readdir(path).catch(() => [] as string[]);
+    const sizes = await Promise.all(
+      names.map((name) => size(join(path, name), depth + 1)),
+    );
+    return sizes.reduce((sum, value) => sum + value, 0);
+  };
+  const names = await readdir(tmpdir()).catch(() => [] as string[]);
+  const entries = await Promise.all(
+    names.map(async (name) => ({
+      name,
+      mb: (await size(join(tmpdir(), name), 0)) / 2 ** 20,
+    })),
+  );
+  return entries
+    .sort((a, b) => b.mb - a.mb)
+    .map((entry) => `${entry.name}:${entry.mb.toFixed(1)}`);
+}
+
 /**
  * What a render host has left, for render logs: an instance that runs short
  * of memory, disk or processes makes Chromium fail in unhelpful ways
@@ -112,7 +136,7 @@ export async function renderHostStats() {
     memFreeMb: Math.round(freemem() / 2 ** 20),
     tmpFreeMb: await freeMb(tmpdir()),
     shmFreeMb: await freeMb("/dev/shm"),
-    tmpEntries: (await readdir(tmpdir()).catch(() => [])).length,
+    tmp: await tmpUsage(),
     processes: pids.length,
     chromium: chromium.length,
     zombies: chromium.filter((stat) => /\) Z /.test(stat)).length,
