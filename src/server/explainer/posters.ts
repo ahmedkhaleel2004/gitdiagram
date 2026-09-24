@@ -15,7 +15,9 @@ export async function storePoster(
 ): Promise<boolean> {
   const started = Date.now();
   try {
-    const { poster, still } = await renderExplainerPoster({ artifact, origin });
+    // Chromium now and then crashes mid-render; a fresh one usually works.
+    const render = () => renderExplainerPoster({ artifact, origin });
+    const { poster, still } = await render().catch(render);
     await Promise.all([
       writeRender(artifact, "poster.jpg", poster),
       writeRender(artifact, "still.jpg", still),

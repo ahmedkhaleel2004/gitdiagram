@@ -44,34 +44,40 @@ type StageWindow = Window & { __renderSeek: (time: number) => void };
 // path as ready as soon as it exists. Two renders starting together on a cold
 // instance would launch from half-written files, and the damage outlives the
 // request, so every render on an instance shares one unpacking.
-let unpacking: Promise<string> | null = null;
+let launcher: Promise<string> | null = null;
 
-/**
- * Launch Chromium with everything it writes kept in `dir`, which the caller
- * removes. Left to itself it keeps its profile and, with no /dev/shm on
- * Vercel, its shared memory in /tmp, and does not always clean up after
- * --single-process; on a warm instance that filled /tmp (about 300 MB free
- * after Chromium's own unpacked files) until every render crashed.
- */
+async function unpackChromium(): Promise<string> {
+  const chromium = (await import("@sparticuz/chromium")).default;
+  const binary = await chromium.executablePath();
+  // Chromium in --single-process often crashes, even on the way out of a
+  // render that worked, and every crash dumped a core file (~70 MB on disk)
+  // into /tmp. A few renders filled a warm instance's /tmp and then every
+  // render there failed, so Chromium starts with core dumps off.
+  const path = join(tmpdir(), "chromium-no-core");
+  await writeFile(path, `#!/bin/sh\nulimit -c 0\nexec "${binary}" "$@"\n`, {
+    mode: 0o755,
+  });
+  return path;
+}
+
+/** Launch Chromium with its profile in `dir`, which the caller removes. */
 async function launchBrowser(dir: string): Promise<Browser> {
   const userDataDir = join(dir, "profile");
-  const env = { ...process.env, TMPDIR: dir };
   const puppeteer = (await import("puppeteer-core")).default;
   if (process.env.VERCEL) {
     const chromium = (await import("@sparticuz/chromium")).default;
     // The default graphics mode emulates a GPU on the CPU (SwiftShader), which
     // is far slower for a 2D page than Chrome's own software renderer.
     chromium.setGraphicsMode = false;
-    unpacking ??= chromium.executablePath().catch((error: unknown) => {
-      unpacking = null;
+    launcher ??= unpackChromium().catch((error: unknown) => {
+      launcher = null;
       throw error;
     });
     return puppeteer.launch({
       args: [...chromium.args, "--disable-gpu"],
-      executablePath: await unpacking,
+      executablePath: await launcher,
       headless: "shell",
       userDataDir,
-      env,
     });
   }
   const executablePath = process.env.VIDEO_RENDER_CHROME_PATH?.trim();
@@ -79,12 +85,7 @@ async function launchBrowser(dir: string): Promise<Browser> {
     throw new Error(
       "Set VIDEO_RENDER_CHROME_PATH to a headless Chromium to render locally.",
     );
-  return puppeteer.launch({
-    executablePath,
-    headless: "shell",
-    userDataDir,
-    env,
-  });
+  return puppeteer.launch({ executablePath, headless: "shell", userDataDir });
 }
 
 async function closeBrowser(browser: Browser | null) {
@@ -92,7 +93,7 @@ async function closeBrowser(browser: Browser | null) {
   browser?.process()?.kill("SIGKILL");
 }
 
-/** Each /tmp entry with its size in MB, largest first. */
+/** The largest /tmp entries with their sizes in MB. */
 async function tmpUsage(): Promise<string[]> {
   const size = async (path: string, depth: number): Promise<number> => {
     const info = await lstat(path).catch(() => null);
@@ -112,6 +113,7 @@ async function tmpUsage(): Promise<string[]> {
   );
   return entries
     .sort((a, b) => b.mb - a.mb)
+    .slice(0, 4)
     .map((entry) => `${entry.name}:${entry.mb.toFixed(1)}`);
 }
 
