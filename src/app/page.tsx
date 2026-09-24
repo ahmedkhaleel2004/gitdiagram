@@ -20,7 +20,7 @@ export default function HomePage() {
     <main className="flex min-h-[calc(100svh-9.75rem)] flex-col justify-center px-4 pt-6 pb-3 sm:block sm:min-h-0 sm:px-8 sm:py-8 md:p-8">
       <div className="mx-auto mb-5 max-w-4xl pt-9 sm:mb-4 sm:pt-0 lg:my-8">
         {VIDEOS_ENABLED && (
-          <div className="mb-12 flex justify-center sm:mb-8">
+          <div className="-mt-4 mb-16 flex justify-center sm:mt-0 sm:mb-8">
             <Link
               href="/watch"
               className="browse-muted-button inline-flex min-h-[40px] items-center gap-2.5 rounded-full py-1.5 pr-4 pl-2 text-sm font-semibold"
