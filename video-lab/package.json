@@ -1,0 +1,12 @@
+{
+  "name": "gitdiagram-video-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prep": "node scripts/prep.mjs",
+    "mix": "node scripts/mix.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.60"
+  }
+}

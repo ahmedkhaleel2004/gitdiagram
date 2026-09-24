@@ -1,0 +1,1590 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>GitDiagram, explained</title>
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="timing.js"></script>
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("assets/fonts/Geist-Variable.woff2") format("woff2");
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2");
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: "Instrument Serif";
+        src: url("assets/fonts/InstrumentSerif-Regular.woff2") format("woff2");
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Instrument Serif";
+        src: url("assets/fonts/InstrumentSerif-Italic.woff2") format("woff2");
+        font-style: italic;
+      }
+
+      :root {
+        --paper: #f2e8ff;
+        --paper-2: #e6d5ff;
+        --card: #fdfaff;
+        --ink: #17111f;
+        --ink-2: #4e4463;
+        --purple: #bd85fb;
+        --purple-soft: #dcc2ff;
+        --purple-deep: #7a2be0;
+        --green: #0f7a48;
+        --green-soft: #cff2de;
+        --red: #b3263a;
+        --red-soft: #ffd9da;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--paper);
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: "Geist", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .layer {
+        position: absolute;
+        inset: 0;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        visibility: hidden;
+      }
+      .inner {
+        position: absolute;
+        inset: 0;
+        transform-origin: 50% 46%;
+      }
+      .abs {
+        position: absolute;
+      }
+      .mono {
+        font-family: "Geist Mono", monospace;
+      }
+      .serif {
+        font-family: "Instrument Serif", serif;
+        font-weight: 400;
+      }
+      .it {
+        font-style: italic;
+      }
+      .hw {
+        display: inline-block;
+        line-height: 1;
+      }
+      svg.wires {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: visible;
+      }
+
+      /* ---------- background ---------- */
+      #bg-grid {
+        position: absolute;
+        left: -80px;
+        top: -80px;
+        width: 2080px;
+        height: 1240px;
+        background-image: radial-gradient(circle, rgba(23, 17, 31, 0.2) 2px, transparent 2.6px);
+        background-size: 40px 40px;
+      }
+      #bg-glow {
+        position: absolute;
+        left: 980px;
+        top: -420px;
+        width: 1400px;
+        height: 1100px;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(189, 133, 251, 0.34), rgba(189, 133, 251, 0));
+      }
+      #bg-glow-2 {
+        position: absolute;
+        left: -520px;
+        top: 520px;
+        width: 1200px;
+        height: 900px;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+      }
+      #grain {
+        position: absolute;
+        inset: 0;
+        opacity: 0.1;
+        mix-blend-mode: multiply;
+      }
+
+      /* ---------- shared components ---------- */
+      .card {
+        position: absolute;
+        background: var(--card);
+        border: 3px solid var(--ink);
+        border-radius: 18px;
+        box-shadow: 8px 8px 0 var(--ink);
+        overflow: hidden;
+      }
+      .panel-head {
+        height: 60px;
+        border-bottom: 3px solid var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 24px;
+        font: 600 20px/1 "Geist Mono", monospace;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        background: var(--paper-2);
+      }
+      .live {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--purple-deep);
+        display: block;
+      }
+      .dots {
+        display: flex;
+        gap: 10px;
+      }
+      .dots i {
+        display: block;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 3px solid var(--ink);
+        background: var(--card);
+      }
+      .node {
+        position: absolute;
+        background: var(--card);
+        border: 3px solid var(--ink);
+        border-radius: 14px;
+        box-shadow: 5px 5px 0 var(--ink);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 22px;
+        font: 650 28px/1.1 "Geist", sans-serif;
+        white-space: nowrap;
+      }
+      .node small {
+        font: 500 19px/1.2 "Geist Mono", monospace;
+        color: var(--ink-2);
+        margin-top: 7px;
+        display: block;
+      }
+      .node.purple {
+        background: var(--purple);
+      }
+      .node.purple small {
+        color: var(--ink);
+      }
+      .node.tint {
+        background: var(--purple-soft);
+      }
+      .group {
+        position: absolute;
+        border: 3px solid var(--ink);
+        border-radius: 22px;
+        background: rgba(230, 213, 255, 0.55);
+      }
+      .group.dashed {
+        border-style: dashed;
+        background: rgba(253, 250, 255, 0.4);
+      }
+      .group-tag {
+        position: absolute;
+        left: 18px;
+        top: 12px;
+        font: 600 19px/1 "Geist Mono", monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+      }
+      .code {
+        font: 400 24px/40px "Geist Mono", monospace;
+        color: var(--ink);
+      }
+      .code .ln {
+        display: block;
+        width: max-content;
+        white-space: pre;
+      }
+      .k {
+        color: var(--purple-deep);
+        font-weight: 600;
+      }
+      .s {
+        color: var(--ink-2);
+      }
+      .hl {
+        position: absolute;
+        border-radius: 8px;
+        background: var(--purple-soft);
+        transform-origin: left center;
+      }
+      .badge {
+        position: absolute;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 3px solid var(--ink);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 3px 3px 0 var(--ink);
+      }
+      .badge.ok {
+        background: var(--green-soft);
+      }
+      .badge.bad {
+        background: var(--red-soft);
+      }
+      .pill {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 3px solid var(--ink);
+        border-radius: 999px;
+        background: var(--card);
+        box-shadow: 4px 4px 0 var(--ink);
+        padding: 0 22px;
+        height: 56px;
+        white-space: nowrap;
+      }
+      .label {
+        position: absolute;
+        font: 600 20px/1 "Geist Mono", monospace;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        white-space: nowrap;
+      }
+
+      /* ---------- chrome ---------- */
+      #brand {
+        position: absolute;
+        left: 120px;
+        top: 50px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font: 700 26px/1 "Geist", sans-serif;
+        letter-spacing: -0.01em;
+      }
+      #brand span {
+        font-weight: 400;
+        color: var(--ink-2);
+      }
+      #rail {
+        position: absolute;
+        inset: 0;
+      }
+      #rail-base {
+        left: 250px;
+        top: 992px;
+        width: 1420px;
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(23, 17, 31, 0.18);
+      }
+      #rail-prog {
+        left: 250px;
+        top: 992px;
+        width: 1420px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--purple-deep);
+        transform-origin: left center;
+      }
+      .station {
+        position: absolute;
+        top: 982px;
+        width: 200px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .sdot {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 3px solid var(--ink);
+        background: var(--card);
+        display: block;
+      }
+      .slabel {
+        font: 600 20px/1 "Geist Mono", monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+      }
+
+      /* ---------- note ---------- */
+      #note {
+        position: absolute;
+        left: 300px;
+        top: 270px;
+        width: 1320px;
+        height: 540px;
+        perspective: 2400px;
+      }
+      #note-inner {
+        position: absolute;
+        inset: 0;
+        transform-style: preserve-3d;
+      }
+      .face {
+        position: absolute;
+        inset: 0;
+        border: 5px solid var(--ink);
+        border-radius: 26px;
+        box-shadow: 16px 16px 0 var(--ink);
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        display: flex;
+        align-items: center;
+      }
+      #note-front {
+        background: var(--purple);
+        padding: 0 90px;
+        gap: 60px;
+      }
+      #note-back {
+        visibility: hidden;
+        background: var(--card);
+        transform: rotateY(180deg);
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 0 110px;
+      }
+
+      /* ---------- scene 1 ---------- */
+      .tdot {
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--purple-deep);
+        border: 3px solid var(--ink);
+      }
+      .cnode {
+        position: absolute;
+        width: 240px;
+        height: 64px;
+        border: 3px solid var(--ink);
+        border-radius: 12px;
+        background: var(--card);
+        box-shadow: 4px 4px 0 var(--ink);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 600 23px/1 "Geist Mono", monospace;
+      }
+      #url {
+        left: 790px;
+        top: 230px;
+        width: 990px;
+        height: 104px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px 0 34px;
+        gap: 18px;
+      }
+      #url-text {
+        position: relative;
+        font: 500 30px/1 "Geist Mono", monospace;
+        white-space: pre;
+        width: max-content;
+        display: block;
+      }
+      #url-text span {
+        display: inline-block;
+      }
+      #url-diagram {
+        position: absolute;
+        left: 3ch;
+        top: 0;
+        color: var(--purple-deep);
+        font-weight: 700;
+      }
+      #url-go {
+        margin-left: auto;
+        width: 76px;
+        height: 64px;
+        border-radius: 999px;
+        border: 3px solid var(--ink);
+        background: var(--purple);
+        box-shadow: 4px 4px 0 var(--ink);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="66.3"
+      data-width="1920"
+      data-height="1080"
+    >
+      <audio
+        id="soundtrack"
+        src="assets/audio/soundtrack.wav"
+        data-start="0"
+        data-duration="66.3"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
+
+      <!-- ================= BACKGROUND ================= -->
+      <div id="bg" class="layer">
+        <div id="bg-grid"></div>
+        <div id="bg-glow"></div>
+        <div id="bg-glow-2"></div>
+        <svg id="grain" width="1920" height="1080">
+          <filter id="noise">
+            <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" seed="7" />
+            <feColorMatrix type="saturate" values="0" />
+          </filter>
+          <rect width="1920" height="1080" filter="url(#noise)" />
+        </svg>
+      </div>
+
+      <!-- ================= S1 · HOOK ================= -->
+      <section class="scene" id="s1">
+        <div class="inner">
+          <div id="head-wrap" class="layer">
+          <svg id="head-svg" class="abs" style="left: 120px; top: 170px" width="620" height="700" viewBox="0 0 620 700">
+            <g id="head-g">
+              <path
+                id="head-fill"
+                d="M 150 690 C 150 600, 110 560, 100 470 C 80 330, 120 150, 300 110 C 450 80, 540 170, 545 280 C 548 320, 545 345, 560 375 L 600 450 C 606 462, 598 470, 580 472 L 575 500 C 585 510, 583 520, 572 526 C 582 536, 578 550, 565 556 C 570 585, 560 610, 520 612 C 480 614, 460 620, 455 690 Z"
+                fill="#e6d5ff"
+              />
+              <path
+                id="head-path"
+                d="M 150 690 C 150 600, 110 560, 100 470 C 80 330, 120 150, 300 110 C 450 80, 540 170, 545 280 C 548 320, 545 345, 560 375 L 600 450 C 606 462, 598 470, 580 472 L 575 500 C 585 510, 583 520, 572 526 C 582 536, 578 550, 565 556 C 570 585, 560 610, 520 612 C 480 614, 460 620, 455 690"
+                pathLength="1"
+                fill="none"
+                stroke="#17111f"
+                stroke-width="5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="stroke-dasharray: 1; stroke-dashoffset: 1"
+              />
+            </g>
+            <g id="tangle" fill="none" stroke="#4e4463" stroke-width="3" stroke-linecap="round">
+              <path class="tangle-edge" pathLength="1" d="M235,235 C 330,300 300,120 440,245" />
+              <path class="tangle-edge" pathLength="1" d="M335,175 C 250,260 420,380 190,430" />
+              <path class="tangle-edge" pathLength="1" d="M440,245 C 360,300 200,280 275,335" />
+              <path class="tangle-edge" pathLength="1" d="M275,335 C 380,260 480,380 455,410" />
+              <path class="tangle-edge" pathLength="1" d="M400,330 C 300,420 260,380 325,445" />
+              <path class="tangle-edge" pathLength="1" d="M190,430 C 260,330 470,470 400,330" />
+              <path class="tangle-edge" pathLength="1" d="M325,445 C 420,420 250,180 335,175" />
+              <path class="tangle-edge" pathLength="1" d="M455,410 C 380,470 180,300 235,235" />
+            </g>
+          </svg>
+          <div class="tdot" style="left: 343px; top: 393px"></div>
+          <div class="tdot" style="left: 443px; top: 333px"></div>
+          <div class="tdot" style="left: 548px; top: 403px"></div>
+          <div class="tdot" style="left: 383px; top: 493px"></div>
+          <div class="tdot" style="left: 508px; top: 488px"></div>
+          <div class="tdot" style="left: 298px; top: 588px"></div>
+          <div class="tdot" style="left: 433px; top: 603px"></div>
+          <div class="tdot" style="left: 563px; top: 568px"></div>
+          </div>
+
+          <div id="url" class="card">
+            <svg width="30" height="34" viewBox="0 0 30 34" fill="none" stroke="#17111f" stroke-width="3.5">
+              <rect x="3" y="14" width="24" height="18" rx="4" fill="#dcc2ff" />
+              <path d="M8 14 V9 a7 7 0 0 1 14 0 V14" />
+            </svg>
+            <div id="url-text"><span id="url-git">git</span><span id="url-hub">hub</span><span id="url-rest">.com/ahmedkhaleel2004/gitdiagram</span><span id="url-diagram">diagram</span></div>
+            <div id="url-go">
+              <svg width="30" height="24" viewBox="0 0 30 24" fill="none" stroke="#17111f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 H26 M17 3 L26 12 L17 21" /></svg>
+            </div>
+          </div>
+
+          <div class="cnode" style="left: 880px; top: 420px">page.tsx</div>
+          <div class="cnode" style="left: 1180px; top: 420px">route.ts</div>
+          <div class="cnode" style="left: 1480px; top: 420px">github.ts</div>
+          <div class="cnode" style="left: 1180px; top: 580px; background: #bd85fb">model</div>
+          <div class="cnode" style="left: 1480px; top: 580px">graph.ts</div>
+          <div class="cnode" style="left: 880px; top: 740px">browser</div>
+          <div class="cnode" style="left: 1180px; top: 740px; background: #dcc2ff">R2</div>
+          <div class="cnode" style="left: 1480px; top: 740px">compiler</div>
+          <svg class="wires" id="s1-wires"></svg>
+        </div>
+      </section>
+
+      <!-- ================= S2 · ONE APP, ONE ROUTE ================= -->
+      <section class="scene" id="s2">
+        <div class="inner">
+          <div class="card" id="app" style="left: 120px; top: 150px; width: 1040px; height: 730px">
+            <div class="panel-head" style="height: 72px; text-transform: none; letter-spacing: 0; gap: 18px">
+              <div class="dots"><i></i><i></i><i></i></div>
+              <span style="font: 600 24px/1 'Geist Mono'; color: var(--ink)">gitdiagram</span>
+              <span class="pill" id="b-next" style="position: static; height: 42px; padding: 0 16px; background: var(--purple); font: 700 20px/1 'Geist Mono'; color: var(--ink); box-shadow: 3px 3px 0 var(--ink)">Next.js 16</span>
+              <span class="pill" id="b-react" style="position: static; height: 42px; padding: 0 16px; font: 600 20px/1 'Geist Mono'; color: var(--ink); box-shadow: 3px 3px 0 var(--ink)">React 19</span>
+              <span class="pill" id="b-bun" style="position: static; height: 42px; padding: 0 16px; font: 600 20px/1 'Geist Mono'; color: var(--ink); box-shadow: 3px 3px 0 var(--ink)">Bun</span>
+            </div>
+          </div>
+          <div id="route-hl" class="hl" style="left: 176px; top: 399px; width: 690px; height: 58px; background: var(--purple)"></div>
+          <div class="code abs" id="app-tree" style="left: 200px; top: 262px; font-size: 30px; line-height: 64px">
+            <span class="ln">src/</span>
+            <span class="ln">  app/</span>
+            <span class="ln">    <b id="route-line" style="font-weight: 700">api/generate/stream/route.ts</b></span>
+            <span class="ln">    [username]/[repo]/page.tsx</span>
+            <span class="ln">  server/  <span class="s">generate/ storage/ http/</span></span>
+            <span class="ln">  features/  hooks/  components/</span>
+          </div>
+          <div class="pill mono" id="route-pill" style="left: 470px; top: 740px; font: 600 24px/1 'Geist Mono'; background: var(--card)">
+            <span style="color: var(--purple-deep)">POST</span> /api/generate/stream
+          </div>
+          <div class="card" id="sse" style="left: 1240px; top: 150px; width: 560px; height: 730px">
+            <div class="panel-head"><i class="live"></i>text/event-stream</div>
+          </div>
+          <div id="sse-chips" class="abs" style="left: 1272px; top: 236px; width: 500px"></div>
+          <svg class="wires" id="s2-wires"></svg>
+        </div>
+      </section>
+
+      <!-- ================= S3 · INGEST ================= -->
+      <section class="scene" id="s3">
+        <div class="inner">
+          <div class="card" id="gh" style="left: 120px; top: 150px; width: 440px; height: 250px; padding: 30px 32px">
+            <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#17111f" stroke-width="2" stroke-linejoin="round">
+              <path d="M5 3.5 A1.5 1.5 0 0 1 6.5 2 H19 V18 H6.5 A1.5 1.5 0 0 0 5 19.5 Z" fill="#dcc2ff" />
+              <path d="M5 19.5 A1.5 1.5 0 0 0 6.5 21 H19 V18" />
+            </svg>
+            <div style="font: 400 26px/1.2 'Geist'; color: var(--ink-2); margin-top: 18px">ahmedkhaleel2004 /</div>
+            <div style="font: 750 44px/1.1 'Geist'; letter-spacing: -0.02em">gitdiagram</div>
+            <div class="pill" style="position: absolute; right: 26px; top: 28px; height: 40px; padding: 0 14px; font: 600 19px/1 'Geist Mono'; box-shadow: 3px 3px 0 var(--ink)">main</div>
+          </div>
+          <div class="label" id="gh-api" style="left: 128px; top: 440px">GitHub API</div>
+          <div class="card" id="tree" style="left: 640px; top: 150px; width: 680px; height: 780px">
+            <div class="panel-head" style="text-transform: none; letter-spacing: 0.01em">GET /git/trees/main?recursive=1</div>
+          </div>
+          <div id="tree-hls" class="abs" style="left: 652px; top: 0"></div>
+          <div id="tree-lines" class="code abs" style="left: 700px; top: 232px; font-size: 23px; line-height: 42px"></div>
+          <div class="card" id="gate" style="left: 1380px; top: 150px; width: 420px; height: 330px; padding: 30px 30px">
+            <div style="font: 700 30px/1.15 'Geist'; letter-spacing: -0.01em">Before any<br />model call</div>
+            <div id="gate-rows" class="mono" style="margin-top: 22px; font: 500 22px/48px 'Geist Mono'"></div>
+          </div>
+          <div class="card" id="huge" style="left: 1380px; top: 540px; width: 420px; height: 250px; padding: 28px 30px">
+            <div style="font: 400 24px/1.2 'Geist'; color: var(--ink-2)">some-org /</div>
+            <div style="font: 750 34px/1.15 'Geist'; letter-spacing: -0.02em">everything-monorepo</div>
+            <div class="mono" style="font: 600 20px/1 'Geist Mono'; color: var(--red); margin-top: 18px">tree: truncated</div>
+          </div>
+          <div id="stamp" class="abs" style="left: 1470px; top: 694px; padding: 14px 26px; border: 6px solid var(--red); border-radius: 14px; color: var(--red); font: 800 50px/1 'Geist'; letter-spacing: 0.04em; background: rgba(255, 217, 218, 0.85)">TOO LARGE</div>
+          <div class="pill" id="zero-tokens" style="left: 1400px; top: 836px; font: 700 24px/1 'Geist Mono'; background: var(--red-soft)">0 tokens spent</div>
+          <div class="card" id="budget" style="left: 1380px; top: 540px; width: 420px; height: 390px; padding: 26px 30px">
+            <div class="label" style="position: static">sent to the model</div>
+            <div style="display: flex; align-items: baseline; gap: 14px; margin-top: 30px">
+              <span class="serif" id="budget-n" style="font-size: 128px; line-height: 0.8">12</span>
+              <span style="font: 650 32px/1 'Geist'">source files</span>
+            </div>
+            <div style="margin-top: 26px; height: 34px; border: 3px solid var(--ink); border-radius: 10px; background: var(--card); overflow: hidden; position: relative">
+              <div id="budget-bar" style="position: absolute; left: 0; top: 0; bottom: 0; width: 93%; background: var(--purple); transform-origin: left center"></div>
+            </div>
+            <div class="mono" style="font: 500 21px/1.5 'Geist Mono'; color: var(--ink-2); margin-top: 14px">≤ 48,000 characters<br />12-second fetch deadline</div>
+          </div>
+          <svg class="wires" id="s3-wires"></svg>
+        </div>
+      </section>
+
+      <!-- ================= S4 · ONE MODEL CALL ================= -->
+      <section class="scene" id="s4">
+        <div class="inner">
+          <div class="node tint" id="ev-0" style="left: 120px; top: 330px; width: 300px; height: 84px">file tree</div>
+          <div class="node tint" id="ev-1" style="left: 120px; top: 450px; width: 300px; height: 84px">README</div>
+          <div class="node tint" id="ev-2" style="left: 120px; top: 570px; width: 300px; height: 84px">12 source files</div>
+          <div id="model" class="abs" style="left: 470px; top: 400px; width: 230px; height: 230px; border-radius: 50%; border: 4px solid var(--ink); background: var(--purple); box-shadow: 8px 8px 0 var(--ink); display: flex; align-items: center; justify-content: center">
+            <svg id="model-spark" width="110" height="110" viewBox="0 0 100 100"><path d="M50 4 C54 36 64 46 96 50 C64 54 54 64 50 96 C46 64 36 54 4 50 C36 46 46 36 50 4 Z" fill="#fdfaff" stroke="#17111f" stroke-width="4" stroke-linejoin="round" /></svg>
+          </div>
+          <div id="model-label" class="abs" style="left: 390px; top: 668px; width: 390px; text-align: center">
+            <div style="font: 700 34px/1.1 'Geist'; letter-spacing: -0.01em">one model call</div>
+            <div class="mono" style="font: 500 20px/1.4 'Geist Mono'; color: var(--ink-2); margin-top: 10px">explanation + graph<br />in a single response</div>
+          </div>
+          <div class="card" id="raw" style="left: 820px; top: 150px; width: 980px; height: 370px">
+            <div class="panel-head"><i class="live"></i>raw response · still arriving</div>
+          </div>
+          <div id="raw-graph-hl" class="hl" style="left: 846px; top: 395px; width: 440px; height: 42px"></div>
+          <div id="raw-lines" class="code abs" style="left: 856px; top: 236px; font-size: 24px; line-height: 40px">
+            <span class="ln">{<span class="k">"explanation"</span>: "GitDiagram is one Next.js</span>
+            <span class="ln">app. A streaming route pulls the repo, asks</span>
+            <span class="ln">one model for an explanation and a graph,</span>
+            <span class="ln">then validates and compiles it…",</span>
+            <span class="ln" id="raw-graph"><span class="k">"graph"</span>: { <span class="k">"groups"</span>: [ …</span>
+          </div>
+          <div class="pill" id="decoder" style="left: 1020px; top: 548px; font: 600 22px/1 'Geist Mono'; background: var(--purple-soft)">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#17111f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2 V19 M4 12 L11 19 L18 12" /></svg>
+            readArchitectureProgress()
+          </div>
+          <div class="card" id="prose" style="left: 820px; top: 640px; width: 980px; height: 290px">
+            <div class="panel-head">what you see</div>
+          </div>
+          <div id="prose-text" class="abs" style="left: 858px; top: 728px; width: 900px; font: 400 34px/1.38 'Geist'; letter-spacing: -0.01em">GitDiagram is one Next.js app. A streaming route pulls the repo, asks one model for an explanation and a graph, then validates and compiles it…</div>
+          <svg class="wires" id="s4-wires"></svg>
+        </div>
+      </section>
+
+      <!-- ================= S5 · THE ANSWER IS A GRAPH ================= -->
+      <section class="scene" id="s5">
+        <div class="inner">
+          <div class="card" id="json" style="left: 120px; top: 150px; width: 900px; height: 780px">
+            <div class="panel-head">answer.graph · strict json</div>
+          </div>
+          <div id="json-hl-g" class="hl" style="left: 140px; top: 270px; width: 860px; height: 126px"></div>
+          <div id="json-hl-n" class="hl" style="left: 140px; top: 396px; width: 860px; height: 286px"></div>
+          <div id="json-hl-e" class="hl" style="left: 140px; top: 682px; width: 860px; height: 166px"></div>
+          <div id="json-lines" class="code abs" style="left: 160px; top: 232px; font-size: 24px; line-height: 40px">
+            <span class="ln"><span class="k">"graph"</span>: {</span>
+            <span class="ln">  <span class="k">"groups"</span>: [</span>
+            <span class="ln">    { "id": "server", "label": "Server" }</span>
+            <span class="ln">  ],</span>
+            <span class="ln">  <span class="k">"nodes"</span>: [</span>
+            <span class="ln">    { "id": "route", "label": "Stream route",</span>
+            <span class="ln">      "groupId": "server",</span>
+            <span class="ln">      "path": "src/app/api/…/route.ts" },</span>
+            <span class="ln">    { "id": "planner", "label": "Graph planner" },</span>
+            <span class="ln">    { "id": "compiler", "label": "Compiler" }</span>
+            <span class="ln">  ],</span>
+            <span class="ln">  <span class="k">"edges"</span>: [</span>
+            <span class="ln">    { "from": "route", "to": "planner" },</span>
+            <span class="ln">    { "from": "planner", "to": "compiler" }</span>
+            <span class="ln">  ]</span>
+            <span class="ln">}</span>
+          </div>
+          <div id="zod" class="abs" style="left: 700px; top: 176px; padding: 10px 18px; border: 4px solid var(--purple-deep); border-radius: 12px; color: var(--purple-deep); font: 800 26px/1 'Geist Mono'; letter-spacing: 0.06em; background: var(--card)">✓ SCHEMA-CHECKED</div>
+          <div class="group" id="g5" style="left: 1100px; top: 190px; width: 700px; height: 470px"><div class="group-tag">Server</div></div>
+          <div class="node" id="n5-route" style="left: 1150px; top: 270px; width: 280px; height: 84px">Stream route</div>
+          <div class="node" id="n5-planner" style="left: 1470px; top: 270px; width: 290px; height: 84px">Graph planner</div>
+          <div class="node" id="n5-compiler" style="left: 1470px; top: 520px; width: 290px; height: 84px">Compiler</div>
+          <div class="label" id="g5-more" style="left: 1118px; top: 690px">+ more nodes, up to 34</div>
+          <svg class="wires" id="s5-wires"></svg>
+        </div>
+      </section>
+
+      <!-- ================= S7 · VALIDATE ================= -->
+      <section class="scene" id="s7">
+        <div class="inner">
+          <div class="mono abs" id="v-title" style="left: 120px; top: 138px; font: 600 26px/1 'Geist Mono'">
+            <span style="color: var(--purple-deep)">validateDiagramGraph</span>(graph, repoTree)
+          </div>
+          <div class="group" id="g7" style="left: 120px; top: 200px; width: 900px; height: 480px"><div class="group-tag">Server</div></div>
+          <div class="node" id="v-a" style="left: 160px; top: 250px; width: 340px; height: 104px">Stream route<small id="v-a-p">…/stream/route.ts</small></div>
+          <div class="node" id="v-b" style="left: 640px; top: 250px; width: 340px; height: 104px">Graph planner<small id="v-b-p">…/graph-planner.ts</small></div>
+          <div class="node" id="v-d" style="left: 160px; top: 530px; width: 340px; height: 104px">Helpers<small id="v-d-p">src/lib/magic.ts</small></div>
+          <div class="node" id="v-c" style="left: 640px; top: 530px; width: 340px; height: 104px">Compiler<small id="v-c-p">…/generate/graph.ts</small></div>
+          <div id="v-strike" class="abs" style="left: 184px; top: 601px; width: 182px; height: 3px; background: var(--red); transform-origin: left center"></div>
+          <div class="node" id="v-e" style="left: 640px; top: 780px; width: 340px; height: 90px; border-style: dashed; border-color: var(--red); box-shadow: none; background: var(--red-soft); color: var(--red)">cache ?</div>
+          <svg class="wires" id="s7-wires"></svg>
+          <div class="badge ok" id="vb-ab" style="left: 548px; top: 280px"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#0f7a48" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11 L9 16 L18 6" /></svg></div>
+          <div class="badge ok" id="vb-ad" style="left: 308px; top: 420px"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#0f7a48" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11 L9 16 L18 6" /></svg></div>
+          <div class="badge ok" id="vb-bc" style="left: 788px; top: 420px"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#0f7a48" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11 L9 16 L18 6" /></svg></div>
+          <div class="badge bad" id="vb-ce" style="left: 788px; top: 690px"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#b3263a" stroke-width="4" stroke-linecap="round"><path d="M5 5 L17 17 M17 5 L5 17" /></svg></div>
+          <div class="pill" id="v-err" style="left: 164px; top: 800px; height: 48px; font: 600 20px/1 'Geist Mono'; background: var(--red-soft); color: var(--red); box-shadow: 3px 3px 0 var(--ink)">edges[3].to: unknown node "cache"</div>
+          <div id="v-scan" class="abs" style="left: 120px; top: 190px; width: 6px; height: 700px; background: var(--purple-deep); border-radius: 3px; box-shadow: 0 0 40px 14px rgba(122, 43, 224, 0.28)"></div>
+          <div class="label" id="v-dropped" style="left: 164px; top: 712px; color: var(--ink-2); text-transform: none; letter-spacing: 0">path dropped in place · no extra model call</div>
+
+          <div class="card" id="rtree" style="left: 1100px; top: 200px; width: 700px; height: 560px">
+            <div class="panel-head">the real repo tree</div>
+          </div>
+          <div id="rtree-hls" class="abs" style="left: 1112px; top: 0"></div>
+          <div id="rtree-lines" class="code abs" style="left: 1140px; top: 282px; font-size: 22px; line-height: 56px"></div>
+
+          <div class="card" id="retry" style="left: 1100px; top: 200px; width: 700px; height: 560px; padding: 30px 36px">
+            <div style="font: 700 34px/1.1 'Geist'; letter-spacing: -0.01em">Retry with feedback</div>
+            <div class="mono" style="font: 500 21px/1.4 'Geist Mono'; color: var(--ink-2); margin-top: 10px">graph-planner.ts · MAX_GRAPH_ATTEMPTS = 3</div>
+          </div>
+          <div id="r-model" class="abs" style="left: 1160px; top: 380px; width: 150px; height: 150px; border-radius: 50%; border: 4px solid var(--ink); background: var(--purple); box-shadow: 6px 6px 0 var(--ink); display: flex; align-items: center; justify-content: center">
+            <svg width="70" height="70" viewBox="0 0 100 100"><path d="M50 4 C54 36 64 46 96 50 C64 54 54 64 50 96 C46 64 36 54 4 50 C36 46 46 36 50 4 Z" fill="#fdfaff" stroke="#17111f" stroke-width="5" stroke-linejoin="round" /></svg>
+          </div>
+          <div class="label" id="r-attempt-l" style="left: 1370px; top: 400px">attempt</div>
+          <div id="r-pips" class="abs" style="left: 1370px; top: 440px; display: flex; gap: 18px">
+            <div class="badge bad" id="pip-1" style="position: static"><span style="font: 800 20px/1 'Geist Mono'; color: var(--red)">1</span></div>
+            <div class="badge" id="pip-2" style="position: static; background: var(--card)"><span style="font: 800 20px/1 'Geist Mono'">2</span></div>
+            <div class="badge" id="pip-3" style="position: static; background: var(--card); opacity: 0.45; box-shadow: none"><span style="font: 800 20px/1 'Geist Mono'">3</span></div>
+          </div>
+          <div id="r-payload" class="code abs" style="left: 1140px; top: 580px; font-size: 21px; line-height: 34px; color: var(--ink-2)">
+            <span class="ln">next attempt receives:</span>
+            <span class="ln" style="color: var(--ink)">{ explanation, file_tree,</span>
+            <span class="ln" style="color: var(--ink)">  previous_graph,</span>
+            <span class="ln" style="color: var(--ink)">  <span class="k">validation_feedback</span> }</span>
+          </div>
+          <div class="pill" id="v-fb" style="left: 164px; top: 800px; height: 48px; font: 600 20px/1 'Geist Mono'; background: var(--card); box-shadow: 3px 3px 0 var(--ink)">feedback → edges[3].to</div>
+          <div class="pill" id="v-valid" style="left: 800px; top: 176px; height: 50px; font: 700 22px/1 'Geist Mono'; background: var(--green-soft); color: var(--green); box-shadow: 3px 3px 0 var(--ink)">✓ valid graph</div>
+        </div>
+      </section>
+
+      <!-- ================= S8 · COMPILE ================= -->
+      <section class="scene" id="s8">
+        <div class="inner">
+          <div class="group" id="g8" style="left: 120px; top: 300px; width: 420px; height: 380px"><div class="group-tag">Server</div></div>
+          <div class="node" id="n8-a" style="left: 160px; top: 360px; width: 330px; height: 70px; font-size: 24px">Stream route</div>
+          <div class="node" id="n8-b" style="left: 160px; top: 460px; width: 330px; height: 70px; font-size: 24px">Graph planner</div>
+          <div class="node" id="n8-c" style="left: 160px; top: 560px; width: 330px; height: 70px; font-size: 24px">Compiler</div>
+          <div class="pill" id="c-valid" style="left: 136px; top: 712px; height: 46px; font: 700 20px/1 'Geist Mono'; background: var(--green-soft); color: var(--green); box-shadow: 3px 3px 0 var(--ink)">✓ valid graph</div>
+          <div id="evil" class="pill" style="left: 150px; top: 190px; height: 52px; font: 600 22px/1 'Geist Mono'; background: var(--red-soft); color: var(--red)">label: &lt;script&gt;alert("x")&lt;/script&gt;</div>
+          <div class="card" id="compiler" style="left: 610px; top: 380px; width: 380px; height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--card)">
+            <div class="mono" style="font: 700 25px/1 'Geist Mono'">compileDiagramGraph()</div>
+            <div class="serif it" style="font-size: 44px; line-height: 1; color: var(--purple-deep)">deterministic</div>
+            <div class="mono" style="font: 500 19px/1 'Geist Mono'; color: var(--ink-2)">same graph → same Mermaid</div>
+          </div>
+          <div class="card" id="mmd" style="left: 1060px; top: 150px; width: 740px; height: 780px">
+            <div class="panel-head" style="text-transform: none">diagram.mmd</div>
+          </div>
+          <div id="mmd-hl-evil" class="hl" style="left: 1076px; top: 549px; width: 708px; height: 76px"></div>
+          <div id="mmd-hl-gh" class="hl" style="left: 1076px; top: 657px; width: 708px; height: 76px; background: var(--green-soft)"></div>
+          <div id="mmd-lines" class="code abs" style="left: 1090px; top: 228px; font-size: 21px; line-height: 36px">
+            <span class="ln"><span class="k">flowchart</span> TD</span>
+            <span class="ln"><span class="k">subgraph</span> group_server["Server"]</span>
+            <span class="ln">  node_route["Stream route"]</span>
+            <span class="ln">  node_planner["Graph planner"]</span>
+            <span class="ln">  node_compiler["Compiler"]</span>
+            <span class="ln"><span class="k">end</span></span>
+            <span class="ln">node_route --&gt;|"plans"| node_planner</span>
+            <span class="ln">node_planner --&gt; node_compiler</span>
+            <span class="ln"> </span>
+            <span class="ln">node_evil["&amp;lt;script&amp;gt;alert&amp;#40;&amp;quot;x</span>
+            <span class="ln">  &amp;quot;&amp;#41;&amp;lt;/script&amp;gt;"]</span>
+            <span class="ln"> </span>
+            <span class="ln"><span class="k">click</span> node_route "<b id="gh-part" style="font-weight: 700; color: var(--green)">https://github.com/</b>ahmedkhaleel2004/</span>
+            <span class="ln">  gitdiagram/blob/main/src/app/api/…/route.ts"</span>
+            <span class="ln"> </span>
+            <span class="ln"><span class="k">classDef</span> toneBlue fill:#dbeafe,stroke:#2563eb</span>
+          </div>
+          <div class="pill" id="escaped-tag" style="left: 1560px; top: 590px; height: 42px; font: 700 19px/1 'Geist Mono'; background: var(--green-soft); color: var(--green); box-shadow: 3px 3px 0 var(--ink)">✓ escaped</div>
+          <div class="pill" id="links-only" style="left: 1100px; top: 850px; height: 50px; font: 600 20px/1 'Geist Mono'; background: var(--card); box-shadow: 3px 3px 0 var(--ink)">
+            <svg width="20" height="24" viewBox="0 0 30 34" fill="none" stroke="#17111f" stroke-width="4"><rect x="3" y="14" width="24" height="18" rx="4" fill="#cff2de" /><path d="M8 14 V9 a7 7 0 0 1 14 0 V14" /></svg>
+            links: github.com only
+          </div>
+          <svg class="wires" id="s8-wires"></svg>
+        </div>
+      </section>
+
+      <!-- ================= S9 · BROWSER + CACHE ================= -->
+      <section class="scene" id="s9">
+        <div class="inner">
+          <div class="card" id="browser" style="left: 120px; top: 150px; width: 940px; height: 780px">
+            <div class="panel-head" style="height: 72px; text-transform: none; letter-spacing: 0; gap: 18px">
+              <div class="dots"><i></i><i></i><i></i></div>
+              <div class="pill" style="position: static; height: 44px; flex: 1; font: 500 21px/1 'Geist Mono'; color: var(--ink); box-shadow: none">gitdiagram.com/ahmedkhaleel2004/gitdiagram</div>
+            </div>
+          </div>
+          <div id="filters" class="abs" style="left: 170px; top: 262px; width: 840px"></div>
+          <div id="mmd-chip" class="pill" data-layout-allow-overlap style="left: 470px; top: 180px; height: 48px; font: 600 21px/1 'Geist Mono'; background: var(--purple-soft)">diagram.mmd</div>
+          <div id="render" class="abs" style="left: 170px; top: 610px; width: 840px; height: 280px; border: 3px dashed rgba(23, 17, 31, 0.35); border-radius: 16px"></div>
+          <div class="node" id="r-n1" style="left: 205px; top: 700px; width: 230px; height: 70px; font-size: 22px">Stream route</div>
+          <div class="node" id="r-n2" style="left: 480px; top: 700px; width: 230px; height: 70px; font-size: 22px">Graph planner</div>
+          <div class="node" id="r-n3" style="left: 755px; top: 700px; width: 220px; height: 70px; font-size: 22px">Compiler</div>
+          <div class="label" id="r-ok" style="left: 205px; top: 822px; color: var(--green); text-transform: none; letter-spacing: 0">✓ rendered · every link points at GitHub</div>
+
+          <svg id="bucket" class="abs" style="left: 1230px; top: 150px" width="420" height="360" viewBox="0 0 420 360">
+            <path d="M20 70 V290 A190 50 0 0 0 400 290 V70" fill="#dcc2ff" stroke="#17111f" stroke-width="5" />
+            <ellipse cx="210" cy="70" rx="190" ry="50" fill="#e6d5ff" stroke="#17111f" stroke-width="5" />
+            <path d="M20 180 A190 50 0 0 0 400 180" fill="none" stroke="#17111f" stroke-width="3" opacity="0.35" />
+            <text x="210" y="258" text-anchor="middle" font-family="Geist" font-weight="800" font-size="78" fill="#17111f">R2</text>
+          </svg>
+
+          <div class="pill" id="k-pub" style="left: 1130px; top: 540px; height: 50px; font: 600 20px/1 'Geist Mono'; box-shadow: 3px 3px 0 var(--ink)">public/v1/ahmedkhaleel2004/gitdiagram.json</div>
+          <div class="pill" id="k-priv" style="left: 1130px; top: 606px; height: 50px; font: 500 20px/1 'Geist Mono'; color: var(--ink-2); box-shadow: 3px 3px 0 var(--ink); background: var(--paper-2)">
+            <svg width="18" height="22" viewBox="0 0 30 34" fill="none" stroke="#4e4463" stroke-width="4"><rect x="3" y="14" width="24" height="18" rx="4" /><path d="M8 14 V9 a7 7 0 0 1 14 0 V14" /></svg>
+            private/v1/‹hmac›/… (separate)
+          </div>
+          <div class="card" id="visitor" style="left: 1130px; top: 700px; width: 670px; height: 230px; padding: 26px 30px">
+            <div style="display: flex; align-items: center; gap: 16px">
+              <svg width="34" height="40" viewBox="0 0 34 40"><path d="M4 3 L30 22 L18 24 L24 37 L18 39 L12 26 L4 33 Z" fill="#fdfaff" stroke="#17111f" stroke-width="3.5" stroke-linejoin="round" /></svg>
+              <span style="font: 700 32px/1 'Geist'">Next visitor</span>
+            </div>
+            <div class="pill" id="zero-calls" style="position: absolute; left: 30px; top: 110px; height: 56px; font: 700 23px/1 'Geist Mono'; background: var(--green-soft); color: var(--green)">0 model calls</div>
+            <div class="mono" id="served" style="position: absolute; left: 290px; top: 126px; font: 500 21px/1 'Geist Mono'; color: var(--ink-2)">served from R2 · instant</div>
+          </div>
+          <svg class="wires" id="s9-wires"></svg>
+          <div id="artifact" class="abs" style="left: 1350px; top: 20px; width: 180px; height: 120px; border: 3px solid var(--ink); border-radius: 12px; background: var(--card); box-shadow: 5px 5px 0 var(--ink)">
+            <svg width="174" height="114" viewBox="0 0 174 114" fill="none" stroke="#17111f" stroke-width="3">
+              <rect x="18" y="22" width="52" height="26" rx="5" fill="#dcc2ff" />
+              <rect x="104" y="22" width="52" height="26" rx="5" />
+              <rect x="61" y="72" width="52" height="26" rx="5" fill="#bd85fb" />
+              <path d="M70 35 H104 M130 48 V60 H87 V72" />
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= S10 · CLOSE ================= -->
+      <section class="scene" id="s10">
+        <div class="inner">
+          <div id="head-close" class="abs" data-layout-allow-overlap style="left: 116px; top: 196px; width: 800px">
+            <div class="serif" style="font-size: 124px; line-height: 1.02; letter-spacing: -0.02em">
+              <span class="hw" data-layout-allow-overlap id="hw-1">The</span> <span class="hw" data-layout-allow-overlap id="hw-2">model</span> <span class="hw" data-layout-allow-overlap id="hw-3">proposes.</span>
+            </div>
+            <div class="serif it" style="font-size: 124px; line-height: 1.1; letter-spacing: -0.02em; color: var(--purple-deep)">
+              <span class="hw" data-layout-allow-overlap id="hw-4">Code</span> <span class="hw" data-layout-allow-overlap id="hw-5">decides.</span>
+            </div>
+          </div>
+          <div class="label" id="start-l" style="left: 122px; top: 628px">start reading here</div>
+          <div class="pill" id="folder" style="left: 116px; top: 668px; height: 76px; padding: 0 28px; font: 650 32px/1 'Geist Mono'; background: var(--purple); box-shadow: 6px 6px 0 var(--ink)">
+            <svg width="40" height="32" viewBox="0 0 40 32" fill="none" stroke="#17111f" stroke-width="3.5" stroke-linejoin="round"><path d="M3 6 A3 3 0 0 1 6 3 H15 L19 8 H34 A3 3 0 0 1 37 11 V26 A3 3 0 0 1 34 29 H6 A3 3 0 0 1 3 26 Z" fill="#fdfaff" /></svg>
+            src/server/generate/
+          </div>
+          <div id="files" class="abs" style="left: 116px; top: 776px; width: 800px; display: flex; flex-wrap: wrap; gap: 14px"></div>
+
+          <div class="group" id="fg-det" style="left: 960px; top: 104px; width: 400px; height: 806px"><div class="group-tag">deterministic</div></div>
+          <div class="group dashed" id="fg-prob" style="left: 1405px; top: 350px; width: 395px; height: 196px"><div class="group-tag">probabilistic</div></div>
+          <svg class="wires" id="s10-wires"></svg>
+          <div class="node" id="f0" style="left: 1000px; top: 150px; width: 320px; height: 88px">Stream route<small>api/generate/stream</small></div>
+          <div class="node" id="f1" style="left: 1000px; top: 290px; width: 320px; height: 88px">Ingest<small>github.ts · 12 files</small></div>
+          <div class="node purple" id="f2" style="left: 1445px; top: 408px; width: 320px; height: 88px; border-style: dashed">Model<small>proposes a graph</small></div>
+          <div class="node" id="f3" style="left: 1000px; top: 510px; width: 320px; height: 88px">Validate<small>graph.ts</small></div>
+          <div class="node" id="f4" style="left: 1000px; top: 650px; width: 320px; height: 88px">Compile<small>→ Mermaid</small></div>
+          <div class="node" id="f5" style="left: 1000px; top: 790px; width: 320px; height: 88px">Browser<small>sanitize · render</small></div>
+          <div class="node tint" id="f6" style="left: 1445px; top: 650px; width: 320px; height: 88px">R2 cache<small>public · private</small></div>
+
+          <div id="signoff" class="abs" style="left: 120px; top: 930px; display: flex; align-items: center; gap: 16px">
+            <svg width="46" height="46" viewBox="0 0 46 46" fill="none" stroke="#17111f" stroke-width="3.5"><rect x="3" y="3" width="16" height="16" rx="3" fill="#bd85fb" /><rect x="27" y="3" width="16" height="16" rx="3" fill="#fdfaff" /><rect x="15" y="27" width="16" height="16" rx="3" fill="#dcc2ff" /><path d="M19 11 H27 M35 19 V23 H23 V27" /></svg>
+            <span style="font: 800 34px/1 'Geist'; letter-spacing: -0.02em">GitDiagram</span>
+            <span class="mono" style="font: 500 24px/1 'Geist Mono'; color: var(--ink-2); margin-left: 8px">gitdiagram.com</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CHROME ================= -->
+
+      <div id="note">
+        <div id="note-inner">
+          <div class="face" id="note-front">
+            <div class="serif" style="font-size: 420px; line-height: 0.8">?</div>
+            <div>
+              <div class="mono" style="font: 700 44px/1 'Geist Mono'; letter-spacing: 0.1em; text-transform: uppercase">the one idea</div>
+              <div class="serif it" style="font-size: 120px; line-height: 1; margin-top: 18px">revealed soon</div>
+            </div>
+          </div>
+          <div class="face" id="note-back">
+            <div class="mono" style="font: 700 30px/1 'Geist Mono'; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2)">the one idea</div>
+            <div class="serif" style="font-size: 128px; line-height: 1.02; letter-spacing: -0.02em; margin-top: 26px; position: relative">
+              The model <span class="it" style="color: var(--purple-deep); position: relative; display: inline-block">never<svg class="abs" style="left: -6px; top: 118px" width="250" height="30" viewBox="0 0 250 30"><path id="never-underline" pathLength="1" d="M4 18 C 60 6, 150 26, 246 10" fill="none" stroke="#7a2be0" stroke-width="7" stroke-linecap="round" style="stroke-dasharray: 1; stroke-dashoffset: 1" /></svg></span> writes the diagram.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="brand">
+        <svg width="38" height="38" viewBox="0 0 46 46" fill="none" stroke="#17111f" stroke-width="3.5"><rect x="3" y="3" width="16" height="16" rx="3" fill="#bd85fb" /><rect x="27" y="3" width="16" height="16" rx="3" fill="#fdfaff" /><rect x="15" y="27" width="16" height="16" rx="3" fill="#dcc2ff" /><path d="M19 11 H27 M35 19 V23 H23 V27" /></svg>
+        GitDiagram <span>· how it works</span>
+      </div>
+
+      <div id="rail">
+        <div id="rail-base" class="abs"></div>
+        <div id="rail-prog" class="abs"></div>
+      </div>
+    </div>
+
+    <script>
+      function build() {
+        const T = window.TIMING;
+        const C = T.CUES;
+        const W = (word, n = 0) => {
+          const hits = T.WORDS.filter((x) => x.w === word);
+          if (!hits[n]) throw new Error("missing word " + word + "#" + n);
+          return hits[n].s;
+        };
+        const Wat = (word, n, offset) => {
+          const idx = T.WORDS.findIndex((x, i) => x.w === word && T.WORDS.slice(0, i).filter((y) => y.w === word).length === n);
+          return T.WORDS[idx + offset].s;
+        };
+        const $ = (s) => document.querySelector(s);
+        const $$ = (s) => Array.from(document.querySelectorAll(s));
+        const NS = "http://www.w3.org/2000/svg";
+        const INK = "#17111f";
+        const SFX = [];
+        window.__SFX = SFX;
+        const sfx = (name, t, gain = 0) => SFX.push({ name, t: Number(t.toFixed(3)), gain });
+
+        // ---------- small builders (run once, before any tween) ----------
+        function edge(svgSel, pts, opts = {}) {
+          const svg = $(svgSel);
+          const color = opts.color || INK;
+          const p = document.createElementNS(NS, "path");
+          p.setAttribute("d", "M" + pts.map((q) => q.join(",")).join(" L"));
+          p.setAttribute("fill", "none");
+          p.setAttribute("stroke", color);
+          p.setAttribute("stroke-width", opts.width || 3.5);
+          p.setAttribute("stroke-linecap", "round");
+          p.setAttribute("stroke-linejoin", "round");
+          p.setAttribute("pathLength", "1");
+          if (opts.dashed) {
+            p.style.strokeDasharray = "0.035 0.03";
+            p.style.opacity = 0;
+          } else {
+            p.style.strokeDasharray = "1";
+            p.style.strokeDashoffset = "1";
+          }
+          svg.appendChild(p);
+          let h = null;
+          if (opts.head !== false) {
+            const [a, b] = pts.slice(-2);
+            const ang = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+            h = document.createElementNS(NS, "path");
+            h.setAttribute("d", "M -13 -8.5 L 1 0 L -13 8.5 Z");
+            h.setAttribute("fill", color);
+            h.setAttribute("transform", `translate(${b[0]},${b[1]}) rotate(${ang})`);
+            h.style.opacity = 0;
+            svg.appendChild(h);
+          }
+          let label = null;
+          if (opts.label) {
+            const [lx, ly] = opts.labelAt;
+            label = document.createElementNS(NS, "text");
+            label.setAttribute("x", lx);
+            label.setAttribute("y", ly);
+            label.setAttribute("font-family", "Geist Mono");
+            label.setAttribute("font-size", "20");
+            label.setAttribute("font-weight", "600");
+            label.setAttribute("fill", "#4e4463");
+            label.setAttribute("text-anchor", opts.anchor || "middle");
+            label.textContent = opts.label;
+            label.style.opacity = 0;
+            svg.appendChild(label);
+          }
+          return { p, h, label, dashed: !!opts.dashed };
+        }
+        function lines(sel, arr, cls) {
+          const box = $(sel);
+          box.innerHTML = arr.map((l) => `<span class="ln ${cls || ""}">${l}</span>`).join("");
+          return Array.from(box.children);
+        }
+        function splitWords(sel) {
+          const el = $(sel);
+          const words = el.textContent.trim().split(/\s+/);
+          el.textContent = "";
+          return words.map((w, i) => {
+            const s = document.createElement("span");
+            s.textContent = w + (i < words.length - 1 ? " " : "");
+            el.appendChild(s);
+            return s;
+          });
+        }
+        const check = (color = "#0f7a48") =>
+          `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11 L9 16 L18 6"/></svg>`;
+
+        // SSE chips
+        const sseEvents = [
+          ["started", ""],
+          ["explanation", ""],
+          ["explanation_chunk", ""],
+          ["explanation_chunk", ""],
+          ["graph", ""],
+          ["diagram_compiling", ""],
+          ["complete", "done"],
+        ];
+        $("#sse-chips").innerHTML = sseEvents
+          .map(
+            ([s, k]) =>
+              `<div class="sse-chip" style="height:64px;margin-bottom:14px;border:3px solid ${INK};border-radius:12px;background:${k ? "#cff2de" : "#fdfaff"};display:flex;align-items:center;padding:0 16px;font:500 20px/1 'Geist Mono';white-space:nowrap;box-shadow:3px 3px 0 ${INK}"><span style="color:#4e4463">data:&nbsp;</span>{"status":"<b style="font-weight:700;color:${k ? "#0f7a48" : "#7a2be0"}">${s}</b>"}</div>`,
+          )
+          .join("");
+
+        // repo tree (scene 3)
+        const treeRows = [
+          ["README.md", "readme"],
+          ["package.json", ""],
+          ["next.config.js", ""],
+          ["src/app/[username]/[repo]/page.tsx", "pick"],
+          ["src/app/api/generate/stream/route.ts", "pick"],
+          ["src/server/generate/github.ts", "pick"],
+          ["src/server/generate/repository-context.ts", "pick"],
+          ["src/server/generate/source-context.ts", "pick"],
+          ["src/server/generate/graph-planner.ts", "pick"],
+          ["src/server/generate/graph.ts", "pick"],
+          ["src/server/generate/openai.ts", "pick"],
+          ["src/server/storage/artifact-store.ts", "pick"],
+          ["src/features/diagram/mermaid-security.ts", "pick"],
+          ["src/components/mermaid-diagram.tsx", "pick"],
+          ["src/hooks/useDiagram.ts", "pick"],
+          ["public/favicon.ico", ""],
+        ];
+        const treeEls = lines("#tree-lines", treeRows.map((r) => r[0]));
+        $("#tree-hls").innerHTML = treeRows
+          .map((r, i) =>
+            r[1]
+              ? `<div class="hl tree-hl" data-kind="${r[1]}" style="left:0;top:${232 + i * 42 + 2}px;width:656px;height:38px"></div>`
+              : "",
+          )
+          .join("");
+        const gateRows = ["tree not truncated", "tree ≤ 780k chars", "README ≤ 750 KB"];
+        $("#gate-rows").innerHTML = gateRows
+          .map(
+            (r) =>
+              `<div class="gate-row" style="display:flex;align-items:center;gap:14px">${check("#17111f")}<span>${r}</span></div>`,
+          )
+          .join("");
+
+        // repo tree (scene 7)
+        const rtree = [
+          "src/app/api/generate/stream/route.ts",
+          "src/server/generate/github.ts",
+          "src/server/generate/graph-planner.ts",
+          "src/server/generate/graph.ts",
+          "src/server/generate/openai.ts",
+          "src/hooks/useDiagram.ts",
+          "… 180 more files · no src/lib/",
+        ];
+        lines("#rtree-lines", rtree);
+        $("#rtree-hls").innerHTML = [0, 2, 3]
+          .map((i) => `<div class="hl rtree-hl" style="left:0;top:${282 + i * 56 + 6}px;width:676px;height:46px;background:#cff2de"></div>`)
+          .join("");
+
+        // browser filters (scene 9)
+        const filters = [
+          ["1", "strip %%{config}%% + non-GitHub clicks"],
+          ["2", "mermaid · securityLevel: antiscript"],
+          ["3", "DOMPurify.sanitize(svg)"],
+          ["4", "hrefs → https://github.com only"],
+        ];
+        $("#filters").innerHTML = filters
+          .map(
+            ([n, t]) =>
+              `<div class="filter" style="position:relative;height:62px;margin-bottom:16px;border:3px solid ${INK};border-radius:12px;background:#fdfaff;display:flex;align-items:center;gap:16px;padding:0 16px;font:500 22px/1 'Geist Mono';white-space:nowrap"><span style="width:34px;height:34px;border-radius:50%;background:#e6d5ff;border:3px solid ${INK};display:flex;align-items:center;justify-content:center;font:800 17px/1 'Geist Mono'">${n}</span>${t}<span class="fcheck" style="margin-left:auto;display:flex;opacity:0">${check()}</span></div>`,
+          )
+          .join("");
+
+        // start-here files (scene 10)
+        const files = ["graph.ts", "graph-planner.ts", "github.ts", "openai.ts", "repository-context.ts"];
+        $("#files").innerHTML = files
+          .map(
+            (f) =>
+              `<div class="fchip" style="border:3px solid ${INK};border-radius:10px;background:#fdfaff;box-shadow:3px 3px 0 ${INK};padding:10px 16px;font:500 22px/1 'Geist Mono'">${f}</div>`,
+          )
+          .join("");
+
+        // rail
+        const railNames = ["Route", "Ingest", "Model", "Validate", "Compile", "Browser", "R2"];
+        const railX = railNames.map((_, i) => 250 + (i * 1420) / (railNames.length - 1));
+        $("#rail").insertAdjacentHTML(
+          "beforeend",
+          railNames
+            .map(
+              (n, i) =>
+                `<div class="station" id="st-${i}" style="left:${railX[i] - 100}px"><i class="sdot" id="sd-${i}"></i><span class="slabel" id="sl-${i}">${n}</span></div>`,
+            )
+            .join(""),
+        );
+
+        // edges
+        const s1Edges = [
+          [[1120, 452], [1180, 452]],
+          [[1420, 452], [1480, 452]],
+          [[1300, 484], [1300, 580]],
+          [[1420, 612], [1480, 612]],
+          [[1600, 644], [1600, 740]],
+          [[1480, 772], [1420, 772]],
+          [[1180, 772], [1120, 772]],
+        ].map((pts) => edge("#s1-wires", pts, { width: 3 }));
+        const s2Edge = edge("#s2-wires", [[884, 428], [1236, 428]], { dashed: true, width: 4, color: "#7a2be0" });
+        const s3Edges = [
+          edge("#s3-wires", [[560, 275], [640, 275]]),
+        ];
+        const s4Edges = [edge("#s4-wires", [[708, 515], [770, 515], [770, 335], [818, 335]], { width: 4 })];
+        const s5Edges = [
+          edge("#s5-wires", [[1430, 312], [1470, 312]]),
+          edge("#s5-wires", [[1615, 354], [1615, 520]]),
+        ];
+        const s7Edges = {
+          ab: edge("#s7-wires", [[500, 302], [640, 302]]),
+          ad: edge("#s7-wires", [[330, 354], [330, 530]]),
+          bc: edge("#s7-wires", [[810, 354], [810, 530]]),
+          ce: edge("#s7-wires", [[810, 634], [810, 780]], { color: "#b3263a" }),
+        };
+        const s8Edges = [
+          edge("#s8-wires", [[548, 490], [610, 490]], { width: 4 }),
+          edge("#s8-wires", [[992, 490], [1060, 490]], { width: 4 }),
+          edge("#s8-wires", [[480, 244], [700, 244], [700, 380]], { color: "#b3263a", width: 4 }),
+        ];
+        const s9Edges = [
+          edge("#s9-wires", [[435, 735], [480, 735]]),
+          edge("#s9-wires", [[710, 735], [755, 735]]),
+        ];
+        const fEdges = [
+          edge("#s10-wires", [[1160, 238], [1160, 290]]),
+          edge("#s10-wires", [[1320, 334], [1605, 334], [1605, 408]], { dashed: true, color: "#7a2be0", width: 4 }),
+          edge("#s10-wires", [[1605, 496], [1605, 554], [1320, 554]], { dashed: true, color: "#7a2be0", width: 4 }),
+          edge("#s10-wires", [[1160, 598], [1160, 650]]),
+          edge("#s10-wires", [[1160, 738], [1160, 790]]),
+          edge("#s10-wires", [[1320, 694], [1445, 694]]),
+        ];
+
+        const proseWords = splitWords("#prose-text");
+
+        // ---------- timeline ----------
+        const tl = gsap.timeline({ paused: true });
+        const DUR = T.DURATION;
+
+        function draw(e, t, d = 0.45) {
+          if (e.dashed) {
+            tl.fromTo(e.p, { opacity: 0 }, { opacity: 1, duration: d, ease: "power1.out" }, t);
+            tl.fromTo(e.p, { strokeDashoffset: 0 }, { strokeDashoffset: -0.65, duration: Math.max(0.5, DUR - t), ease: "none" }, t);
+          } else {
+            tl.fromTo(e.p, { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: d, ease: "power2.inOut" }, t);
+          }
+          if (e.h) tl.fromTo(e.h, { opacity: 0 }, { opacity: 1, duration: 0.12 }, t + d - 0.1);
+          if (e.label) tl.fromTo(e.label, { opacity: 0 }, { opacity: 1, duration: 0.3 }, t + d * 0.6);
+        }
+        function type(el, t, d) {
+          const n = Math.max(1, (el.textContent || "").length);
+          tl.fromTo(el, { clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)", duration: d, ease: `steps(${n})` }, t);
+        }
+        function pop(el, t, opts = {}) {
+          tl.fromTo(
+            el,
+            { opacity: 0, scale: opts.from ?? 0.6, y: opts.y ?? 0, rotation: opts.rot0 ?? 0 },
+            { opacity: 1, scale: 1, y: 0, rotation: opts.rot ?? 0, duration: opts.d ?? 0.42, ease: opts.ease ?? "back.out(1.8)" },
+            t,
+          );
+        }
+        function rise(el, t, opts = {}) {
+          tl.fromTo(
+            el,
+            { opacity: 0, y: opts.y ?? 36, x: opts.x ?? 0 },
+            { opacity: 1, y: 0, x: 0, duration: opts.d ?? 0.55, ease: opts.ease ?? "power3.out" },
+            t,
+          );
+        }
+        function fadeOut(el, t, d = 0.3) {
+          tl.to(el, { opacity: 0, duration: d, ease: "power1.in" }, t);
+        }
+        function scene(id, tIn, tOut, opts = {}) {
+          const el = $(id);
+          const inner = el.querySelector(".inner");
+          tl.set(el, { visibility: "visible" }, tIn);
+          tl.fromTo(inner, { opacity: 0 }, { opacity: 1, duration: opts.inDur ?? 0.4, ease: "power2.out" }, tIn);
+          tl.fromTo(inner, { scale: 1 }, { scale: 1.018, duration: tOut - tIn, ease: "none" }, tIn);
+          if (tOut < DUR) {
+            tl.to(inner, { opacity: 0, x: opts.dx ?? -60, duration: opts.outDur ?? 0.4, ease: "power2.in" }, tOut - (opts.outDur ?? 0.4));
+            tl.set(el, { visibility: "hidden" }, tOut);
+          }
+        }
+
+        // ---------- ambient ----------
+        tl.fromTo("#bg-grid", { x: 0, y: 0 }, { x: -40, y: -40, duration: DUR, ease: "none" }, 0);
+        tl.fromTo("#bg-glow", { scale: 1, opacity: 0.85 }, { scale: 1.12, opacity: 1, duration: 5.5, ease: "sine.inOut", yoyo: true, repeat: Math.max(0, Math.floor(DUR / 5.5) - 1) }, 0);
+        tl.fromTo("#bg-glow-2", { x: 0 }, { x: 120, duration: 8, ease: "sine.inOut", yoyo: true, repeat: Math.max(0, Math.floor(DUR / 8) - 1) }, 0);
+        rise("#brand", 0.35, { y: -16, d: 0.6 });
+        fadeOut("#brand", C.close - 0.1, 0.4);
+
+        // ======== S1 · HOOK ========
+        const s1Out = C.app - 0.05;
+        scene("#s1", 0, s1Out, { dx: -80 });
+        tl.fromTo("#head-path", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.7, ease: "power2.inOut" }, 0.45);
+        tl.fromTo("#head-fill", { opacity: 0 }, { opacity: 1, duration: 0.9, ease: "power1.out" }, 1.2);
+        $$(".tangle-edge").forEach((e, i) => {
+          e.style.strokeDasharray = "1";
+          tl.fromTo(e, { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.7, ease: "power1.inOut" }, W("map") - 0.1 + i * 0.13);
+        });
+        const dots = $$(".tdot");
+        dots.forEach((d, i) => pop(d, W("map") - 0.15 + i * 0.1, { from: 0, ease: "back.out(3)" }));
+        sfx("tick", W("map") - 0.12, -14);
+        sfx("tick", W("map") + 0.25, -17);
+        sfx("tick", W("map") + 0.6, -17);
+        tl.to(dots, { scale: 1.35, duration: 0.18, yoyo: true, repeat: 1, ease: "sine.inOut", stagger: 0.03 }, W("head") - 0.05);
+
+        tl.fromTo("#head-wrap", { x: 540 }, { x: 0, duration: 0.9, ease: "power3.inOut" }, C.draw - 0.45);
+        rise("#url", C.draw - 0.15, { y: 30, d: 0.5 });
+        sfx("paper", C.draw - 0.2, -18);
+        type($("#url-text"), C.draw + 0.2, 1.05);
+        sfx("typing", C.draw + 0.15, -13);
+        tl.set("#url-text", { clipPath: "none" }, C.draw + 1.3);
+        const tSwap = W("link") - 0.2;
+        const chw = $("#url-hub").getBoundingClientRect().width / 3;
+        tl.fromTo("#url-diagram", { opacity: 0, y: -30 }, { opacity: 1, y: 0, duration: 0.36, ease: "back.out(1.7)" }, tSwap + 0.24);
+        tl.to("#url-hub", { opacity: 0, y: 30, duration: 0.24, ease: "power2.in" }, tSwap);
+        tl.fromTo("#url-rest", { x: 0 }, { x: 4 * chw, duration: 0.34, ease: "power3.inOut" }, tSwap);
+        sfx("blip", tSwap + 0.24, -7);
+        tl.to("#url-go", { x: 4, y: 4, boxShadow: `0px 0px 0 ${INK}`, duration: 0.09, yoyo: true, repeat: 1, ease: "power1.inOut" }, tSwap + 0.6);
+        sfx("tick", tSwap + 0.6, -8);
+
+        const cleanNodes = $$(".cnode");
+        const cleanPos = cleanNodes.map((n) => [parseFloat(n.style.left) + 120, parseFloat(n.style.top) + 32]);
+        const dotPos = dots.map((d) => [parseFloat(d.style.left) + 12, parseFloat(d.style.top) + 12]);
+        const tFly = tSwap + 0.72;
+        tl.to(".tangle-edge", { opacity: 0, duration: 0.3 }, tFly);
+        tl.to("#head-g", { opacity: 0.25, duration: 0.6 }, tFly + 0.1);
+        dots.forEach((d, i) => {
+          const tt = tFly + i * 0.045;
+          tl.to(d, { x: cleanPos[i][0] - dotPos[i][0], y: cleanPos[i][1] - dotPos[i][1], duration: 0.75, ease: "power3.inOut" }, tt);
+          tl.to(d, { opacity: 0, scale: 2.6, duration: 0.18, ease: "power1.out" }, tt + 0.68);
+          pop(cleanNodes[i], tt + 0.64, { from: 0.4 });
+        });
+        sfx("whoosh", tFly - 0.05, -9);
+        sfx("pop", tFly + 0.7, -7);
+        s1Edges.forEach((e, i) => draw(e, tFly + 0.95 + i * 0.07, 0.3));
+
+        const tIdea = W("idea") + 0.1;
+        tl.to("#head-g", { opacity: 0.12, duration: 0.4 }, tIdea - 0.2);
+        tl.fromTo("#note", { x: -520, y: 170, scale: 0.12, rotation: -12, opacity: 0 }, { x: -520, y: 170, scale: 0.34, rotation: -4, opacity: 1, duration: 0.6, ease: "back.out(1.6)" }, tIdea);
+        sfx("paper", tIdea - 0.05, -10);
+        tl.to("#note", { x: 752, y: -448, scale: 0.15, rotation: 4, duration: 0.85, ease: "power3.inOut" }, C.app - 0.45);
+        sfx("whoosh", C.app - 0.45, -12);
+
+        // ======== RAIL ========
+        tl.fromTo("#rail-base", { scaleX: 0, transformOrigin: "left center" }, { scaleX: 1, duration: 0.8, ease: "power3.inOut" }, C.app - 0.1);
+        tl.fromTo("#rail-prog", { scaleX: 0 }, { scaleX: 0, duration: 0.01 }, 0);
+        railNames.forEach((_, i) => {
+          rise(`#st-${i}`, C.app + 0.05 + i * 0.06, { y: 16, d: 0.45 });
+        });
+        const railT = [C.app, C.ingest, C.call, C.validate, C.compile, C.browser, C.cache];
+        railT.forEach((t, i) => {
+          const tt = i === 0 ? t + 0.5 : t;
+          tl.to("#rail-prog", { scaleX: i / (railNames.length - 1), duration: 0.6, ease: "power3.inOut" }, tt);
+          tl.to(`#sd-${i}`, { backgroundColor: "#bd85fb", scale: 1.35, duration: 0.3, ease: "back.out(2)" }, tt + 0.25);
+          tl.to(`#sl-${i}`, { color: INK, duration: 0.3 }, tt + 0.25);
+          if (i > 0) tl.to(`#sd-${i - 1}`, { backgroundColor: INK, scale: 1, duration: 0.3 }, tt + 0.25);
+        });
+
+        // ======== S2 · ONE APP, ONE ROUTE ========
+        const s2In = C.app - 0.2;
+        const s2Out = C.ingest + 0.05;
+        scene("#s2", s2In, s2Out);
+        rise("#app", s2In + 0.05, { y: 40 });
+        $$("#app-tree .ln").forEach((l, i) => rise(l, s2In + 0.3 + i * 0.07, { x: -24, y: 0, d: 0.4 }));
+        pop("#b-next", W("next.js") - 0.05);
+        pop("#b-react", W("next.js") + 0.12);
+        pop("#b-bun", W("next.js") + 0.26);
+        sfx("pop", W("next.js") - 0.03, -9);
+        tl.fromTo("#route-hl", { scaleX: 0, opacity: 1 }, { scaleX: 1, duration: 0.45, ease: "power3.out" }, W("route") - 0.1);
+        sfx("tick", W("route") - 0.08, -8);
+        rise("#route-pill", W("route") + 0.15, { y: 20, d: 0.45 });
+        rise("#sse", s2In + 0.35, { x: 60, y: 0 });
+        draw(s2Edge, W("route") + 0.3, 0.4);
+        $$(".sse-chip").forEach((c, i) => {
+          rise(c, W("route") + 0.45 + i * 0.12, { x: -30, y: 0, d: 0.3, ease: "power2.out" });
+          if (i % 2 === 0) sfx("blip", W("route") + 0.45 + i * 0.12, -17);
+        });
+
+        // ======== S3 · INGEST ========
+        const s3In = C.ingest - 0.1;
+        const s3Out = C.call + 0.05;
+        scene("#s3", s3In, s3Out);
+        sfx("whoosh", s3In - 0.1, -13);
+        rise("#gh", s3In + 0.05, { x: -40, y: 0 });
+        rise("#tree", s3In + 0.2, { y: 40 });
+        draw(s3Edges[0], s3In + 0.35, 0.3);
+        rise("#gh-api", s3In + 0.4, { y: 10, d: 0.4 });
+        treeEls.forEach((l, i) => rise(l, s3In + 0.45 + i * 0.045, { x: -16, y: 0, d: 0.3, ease: "power2.out" }));
+        const treeHls = $$(".tree-hl");
+        tl.fromTo(treeHls[0], { scaleX: 0 }, { scaleX: 1, duration: 0.35, ease: "power3.out" }, W("readme") - 0.05);
+        sfx("tick", W("readme") - 0.05, -12);
+        rise("#gate", C.reject - 0.15, { x: 50, y: 0 });
+        $$(".gate-row").forEach((r, i) => rise(r, C.reject + 0.15 + i * 0.12, { x: -14, y: 0, d: 0.3 }));
+        rise("#huge", W("oversized") + 0.2, { x: 140, y: 0, d: 0.55, ease: "power3.out" });
+        sfx("paper", W("oversized") + 0.15, -13);
+        tl.fromTo("#stamp", { opacity: 0, scale: 1.8, rotation: -14 }, { opacity: 1, scale: 1, rotation: -8, duration: 0.22, ease: "power4.in" }, W("oversized") + 0.9);
+        tl.to("#huge", { x: 6, duration: 0.05, yoyo: true, repeat: 3 }, W("oversized") + 1.12);
+        sfx("stamp", W("oversized") + 1.06, -2);
+        sfx("reject", W("oversized") + 1.08, -8);
+        pop("#zero-tokens", W("token") - 0.05, { y: 16 });
+        const tSample = C.sample - 0.1;
+        tl.to(["#huge", "#stamp", "#zero-tokens"], { autoAlpha: 0, y: 60, duration: 0.35, ease: "power2.in" }, tSample);
+        rise("#budget", tSample + 0.3, { y: 40 });
+        const picks = treeHls.filter((h) => h.dataset.kind === "pick");
+        const tPick = W("twelve") - 0.05;
+        tl.to(treeHls[0], { opacity: 0.35, duration: 0.3 }, tPick - 0.1);
+        picks.forEach((h, i) => {
+          tl.fromTo(h, { scaleX: 0 }, { scaleX: 1, duration: 0.22, ease: "power2.out" }, tPick + i * 0.075);
+          if (i % 3 === 0) sfx("tick", tPick + i * 0.075, -17);
+        });
+        tl.fromTo("#budget-bar", { scaleX: 0 }, { scaleX: 1, duration: 1.1, ease: "power2.inOut" }, tPick + 0.2);
+        tl.fromTo("#budget-n", { opacity: 0.25 }, { opacity: 1, duration: 0.4 }, tPick + 0.8);
+
+        // ======== S4 · ONE MODEL CALL ========
+        const s4In = C.call - 0.1;
+        const s4Out = C.graph + 0.1;
+        scene("#s4", s4In, s4Out, { dx: 0 });
+        sfx("whoosh", s4In - 0.1, -13);
+        ["#ev-0", "#ev-1", "#ev-2"].forEach((e, i) => {
+          rise(e, s4In + 0.05 + i * 0.08, { x: -40, y: 0, d: 0.4 });
+          tl.to(e, { x: 470 - 120 + 115 - 150, y: 515 - (372 + i * 120), scale: 0.25, opacity: 0, duration: 0.5, ease: "power3.in" }, W("call") - 0.35 + i * 0.07);
+        });
+        pop("#model", s4In + 0.2, { from: 0.5 });
+        tl.to("#model", { scale: 1.12, duration: 0.14, yoyo: true, repeat: 1, ease: "power2.out" }, W("call") + 0.2);
+        sfx("pop", W("call") + 0.18, -6);
+        tl.fromTo("#model-spark", { rotation: 0 }, { rotation: 360, duration: s4Out - s4In, ease: "none", transformOrigin: "50% 50%" }, s4In);
+        rise("#model-label", W("call") + 0.1, { y: 16, d: 0.45 });
+        rise("#raw", C.stream - 0.35, { x: 50, y: 0 });
+        draw(s4Edges[0], C.stream - 0.2, 0.35);
+        const rawLines = $$("#raw-lines .ln");
+        rawLines.slice(0, 4).forEach((l, i) => type(l, C.stream + 0.15 + i * 0.5, 0.5));
+        sfx("typing", C.stream + 0.15, -14);
+        rise("#prose", C.stream + 0.1, { y: 30 });
+        rise("#decoder", C.stream + 0.4, { y: -12, d: 0.4 });
+        proseWords.forEach((w, i) => tl.fromTo(w, { opacity: 0 }, { opacity: 1, duration: 0.15 }, C.stream + 0.55 + i * 0.075));
+        type(rawLines[4], W("diagram") - 0.35, 0.55);
+        tl.fromTo("#raw-graph-hl", { scaleX: 0 }, { scaleX: 1, duration: 0.35, ease: "power3.out" }, W("diagram") + 0.1);
+        sfx("blip", W("diagram") + 0.1, -8);
+        tl.to(["#prose", "#prose-text", "#decoder"], { opacity: 0.35, duration: 0.4 }, W("diagram") + 0.1);
+
+        // ======== S5 · THE ANSWER IS A GRAPH ========
+        const s5In = C.graph - 0.05;
+        const s5Out = C.never + 0.3;
+        scene("#s5", s5In, s5Out, { inDur: 0.3 });
+        tl.fromTo("#json", { x: 700, y: 0, scale: 0.95 }, { x: 0, y: 0, scale: 1, duration: 0.6, ease: "power3.inOut" }, s5In);
+        $$("#json-lines .ln").forEach((l, i) => rise(l, s5In + 0.3 + i * 0.03, { y: 10, d: 0.25 }));
+        tl.fromTo("#json-hl-g", { scaleX: 0 }, { scaleX: 1, duration: 0.35, ease: "power3.out" }, W("groups") - 0.05);
+        pop("#g5", W("groups"), { from: 0.9, ease: "power3.out" });
+        sfx("pop", W("groups"), -10);
+        tl.to("#json-hl-g", { opacity: 0.25, duration: 0.3 }, W("nodes") - 0.05);
+        tl.fromTo("#json-hl-n", { scaleX: 0 }, { scaleX: 1, duration: 0.35, ease: "power3.out" }, W("nodes") - 0.05);
+        ["#n5-route", "#n5-planner", "#n5-compiler"].forEach((n, i) => pop(n, W("nodes") + i * 0.1));
+        sfx("pop", W("nodes"), -10);
+        tl.to("#json-hl-n", { opacity: 0.25, duration: 0.3 }, W("edges") - 0.05);
+        tl.fromTo("#json-hl-e", { scaleX: 0 }, { scaleX: 1, duration: 0.35, ease: "power3.out" }, W("edges") - 0.05);
+        s5Edges.forEach((e, i) => draw(e, W("edges") + i * 0.18, 0.3));
+        sfx("tick", W("edges"), -10);
+        rise("#g5-more", W("edges") + 0.5, { y: 10, d: 0.4 });
+        tl.fromTo("#zod", { opacity: 0, scale: 1.7, rotation: 2 }, { opacity: 1, scale: 1, rotation: -5, duration: 0.2, ease: "power4.in" }, W("json") - 0.1);
+        sfx("stamp", W("json") - 0.02, -5);
+
+        // ======== S6 · THE IDEA ========
+        const tN = C.never;
+        tl.to("#note", { x: 0, y: -20, scale: 1, rotation: 0, duration: 0.75, ease: "power3.inOut" }, tN - 0.1);
+        tl.fromTo("#note-inner", { rotationY: 0 }, { rotationY: 180, duration: 0.7, ease: "power2.inOut" }, tN + 0.55);
+        // Swap faces at the flip's midpoint so hidden-face text never counts as on screen.
+        tl.set("#note-back", { visibility: "visible" }, tN + 0.9);
+        tl.set("#note-front", { visibility: "hidden" }, tN + 0.9);
+        sfx("swell", tN - 1.9, -14);
+        sfx("whoosh", tN - 0.1, -9);
+        sfx("paper", tN + 0.6, -11);
+        tl.fromTo("#never-underline", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.5, ease: "power2.out" }, W("never") + 0.02);
+        sfx("tick", W("never") + 0.05, -10);
+        tl.to("#note", { x: 752, y: -448, scale: 0.15, rotation: 4, duration: 0.75, ease: "power3.inOut" }, C.validate - 0.35);
+        sfx("whoosh", C.validate - 0.35, -12);
+
+        // ======== S7 · VALIDATE ========
+        const s7In = C.validate - 0.1;
+        const s7Out = C.compile + 0.05;
+        scene("#s7", s7In, s7Out);
+        rise("#v-title", s7In + 0.1, { y: -14, d: 0.45 });
+        pop("#g7", s7In + 0.1, { from: 0.94, ease: "power3.out" });
+        ["#v-a", "#v-b", "#v-d", "#v-c"].forEach((n, i) => pop(n, s7In + 0.2 + i * 0.07));
+        draw(s7Edges.ab, s7In + 0.4, 0.3);
+        draw(s7Edges.ad, s7In + 0.45, 0.3);
+        draw(s7Edges.bc, s7In + 0.5, 0.3);
+        draw(s7Edges.ce, s7In + 0.55, 0.3);
+        pop("#v-e", s7In + 0.6, { from: 0.8 });
+        rise("#rtree", s7In + 0.3, { x: 60, y: 0 });
+        $$("#rtree-lines .ln").forEach((l, i) => rise(l, s7In + 0.5 + i * 0.05, { x: -12, y: 0, d: 0.3 }));
+        tl.fromTo("#v-scan", { x: 0, opacity: 0 }, { x: 900, opacity: 1, duration: 1.3, ease: "power1.inOut" }, W("validates") - 0.2);
+        tl.to("#v-scan", { opacity: 0, duration: 0.2 }, W("validates") + 1.05);
+        const tEdge = W("edge");
+        [["#vb-ab", 0], ["#vb-ad", 0.22], ["#vb-bc", 0.44]].forEach(([b, d]) => {
+          pop(b, tEdge + d, { from: 0.2, ease: "back.out(3)" });
+          sfx("tick", tEdge + d, -13);
+        });
+        const tBad = W("nodes", 1) - 0.1;
+        pop("#vb-ce", tBad, { from: 0.2, ease: "back.out(3)" });
+        tl.to("#v-e", { x: 8, duration: 0.05, yoyo: true, repeat: 5, ease: "none" }, tBad + 0.05);
+        rise("#v-err", tBad + 0.15, { x: -16, y: 0, d: 0.35 });
+        sfx("reject", tBad, -4);
+        const rtreeHls = $$(".rtree-hl");
+        const tPath = W("path");
+        [
+          ["#v-a-p", 0, 0],
+          ["#v-b-p", 1, 0.28],
+          ["#v-c-p", 2, 0.56],
+        ].forEach(([p, row, d]) => {
+          tl.to(p, { color: "#0f7a48", duration: 0.2 }, tPath + d);
+          tl.fromTo(rtreeHls[row], { scaleX: 0 }, { scaleX: 1, duration: 0.25, ease: "power2.out" }, tPath + d);
+          sfx("tick", tPath + d, -14);
+        });
+        const tMiss = W("repo") - 0.1;
+        tl.to("#v-d-p", { color: "#b3263a", duration: 0.2 }, tMiss);
+        tl.fromTo("#v-strike", { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power2.out" }, tMiss + 0.2);
+        tl.to("#v-d-p", { opacity: 0.3, duration: 0.4 }, tMiss + 0.55);
+        tl.to("#v-strike", { opacity: 0.3, duration: 0.4 }, tMiss + 0.55);
+        rise("#v-dropped", tMiss + 0.5, { y: 12, d: 0.4 });
+        sfx("reject", tMiss, -12);
+        sfx("paper", tMiss + 0.45, -16);
+        const tRetry = C.retry - 0.05;
+        tl.to("#rtree", { x: 760, autoAlpha: 0, duration: 0.4, ease: "power2.in" }, tRetry);
+        tl.to("#rtree-lines, #rtree-hls", { x: 760, autoAlpha: 0, duration: 0.4, ease: "power2.in" }, tRetry);
+        rise("#retry", tRetry + 0.3, { x: 80, y: 0 });
+        pop("#r-model", tRetry + 0.5, { from: 0.5 });
+        rise("#r-attempt-l", tRetry + 0.6, { y: 10, d: 0.3 });
+        pop("#r-pips", tRetry + 0.65, { from: 0.8 });
+        tl.to("#v-err", { autoAlpha: 0, duration: 0.25 }, W("feedback") - 0.2);
+        tl.fromTo("#v-fb", { opacity: 0, x: 0, y: 0, scale: 1 }, { opacity: 1, duration: 0.2 }, W("feedback") - 0.2);
+        tl.to("#v-fb", { x: 1235 - 164 - 150, y: 455 - 824, scale: 0.6, duration: 0.6, ease: "power3.inOut" }, W("feedback") - 0.05);
+        tl.to("#v-fb", { autoAlpha: 0, duration: 0.15 }, W("feedback") + 0.5);
+        sfx("whoosh", W("feedback") - 0.1, -12);
+        tl.to("#r-model", { scale: 1.14, duration: 0.14, yoyo: true, repeat: 1 }, W("feedback") + 0.5);
+        $$("#r-payload .ln").forEach((l, i) => rise(l, W("feedback") + 0.45 + i * 0.08, { x: -12, y: 0, d: 0.3 }));
+        sfx("pop", W("feedback") + 0.5, -9);
+        const tFix = W("three") + 0.05;
+        tl.to("#pip-2", { backgroundColor: "#cff2de", scale: 1.15, duration: 0.25, ease: "back.out(2)" }, tFix);
+        tl.to("#pip-2", { scale: 1, duration: 0.2 }, tFix + 0.25);
+        tl.to(["#v-e", "#vb-ce", s7Edges.ce.p, s7Edges.ce.h], { autoAlpha: 0, duration: 0.35 }, tFix + 0.1);
+        pop("#v-valid", tFix + 0.35, { from: 0.6 });
+        sfx("check", tFix + 0.3, -6);
+
+        // ======== S8 · COMPILE ========
+        const s8In = C.compile - 0.1;
+        const s8Out = C.browser + 0.05;
+        scene("#s8", s8In, s8Out);
+        sfx("whoosh", s8In - 0.1, -13);
+        tl.fromTo("#g8", { opacity: 0, scale: 1.5, x: 200, y: -60 }, { opacity: 1, scale: 1, x: 0, y: 0, duration: 0.6, ease: "power3.inOut" }, s8In);
+        ["#n8-a", "#n8-b", "#n8-c"].forEach((n, i) => pop(n, s8In + 0.3 + i * 0.07, { from: 0.8 }));
+        pop("#c-valid", s8In + 0.5, { from: 0.7 });
+        pop("#compiler", s8In + 0.35, { from: 0.8 });
+        draw(s8Edges[0], s8In + 0.55, 0.25);
+        rise("#mmd", s8In + 0.3, { x: 60, y: 0 });
+        draw(s8Edges[1], C.compile + 0.4, 0.25);
+        const mmdLines = $$("#mmd-lines .ln");
+        mmdLines.slice(0, 8).forEach((l, i) => type(l, C.compile + 0.55 + i * 0.26, 0.24));
+        sfx("typing", C.compile + 0.55, -14);
+        const tEsc = W("escaping") - 0.25;
+        rise("#evil", tEsc - 0.35, { x: -30, y: 0, d: 0.35 });
+        draw(s8Edges[2], tEsc - 0.1, 0.3);
+        sfx("blip", tEsc - 0.3, -9);
+        tl.to("#evil", { x: 360, y: 250, scale: 0.4, autoAlpha: 0, duration: 0.45, ease: "power3.in" }, tEsc + 0.3);
+        tl.to([s8Edges[2].p, s8Edges[2].h], { opacity: 0, duration: 0.3 }, tEsc + 0.35);
+        tl.to("#compiler", { scale: 1.06, duration: 0.12, yoyo: true, repeat: 1 }, tEsc + 0.72);
+        type(mmdLines[9], tEsc + 0.8, 0.35);
+        type(mmdLines[10], tEsc + 1.15, 0.3);
+        tl.fromTo("#mmd-hl-evil", { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power2.out" }, tEsc + 0.8);
+        pop("#escaped-tag", tEsc + 1.35, { from: 0.6 });
+        sfx("tick", tEsc + 1.35, -9);
+        const tLink = W("linking") - 0.1;
+        type(mmdLines[12], tLink, 0.4);
+        type(mmdLines[13], tLink + 0.4, 0.35);
+        type(mmdLines[15], tLink + 0.8, 0.3);
+        tl.fromTo("#mmd-hl-gh", { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power2.out" }, W("github", 1) - 0.1);
+        pop("#links-only", W("github", 1) + 0.05, { from: 0.7 });
+        sfx("check", W("github", 1), -10);
+
+        // ======== S9 · BROWSER + CACHE ========
+        const s9In = C.browser - 0.1;
+        const s9Out = C.close + 0.05;
+        scene("#s9", s9In, s9Out);
+        sfx("whoosh", s9In - 0.1, -13);
+        rise("#browser", s9In + 0.05, { y: 40 });
+        const filterEls = $$(".filter");
+        filterEls.forEach((f, i) => rise(f, s9In + 0.25 + i * 0.06, { x: -20, y: 0, d: 0.3 }));
+        rise("#render", s9In + 0.3, { y: 0, d: 0.3 });
+        const tSan = W("sanitizes") - 0.15;
+        tl.fromTo("#mmd-chip", { opacity: 0, y: -30 }, { opacity: 1, y: 0, duration: 0.25 }, tSan - 0.25);
+        filterEls.forEach((f, i) => {
+          const tt = tSan + i * 0.3;
+          tl.to("#mmd-chip", { y: 82 + i * 78, duration: 0.26, ease: "power2.inOut" }, tt);
+          tl.to(f.querySelector(".fcheck"), { opacity: 1, duration: 0.15 }, tt + 0.2);
+          tl.to(f, { backgroundColor: "#cff2de", duration: 0.2 }, tt + 0.2);
+          sfx("tick", tt + 0.2, -12);
+        });
+        tl.to("#mmd-chip", { y: 470, opacity: 0, duration: 0.3, ease: "power2.in" }, tSan + 1.2);
+        ["#r-n1", "#r-n2", "#r-n3"].forEach((n, i) => pop(n, tSan + 1.35 + i * 0.08));
+        s9Edges.forEach((e, i) => draw(e, tSan + 1.5 + i * 0.1, 0.2));
+        rise("#r-ok", tSan + 1.6, { y: 10, d: 0.35 });
+        sfx("pop", tSan + 1.35, -9);
+        const tCache = W("cached") - 0.3;
+        rise("#bucket", s9In + 0.55, { y: 40, d: 0.5 });
+        tl.fromTo("#artifact", { opacity: 0, y: -40 }, { opacity: 1, y: 0, duration: 0.3 }, tCache + 0.1);
+        tl.to("#artifact", { y: 150, scale: 0.55, duration: 0.4, ease: "power3.in" }, tCache + 0.5);
+        tl.to("#artifact", { opacity: 0, duration: 0.12 }, tCache + 0.82);
+        sfx("pop", tCache + 0.85, -6);
+        rise("#k-pub", W("r2") - 0.05, { y: 16, d: 0.4 });
+        rise("#k-priv", W("r2") + 0.25, { y: 16, d: 0.4 });
+        rise("#visitor", W("visitor") - 0.25, { x: 60, y: 0, d: 0.45 });
+        tl.fromTo("#artifact", { opacity: 0, x: 0, y: 150, scale: 0.55 }, { opacity: 1, x: 280, y: 690, scale: 0.62, duration: 0.45, ease: "power3.out", immediateRender: false }, W("instantly") - 0.35);
+        pop("#zero-calls", W("instantly") - 0.05, { from: 0.6 });
+        rise("#served", W("instantly") + 0.1, { x: -12, y: 0, d: 0.35 });
+        sfx("blip", W("instantly") - 0.05, -5);
+
+        // ======== S10 · CLOSE ========
+        const s10In = C.close - 0.1;
+        scene("#s10", s10In, DUR);
+        tl.to("#note", { opacity: 0, scale: 0.08, duration: 0.4, ease: "power2.in" }, s10In);
+        // rail → diagram
+        tl.to(["#rail-base", "#rail-prog"], { opacity: 0, duration: 0.4 }, s10In + 0.1);
+        railNames.forEach((_, i) => tl.to(`#st-${i}`, { opacity: 0, y: -20, duration: 0.3 }, s10In + 0.15 + i * 0.03));
+        const finals = ["#f0", "#f1", "#f2", "#f3", "#f4", "#f5", "#f6"];
+        finals.forEach((f, i) => {
+          const el = $(f);
+          const cx = parseFloat(el.style.left) + 160;
+          const cy = parseFloat(el.style.top) + 44;
+          tl.fromTo(
+            el,
+            { x: railX[i] - cx, y: 994 - cy, scale: 0.22, opacity: 0 },
+            { x: 0, y: 0, scale: 1, opacity: 1, duration: 0.9, ease: "power3.inOut" },
+            s10In + 0.05 + i * 0.06,
+          );
+        });
+        sfx("swell", s10In - 0.4, -16);
+        sfx("whoosh", s10In + 0.3, -11);
+        pop("#fg-det", s10In + 1.1, { from: 0.96, ease: "power3.out" });
+        pop("#fg-prob", s10In + 1.2, { from: 0.96, ease: "power3.out" });
+        fEdges.forEach((e, i) => draw(e, s10In + 1.25 + i * 0.08, 0.3));
+        sfx("pop", s10In + 1.15, -10);
+        const hw = (id, t) => tl.fromTo(id, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, t);
+        hw("#hw-1", Wat("proposes", 0, -2) - 0.1);
+        hw("#hw-2", Wat("proposes", 0, -1) - 0.1);
+        hw("#hw-3", W("proposes") - 0.05);
+        tl.to("#f2", { scale: 1.08, duration: 0.18, yoyo: true, repeat: 1, ease: "power2.out" }, W("proposes"));
+        sfx("tick", W("proposes"), -11);
+        hw("#hw-4", W("code", 1) - 0.08);
+        hw("#hw-5", W("decides") - 0.05);
+        tl.to("#fg-det", { borderColor: "#7a2be0", backgroundColor: "rgba(189,133,251,0.28)", duration: 0.35 }, W("decides"));
+        ["#f0", "#f1", "#f3", "#f4", "#f5"].forEach((f, i) =>
+          tl.to(f, { scale: 1.06, duration: 0.16, yoyo: true, repeat: 1, ease: "power2.out" }, W("decides") + i * 0.05),
+        );
+        sfx("check", W("decides") + 0.02, -7);
+        rise("#start-l", C.start - 0.05, { y: 12, d: 0.4 });
+        rise("#folder", C.start + 0.05, { y: 24, d: 0.5 });
+        sfx("tick", C.start + 0.1, -10);
+        $$(".fchip").forEach((c, i) => rise(c, W("folder") - 0.1 + i * 0.07, { y: 18, d: 0.35 }));
+        sfx("paper", W("folder") - 0.1, -15);
+        rise("#signoff", T.SPEECH_END + 0.5, { y: 20, d: 0.6 });
+        sfx("resolve", T.SPEECH_END + 0.35, -6);
+
+        tl.to({}, { duration: 0.01 }, DUR - 0.01);
+        window.__timelines["main"] = tl;
+      }
+      // Build after fonts load so measured glyph widths (the URL swap) are real.
+      document.fonts.ready.then(build);
+    </script>
+  </body>
+</html>

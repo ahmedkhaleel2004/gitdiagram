@@ -1,0 +1,11 @@
+{
+  "name": "gitdiagram-v1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.8.69 preview",
+    "check": "npx --yes hyperframes@0.8.69 check",
+    "render": "npx --yes hyperframes@0.8.69 render",
+    "publish": "npx --yes hyperframes@0.8.69 publish"
+  }
+}

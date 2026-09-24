@@ -1,0 +1,11 @@
+{#hook}Every codebase has a map, usually trapped in someone's head. {#draw}GitDiagram draws it from nothing but a GitHub link. {#promise}And one idea explains the whole codebase.
+
+{#app}It's one Next.js app. {#route}A single streaming route runs everything. {#ingest}It pulls the file tree and README, {#reject}rejects oversized repos before spending a token, {#sample}and samples up to twelve key source files.
+
+{#call}Then, one model call. {#stream}The explanation streams in while the answer is still arriving. {#notdiagram}And that answer isn't a diagram. {#graph}It's a graph: groups, nodes and edges, in strict JSON.
+
+{#never}That's the idea. The model never writes the diagram. {#validate}Code validates it: every edge must connect real nodes, {#paths}every path must exist in the repo. {#retry}Broken structure goes back with feedback, up to three tries. {#compile}Then a deterministic compiler writes the Mermaid, {#escape}escaping every label and linking only to GitHub.
+
+{#browser}The browser sanitizes it again. {#cache}And it's cached in R2, {#instant}so the next visitor gets it instantly.
+
+{#close}So remember: the model proposes. {#decides}Code decides. {#start}Start reading in the generate folder.

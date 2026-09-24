@@ -46,6 +46,7 @@
     ".agents",
     ".claude",
     ".playwright-mcp",
+    "video-lab",
     "**/__pycache__"
   ]
 }

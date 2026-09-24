@@ -1,0 +1,373 @@
+{
+  "duration": 66.3,
+  "timeline_duration": 66.3,
+  "sfx_events": 72,
+  "measured_in": {
+    "I": "-18.64",
+    "TP": "-3.80"
+  },
+  "out": "/Users/ahmedkhaleel/repos/gitdiagram-explainer/video-lab/gitdiagram-v1/assets/audio/soundtrack.wav",
+  "ms": 5790,
+  "sfx": [
+    {
+      "name": "tick",
+      "t": 1.596,
+      "gain": -14
+    },
+    {
+      "name": "tick",
+      "t": 1.966,
+      "gain": -17
+    },
+    {
+      "name": "tick",
+      "t": 2.316,
+      "gain": -17
+    },
+    {
+      "name": "paper",
+      "t": 4.226,
+      "gain": -18
+    },
+    {
+      "name": "typing",
+      "t": 4.576,
+      "gain": -13
+    },
+    {
+      "name": "blip",
+      "t": 6.492,
+      "gain": -7
+    },
+    {
+      "name": "tick",
+      "t": 6.852,
+      "gain": -8
+    },
+    {
+      "name": "whoosh",
+      "t": 6.922,
+      "gain": -9
+    },
+    {
+      "name": "pop",
+      "t": 7.672,
+      "gain": -7
+    },
+    {
+      "name": "paper",
+      "t": 7.504,
+      "gain": -10
+    },
+    {
+      "name": "whoosh",
+      "t": 9.072,
+      "gain": -12
+    },
+    {
+      "name": "pop",
+      "t": 10.28,
+      "gain": -9
+    },
+    {
+      "name": "tick",
+      "t": 12.645,
+      "gain": -8
+    },
+    {
+      "name": "blip",
+      "t": 13.175,
+      "gain": -17
+    },
+    {
+      "name": "blip",
+      "t": 13.415,
+      "gain": -17
+    },
+    {
+      "name": "blip",
+      "t": 13.655,
+      "gain": -17
+    },
+    {
+      "name": "blip",
+      "t": 13.895,
+      "gain": -17
+    },
+    {
+      "name": "whoosh",
+      "t": 14.182,
+      "gain": -13
+    },
+    {
+      "name": "tick",
+      "t": 15.607,
+      "gain": -12
+    },
+    {
+      "name": "paper",
+      "t": 16.935,
+      "gain": -13
+    },
+    {
+      "name": "stamp",
+      "t": 17.845,
+      "gain": -2
+    },
+    {
+      "name": "reject",
+      "t": 17.865,
+      "gain": -8
+    },
+    {
+      "name": "tick",
+      "t": 19.943,
+      "gain": -17
+    },
+    {
+      "name": "tick",
+      "t": 20.168,
+      "gain": -17
+    },
+    {
+      "name": "tick",
+      "t": 20.393,
+      "gain": -17
+    },
+    {
+      "name": "tick",
+      "t": 20.618,
+      "gain": -17
+    },
+    {
+      "name": "whoosh",
+      "t": 21.46,
+      "gain": -13
+    },
+    {
+      "name": "pop",
+      "t": 23.395,
+      "gain": -6
+    },
+    {
+      "name": "typing",
+      "t": 23.81,
+      "gain": -14
+    },
+    {
+      "name": "blip",
+      "t": 28.171,
+      "gain": -8
+    },
+    {
+      "name": "pop",
+      "t": 29.724,
+      "gain": -10
+    },
+    {
+      "name": "pop",
+      "t": 30.307,
+      "gain": -10
+    },
+    {
+      "name": "tick",
+      "t": 30.793,
+      "gain": -10
+    },
+    {
+      "name": "stamp",
+      "t": 31.898,
+      "gain": -5
+    },
+    {
+      "name": "swell",
+      "t": 30.9,
+      "gain": -14
+    },
+    {
+      "name": "whoosh",
+      "t": 32.7,
+      "gain": -9
+    },
+    {
+      "name": "paper",
+      "t": 33.4,
+      "gain": -11
+    },
+    {
+      "name": "tick",
+      "t": 34.843,
+      "gain": -10
+    },
+    {
+      "name": "whoosh",
+      "t": 35.725,
+      "gain": -12
+    },
+    {
+      "name": "tick",
+      "t": 37.854,
+      "gain": -13
+    },
+    {
+      "name": "tick",
+      "t": 38.074,
+      "gain": -13
+    },
+    {
+      "name": "tick",
+      "t": 38.294,
+      "gain": -13
+    },
+    {
+      "name": "reject",
+      "t": 38.819,
+      "gain": -4
+    },
+    {
+      "name": "tick",
+      "t": 39.993,
+      "gain": -14
+    },
+    {
+      "name": "tick",
+      "t": 40.273,
+      "gain": -14
+    },
+    {
+      "name": "tick",
+      "t": 40.553,
+      "gain": -14
+    },
+    {
+      "name": "reject",
+      "t": 41.074,
+      "gain": -12
+    },
+    {
+      "name": "paper",
+      "t": 41.524,
+      "gain": -16
+    },
+    {
+      "name": "whoosh",
+      "t": 43.217,
+      "gain": -12
+    },
+    {
+      "name": "pop",
+      "t": 43.817,
+      "gain": -9
+    },
+    {
+      "name": "check",
+      "t": 44.402,
+      "gain": -6
+    },
+    {
+      "name": "whoosh",
+      "t": 44.667,
+      "gain": -13
+    },
+    {
+      "name": "typing",
+      "t": 45.417,
+      "gain": -14
+    },
+    {
+      "name": "blip",
+      "t": 47.253,
+      "gain": -9
+    },
+    {
+      "name": "tick",
+      "t": 48.903,
+      "gain": -9
+    },
+    {
+      "name": "check",
+      "t": 50.21,
+      "gain": -10
+    },
+    {
+      "name": "whoosh",
+      "t": 50.955,
+      "gain": -13
+    },
+    {
+      "name": "tick",
+      "t": 51.815,
+      "gain": -12
+    },
+    {
+      "name": "tick",
+      "t": 52.115,
+      "gain": -12
+    },
+    {
+      "name": "tick",
+      "t": 52.415,
+      "gain": -12
+    },
+    {
+      "name": "tick",
+      "t": 52.715,
+      "gain": -12
+    },
+    {
+      "name": "pop",
+      "t": 52.965,
+      "gain": -9
+    },
+    {
+      "name": "pop",
+      "t": 54.039,
+      "gain": -6
+    },
+    {
+      "name": "blip",
+      "t": 55.763,
+      "gain": -5
+    },
+    {
+      "name": "swell",
+      "t": 56.15,
+      "gain": -16
+    },
+    {
+      "name": "whoosh",
+      "t": 56.85,
+      "gain": -11
+    },
+    {
+      "name": "pop",
+      "t": 57.7,
+      "gain": -10
+    },
+    {
+      "name": "tick",
+      "t": 58.436,
+      "gain": -11
+    },
+    {
+      "name": "check",
+      "t": 59.652,
+      "gain": -7
+    },
+    {
+      "name": "tick",
+      "t": 60.364,
+      "gain": -10
+    },
+    {
+      "name": "paper",
+      "t": 61.603,
+      "gain": -15
+    },
+    {
+      "name": "resolve",
+      "t": 62.384,
+      "gain": -6
+    }
+  ]
+}
