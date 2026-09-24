@@ -115,9 +115,16 @@ const config = {
         source: "/video-engine/:path*",
         headers: [
           { key: "Content-Security-Policy", value: videoStagePolicy },
+          // Engine code changes with the app, so it always revalidates.
+          { key: "Cache-Control", value: "no-cache" },
+        ],
+      },
+      {
+        source: "/video-engine/assets/:path*",
+        headers: [
           {
             key: "Cache-Control",
-            value: "public, max-age=3600, stale-while-revalidate=86400",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
           },
         ],
       },

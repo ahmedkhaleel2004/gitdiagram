@@ -11,6 +11,11 @@ type StageMessage =
   | { type: "ready"; duration: number; sfx: SfxCue[] }
   | { type: "error"; message: string };
 
+// Bump with any change under public/video-engine so a browser never pairs a
+// new plan with an engine it cached earlier.
+const ENGINE_VERSION = "3";
+const STAGE_TIMEOUT_MS = 20_000;
+
 const formatTime = (seconds: number) => {
   const whole = Math.max(0, Math.floor(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
@@ -31,6 +36,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   const [playing, setPlaying] = useState(false);
   const [ended, setEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const duration = artifact.timing.DURATION;
 
   const seekStage = useCallback(
@@ -64,6 +70,10 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   // Hand the plan to the stage, then load the audio the stage says it needs.
   useEffect(() => {
     let cancelled = false;
+    // Never spin forever: a stage that neither loads nor reports an error fails.
+    const timeout = window.setTimeout(() => {
+      if (!cancelled) setError("The video took too long to load.");
+    }, STAGE_TIMEOUT_MS);
     const onMessage = (event: MessageEvent<StageMessage>) => {
       if (
         event.origin !== window.location.origin ||
@@ -96,23 +106,28 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
         mixer
           .load()
           .then(() => {
+            window.clearTimeout(timeout);
             if (!cancelled) setReady(true);
           })
           .catch(() => {
+            window.clearTimeout(timeout);
             if (!cancelled) setError("The narration could not be loaded.");
           });
       } else if (message.type === "error") {
+        window.clearTimeout(timeout);
+        console.error(`Explainer stage: ${message.message}`);
         setError("The video could not be drawn.");
       }
     };
     window.addEventListener("message", onMessage);
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
       window.removeEventListener("message", onMessage);
       audio.current?.dispose();
       audio.current = null;
     };
-  }, [artifact]);
+  }, [artifact, attempt]);
 
   // While playing, every frame seeks the stage to the audio clock.
   useEffect(() => {
@@ -154,6 +169,15 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
 
   const toggle = () => (playing ? pause() : void play());
 
+  // A fresh frame (new key) replays the whole stage handshake.
+  const retry = () => {
+    setError(null);
+    setReady(false);
+    setPlaying(false);
+    setEnded(false);
+    setAttempt((value) => value + 1);
+  };
+
   const scrub = (time: number) => {
     const mixer = audio.current;
     if (!mixer) return;
@@ -169,9 +193,10 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     <div>
       <div ref={wrapper} className={styles.player}>
         <iframe
+          key={attempt}
           ref={frame}
           className={styles.stage}
-          src="/video-engine/stage.html"
+          src={`/video-engine/stage.html?v=${ENGINE_VERSION}`}
           title={`${artifact.meta.owner}/${artifact.meta.repo} explainer video`}
           // Same-origin by design; the stage's own CSP (script files only,
           // no inline script, no network) is the boundary for model-written text.
@@ -179,28 +204,41 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
           tabIndex={-1}
           aria-hidden="true"
         />
-        <button
-          type="button"
-          className={styles.surface}
-          onClick={toggle}
-          disabled={!ready}
-          aria-label={playing ? "Pause explainer" : "Play explainer"}
-        >
-          {!playing &&
-            (ready ? (
-              <span className={styles.bigPlay}>
-                {ended ? (
-                  <RotateCcw size={30} />
-                ) : (
-                  <Play size={34} fill="currentColor" />
-                )}
-              </span>
-            ) : (
-              <span className={styles.loading}>
-                {error ?? "Loading video…"}
-              </span>
-            ))}
-        </button>
+        {error ? (
+          <div className={styles.surface} role="alert">
+            <span className={styles.loading}>
+              {error}{" "}
+              <button
+                type="button"
+                className={styles.metaButton}
+                onClick={retry}
+              >
+                Try again
+              </button>
+            </span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={styles.surface}
+            onClick={toggle}
+            disabled={!ready}
+            aria-label={playing ? "Pause explainer" : "Play explainer"}
+          >
+            {!playing &&
+              (ready ? (
+                <span className={styles.bigPlay}>
+                  {ended ? (
+                    <RotateCcw size={30} />
+                  ) : (
+                    <Play size={34} fill="currentColor" />
+                  )}
+                </span>
+              ) : (
+                <span className={styles.loading}>Loading video…</span>
+              ))}
+          </button>
+        )}
       </div>
       <div className={styles.controls}>
         <button

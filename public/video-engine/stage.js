@@ -3,12 +3,22 @@
 (function () {
   window.__timelines = {};
   var timeline = null;
+  var failed = false;
+  // The frame URL carries the engine version so a deploy never meets a stale engine.
+  var version = new URLSearchParams(window.location.search).get("v") || "0";
 
   function post(message) {
     window.parent.postMessage(message, window.location.origin);
   }
 
+  function fail(message) {
+    if (failed || timeline) return;
+    failed = true;
+    post({ type: "error", message: String(message || "Stage error").slice(0, 300) });
+  }
+
   function waitForTimeline() {
+    if (failed) return;
     var built = window.__timelines.main;
     if (!built) {
       setTimeout(waitForTimeline, 30);
@@ -28,9 +38,9 @@
       window.TIMING = message.timing;
       var engine = document.createElement("script");
       // Version 2 plans use the free-form shot engine; version 1 the scene templates.
-      engine.src = message.engine === "shots.js" ? "shots.js" : "engine.js";
+      engine.src = (message.engine === "shots.js" ? "shots.js" : "engine.js") + "?v=" + encodeURIComponent(version);
       engine.onerror = function () {
-        post({ type: "error", message: "The scene engine failed to load." });
+        fail("The scene engine failed to load.");
       };
       document.body.appendChild(engine);
       waitForTimeline();
@@ -39,8 +49,14 @@
     }
   });
 
+  // Engines build inside document.fonts.ready.then(...), so a bad plan surfaces
+  // as a rejected promise, not an error event; report both.
   window.addEventListener("error", function (event) {
-    post({ type: "error", message: String(event.message || "Stage error") });
+    fail(event.message);
+  });
+  window.addEventListener("unhandledrejection", function (event) {
+    var reason = event.reason;
+    fail(reason && reason.message ? reason.message : reason);
   });
 
   post({ type: "stage-ready" });
