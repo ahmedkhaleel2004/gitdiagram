@@ -1,26 +1,30 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Clapperboard } from "lucide-react";
+import { CircleAlert, Clapperboard } from "lucide-react";
 import {
   fetchExplainerVideo,
   streamExplainerVideo,
 } from "~/features/explainer/api";
 import type {
   VideoArtifact,
+  VideoGenerationProgress,
   VideoGenerationStage,
 } from "~/features/explainer/types";
+import { ActivityMark } from "~/components/generation/activity-mark";
+import { useGenerationClock } from "~/components/generation/generation-status";
 import controls from "~/components/generation/workspace.module.css";
 import { ExplainerPlayer } from "./explainer-player";
+import { GenerationRows, ScriptPreview } from "./explainer-progress";
 import { ExplainerShare } from "./explainer-share";
 import styles from "./explainer-video.module.css";
 
-const STAGES: Array<{ id: VideoGenerationStage; label: string }> = [
-  { id: "reading", label: "Reading the code" },
-  { id: "planning", label: "Writing the script" },
-  { id: "designing", label: "Designing scenes and recording the voice" },
-  { id: "saving", label: "Saving" },
-];
+const STAGE_TITLES: Record<VideoGenerationStage, string> = {
+  reading: "Reading the code",
+  planning: "Writing the script",
+  designing: "Designing the scenes and recording the voice",
+  saving: "Saving the video",
+};
 
 // A stored video belongs to everyone; only local development can replace one.
 const CAN_REGENERATE = process.env.NODE_ENV === "development";
@@ -28,9 +32,44 @@ const CAN_REGENERATE = process.env.NODE_ENV === "development";
 type PanelState =
   | { kind: "loading" }
   | { kind: "empty"; canGenerate: boolean }
-  | { kind: "generating"; stage: VideoGenerationStage; startedAt: number }
-  | { kind: "ready"; video: VideoArtifact; canGenerate: boolean }
+  | {
+      kind: "generating";
+      stage: VideoGenerationStage;
+      startedAt: number;
+      progress: VideoGenerationProgress;
+    }
+  | { kind: "ready"; video: VideoArtifact }
   | { kind: "error"; message: string; canGenerate: boolean };
+
+function Elapsed({ startedAt }: { startedAt: number }) {
+  const { seconds } = useGenerationClock({
+    running: true,
+    paused: false,
+    startedAt,
+  });
+  return (
+    <span
+      className={controls.elapsed}
+      aria-label={`${seconds} seconds elapsed`}
+    >
+      {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+    </span>
+  );
+}
+
+/** A player-shaped placeholder while the stored video is looked up. */
+function PlayerSkeleton() {
+  return (
+    <div className={styles.panel} aria-busy="true">
+      <div className={`${styles.player} ${styles.skeleton}`}>
+        <div className={styles.skeletonLabel}>
+          <ActivityMark />
+          <span className={styles.shimmer}>Loading video</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function ExplainerVideo({
   username,
@@ -40,7 +79,6 @@ export function ExplainerVideo({
   repo: string;
 }) {
   const [state, setState] = useState<PanelState>({ kind: "loading" });
-  const [now, setNow] = useState(() => Date.now());
   const running = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -48,9 +86,7 @@ export function ExplainerVideo({
     fetchExplainerVideo(username, repo, controller.signal)
       .then(({ video, canGenerate }) =>
         setState(
-          video
-            ? { kind: "ready", video, canGenerate }
-            : { kind: "empty", canGenerate },
+          video ? { kind: "ready", video } : { kind: "empty", canGenerate },
         ),
       )
       .catch((error: unknown) => {
@@ -70,27 +106,29 @@ export function ExplainerVideo({
     };
   }, [username, repo]);
 
-  useEffect(() => {
-    if (state.kind !== "generating") return;
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, [state.kind]);
-
   const generate = () => {
     const controller = new AbortController();
     running.current = controller;
     const startedAt = Date.now();
-    setNow(startedAt);
-    setState({ kind: "generating", stage: "reading", startedAt });
+    let progress: VideoGenerationProgress = {};
+    setState({ kind: "generating", stage: "reading", startedAt, progress });
     streamExplainerVideo(
       username,
       repo,
       (event) => {
         if (event.status === "complete")
-          setState({ kind: "ready", video: event.artifact, canGenerate: true });
+          setState({ kind: "ready", video: event.artifact });
         else if (event.status === "error")
           setState({ kind: "error", message: event.error, canGenerate: true });
-        else setState({ kind: "generating", stage: event.status, startedAt });
+        else {
+          progress = { ...progress, ...event.progress };
+          setState({
+            kind: "generating",
+            stage: event.status,
+            startedAt,
+            progress,
+          });
+        }
       },
       controller.signal,
     ).catch((error: unknown) => {
@@ -104,18 +142,17 @@ export function ExplainerVideo({
     });
   };
 
-  if (state.kind === "loading")
-    return <div className={styles.panel} aria-busy="true" />;
+  if (state.kind === "loading") return <PlayerSkeleton />;
 
   if (state.kind === "ready") {
     const { video } = state;
     const cost = video.stats.plannerCostUsd;
     return (
-      <div className={styles.panel}>
+      <div className={`${styles.panel} ${styles.enter}`}>
         <ExplainerPlayer key={video.createdAt} artifact={video} />
         <div className={styles.meta}>
           <span>
-            {video.plan.beats.length} scenes ·{" "}
+            {new Set(video.plan.beats.map((beat) => beat.scene)).size} scenes ·{" "}
             {Math.round(video.timing.DURATION)}s
           </span>
           <span>
@@ -137,51 +174,56 @@ export function ExplainerVideo({
     );
   }
 
-  if (state.kind === "generating") {
-    const current = STAGES.findIndex((stage) => stage.id === state.stage);
+  if (state.kind === "generating")
     return (
-      <div className={styles.panel}>
-        <div className={styles.empty} aria-live="polite">
-          <div className={styles.emptyTitle}>
-            Making your explainer… {Math.floor((now - state.startedAt) / 1000)}s
-          </div>
-          <div className={styles.steps}>
-            {STAGES.map((stage, index) => (
-              <span
-                key={stage.id}
-                className={styles.step}
-                data-state={
-                  index < current
-                    ? "done"
-                    : index === current
-                      ? "active"
-                      : "todo"
-                }
-              >
-                {stage.label}
-              </span>
-            ))}
-          </div>
-          <div className={styles.emptyText}>
-            Claude reads the code, writes the script and designs every scene.
-            This usually takes under a minute.
-          </div>
+      <div className={`${controls.feedback} ${styles.enter}`}>
+        <div className={controls.statusLine}>
+          <ActivityMark />
+          <h2
+            className={`${controls.statusTitle} ${styles.shimmer}`}
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {STAGE_TITLES[state.stage]}
+          </h2>
+          <Elapsed startedAt={state.startedAt} />
+        </div>
+        <p className={controls.description}>
+          Claude reads {repo}, writes a script and designs every scene while the
+          narration is recorded. Usually under a minute.
+        </p>
+        <div className={styles.progressBody}>
+          <GenerationRows stage={state.stage} progress={state.progress} />
+          {state.progress.narration && (
+            <ScriptPreview lines={state.progress.narration} />
+          )}
         </div>
       </div>
     );
-  }
 
+  const failed = state.kind === "error";
   return (
-    <div className={styles.panel}>
-      <div className={styles.empty}>
-        <div className={styles.emptyTitle}>{repo}, in about a minute</div>
-        <div className={styles.emptyText}>
+    <div className={`${controls.feedback} ${styles.enter}`}>
+      <div className={controls.statusLine}>
+        {failed ? (
+          <CircleAlert size={17} aria-hidden="true" />
+        ) : (
+          <Clapperboard size={17} aria-hidden="true" />
+        )}
+        <h2
+          className={controls.statusTitle}
+          role={failed ? "alert" : undefined}
+        >
+          {failed ? state.message : `There's no video of ${repo} yet`}
+        </h2>
+      </div>
+      {!failed && (
+        <p className={controls.description}>
           A narrated one-minute tour: what the project does, how its parts fit
           together, and a few of the decisions inside.
-        </div>
-        {state.kind === "error" && (
-          <div className={styles.error}>{state.message}</div>
-        )}
+        </p>
+      )}
+      <div className={styles.cta}>
         {state.canGenerate ? (
           <button
             type="button"
@@ -189,12 +231,14 @@ export function ExplainerVideo({
             onClick={generate}
           >
             <Clapperboard size={15} aria-hidden="true" />
-            {state.kind === "error" ? "Try again" : "Make the video"}
+            {failed ? "Try again" : "Make the video"}
           </button>
         ) : (
-          <div className={styles.emptyText}>
-            Making new videos is paused for today. Check back tomorrow.
-          </div>
+          !failed && (
+            <span className={styles.note}>
+              Making new videos is paused for today. Check back tomorrow.
+            </span>
+          )
         )}
       </div>
     </div>

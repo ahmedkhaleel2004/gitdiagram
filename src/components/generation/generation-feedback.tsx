@@ -4,24 +4,11 @@ import type { ReactNode } from "react";
 import { CircleAlert, LockKeyhole, Pause } from "lucide-react";
 import type { DiagramStreamState } from "~/features/diagram/types";
 import { githubAccessTitle } from "~/features/diagram/github-access";
+import { ActivityMark } from "./activity-mark";
 import { useGenerationClock } from "./generation-status";
 import { ExpandedActivity } from "./generation-activity";
 import { feedbackState } from "./feedback-state";
 import styles from "./workspace.module.css";
-
-function ActivityMark({ active = true }: { active?: boolean }) {
-  return (
-    <span
-      className={styles.activityMark}
-      data-active={active}
-      aria-hidden="true"
-    >
-      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((dot) => (
-        <i key={dot} />
-      ))}
-    </span>
-  );
-}
 
 export function GenerationFeedback({
   state,

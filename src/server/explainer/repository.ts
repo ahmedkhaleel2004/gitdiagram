@@ -28,6 +28,8 @@ export interface VideoRepository {
   meta: VideoMeta;
   prompt: RepositoryContextInput;
   facts: PlanRepositoryFacts;
+  /** Source files whose excerpts the model reads. */
+  sourceFileCount: number;
 }
 
 async function readMetadata(
@@ -84,6 +86,7 @@ export async function readRepositoryForVideo(params: {
   };
   return {
     meta,
+    sourceFileCount: prepared.selectedPaths.length,
     prompt: {
       owner: username,
       repo,

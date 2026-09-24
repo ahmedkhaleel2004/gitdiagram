@@ -180,6 +180,7 @@ export function createFilmWriters(input: RepositoryContextInput) {
     async design(
       script: Script,
       signal?: AbortSignal,
+      onDesigned?: () => void,
     ): Promise<Map<number, Json>> {
       const scenes: Array<{ scene: string; beats: number[] }> = [];
       script.beats.forEach((beat, index) => {
@@ -227,6 +228,8 @@ export function createFilmWriters(input: RepositoryContextInput) {
                     : "unknown",
               }),
             );
+          } finally {
+            onDesigned?.();
           }
         }),
       );

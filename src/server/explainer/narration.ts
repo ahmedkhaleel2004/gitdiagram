@@ -182,6 +182,7 @@ function spokenWords(
 export async function narrateBeats(
   beats: Array<{ narration: string; scene: string }>,
   signal?: AbortSignal,
+  onTake?: () => void,
 ): Promise<Narration> {
   const scenes: Array<{
     text: string;
@@ -218,6 +219,7 @@ export async function narrateBeats(
           { previous: scenes[index - 1]?.text, next: scenes[index + 1]?.text },
           signal,
         );
+        onTake?.();
       }
     }),
   );

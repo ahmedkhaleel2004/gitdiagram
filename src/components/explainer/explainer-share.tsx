@@ -17,6 +17,7 @@ import {
 } from "~/features/explainer/api";
 import type { VideoArtifact } from "~/features/explainer/types";
 import controls from "~/components/generation/workspace.module.css";
+import { JobRow } from "./explainer-progress";
 import styles from "./explainer-video.module.css";
 
 type Copied = "link" | "badge" | null;
@@ -82,9 +83,7 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
 
   const badge = `[![Watch a one-minute video tour of ${repo}](${window.location.origin}/video-badge.svg)](${url})`;
   const label = (format: RenderFormat, idle: string) =>
-    job?.format === format
-      ? `Making MP4… ${Math.round(job.progress * 100)}%`
-      : idle;
+    job?.format === format ? "Making MP4…" : idle;
 
   return (
     <div className={styles.share}>
@@ -155,9 +154,15 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
         </button>
       </div>
       {job && (
-        <div className={styles.shareNote}>
-          The first download renders the video with captions; after that it is
-          instant for everyone.
+        <div className={styles.shareJob}>
+          <JobRow
+            label={`Rendering the ${job.format === "vertical" ? "9:16" : "16:9"} MP4 with captions`}
+            fraction={job.progress}
+          />
+          <div className={styles.shareNote}>
+            Only the first download renders; after that it is instant for
+            everyone.
+          </div>
         </div>
       )}
       {error && <div className={styles.error}>{error}</div>}

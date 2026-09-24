@@ -126,8 +126,24 @@ export type VideoArtifact = {
 export type VideoGenerationStage =
   "reading" | "planning" | "designing" | "saving";
 
+/** What a generation has done so far, for the live progress rows. */
+export interface VideoGenerationProgress {
+  sourceFiles?: number;
+  scenes?: number;
+  beats?: number;
+  words?: number;
+  /** The narration, one line per beat, once the script is written. */
+  narration?: string[];
+  designed?: number;
+  voiced?: number;
+}
+
 export type VideoGenerationEvent =
-  | { status: VideoGenerationStage; elapsedMs: number }
+  | {
+      status: VideoGenerationStage;
+      elapsedMs: number;
+      progress?: VideoGenerationProgress;
+    }
   | { status: "complete"; artifact: VideoArtifact }
   | { status: "error"; error: string };
 

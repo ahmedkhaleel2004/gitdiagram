@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  CircleAlert,
   Captions,
   CaptionsOff,
   Maximize,
@@ -11,6 +12,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { ExplainerAudio, type SfxCue } from "~/features/explainer/audio-mixer";
+import { ActivityMark } from "~/components/generation/activity-mark";
 import { STAGE_PATH } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
 import styles from "./explainer-video.module.css";
@@ -244,8 +246,9 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
         />
         {error ? (
           <div className={styles.surface} role="alert">
-            <span className={styles.loading}>
-              {error}{" "}
+            <span className={styles.skeletonLabel}>
+              <CircleAlert size={17} aria-hidden="true" />
+              {error}
               <button
                 type="button"
                 className={styles.metaButton}
@@ -273,7 +276,10 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
                   )}
                 </span>
               ) : (
-                <span className={styles.loading}>Loading video…</span>
+                <span className={styles.skeletonLabel}>
+                  <ActivityMark />
+                  <span className={styles.shimmer}>Loading video</span>
+                </span>
               ))}
           </button>
         )}

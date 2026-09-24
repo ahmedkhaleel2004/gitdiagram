@@ -50,15 +50,39 @@ async function run({
 
   // The director writes the script; then every scene is designed in parallel
   // while the narration is recorded, since the voice only needs the words.
-  onEvent({ status: "planning", elapsedMs: readMs });
+  onEvent({
+    status: "planning",
+    elapsedMs: readMs,
+    progress: { sourceFiles: repository.sourceFileCount },
+  });
   const writers = createFilmWriters(repository.prompt);
   const script = await writers.direct(signal);
   const planMs = elapsedMs() - readMs;
 
-  onEvent({ status: "designing", elapsedMs: elapsedMs() });
+  // Scenes are designed and voiced in parallel; each finished one is reported.
+  const narrationLines = script.beats.map((beat) => beat.narration);
+  const scenes = new Set(script.beats.map((beat) => beat.scene)).size;
+  const progress = {
+    sourceFiles: repository.sourceFileCount,
+    scenes,
+    beats: script.beats.length,
+    words: narrationLines.join(" ").split(/\s+/).filter(Boolean).length,
+    narration: narrationLines,
+    designed: 0,
+    voiced: 0,
+  };
+  const report = () =>
+    onEvent({ status: "designing", elapsedMs: elapsedMs(), progress });
+  report();
   const [designed, narration] = await Promise.all([
-    writers.design(script, signal),
-    narrateBeats(script.beats, signal),
+    writers.design(script, signal, () => {
+      progress.designed++;
+      report();
+    }),
+    narrateBeats(script.beats, signal, () => {
+      progress.voiced++;
+      report();
+    }),
   ]);
   const { plan, warnings } = normalizeShots(script, designed, repository.facts);
   const voiceMs = elapsedMs() - readMs - planMs;
