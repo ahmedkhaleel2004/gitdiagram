@@ -58,7 +58,7 @@ async function renderRemotely(
       "X-Video-Segment": sign(job),
     },
     body: JSON.stringify(job),
-    signal: AbortSignal.timeout(290_000),
+    signal: AbortSignal.timeout(780_000),
   });
   if (!response.ok)
     throw new Error(

@@ -9,7 +9,7 @@ import { readVideoArtifact } from "~/server/explainer/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * Render one ~10 s segment of a film. Called only by the render route, server

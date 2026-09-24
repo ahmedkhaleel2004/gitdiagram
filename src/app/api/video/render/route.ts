@@ -28,7 +28,7 @@ import type { VideoRenderEvent } from "~/features/explainer/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const requestSchema = z.strictObject({
   username: githubUsernameSchema,
@@ -81,7 +81,7 @@ export async function POST(request: Request): Promise<Response> {
     if (process.env.NODE_ENV === "production") {
       releaseLock = await tryVideoLock(
         `render:${artifact.repository}:${artifact.createdAt}:${format}`,
-        6 * 60_000,
+        14 * 60_000,
       );
       if (!releaseLock) {
         if (reservation?.ok) await reservation.refund();
