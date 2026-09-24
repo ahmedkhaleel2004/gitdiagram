@@ -5,6 +5,7 @@ import {
   CircleAlert,
   Captions,
   CaptionsOff,
+  FastForward,
   Maximize,
   Minimize,
   Pause,
@@ -24,6 +25,11 @@ type StageMessage =
 
 const STAGE_TIMEOUT_MS = 20_000;
 const CAPTIONS_KEY = "gitdiagram.video.captions";
+// Each press of the speed button moves to the next.
+const SPEEDS = [1, 1.25, 1.5, 2, 0.75];
+// Pressing and holding either side of the picture plays at this speed.
+const HOLD_SPEED = 2;
+const HOLD_DELAY_MS = 300;
 
 const formatTime = (seconds: number) => {
   const whole = Math.max(0, Math.floor(seconds));
@@ -53,21 +59,22 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   // iPhone Safari cannot put an element in fullscreen; fill the window instead.
   const [expanded, setExpanded] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [holding, setHolding] = useState(false);
+  const holdTimer = useRef(0);
+  // A hold ends with a click; that click must not pause the video.
+  const held = useRef(false);
   const captionsRef = useRef(captions);
   const duration = artifact.timing.DURATION;
 
-  const seekStage = useCallback(
-    (time: number) => {
-      frame.current?.contentWindow?.postMessage(
-        { type: "seek", time },
-        window.location.origin,
-      );
-      if (scrubber.current) scrubber.current.value = String(time);
-      if (clock.current)
-        clock.current.textContent = `${formatTime(time)} / ${formatTime(duration)}`;
-    },
-    [duration],
-  );
+  const seekStage = useCallback((time: number) => {
+    frame.current?.contentWindow?.postMessage(
+      { type: "seek", time },
+      window.location.origin,
+    );
+    if (scrubber.current) scrubber.current.value = String(time);
+    if (clock.current) clock.current.textContent = formatTime(time);
+  }, []);
 
   // Full window: the page behind must not scroll, and Escape leaves.
   useEffect(() => {
@@ -169,6 +176,21 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     };
   }, [artifact, attempt]);
 
+  const rate = holding && playing ? HOLD_SPEED : speed;
+  useEffect(() => {
+    if (ready) void audio.current?.setRate(rate);
+  }, [rate, ready]);
+
+  // Stretch the narration for a held press ahead of time, so it starts at once.
+  useEffect(() => {
+    if (!ready) return;
+    const id = window.setTimeout(
+      () => void audio.current?.prepare(HOLD_SPEED),
+      500,
+    );
+    return () => window.clearTimeout(id);
+  }, [ready]);
+
   // While playing, every frame seeks the stage to the audio clock.
   useEffect(() => {
     if (!playing) return;
@@ -208,6 +230,31 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   }, []);
 
   const toggle = () => (playing ? pause() : void play());
+
+  const cycleSpeed = () =>
+    setSpeed((value) => SPEEDS[(SPEEDS.indexOf(value) + 1) % SPEEDS.length]!);
+
+  const startHold = (event: React.PointerEvent) => {
+    held.current = false;
+    const side =
+      event.target instanceof HTMLElement ? event.target.dataset.side : null;
+    if (!playing || !side || !event.isPrimary || event.button !== 0) return;
+    window.clearTimeout(holdTimer.current);
+    holdTimer.current = window.setTimeout(() => {
+      held.current = true;
+      setHolding(true);
+    }, HOLD_DELAY_MS);
+  };
+
+  const endHold = () => {
+    window.clearTimeout(holdTimer.current);
+    setHolding(false);
+  };
+
+  const onSurfaceClick = () => {
+    if (held.current) held.current = false;
+    else toggle();
+  };
 
   const toggleCaptions = () => {
     const next = !captions;
@@ -287,10 +334,17 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
           <button
             type="button"
             className={styles.surface}
-            onClick={toggle}
+            onClick={onSurfaceClick}
+            onPointerDown={startHold}
+            onPointerUp={endHold}
+            onPointerCancel={endHold}
+            onPointerLeave={endHold}
+            onContextMenu={(event) => event.preventDefault()}
             disabled={!ready}
             aria-label={playing ? "Pause explainer" : "Play explainer"}
           >
+            <span className={styles.holdZone} data-side="start" />
+            <span className={styles.holdZone} data-side="end" />
             {!playing &&
               (ready ? (
                 <span className={styles.bigPlay}>
@@ -307,6 +361,12 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
                 </span>
               ))}
           </button>
+        )}
+        {holding && playing && (
+          <span className={styles.holdBadge} aria-hidden="true">
+            <FastForward size={13} fill="currentColor" />
+            {HOLD_SPEED}×
+          </span>
         )}
       </div>
       <div className={styles.controls}>
@@ -331,9 +391,19 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
           aria-label="Seek"
           onChange={(event) => scrub(Number(event.target.value))}
         />
-        <span ref={clock} className={styles.time}>
-          {`0:00 / ${formatTime(duration)}`}
+        <span className={styles.time}>
+          <span ref={clock}>0:00</span>
+          <span className={styles.total}>{` / ${formatTime(duration)}`}</span>
         </span>
+        <button
+          type="button"
+          className={`${styles.controlButton} ${styles.speedButton}`}
+          onClick={cycleSpeed}
+          aria-label={`Playback speed ${speed}×, change`}
+          title="Playback speed"
+        >
+          {speed}×
+        </button>
         <button
           type="button"
           className={styles.controlButton}

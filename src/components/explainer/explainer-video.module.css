@@ -85,6 +85,46 @@
   background: transparent;
   cursor: pointer;
 }
+.surface {
+  /* A press and hold means 2x, not a text selection or a link menu. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.holdZone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+}
+.holdZone[data-side="start"] {
+  left: 0;
+}
+.holdZone[data-side="end"] {
+  right: 0;
+}
+.holdBadge {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: max-content;
+  margin-inline: auto;
+  padding: 5px 11px;
+  border: 2px solid #17111f;
+  border-radius: 999px;
+  background: #bd85fb;
+  box-shadow: 2px 2px 0 #17111f;
+  color: #17111f;
+  font-size: 12px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  animation: pop-in 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) both;
+}
 .surface:focus-visible {
   outline: 3px solid hsl(var(--neo-link));
   outline-offset: -3px;
@@ -117,6 +157,7 @@
 }
 
 .controls {
+  container-type: inline-size;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -135,6 +176,14 @@
   color: var(--ink);
   background: var(--surface);
 }
+.speedButton {
+  /* Fits "1.25×" without the row shifting as the speed changes. */
+  width: 52px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
 .controlButton:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -144,6 +193,12 @@
   min-width: 0;
   accent-color: hsl(var(--neo-link));
   cursor: pointer;
+}
+/* A narrow bar keeps its room for seeking: elapsed time only. */
+@container (max-width: 420px) {
+  .total {
+    display: none;
+  }
 }
 .time {
   flex-shrink: 0;
@@ -464,6 +519,7 @@
   .rowDone,
   .rowRunning svg,
   .shimmer,
+  .holdBadge,
   .skeleton::after,
   .caret {
     animation: none;

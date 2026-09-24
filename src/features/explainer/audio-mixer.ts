@@ -1,4 +1,5 @@
 import { MASTER_GAIN, SFX_PEAK_DB, sfxGain } from "./engine";
+import { stretchChannels } from "./time-stretch";
 import type { VideoArtifact } from "./types";
 
 // The browser is the mixing desk: narration clips on the beat clock and the
@@ -32,6 +33,14 @@ export class ExplainerAudio {
   private startedAt = 0;
   private offset = 0;
   private playing = false;
+  /** Video seconds per real second. */
+  private rate = 1;
+  /** The latest speed asked for; an older request still preparing yields. */
+  private wantedRate = 1;
+  /** Bumped by every play and pause, so a play that waited never overrides. */
+  private ticket = 0;
+  /** Narration re-timed for each speed, so voices keep their pitch. */
+  private stretched = new Map<number, Promise<AudioBuffer[]>>();
 
   constructor(
     private readonly artifact: VideoArtifact,
@@ -81,31 +90,86 @@ export class ExplainerAudio {
 
   currentTime(): number {
     if (!this.context || !this.playing) return this.offset;
-    return this.offset + (this.context.currentTime - this.startedAt);
+    return (
+      this.offset + (this.context.currentTime - this.startedAt) * this.rate
+    );
+  }
+
+  /**
+   * Narration for a speed, stretched one clip at a time with a pause between
+   * so a phone's page never freezes; later calls share the same work.
+   */
+  prepare(rate: number): Promise<AudioBuffer[]> {
+    const context = this.context;
+    if (!context || rate === 1) return Promise.resolve(this.voices);
+    let pending = this.stretched.get(rate);
+    if (!pending) {
+      pending = (async () => {
+        const voices: AudioBuffer[] = [];
+        for (const voice of this.voices) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          const channels = Array.from(
+            { length: voice.numberOfChannels },
+            (_, index) => voice.getChannelData(index),
+          );
+          const output = stretchChannels(channels, voice.sampleRate, rate);
+          const buffer = context.createBuffer(
+            output.length,
+            output[0]!.length,
+            voice.sampleRate,
+          );
+          output.forEach((data, index) => buffer.copyToChannel(data, index));
+          voices.push(buffer);
+        }
+        return voices;
+      })();
+      this.stretched.set(rate, pending);
+    }
+    return pending;
+  }
+
+  /** Change speed; playback carries on from the same moment. */
+  async setRate(rate: number): Promise<void> {
+    this.wantedRate = rate;
+    await this.prepare(rate);
+    if (this.wantedRate !== rate || rate === this.rate) return;
+    // Re-anchor the clock first, so it runs on from here at the new speed.
+    const time = this.currentTime();
+    this.offset = time;
+    this.startedAt = this.context?.currentTime ?? 0;
+    this.rate = rate;
+    if (this.playing) await this.play(time);
   }
 
   async play(from: number): Promise<void> {
     const context = this.context;
     const master = this.master;
     if (!context || !master) return;
-    this.stopSources();
+    const ticket = ++this.ticket;
     // Safari mutes Web Audio under the iPhone's silent switch unless the page
     // declares it plays media.
     const session = (
       navigator as Navigator & { audioSession?: { type: string } }
     ).audioSession;
     if (session) session.type = "playback";
-    await context.resume();
+    // Resume inside the tap that asked for sound, before anything waits.
+    const resumed = context.resume();
+    const rate = this.rate;
+    const voices = await this.prepare(rate);
+    await resumed;
+    if (ticket !== this.ticket) return;
+    this.stopSources();
     const now = context.currentTime + 0.05;
-    const at = (time: number) => now + Math.max(0, time - from);
+    // Video time to the context's clock, and a clip's offset into its stretch.
+    const at = (time: number) => now + Math.max(0, time - from) / rate;
 
     this.artifact.voices.forEach((voice, index) => {
-      const buffer = this.voices[index];
-      if (!buffer || voice.start + buffer.duration <= from) return;
+      const buffer = voices[index];
+      if (!buffer || voice.start + buffer.duration * rate <= from) return;
       const source = context.createBufferSource();
       source.buffer = buffer;
       source.connect(master);
-      source.start(at(voice.start), Math.max(0, from - voice.start));
+      source.start(at(voice.start), Math.max(0, from - voice.start) / rate);
       this.sources.push(source);
     });
 
@@ -134,6 +198,7 @@ export class ExplainerAudio {
   }
 
   pause(): number {
+    this.ticket++;
     this.offset = this.currentTime();
     this.playing = false;
     this.stopSources();
