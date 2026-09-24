@@ -1,7 +1,6 @@
 import "server-only";
 
 import { isNarrationConfigured } from "./narration";
-import { videoPlannerBackend } from "./planner";
 
 /** Explainer videos stay off unless a deployment opts in. */
 export function isVideoExplainerEnabled(): boolean {
@@ -9,5 +8,7 @@ export function isVideoExplainerEnabled(): boolean {
 }
 
 export function canGenerateVideos(): boolean {
-  return videoPlannerBackend() !== null && isNarrationConfigured();
+  return (
+    Boolean(process.env.ANTHROPIC_API_KEY?.trim()) && isNarrationConfigured()
+  );
 }

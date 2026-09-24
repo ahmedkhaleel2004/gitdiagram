@@ -1,15 +1,18 @@
 import "server-only";
 
-import type { VideoPlan, VideoTiming, VideoWord } from "~/features/video/types";
-import { normalizeWord } from "./plan-schema";
+import type { VideoTiming, VideoWord } from "~/features/video/types";
+import { normalizeWord } from "./text";
 
 const ELEVENLABS_API = "https://api.elevenlabs.io";
 const DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"; // "Chris": warm, conversational
-const DEFAULT_TTS_MODEL = "eleven_v3";
+// multilingual_v2 honors `speed` (eleven_v3 ignores it) and accepts the
+// previous/next-text hints that keep prosody continuous across beat clips.
+const DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
+const DEFAULT_SPEED = 1.18;
 // ElevenLabs Starter allows four concurrent requests; one beat per request.
 const CONCURRENCY = 4;
-const LEAD_IN_SECONDS = 0.6;
-const TAIL_SECONDS = 3.8;
+const LEAD_IN_SECONDS = 0.4;
+const TAIL_SECONDS = 3.6;
 
 interface Alignment {
   characters: string[];
@@ -30,6 +33,7 @@ export function isNarrationConfigured(): boolean {
 
 async function speak(
   text: string,
+  context: { previous?: string; next?: string },
   signal?: AbortSignal,
 ): Promise<{ audio: Buffer; alignment: Alignment }> {
   const voice = process.env.VIDEO_TTS_VOICE_ID?.trim() || DEFAULT_VOICE_ID;
@@ -47,11 +51,18 @@ async function speak(
           text,
           model_id: model,
           seed: 7,
+          ...(model !== "eleven_v3" && context.previous
+            ? { previous_text: context.previous }
+            : {}),
+          ...(model !== "eleven_v3" && context.next
+            ? { next_text: context.next }
+            : {}),
           voice_settings: {
-            stability: 0.5,
+            stability: 0.45,
             similarity_boost: 0.8,
-            style: 0,
+            style: 0.15,
             use_speaker_boost: true,
+            speed: Number(process.env.VIDEO_TTS_SPEED) || DEFAULT_SPEED,
           },
         }),
         signal,
@@ -76,88 +87,120 @@ async function speak(
   }
 }
 
-function spokenWords(alignment: Alignment, offset: number): VideoWord[] {
-  const words: VideoWord[] = [];
-  let current: { text: string; s: number; e: number } | null = null;
-  alignment.characters.forEach((character, index) => {
+/** Words with clock times and their character offset in the spoken text. */
+function spokenWords(
+  alignment: Alignment,
+  offset: number,
+): Array<VideoWord & { offset: number }> {
+  const words: Array<VideoWord & { offset: number }> = [];
+  let text = "";
+  let s = 0;
+  let e = 0;
+  let from = -1;
+  const flush = () => {
+    if (from >= 0)
+      words.push({
+        w: normalizeWord(text),
+        s: Number((offset + s).toFixed(3)),
+        e: Number((offset + e).toFixed(3)),
+        offset: from,
+      });
+    text = "";
+    from = -1;
+  };
+  for (let index = 0; index < alignment.characters.length; index++) {
+    const character = alignment.characters[index]!;
     if (/\s/.test(character)) {
-      if (current) words.push(toWord(current, offset));
-      current = null;
-      return;
+      flush();
+      continue;
     }
-    current ??= {
-      text: "",
-      s: alignment.character_start_times_seconds[index] ?? 0,
-      e: 0,
-    };
-    current.text += character;
-    current.e = alignment.character_end_times_seconds[index] ?? current.s;
-  });
-  if (current) words.push(toWord(current, offset));
+    if (from < 0) {
+      from = index;
+      s = alignment.character_start_times_seconds[index] ?? 0;
+    }
+    text += character;
+    e = alignment.character_end_times_seconds[index] ?? s;
+  }
+  flush();
   return words;
 }
 
-function toWord(word: { text: string; s: number; e: number }, offset: number) {
-  return {
-    w: normalizeWord(word.text),
-    s: Number((offset + word.s).toFixed(3)),
-    e: Number((offset + word.e).toFixed(3)),
-  };
-}
-
-/** Voice every beat in parallel, then lay the clips on one clock with structural pauses. */
-export async function narratePlan(
-  plan: VideoPlan,
+/**
+ * Voice each scene as one continuous take (natural flow, no stitched silences),
+ * in parallel, then split the take back into beats with the character timestamps.
+ */
+export async function narrateBeats(
+  beats: Array<{ narration: string; scene: string }>,
   signal?: AbortSignal,
 ): Promise<Narration> {
-  const beats = plan.beats;
-  const spoken: Array<{ audio: Buffer; alignment: Alignment }> = new Array(
-    beats.length,
+  const scenes: Array<{
+    text: string;
+    beats: Array<{ index: number; from: number; to: number }>;
+  }> = [];
+  beats.forEach((beat, index) => {
+    let scene = scenes.at(-1);
+    if (!scene || beats[index - 1]?.scene !== beat.scene) {
+      scene = { text: "", beats: [] };
+      scenes.push(scene);
+    }
+    const line = /[.!?…]$/.test(beat.narration)
+      ? beat.narration
+      : `${beat.narration}.`;
+    if (scene.text) scene.text += " ";
+    scene.beats.push({
+      index,
+      from: scene.text.length,
+      to: scene.text.length + line.length,
+    });
+    scene.text += line;
+  });
+
+  const takes: Array<{ audio: Buffer; alignment: Alignment }> = new Array(
+    scenes.length,
   );
   let next = 0;
   await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, beats.length) }, async () => {
-      while (next < beats.length) {
+    Array.from({ length: Math.min(CONCURRENCY, scenes.length) }, async () => {
+      while (next < scenes.length) {
         const index = next++;
-        spoken[index] = await speak(beats[index]!.narration, signal);
+        takes[index] = await speak(
+          scenes[index]!.text,
+          { previous: scenes[index - 1]?.text, next: scenes[index + 1]?.text },
+          signal,
+        );
       }
     }),
   );
 
   let cursor = LEAD_IN_SECONDS;
-  const timing: VideoTiming["beats"] = [];
+  const timing: VideoTiming["beats"] = new Array(beats.length);
   const voices: Narration["voices"] = [];
-  beats.forEach((beat, index) => {
-    const { alignment } = spoken[index]!;
+  scenes.forEach((scene, k) => {
+    const { alignment } = takes[k]!;
     const start = cursor;
-    const end = start + (alignment.character_end_times_seconds.at(-1) ?? 0);
     voices.push({ start: Number(start.toFixed(3)) });
-    timing.push({
-      start: Number(start.toFixed(3)),
-      end: Number(end.toFixed(3)),
-      words: spokenWords(alignment, start),
-    });
-    // Pauses carry structure: longer between chapters and around the big idea.
-    const following = beats[index + 1];
-    let gap = 0.34;
-    if (following && following.chapter !== beat.chapter) gap += 0.16;
-    if (
-      following &&
-      (following.scene.type === "idea" || beat.scene.type === "idea")
-    )
-      gap += 0.3;
-    if (following?.scene.type === "close") gap += 0.25;
-    cursor = end + gap;
+    const words = spokenWords(alignment, start);
+    for (const beat of scene.beats) {
+      const own = words.filter(
+        (word) => word.offset >= beat.from && word.offset < beat.to,
+      );
+      timing[beat.index] = {
+        start: own[0]?.s ?? start,
+        end: own.at(-1)?.e ?? start,
+        words: own.map(({ w, s, e }) => ({ w, s, e })),
+      };
+    }
+    cursor = start + (alignment.character_end_times_seconds.at(-1) ?? 0) + 0.25;
   });
   const speechEnd = timing.at(-1)?.end ?? 0;
   return {
-    clips: spoken.map((entry) => entry.audio),
+    clips: takes.map((take) => take.audio),
     timing: {
       DURATION: Math.ceil((speechEnd + TAIL_SECONDS) * 10) / 10,
       SPEECH_END: Number(speechEnd.toFixed(3)),
       beats: timing,
     },
     voices,
-    characters: beats.reduce((sum, beat) => sum + beat.narration.length, 0),
+    characters: scenes.reduce((sum, scene) => sum + scene.text.length, 0),
   };
 }

@@ -4,10 +4,10 @@ import type {
   VideoArtifact,
   VideoGenerationEvent,
 } from "~/features/video/types";
-import { narratePlan } from "./narration";
-import { normalizeVideoPlan } from "./plan-schema";
-import { planVideo } from "./planner";
+import { createFilmWriters } from "./director";
+import { narrateBeats } from "./narration";
 import { readRepositoryForVideo } from "./repository";
+import { normalizeShots } from "./shots";
 import { writeVideo } from "./store";
 
 // One generation per repository per server instance; later callers share it.
@@ -48,18 +48,24 @@ async function run({
   const repository = await readRepositoryForVideo({ username, repo, signal });
   const readMs = elapsedMs();
 
+  // The director writes the script; then every scene is designed in parallel
+  // while the narration is recorded, since the voice only needs the words.
   onEvent({ status: "planning", elapsedMs: readMs });
-  const planned = await planVideo(repository.prompt, signal);
-  const { plan, warnings } = normalizeVideoPlan(planned.plan, repository.facts);
+  const writers = createFilmWriters(repository.prompt);
+  const script = await writers.direct(signal);
   const planMs = elapsedMs() - readMs;
 
-  onEvent({ status: "voicing", elapsedMs: elapsedMs() });
-  const narration = await narratePlan(plan, signal);
+  onEvent({ status: "designing", elapsedMs: elapsedMs() });
+  const [designed, narration] = await Promise.all([
+    writers.design(script, signal),
+    narrateBeats(script.beats, signal),
+  ]);
+  const { plan, warnings } = normalizeShots(script, designed, repository.facts);
   const voiceMs = elapsedMs() - readMs - planMs;
 
   onEvent({ status: "saving", elapsedMs: elapsedMs() });
   const artifact: VideoArtifact = {
-    version: 1,
+    version: 2,
     repository: `${username}/${repo}`.toLowerCase(),
     createdAt: new Date().toISOString(),
     meta: repository.meta,
@@ -71,11 +77,11 @@ async function run({
       readMs,
       planMs,
       voiceMs,
-      planner: planned.planner,
-      model: planned.model,
-      plannerCostUsd: planned.costUsd,
-      inputTokens: planned.inputTokens,
-      outputTokens: planned.outputTokens,
+      planner: "api",
+      model: writers.model,
+      plannerCostUsd: writers.usage.costUsd,
+      inputTokens: writers.usage.inputTokens,
+      outputTokens: writers.usage.outputTokens,
       ttsCharacters: narration.characters,
       warnings,
     },
@@ -87,9 +93,12 @@ async function run({
       event: "video.generated",
       repository: artifact.repository,
       totalMs: artifact.stats.totalMs,
-      planner: planned.planner,
-      costUsd: planned.costUsd,
-      warnings: warnings.length,
+      readMs,
+      planMs,
+      designMs: voiceMs,
+      calls: writers.usage.calls,
+      costUsd: writers.usage.costUsd,
+      warnings,
     }),
   );
   return artifact;

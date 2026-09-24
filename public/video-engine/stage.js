@@ -27,7 +27,8 @@
       window.META = message.meta;
       window.TIMING = message.timing;
       var engine = document.createElement("script");
-      engine.src = "engine.js";
+      // Version 2 plans use the free-form shot engine; version 1 the scene templates.
+      engine.src = message.engine === "shots.js" ? "shots.js" : "engine.js";
       engine.onerror = function () {
         post({ type: "error", message: "The scene engine failed to load." });
       };

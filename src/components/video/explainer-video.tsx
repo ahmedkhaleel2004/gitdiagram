@@ -15,9 +15,9 @@ import { ExplainerPlayer } from "./explainer-player";
 import styles from "./explainer-video.module.css";
 
 const STAGES: Array<{ id: VideoGenerationStage; label: string }> = [
-  { id: "reading", label: "Reading the repository" },
+  { id: "reading", label: "Reading the code" },
   { id: "planning", label: "Writing the script" },
-  { id: "voicing", label: "Recording narration" },
+  { id: "designing", label: "Designing scenes and recording the voice" },
   { id: "saving", label: "Saving" },
 ];
 
@@ -158,8 +158,8 @@ export function ExplainerVideo({
             ))}
           </div>
           <div className={styles.emptyText}>
-            Claude reads the code and writes the script, then each scene is
-            narrated. This usually takes under a minute.
+            Claude reads the code, writes the script and designs every scene.
+            This usually takes under a minute.
           </div>
         </div>
       </div>
@@ -169,11 +169,10 @@ export function ExplainerVideo({
   return (
     <div className={styles.panel}>
       <div className={styles.empty}>
-        <div className={styles.emptyTitle}>A 60-second tour of {repo}</div>
+        <div className={styles.emptyTitle}>{repo}, in about a minute</div>
         <div className={styles.emptyText}>
-          A narrated walkthrough of what this project does, how its pieces fit
-          together, and the ideas that make the code make sense, drawn from the
-          repository itself.
+          A fast, narrated breakdown of how this codebase actually works: the
+          real code, the data flow and the decisions behind it.
         </div>
         {state.kind === "error" && (
           <div className={styles.error}>{state.message}</div>
@@ -190,7 +189,7 @@ export function ExplainerVideo({
           }
         >
           <Clapperboard size={15} aria-hidden="true" />
-          {state.kind === "error" ? "Try again" : "Make the explainer"}
+          {state.kind === "error" ? "Try again" : "Make the video"}
         </button>
       </div>
     </div>

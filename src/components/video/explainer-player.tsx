@@ -78,6 +78,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
             spec: artifact.plan,
             meta: artifact.meta,
             timing: artifact.timing,
+            engine: artifact.version === 2 ? "shots.js" : "engine.js",
           },
           window.location.origin,
         );

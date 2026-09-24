@@ -49,6 +49,76 @@ export interface VideoPlan {
   architecture: VideoGraph;
 }
 
+/** Version 2: a free-form shot language the scene engine (shots.js) draws. */
+export interface ShotElement {
+  id: string;
+  kind:
+    | "heading"
+    | "text"
+    | "code"
+    | "terminal"
+    | "box"
+    | "chip"
+    | "file"
+    | "tree"
+    | "table"
+    | "bars"
+    | "number"
+    | "stamp"
+    | "browser"
+    | "request"
+    | "list"
+    | "svg"
+    | "arrow";
+  /** Canvas units: 16 × 9, one unit is 120 px. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Cue word; the element appears when it is spoken. */
+  at: string;
+  [field: string]: unknown;
+}
+
+export interface ShotAction {
+  do:
+    | "highlight"
+    | "dim"
+    | "restore"
+    | "exit"
+    | "strike"
+    | "pulse"
+    | "shake"
+    | "check"
+    | "cross"
+    | "replace"
+    | "count"
+    | "move"
+    | "type"
+    | "flow"
+    | "scan"
+    | "focus"
+    | "reset";
+  at: string;
+  target: string[];
+  [field: string]: unknown;
+}
+
+export interface ShotBeat {
+  scene: string;
+  narration: string;
+  /** Set on a scene's first beat only. */
+  transition: string;
+  elements: ShotElement[];
+  actions: ShotAction[];
+}
+
+export interface ShotPlan {
+  title: string;
+  outro: string;
+  beats: ShotBeat[];
+}
+
 export interface VideoMeta {
   owner: string;
   repo: string;
@@ -76,6 +146,7 @@ export interface VideoGenerationStats {
   totalMs: number;
   readMs: number;
   planMs: number;
+  /** Designing and narration run in parallel; this is the longer of the two. */
   voiceMs: number;
   planner: "api" | "cli";
   model: string;
@@ -87,20 +158,18 @@ export interface VideoGenerationStats {
   warnings: string[];
 }
 
-export interface VideoArtifact {
-  version: 1;
+export type VideoArtifact = {
   repository: string;
   createdAt: string;
   meta: VideoMeta;
-  plan: VideoPlan;
   timing: VideoTiming;
-  /** One narration clip per beat, placed at `start` seconds. */
+  /** Narration clips (one per scene in version 2, per beat in version 1), placed at `start` seconds. */
   voices: Array<{ start: number }>;
   stats: VideoGenerationStats;
-}
+} & ({ version: 1; plan: VideoPlan } | { version: 2; plan: ShotPlan });
 
 export type VideoGenerationStage =
-  "reading" | "planning" | "voicing" | "saving";
+  "reading" | "planning" | "designing" | "saving";
 
 export type VideoGenerationEvent =
   | { status: VideoGenerationStage; elapsedMs: number }

@@ -19,8 +19,11 @@ const SFX_PEAK_DB: Record<string, number> = {
   typing: -4.3,
   whoosh: -0.7,
 };
-const BED_GAIN = dbToGain(-19);
-const BED_DUCKED = dbToGain(-25);
+// Version 2 films run on a busier, faster bed, so it sits a little lower.
+const BEDS = {
+  1: { file: "bed-a.mp3", gain: dbToGain(-19), ducked: dbToGain(-25) },
+  2: { file: "bed-b.mp3", gain: dbToGain(-21), ducked: dbToGain(-28) },
+} as const;
 
 export interface SfxCue {
   name: string;
@@ -84,7 +87,7 @@ export class ExplainerAudio {
           decode(voiceClipUrl(this.artifact, index)),
         ),
       ),
-      decode(`${ENGINE}/assets/music/bed-a.mp3`),
+      decode(`${ENGINE}/assets/music/${BEDS[this.artifact.version].file}`),
       Promise.all(
         names.map(
           async (name) =>
@@ -181,6 +184,8 @@ export class ExplainerAudio {
     from: number,
     duration: number,
   ) {
+    const BED_GAIN = BEDS[this.artifact.version].gain;
+    const BED_DUCKED = BEDS[this.artifact.version].ducked;
     const level = (time: number) =>
       this.artifact.timing.beats.some(
         (beat) => time >= beat.start - 0.2 && time <= beat.end + 0.15,

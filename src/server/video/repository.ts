@@ -5,14 +5,28 @@ import { getGithubData } from "~/server/generate/github";
 import { prepareRepositoryContext } from "~/server/generate/repository-context";
 import { fetchSourceContext } from "~/server/generate/source-context";
 import type { VideoMeta } from "~/features/video/types";
-import type { VideoPromptInput } from "./plan-prompt";
-import type { PlanRepositoryFacts } from "./plan-schema";
+import type { PlanRepositoryFacts } from "./text";
+
+/** Everything the film's writers see about the repository. */
+export interface RepositoryContextInput {
+  owner: string;
+  repo: string;
+  url: string;
+  description: string;
+  stars: number;
+  language: string;
+  topics: string[];
+  readme: string;
+  fileTree: string;
+  treeTruncated: boolean;
+  sourceText: string;
+}
 
 export class VideoInputError extends Error {}
 
 export interface VideoRepository {
   meta: VideoMeta;
-  prompt: VideoPromptInput;
+  prompt: RepositoryContextInput;
   facts: PlanRepositoryFacts;
 }
 
@@ -86,7 +100,8 @@ export async function readRepositoryForVideo(params: {
     facts: {
       name: repo,
       paths: data.fileTree.split("\n").filter(Boolean),
-      sourceText: source.text,
+      // README examples are real code too; on-screen code may quote either.
+      sourceText: `${source.text}\n${prepared.readme}`,
     },
   };
 }
