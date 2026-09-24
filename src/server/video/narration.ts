@@ -6,13 +6,17 @@ import { normalizeWord } from "./text";
 const ELEVENLABS_API = "https://api.elevenlabs.io";
 const DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"; // "Chris": warm, conversational
 // multilingual_v2 honors `speed` (eleven_v3 ignores it) and accepts the
-// previous/next-text hints that keep prosody continuous across beat clips.
+// previous/next-text hints that keep prosody continuous across scene takes.
 const DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
-const DEFAULT_SPEED = 1.18;
+// Natural pace. Sped-up takes (1.18 was tried) clip the pauses between
+// sentences and sound rushed; the script is written short enough instead.
+const DEFAULT_SPEED = 1;
 // ElevenLabs Starter allows four concurrent requests; one beat per request.
 const CONCURRENCY = 4;
 const LEAD_IN_SECONDS = 0.4;
 const TAIL_SECONDS = 3.6;
+// A breath between scenes, where the picture changes.
+const SCENE_GAP_SECONDS = 0.5;
 
 interface Alignment {
   characters: string[];
@@ -190,7 +194,10 @@ export async function narrateBeats(
         words: own.map(({ w, s, e }) => ({ w, s, e })),
       };
     }
-    cursor = start + (alignment.character_end_times_seconds.at(-1) ?? 0) + 0.25;
+    cursor =
+      start +
+      (alignment.character_end_times_seconds.at(-1) ?? 0) +
+      SCENE_GAP_SECONDS;
   });
   const speechEnd = timing.at(-1)?.end ?? 0;
   return {

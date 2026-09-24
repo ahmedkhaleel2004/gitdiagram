@@ -1,29 +1,21 @@
 import type { VideoArtifact } from "./types";
 
-// The browser is the mixing desk: narration clips on the beat clock, a music bed
-// that dips under the voice, and every SFX hit the scene engine declared.
+// The browser is the mixing desk: narration clips on the beat clock and the
+// scene engine's sound effects. No music bed; the voice carries the film.
 
 const ENGINE = "/video-engine";
 // Measured peak of each effect (dBFS); hits are normalized to a -6 dB peak and
-// then set to the gain the scene engine asked for.
+// then set to the gain the scene engine asked for. Only soft, untuned foley:
+// pitched chimes (check, reject, blip, resolve) read as dings over narration,
+// so cues naming them are skipped.
 const SFX_PEAK_DB: Record<string, number> = {
-  blip: -18,
-  check: -11.6,
   paper: -1.3,
   pop: -5.3,
-  reject: -7.6,
-  resolve: -3.5,
   stamp: -10.4,
-  swell: -0.2,
   tick: -5.9,
   typing: -4.3,
   whoosh: -0.7,
 };
-// Version 2 films run on a busier, faster bed, so it sits a little lower.
-const BEDS = {
-  1: { file: "bed-a.mp3", gain: dbToGain(-19), ducked: dbToGain(-25) },
-  2: { file: "bed-b.mp3", gain: dbToGain(-21), ducked: dbToGain(-28) },
-} as const;
 
 export interface SfxCue {
   name: string;
@@ -49,7 +41,6 @@ export class ExplainerAudio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private voices: AudioBuffer[] = [];
-  private bed: AudioBuffer | null = null;
   private effects = new Map<string, AudioBuffer>();
   private sources: AudioScheduledSourceNode[] = [];
   private startedAt = 0;
@@ -81,13 +72,12 @@ export class ExplainerAudio {
     const names = [...new Set(this.cues.map((cue) => cue.name))].filter(
       (name) => name in SFX_PEAK_DB,
     );
-    const [voices, bed, effects] = await Promise.all([
+    const [voices, effects] = await Promise.all([
       Promise.all(
         this.artifact.voices.map((_, index) =>
           decode(voiceClipUrl(this.artifact, index)),
         ),
       ),
-      decode(`${ENGINE}/assets/music/${BEDS[this.artifact.version].file}`),
       Promise.all(
         names.map(
           async (name) =>
@@ -96,7 +86,6 @@ export class ExplainerAudio {
       ),
     ]);
     this.voices = voices;
-    this.bed = bed;
     this.effects = new Map(effects);
   }
 
@@ -116,7 +105,6 @@ export class ExplainerAudio {
     this.stopSources();
     await context.resume();
     const now = context.currentTime + 0.05;
-    const duration = this.artifact.timing.DURATION;
     const at = (time: number) => now + Math.max(0, time - from);
 
     this.artifact.voices.forEach((voice, index) => {
@@ -128,18 +116,6 @@ export class ExplainerAudio {
       source.start(at(voice.start), Math.max(0, from - voice.start));
       this.sources.push(source);
     });
-
-    if (this.bed) {
-      const bed = context.createBufferSource();
-      bed.buffer = this.bed;
-      bed.loop = true;
-      const gain = context.createGain();
-      bed.connect(gain).connect(master);
-      this.automateBed(gain.gain, now, from, duration);
-      bed.start(now, from % this.bed.duration);
-      bed.stop(at(duration));
-      this.sources.push(bed);
-    }
 
     for (const cue of this.cues) {
       const buffer = this.effects.get(cue.name);
@@ -175,45 +151,6 @@ export class ExplainerAudio {
     this.stopSources();
     void this.context?.close();
     this.context = null;
-  }
-
-  // Fade in, dip under every spoken beat, fade out at the end.
-  private automateBed(
-    gain: AudioParam,
-    now: number,
-    from: number,
-    duration: number,
-  ) {
-    const BED_GAIN = BEDS[this.artifact.version].gain;
-    const BED_DUCKED = BEDS[this.artifact.version].ducked;
-    const level = (time: number) =>
-      this.artifact.timing.beats.some(
-        (beat) => time >= beat.start - 0.2 && time <= beat.end + 0.15,
-      )
-        ? BED_DUCKED
-        : BED_GAIN;
-    const fadeIn = Math.min(1, from / 1.2);
-    gain.setValueAtTime(level(from) * fadeIn, now);
-    if (from < 1.2)
-      gain.linearRampToValueAtTime(level(1.2), now + (1.2 - from));
-    for (const beat of this.artifact.timing.beats) {
-      if (beat.end + 0.6 <= from) continue;
-      const down = beat.start - 0.25 - from;
-      const up = beat.end + 0.15 - from;
-      if (down > 0) {
-        gain.setValueAtTime(level(beat.start - 0.3), now + down);
-        gain.linearRampToValueAtTime(BED_DUCKED, now + down + 0.25);
-      }
-      if (up > 0) {
-        gain.setValueAtTime(BED_DUCKED, now + up);
-        gain.linearRampToValueAtTime(level(beat.end + 0.6), now + up + 0.45);
-      }
-    }
-    const fadeOut = duration - 3 - from;
-    if (fadeOut > 0) {
-      gain.setValueAtTime(BED_GAIN, now + fadeOut);
-      gain.linearRampToValueAtTime(0, now + fadeOut + 3);
-    }
   }
 
   private stopSources() {

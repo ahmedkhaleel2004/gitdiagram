@@ -16,14 +16,14 @@ function build() {
   var note = document.getElementById("note");
   if (note) note.style.display = "none";
 
-  // ---------- sound: every event can ask, the throttle keeps it musical ----------
+  // ---------- sound: soft untuned foley only; the throttle keeps it sparse ----------
   var SFX = (window.__SFX = []);
   var lastAny = -1;
   var lastByName = {};
   function sfx(name, t, gain) {
     t = Math.max(0, t);
-    if (t - lastAny < 0.09 && t >= lastAny) return;
-    if (lastByName[name] !== undefined && Math.abs(t - lastByName[name]) < 0.22) return;
+    if (t - lastAny < 0.45 && t >= lastAny) return;
+    if (lastByName[name] !== undefined && Math.abs(t - lastByName[name]) < 0.9) return;
     lastAny = t;
     lastByName[name] = t;
     SFX.push({ name: name, t: Number(t.toFixed(3)), gain: gain || 0 });
@@ -76,6 +76,24 @@ function build() {
       if (wrap(text, font, maxW).length * s * lineHeight <= maxH) return s;
     }
     return min;
+  }
+  // The canvas estimates above miss italics, kerning and flex padding, so every
+  // text block is checked against its real layout: shrink until the content
+  // fits its width (and height, when given), then ellipsize what still spills.
+  function fitText(node, maxH, min) {
+    var size = parseFloat(getComputedStyle(node).fontSize);
+    function fits() {
+      return node.scrollWidth <= node.clientWidth + 1 && (maxH == null || node.scrollHeight <= maxH + 1);
+    }
+    while (!fits() && size > min) {
+      size -= 1;
+      node.style.fontSize = size + "px";
+    }
+    if (!fits()) {
+      node.style.overflow = "hidden";
+      node.style.textOverflow = "ellipsis";
+    }
+    return size;
   }
   function monoFit(lines, maxW, maxH, max, min, lineHeight) {
     var longest = Math.max.apply(null, lines.map(function (l) { return l.length; }).concat([8]));
@@ -213,12 +231,15 @@ function build() {
   // ---------- element builders ----------
   // Each returns { el, enter(t), parts } where parts serve later actions.
   function place(parent, e, extra) {
-    return h(
+    var el = h(
       "div",
       "shot",
       "position:absolute;left:" + e.x * U + "px;top:" + e.y * U + "px;width:" + e.w * U + "px;height:" + e.h * U + "px;" + (extra || ""),
       parent,
     );
+    el.dataset.id = e.id;
+    el.dataset.kind = e.kind;
+    return el;
   }
   function cardStyle(bg) {
     return "background:" + (bg || "var(--card)") + ";border:3px solid " + INK + ";border-radius:16px;box-shadow:7px 7px 0 " + INK + ";overflow:hidden;";
@@ -255,6 +276,7 @@ function build() {
       inner.appendChild(document.createTextNode(" "));
       spans.push(sp);
     });
+    fitText(inner, H, 24);
     return {
       el: el,
       label: inner,
@@ -276,6 +298,7 @@ function build() {
     var color = e.tone === "muted" ? "var(--ink-2)" : e.tone === "accent" ? "var(--purple-deep)" : INK;
     var el = place(layer, e, "display:flex;align-items:center;");
     var inner = h("div", "", "width:100%;font:" + weight + " " + size + "px/1.28 " + fam + ";color:" + color, el, esc(e.text));
+    fitText(inner, H, 14);
     return { el: el, label: inner, labelHost: el, enter: function (t) { riseIn(el, t, { y: 18, d: 0.36 }); } };
   };
   B.code = function (e, layer, future) {
@@ -299,6 +322,7 @@ function build() {
       return h("div", "code", "position:absolute;left:68px;top:" + y + "px;font-size:" + fs + "px;line-height:" + fs * lh + "px;white-space:pre;width:max-content", body, text.trim() === "…" ? '<span class="tk-c">…</span>' : tint(text, hash));
     }
     function bar(n) {
+      if (n < 1 || n > all.length) return null;
       if (!bars[n]) bars[n] = h("div", "hl", "left:6px;right:6px;top:" + (13 + (n - 1) * fs * lh) + "px;height:" + fs * lh + "px;width:auto", body);
       if (body.firstChild !== bars[n]) body.insertBefore(bars[n], body.firstChild);
       return bars[n];
@@ -312,8 +336,8 @@ function build() {
       enter: function (t) {
         riseIn(el, t, { y: 26 });
         lineEls.forEach(function (n, i) { typeIn(n, t + 0.18 + i * 0.05, Math.min(0.26, 0.04 + (n.textContent || "").length * 0.006)); });
-        (e.focus || []).forEach(function (n) { tl.fromTo(bar(n), { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t + 0.5); });
-        sfx("typing", t + 0.15, -15);
+        (e.focus || []).forEach(function (n) { var b = bar(n); if (b) tl.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t + 0.5); });
+        sfx("typing", t + 0.15, -18);
       },
     };
   };
@@ -350,7 +374,7 @@ function build() {
             at += 0.06;
           }
         });
-        sfx("typing", t + 0.2, -13);
+        sfx("typing", t + 0.2, -17);
       },
     };
   };
@@ -366,19 +390,22 @@ function build() {
     var tw = W - 44 - (ic ? ic + 14 : 0);
     var ls = fitSize(e.label, function (s) { return "650 " + s + "px Geist"; }, tw, (e.sub ? H * 0.5 : H * 0.72), 1.12, 40, 16);
     var label = h("div", "", "font:650 " + ls + "px/1.12 Geist;color:" + TONE_INK[tone] + ";letter-spacing:-0.01em", col, esc(e.label));
+    var sub = null;
     if (e.sub) {
       var ss = Math.max(14, Math.min(22, Math.floor(tw / (e.sub.length * 0.6)), Math.floor(H * 0.22)));
-      h("div", "mono", "margin-top:6px;font:500 " + ss + "px/1.2 'Geist Mono';color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis", col, esc(e.sub));
+      sub = h("div", "mono", "margin-top:6px;font:500 " + ss + "px/1.2 'Geist Mono';color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis", col, esc(e.sub));
     }
-    return { el: el, label: label, labelHost: col, enter: function (t) { popIn(el, t); sfx("pop", t, -11); } };
+    fitText(label, H - (sub ? sub.offsetHeight + 6 : 0) - 8, 13);
+    return { el: el, label: label, labelHost: col, enter: function (t) { popIn(el, t); sfx("pop", t, -15); } };
   };
   B.chip = function (e, layer) {
     var H = e.h * U;
     var tone = e.tone || "plain";
     var fs = Math.max(15, Math.min(Math.floor(H * 0.42), Math.floor((e.w * U - 36) / (e.text.length * 0.6))));
     var el = place(layer, e, "display:flex;align-items:center;justify-content:center;border:3px solid " + INK + ";border-radius:999px;background:" + TONE_BG[tone] + ";box-shadow:3px 3px 0 " + INK + ";padding:0 18px;font:600 " + fs + "px/1 'Geist Mono';color:" + TONE_INK[tone] + ";white-space:nowrap;overflow:hidden");
-    var label = h("span", "", "", el, esc(e.text));
-    return { el: el, label: label, labelHost: el, enter: function (t) { popIn(el, t, { from: 0.5 }); sfx("tick", t, -14); } };
+    var label = h("span", "", "display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis", el, esc(e.text));
+    fitText(label, null, 12);
+    return { el: el, label: label, labelHost: el, enter: function (t) { popIn(el, t, { from: 0.5 }); } };
   };
   B.file = function (e, layer) {
     var H = e.h * U;
@@ -387,11 +414,11 @@ function build() {
     var dir = parts.join("/");
     var el = place(layer, e, cardStyle() + "display:flex;align-items:center;gap:14px;padding:0 18px;");
     el.insertAdjacentHTML("beforeend", icon("file", Math.min(40, H * 0.5)));
-    var col = h("div", "", "min-width:0", el);
+    var col = h("div", "", "flex:1;min-width:0", el);
     var ns = Math.max(16, Math.min(Math.floor(H * 0.34), Math.floor((e.w * U - 90) / (name.length * 0.6)), 30));
-    h("div", "mono", "font:650 " + ns + "px/1.15 'Geist Mono';white-space:nowrap", col, esc(name));
+    fitText(h("div", "mono", "font:650 " + ns + "px/1.15 'Geist Mono';white-space:nowrap", col, esc(name)), null, 13);
     if (dir) h("div", "mono", "margin-top:4px;font:500 " + Math.max(13, ns - 8) + "px/1.2 'Geist Mono';color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis", col, esc(dir + "/"));
-    return { el: el, enter: function (t) { riseIn(el, t, { x: -40, y: 0, d: 0.36 }); sfx("paper", t, -17); } };
+    return { el: el, enter: function (t) { riseIn(el, t, { x: -40, y: 0, d: 0.36 }); sfx("paper", t, -19); } };
   };
   B.tree = function (e, layer) {
     var el = place(layer, e, cardStyle());
@@ -406,6 +433,7 @@ function build() {
       rows.push(h("div", "mono", "position:relative;height:" + rh + "px;padding-left:28px;font:500 " + fs + "px/" + rh + "px 'Geist Mono';white-space:nowrap", body, esc(p)));
     });
     function bar(i) {
+      if (i < 1 || i > rows.length) return null;
       if (!bars[i]) {
         bars[i] = h("div", "hl", "left:10px;right:10px;top:" + (i - 1) * rh + "px;height:" + rh + "px;width:auto", body);
         body.insertBefore(bars[i], body.firstChild);
@@ -418,8 +446,8 @@ function build() {
       enter: function (t) {
         riseIn(el, t, { y: 26 });
         rows.forEach(function (r, i) { riseIn(r, t + 0.15 + i * 0.04, { x: -14, y: 0, d: 0.26 }); });
-        (e.focus || []).forEach(function (i) { tl.fromTo(bar(i), { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t + 0.5); });
-        sfx("tick", t + 0.2, -15);
+        (e.focus || []).forEach(function (i) { var b = bar(i); if (b) tl.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t + 0.5); });
+        sfx("paper", t + 0.1, -20);
       },
     };
   };
@@ -461,7 +489,7 @@ function build() {
       enter: function (t) {
         riseIn(el, t, { y: 26 });
         rows.forEach(function (r, i) { riseIn(r, t + 0.2 + i * 0.07, { x: -12, y: 0, d: 0.28 }); });
-        sfx("tick", t + 0.2, -15);
+        sfx("paper", t + 0.1, -20);
       },
     };
   };
@@ -472,14 +500,17 @@ function build() {
     var max = Math.max.apply(null, e.items.map(function (it) { return Math.abs(it.value); }).concat([1e-9]));
     var labelW = Math.min(e.w * U * 0.36, 12 + 13 * Math.max.apply(null, e.items.map(function (it) { return it.label.length; }).concat([4])));
     var fs = Math.max(15, Math.min(26, Math.floor(rh * 0.36)));
+    var trackW = e.w * U - labelW - 14;
+    var valueW = Math.max.apply(null, e.items.map(function (it) { return textW(fmt(it.value) + (e.unit ? " " + e.unit : ""), "650 " + fs + "px 'Geist Mono'"); }).concat([0]));
+    var reach = Math.max(30, Math.min(82, (100 * (trackW - valueW - 20)) / trackW));
     var fills = [];
     e.items.forEach(function (it, i) {
       var r = h("div", "", "position:absolute;left:0;right:0;top:" + i * rh + "px;height:" + rh + "px;display:flex;align-items:center;gap:14px", el);
       h("div", "", "width:" + labelW + "px;flex-shrink:0;text-align:right;font:600 " + fs + "px/1.1 Geist;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", r, esc(it.label));
       var track = h("div", "", "position:relative;flex:1;height:" + Math.min(46, rh * 0.62) + "px", r);
       var width = Math.max(0.04, Math.abs(it.value) / max);
-      var fill = h("div", "", "position:absolute;left:0;top:0;bottom:0;width:" + width * 82 + "%;border:3px solid " + INK + ";border-radius:8px;background:" + (i === 0 ? "var(--purple)" : "var(--purple-soft)") + ";box-shadow:3px 3px 0 " + INK + ";transform-origin:left center", track);
-      h("div", "mono", "position:absolute;left:calc(" + width * 82 + "% + 12px);top:50%;transform:translateY(-50%);font:650 " + fs + "px/1 'Geist Mono';white-space:nowrap", track, esc(fmt(it.value) + (e.unit ? " " + e.unit : "")));
+      var fill = h("div", "", "position:absolute;left:0;top:0;bottom:0;width:" + width * reach + "%;border:3px solid " + INK + ";border-radius:8px;background:" + (i === 0 ? "var(--purple)" : "var(--purple-soft)") + ";box-shadow:3px 3px 0 " + INK + ";transform-origin:left center", track);
+      h("div", "mono", "position:absolute;left:calc(" + width * reach + "% + 12px);top:50%;transform:translateY(-50%);font:650 " + fs + "px/1 'Geist Mono';white-space:nowrap", track, esc(fmt(it.value) + (e.unit ? " " + e.unit : "")));
       fills.push(fill);
     });
     return {
@@ -487,7 +518,6 @@ function build() {
       enter: function (t) {
         tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.2 }, t);
         fills.forEach(function (f, i) { tl.fromTo(f, { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: "power3.out" }, t + 0.1 + i * 0.08); });
-        sfx("blip", t + 0.1, -14);
       },
     };
   };
@@ -530,22 +560,23 @@ function build() {
       el: el,
       first: first.row,
       counts: later,
-      enter: function (t) { riseIn(el, t, { y: 20, d: 0.3 }); first.roll(t + 0.05); sfx("tick", t + 0.1, -12); },
+      enter: function (t) { riseIn(el, t, { y: 20, d: 0.3 }); first.roll(t + 0.05); sfx("tick", t + 0.1, -16); },
     };
   };
   B.stamp = function (e, layer) {
     var tone = e.tone === "ok" ? "#0f7a48" : e.tone === "bad" ? "#b3263a" : "#7a2be0";
     var bg = e.tone === "ok" ? "rgba(207,242,222,0.9)" : e.tone === "bad" ? "rgba(255,217,218,0.9)" : "rgba(220,194,255,0.9)";
     var fs = Math.max(20, Math.min(Math.floor(e.h * U * 0.5), Math.floor((e.w * U - 48) / (e.text.length * 0.68))));
-    var el = place(layer, e, "display:flex;align-items:center;justify-content:center;border:6px solid " + tone + ";border-radius:14px;color:" + tone + ";background:" + bg + ";font:820 " + fs + "px/1 Geist;letter-spacing:0.05em;white-space:nowrap");
-    var label = h("span", "", "", el, esc(e.text));
+    var el = place(layer, e, "display:flex;align-items:center;justify-content:center;padding:0 16px;border:6px solid " + tone + ";border-radius:14px;color:" + tone + ";background:" + bg + ";font:820 " + fs + "px/1 Geist;letter-spacing:0.05em;white-space:nowrap");
+    var label = h("span", "", "display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis", el, esc(e.text));
+    fitText(label, null, 16);
     return {
       el: el,
       label: label,
       labelHost: el,
       enter: function (t) {
         tl.fromTo(el, { opacity: 0, scale: 1.9, rotation: -14 }, { opacity: 1, scale: 1, rotation: -6, duration: 0.2, ease: "power4.in" }, t);
-        sfx("stamp", t + 0.15, -2);
+        sfx("stamp", t + 0.15, -7);
       },
     };
   };
@@ -554,7 +585,7 @@ function build() {
     var bar = h("div", "", "height:54px;display:flex;align-items:center;gap:14px;padding:0 18px;border-bottom:3px solid " + INK + ";background:var(--card)", el);
     bar.innerHTML = '<div class="dots"><i></i><i></i><i></i></div>';
     h("div", "mono", "flex:1;height:34px;display:flex;align-items:center;padding:0 16px;border:2px solid " + INK + ";border-radius:999px;font:500 18px/1 'Geist Mono';white-space:nowrap;overflow:hidden;text-overflow:ellipsis", bar, esc(e.url || ""));
-    return { el: el, enter: function (t) { riseIn(el, t, { y: 40 }); sfx("paper", t, -17); } };
+    return { el: el, enter: function (t) { riseIn(el, t, { y: 40 }); sfx("paper", t, -19); } };
   };
   B.request = function (e, layer) {
     var W = e.w * U;
@@ -582,7 +613,7 @@ function build() {
         riseIn(el, t, { x: -60, y: 0, d: 0.38 });
         if (status) popIn(status, t + 0.35, { from: 0.3 });
         bodyLines.forEach(function (b, i) { tl.fromTo(b, { opacity: 0 }, { opacity: 1, duration: 0.15 }, t + 0.3 + i * 0.05); });
-        sfx("blip", t, -13);
+        sfx("paper", t, -19);
       },
     };
   };
@@ -720,7 +751,6 @@ function build() {
           tl.fromTo(packet, { x: 0, y: 0, opacity: 1 }, { keyframes: keys, immediateRender: false }, t0);
           tl.to(packet, { opacity: 0, duration: 0.1 }, t0 + trip);
         }
-        sfx("blip", t, -13);
       },
     };
   }
@@ -730,7 +760,7 @@ function build() {
     var r = rectOf(item);
     var el = h("div", "badge " + (good ? "ok" : "bad"), "left:" + (r.x + r.w - 26) + "px;top:" + (r.y - 22) + "px;width:52px;height:52px;z-index:4", item.layer, good ? CHECK : CROSS);
     popIn(el, t, { from: 0.2, ease: "back.out(3)" });
-    sfx(good ? "check" : "reject", t, good ? -10 : -7);
+    sfx("pop", t, -16);
   }
   function applyAction(a, t, sc, bi) {
     var items = sc.items;
@@ -740,14 +770,14 @@ function build() {
       case "highlight":
         if (!first) return;
         if (first.built.bar && a.lines && a.lines.length) {
-          a.lines.forEach(function (n) { tl.fromTo(first.built.bar(n), { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t); });
+          a.lines.forEach(function (n) { var b = first.built.bar(n); if (b) tl.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t); });
         } else if (first.built.rowBar && a.rows && a.rows.length) {
           a.rows.forEach(function (n) { var b = first.built.rowBar(n); if (b) tl.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t); });
         } else {
           tl.to(first.el, { backgroundColor: "#dcc2ff", duration: 0.25 }, t);
           tl.to(first.el, { scale: 1.05, duration: 0.14, yoyo: true, repeat: 1, ease: "power2.out" }, t);
         }
-        sfx("tick", t, -11);
+        sfx("tick", t, -17);
         break;
       case "dim":
         targets.forEach(function (it) { tl.to(it.el, { opacity: 0.28, duration: 0.3 }, t); });
@@ -764,15 +794,14 @@ function build() {
         var line = h("div", "", "position:absolute;left:" + (r.x + 10) + "px;top:" + (r.y + r.h / 2 - 2) + "px;width:" + (r.w - 20) + "px;height:5px;border-radius:3px;background:#b3263a;transform-origin:left center;z-index:4", first.layer);
         tl.fromTo(line, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power2.out" }, t);
         tl.to(first.el, { opacity: 0.55, duration: 0.3 }, t + 0.1);
-        sfx("reject", t, -9);
+        sfx("tick", t, -16);
         break;
       case "pulse":
         targets.forEach(function (it) { tl.to(it.el, { scale: 1.07, duration: 0.15, yoyo: true, repeat: 1, ease: "power2.out" }, t); });
-        sfx("tick", t, -12);
+        sfx("tick", t, -17);
         break;
       case "shake":
         if (first) tl.to(first.el, { x: 10, duration: 0.05, yoyo: true, repeat: 5, ease: "none" }, t);
-        sfx("reject", t, -8);
         break;
       case "check":
       case "cross":
@@ -785,7 +814,7 @@ function build() {
         tl.to(old, { opacity: 0, y: -22, duration: 0.2, ease: "power2.in" }, t);
         tl.fromTo(next, { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.28, ease: "power3.out" }, t + 0.12);
         first.current = next;
-        sfx("blip", t, -11);
+        sfx("tick", t, -17);
         break;
       case "count":
         if (!first || !first.built.counts || !first.built.counts.length) return;
@@ -794,7 +823,7 @@ function build() {
         tl.to(c.wrap, { opacity: 1, duration: 0.1 }, t + 0.05);
         c.od.roll(t + 0.05);
         first.built.first = c.wrap;
-        sfx("tick", t, -11);
+        sfx("tick", t, -16);
         break;
       case "move":
         if (!first) return;
@@ -806,7 +835,7 @@ function build() {
         var n = first.built.pending.shift();
         tl.set(n, { opacity: 1 }, t);
         typeIn(n, t, Math.min(0.6, 0.05 + (n.textContent || "").length * 0.015));
-        sfx("typing", t, -14);
+        sfx("typing", t, -18);
         break;
       case "flow":
         if (first && first.built.flow) first.built.flow(t, sc.tOut - 0.3);
@@ -817,7 +846,6 @@ function build() {
         var bar = h("div", "", "position:absolute;left:" + rr.x + "px;top:" + (rr.y - 10) + "px;width:6px;height:" + (rr.h + 20) + "px;border-radius:3px;background:#7a2be0;box-shadow:0 0 36px 12px rgba(122,43,224,0.3);z-index:5;opacity:0", first.layer);
         tl.fromTo(bar, { x: 0, opacity: 1 }, { x: rr.w, duration: 0.9, ease: "power1.inOut" }, t);
         tl.to(bar, { opacity: 0, duration: 0.15 }, t + 0.9);
-        sfx("blip", t, -14);
         break;
       case "focus":
         if (!targets.length) return;
@@ -830,7 +858,7 @@ function build() {
         var cx = (x0 + x1) / 2;
         var cy = (y0 + y1) / 2;
         tl.to(sc.cam, { scale: s, x: 960 - s * cx, y: 540 - s * cy, duration: 0.75, ease: "power3.inOut" }, t);
-        sfx("whoosh", t, -16);
+        sfx("whoosh", t, -19);
         break;
       case "reset":
         tl.to(sc.cam, { scale: 1, x: 0, y: 0, duration: 0.65, ease: "power3.inOut" }, t);
@@ -854,7 +882,7 @@ function build() {
     tl.fromTo(drift, { scale: 1 }, { scale: 1.015, duration: Math.max(0.5, sc.tOut - sc.tIn), ease: "none" }, sc.tIn);
     transitionOut(inner, (scenes[k + 1] && scenes[k + 1].transition) || "zoom", sc.tOut);
     tl.set(sec, { visibility: "hidden" }, sc.tOut);
-    if (k > 0) sfx("whoosh", sc.tIn - 0.04, -12);
+    if (k > 0) sfx("whoosh", sc.tIn - 0.04, -16);
 
     // Actions that later need prepared DOM (swaps, counts, typed lines).
     var future = {};
@@ -895,6 +923,16 @@ function build() {
             if (e.kind === "chip" || e.kind === "stamp") clone.style.textAlign = "center";
             clone.style.opacity = 0;
             host.appendChild(clone);
+            // Replacement text is often longer than the original: give it the
+            // host's whole inner width (centered pills stay centered), then fit.
+            var hs = getComputedStyle(host);
+            var padL = parseFloat(hs.paddingLeft) || 0;
+            var room = host.clientWidth - padL - (parseFloat(hs.paddingRight) || 0);
+            if (e.kind === "chip" || e.kind === "stamp") {
+              clone.style.left = padL + "px";
+              clone.style.width = room + "px";
+            } else clone.style.width = Math.max(lab.offsetWidth, host.clientWidth - lab.offsetLeft - (parseFloat(hs.paddingRight) || 0)) + "px";
+            fitText(clone, host.clientHeight - lab.offsetTop, 12);
             return clone;
           });
         }
@@ -941,9 +979,12 @@ function build() {
   tl.set(end, { visibility: "visible" }, endAt);
   words.forEach(function (sp, k) { tl.fromTo(sp, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, endAt + 0.1 + k * 0.06); });
   riseIn(sign, endAt + 0.5, { y: 20, d: 0.5 });
-  sfx("resolve", endAt + 0.05, -6);
 
   tl.to({}, { duration: 0.01 }, DUR - 0.01);
   window.__timelines.main = tl;
 }
-document.fonts.ready.then(build);
+Promise.all(
+  ['400 32px "Geist"', '400 32px "Geist Mono"', '400 32px "Instrument Serif"', 'italic 400 32px "Instrument Serif"'].map(function (f) {
+    return document.fonts.load(f);
+  }),
+).then(build);

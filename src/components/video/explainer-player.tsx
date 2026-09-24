@@ -13,7 +13,7 @@ type StageMessage =
 
 // Bump with any change under public/video-engine so a browser never pairs a
 // new plan with an engine it cached earlier.
-const ENGINE_VERSION = "3";
+const ENGINE_VERSION = "5";
 const STAGE_TIMEOUT_MS = 20_000;
 
 const formatTime = (seconds: number) => {

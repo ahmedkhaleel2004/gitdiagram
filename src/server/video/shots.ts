@@ -222,6 +222,18 @@ export function normalizeScript(raw: unknown, name: string): Script {
   };
 }
 
+// At a natural speaking pace (about 2.1 words a second, with pauses) this
+// keeps the film near a minute. Longer scripts go back to the director once.
+export const SCRIPT_WORD_TARGET = 125;
+export const SCRIPT_WORD_LIMIT = 140;
+
+export function scriptWordCount(script: Script): number {
+  return script.beats.reduce(
+    (sum, beat) => sum + beat.narration.split(/\s+/).filter(Boolean).length,
+    0,
+  );
+}
+
 /** The script as designers see it: numbered beats with scene and brief. */
 export function scriptForDesigners(script: Script): string {
   return script.beats
@@ -250,6 +262,17 @@ const MIN_SIZE: Record<string, [number, number]> = {
   list: [3, 1.2],
   svg: [1.5, 1.5],
 };
+
+// A designer numbers tree rows before unknown paths are dropped; this maps each
+// original row (1-based) to the row it became, so highlights land on the right one.
+const treeRowMaps = new WeakMap<ShotElement, Map<number, number>>();
+
+function remapRows(rows: number[], map: Map<number, number>): number[] {
+  return rows.flatMap((row) => {
+    const kept = map.get(row);
+    return kept ? [kept] : [];
+  });
+}
 
 function normalizeElement(
   raw: Json,
@@ -290,7 +313,8 @@ function normalizeElement(
   const w = clamp(number(raw.w, minW), minW, 14.8);
   const h = clamp(number(raw.h, minH), minH, 7.8);
   const x = clamp(number(raw.x, 0.8), 0.6, 15.4 - w);
-  const y = clamp(number(raw.y, 1), 0.8, 8.6 - h);
+  // The top band (y < 0.95) belongs to the repository label.
+  const y = clamp(number(raw.y, 1), 0.95, 8.6 - h);
   const element: ShotElement = { ...base, x, y, w, h };
   const tone = TONES.includes(text(raw.tone)) ? text(raw.tone) : "plain";
   switch (kind) {
@@ -350,13 +374,19 @@ function normalizeElement(
         warnings.push(`file ${text(raw.path)} not in repo (${where})`);
       break;
     case "tree": {
-      const paths = strings(raw.paths, 10, 60).filter((path) => {
-        if (pathExists(facts, path)) return true;
-        warnings.push(`dropped unknown path ${path} (${where})`);
-        return false;
+      const paths: string[] = [];
+      const rowMap = new Map<number, number>();
+      strings(raw.paths, 10, 60).forEach((path, index) => {
+        if (!pathExists(facts, path)) {
+          warnings.push(`dropped unknown path ${path} (${where})`);
+          return;
+        }
+        paths.push(path);
+        rowMap.set(index + 1, paths.length);
       });
       element.paths = paths;
-      element.focus = numbers(raw.focus, paths.length);
+      element.focus = remapRows(numbers(raw.focus, 10), rowMap);
+      treeRowMaps.set(element, rowMap);
       break;
     }
     case "table":
@@ -493,7 +523,7 @@ function normalizeAction(
   if (kind === "count") action.value = number(raw.value, 0);
   if (kind === "move") {
     action.x = clamp(number(raw.x, 1), 0.6, 15);
-    action.y = clamp(number(raw.y, 1), 0.8, 8.2);
+    action.y = clamp(number(raw.y, 1), 0.95, 8.2);
   }
   if (kind === "type") action.line = clip(raw.line, 72);
   return action;
@@ -509,12 +539,14 @@ export function normalizeShots(
   const beats: ShotBeat[] = [];
   let sceneIds = new Set<string>();
   let present = new Map<string, ShotElement>();
+  let rowMaps = new Map<string, Map<number, number>>();
   script.beats.forEach((beat, index) => {
     const where = `beat ${index}`;
     const first = index === 0 || script.beats[index - 1]!.scene !== beat.scene;
     if (first) {
       sceneIds = new Set();
       present = new Map();
+      rowMaps = new Map();
     }
     const shot = designed.get(index);
     if (!shot) warnings.push(`no shot designed for ${where}`);
@@ -532,6 +564,8 @@ export function normalizeShots(
       for (let n = 2; sceneIds.has(id); n++) id = `${element.id}_${n}`;
       element.id = id;
       sceneIds.add(id);
+      const rowMap = treeRowMaps.get(element);
+      if (rowMap) rowMaps.set(id, rowMap);
       elements.push(element);
     }
     // Arrows need both ends on screen by now.
@@ -562,6 +596,9 @@ export function normalizeShots(
         continue;
       }
       action.target = targets;
+      const rowMap = rowMaps.get(targets[0] ?? "");
+      if (rowMap && Array.isArray(action.rows))
+        action.rows = remapRows(action.rows as number[], rowMap);
       actions.push(action);
       if (action.do === "exit")
         for (const target of targets) present.delete(target);

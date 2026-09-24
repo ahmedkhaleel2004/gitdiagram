@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeScript, normalizeShots } from "./shots";
+import { normalizeScript, normalizeShots, scriptWordCount } from "./shots";
 import { clip } from "./text";
 
 const facts = {
@@ -197,5 +197,46 @@ describe("explainer shots", () => {
 
   it("requires a real script", () => {
     expect(() => normalizeScript({ beats: [] }, "demo")).toThrow();
+  });
+  it("keeps tree highlights on the same paths after unknown ones are dropped", () => {
+    const { plan } = normalizeShots(
+      script,
+      new Map([
+        [
+          0,
+          {
+            elements: [
+              {
+                id: "files",
+                kind: "tree",
+                x: 1,
+                y: 1,
+                w: 6,
+                h: 4,
+                paths: ["src/app.ts", "tests/fake.ts", "src/router.ts"],
+                focus: [2, 3],
+              },
+            ],
+          },
+        ],
+        [
+          1,
+          {
+            actions: [
+              { at: "router", do: "highlight", target: "files", rows: [1, 3] },
+            ],
+          },
+        ],
+      ]),
+      facts,
+    );
+    const tree = plan.beats[0]!.elements[0]!;
+    expect(tree.paths).toEqual(["src/app.ts", "src/router.ts"]);
+    expect(tree.focus).toEqual([2]);
+    expect(plan.beats[1]!.actions[0]!.rows).toEqual([1, 2]);
+  });
+
+  it("counts the narration words that set the film's length", () => {
+    expect(scriptWordCount(script)).toBe(21);
   });
 });

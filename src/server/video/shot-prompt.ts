@@ -3,7 +3,7 @@ import type { RepositoryContextInput } from "./repository";
 // One system prompt for both roles (director and designer) so every call shares
 // the cached prefix: tools → this prompt → the repository context.
 
-export const SHOT_SYSTEM = `You make fast, dense, bespoke technical films about one GitHub repository: about sixty seconds, fourteen to seventeen quick beats. Picture a sharp engineer showing a peer exactly how this codebase works, at speed: the real function names, data structures, constants and values, the actual path a request or a piece of data takes, and the clever decisions. It is not a lesson and not an overview. No "let's", no "in this video", no "you'll learn", no recap, no advice on where to start reading, no summary of the big idea. Every sentence carries a concrete, checkable fact from the repository.
+export const SHOT_SYSTEM = `You make dense, bespoke technical films about one GitHub repository: about sixty seconds, fourteen to sixteen quick beats. Picture a sharp engineer showing a peer exactly how this codebase works: the real function names, data structures, constants and values, the actual path a request or a piece of data takes, and the clever decisions. It is not a lesson and not an overview. No "let's", no "in this video", no "you'll learn", no recap, no advice on where to start reading, no summary of the big idea. Every sentence carries a concrete, checkable fact from the repository.
 
 A motion engine draws the film from a JSON shot language (specified below). Two roles use this prompt; the final user message says which one you are playing.
 - DIRECTOR: write the script by calling write_script.
@@ -13,7 +13,7 @@ A motion engine draws the film from a JSON shot language (specified below). Two 
 Use only what the README, file tree and source excerpts support. Paths must exist in the tree. Code lines must be copied verbatim from the excerpts (you may drop lines; mark a gap with a line containing only "…"). Numbers, names and values must come from the sources. If unsure, leave it out.
 
 ## Narration (director)
-- 140 to 165 words in total, 6 to 13 words per beat. Fast, spoken, present tense. Fragments are fine.
+- 110 to 130 words in total (count them before you submit), 5 to 9 words per beat. Write it the way a senior engineer talks a colleague through code they know well: complete, natural spoken sentences of varied length, present tense, with commas and full stops where a speaker would breathe. No clipped fragments or headline-speak; the density comes from the facts, not from rushing.
 - Tell one story. Beat 1 is a cold open: the most striking thing about the project, in plain outcome language, no file names. Then follow the main path through the system end to end (how a request, command or piece of data actually moves), naming the real pieces as it passes through them. Spend the second half on the three or four mechanisms that make this codebase distinctive, each shown concretely.
 - Choose details that explain how it works. Skip edge-case trivia, error codes, version numbers and configuration minutiae unless they are central to the design.
 - Say names the way people say them ("the router", "the dependant tree"); paths and symbols with punctuation belong on screen, never in narration. Write numbers as words.
@@ -32,7 +32,7 @@ Use only what the README, file tree and source excerpts support. Paths must exis
 - Use the camera: "focus" pushes into a detail (a code line, a value) and "reset" pulls back.
 
 ## Shot language
-The canvas is 16 × 9 units (1 unit = 120 px). Keep every element inside x 0.6–15.4 and y 0.8–8.6. Coordinates are the element's top-left corner; w and h are its size. Decimals are fine. Elements in the same scene must not overlap unless one is a browser frame drawn behind the others.
+The canvas is 16 × 9 units (1 unit = 120 px). Keep every element inside x 0.6–15.4 and y 1–8.6 (the top strip holds the repository label). Coordinates are the element's top-left corner; w and h are its size. Decimals are fine. Elements in the same scene must not overlap unless one is a browser frame drawn behind the others.
 
 Every element: { "id": snake_case unique within its scene, "kind", "x", "y", "w", "h", "at": one word copied exactly from this beat's narration (optional; without it the element appears as the beat starts) }.
 Kinds and their extra fields (limits are hard; longer text is cut):
@@ -71,7 +71,18 @@ Scene transitions (first beat of a scene, optional): "slide" | "push" | "zoom" |
 Example: a two-beat scene about a router, narration "Routes compile to one regex." then "A request matches, and the path params fall out.":
 {"shots":[{"beat":4,"transition":"push","elements":[{"id":"src","kind":"code","x":0.8,"y":1.2,"w":7.6,"h":4.2,"title":"app/routing.py","lines":["def compile_path(path):","    for match in PARAM_REGEX.finditer(path):","        param_name = match.groups()[0]"],"at":"routes"},{"id":"rx","kind":"chip","x":9,"y":2,"w":6,"h":0.6,"text":"^/items/(?P<item_id>[^/]+)$","tone":"accent","at":"regex"}],"actions":[{"at":"regex","do":"highlight","target":"src","lines":[2]}]},{"beat":5,"elements":[{"id":"req","kind":"request","x":9,"y":3.2,"w":6,"h":1.3,"method":"GET","url":"/items/42","status":null,"at":"request"},{"id":"out","kind":"box","x":9,"y":5.4,"w":3.4,"h":1.1,"label":"item_id = \\"42\\"","sub":"path params","tone":"ok","at":"params"}],"actions":[{"at":"matches","do":"focus","target":["rx","req"]},{"at":"params","do":"reset"}]}]}`;
 
-export const DIRECTOR_TASK = `You are the DIRECTOR. Write the script for this repository and submit it with write_script. Fourteen to seventeen beats in five to seven scenes, 140 to 165 words of narration in total, plus the outro line.`;
+export const DIRECTOR_TASK = `You are the DIRECTOR. Write the script for this repository and submit it with write_script. Fourteen to sixteen beats in five to seven scenes, 110 to 130 words of narration in total, plus the outro line.`;
+
+/** Sent back to the director when its script runs long. */
+export function trimTask(params: {
+  script: string;
+  words: number;
+  target: number;
+}): string {
+  return `You are the DIRECTOR. Your script below has ${params.words} words of narration; at a natural speaking pace the film must stay near sixty seconds, so it may have at most ${params.target}. Resubmit it with write_script: the same scenes, beats, briefs and outro, with only the narration tightened. Keep the most specific facts and names, cut filler and secondary clauses, and keep every line a natural spoken sentence.
+
+${params.script}`;
+}
 
 export function designerTask(params: {
   script: string;

@@ -7,12 +7,16 @@ import {
   SHOT_SYSTEM,
   designerTask,
   repositoryContext,
+  trimTask,
 } from "./shot-prompt";
 import {
   SCRIPT_TOOL,
+  SCRIPT_WORD_LIMIT,
+  SCRIPT_WORD_TARGET,
   SHOTS_TOOL,
   normalizeScript,
   scriptForDesigners,
+  scriptWordCount,
   type Script,
 } from "./shots";
 
@@ -133,21 +137,43 @@ export function createFilmWriters(input: RepositoryContextInput) {
     model,
     usage,
     async direct(signal?: AbortSignal): Promise<Script> {
-      const raw = await withRetry(
-        () =>
-          callTool({
-            client,
-            model,
-            context,
-            task: DIRECTOR_TASK,
-            tool: SCRIPT_TOOL.name,
-            effort: "low",
-            usage,
-            signal,
+      const write = (task: string) =>
+        withRetry(
+          () =>
+            callTool({
+              client,
+              model,
+              context,
+              task,
+              tool: SCRIPT_TOOL.name,
+              effort: "low",
+              usage,
+              signal,
+            }),
+          signal,
+        );
+      const script = normalizeScript(await write(DIRECTOR_TASK), input.repo);
+      const words = scriptWordCount(script);
+      if (words <= SCRIPT_WORD_LIMIT) return script;
+      // The voice runs at a natural pace, so a long script means a long film.
+      const trimmed = normalizeScript(
+        await write(
+          trimTask({
+            script: JSON.stringify(script),
+            words,
+            target: SCRIPT_WORD_TARGET,
           }),
-        signal,
+        ),
+        input.repo,
       );
-      return normalizeScript(raw, input.repo);
+      console.info(
+        JSON.stringify({
+          event: "video.script.trimmed",
+          from: words,
+          to: scriptWordCount(trimmed),
+        }),
+      );
+      return scriptWordCount(trimmed) < words ? trimmed : script;
     },
 
     /** One designer per scene, all at once; a failed scene falls back to plain type. */
