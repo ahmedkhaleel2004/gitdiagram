@@ -573,6 +573,14 @@
     right: auto;
     transform-origin: 55px top;
   }
+  /* In the right column (after the Video button), open toward the left: the
+     hidden menu still takes up room, and hanging off the screen's edge makes
+     Safari zoom the whole page out. */
+  .actions > .exportControl:nth-child(even) .exportMenu {
+    left: auto;
+    right: 0;
+    transform-origin: calc(100% - 55px) top;
+  }
   .exportActionButton {
     padding-inline: 5px;
     font-size: 11px;
