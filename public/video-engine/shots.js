@@ -12,9 +12,6 @@ function build() {
   var INK = "#17111f";
   var tl = gsap.timeline({ paused: true });
   var stage = document.getElementById("scenes");
-  // Version 2 films have no idea card; the stage shell still carries its markup.
-  var note = document.getElementById("note");
-  if (note) note.style.display = "none";
 
   // ---------- sound ----------
   // Builders ask for hits freely; mixSfx (run once the film is built) keeps a

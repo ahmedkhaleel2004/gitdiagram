@@ -18,7 +18,7 @@ import controls from "~/components/generation/workspace.module.css";
 
 const ExplainerVideo = dynamic(
   () =>
-    import("~/components/video/explainer-video").then(
+    import("~/components/explainer/explainer-video").then(
       (module) => module.ExplainerVideo,
     ),
   { ssr: false },

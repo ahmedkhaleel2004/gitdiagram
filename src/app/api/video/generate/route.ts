@@ -12,10 +12,10 @@ import {
 import {
   canGenerateVideos,
   isVideoExplainerEnabled,
-} from "~/server/video/config";
-import { generateExplainerVideo } from "~/server/video/generate";
-import { VideoInputError } from "~/server/video/repository";
-import type { VideoGenerationEvent } from "~/features/video/types";
+} from "~/server/explainer/config";
+import { generateExplainerVideo } from "~/server/explainer/generate";
+import { VideoInputError } from "~/server/explainer/repository";
+import type { VideoGenerationEvent } from "~/features/explainer/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

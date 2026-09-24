@@ -5,8 +5,8 @@ import {
   githubUsernameSchema,
 } from "~/server/generate/types";
 import { jsonErrorResponse } from "~/server/http/same-origin-json";
-import { isVideoExplainerEnabled } from "~/server/video/config";
-import { readVoiceClip } from "~/server/video/store";
+import { isVideoExplainerEnabled } from "~/server/explainer/config";
+import { readVoiceClip } from "~/server/explainer/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

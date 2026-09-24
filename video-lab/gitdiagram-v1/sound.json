@@ -1,8 +1,0 @@
-{
-  "tempo": 1.07,
-  "voStart": 0.8,
-  "tail": 4.2,
-  "voice": { "file": "assets/audio/narration.mp3", "gainDb": 0 },
-  "bed": { "file": "assets/audio/bed-a.mp3", "gainDb": -21, "duckDb": 6, "fadeIn": 1.2, "fadeOut": 3.0 },
-  "loudness": { "I": -16, "TP": -1.5 }
-}

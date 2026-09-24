@@ -11,8 +11,8 @@ import {
 import {
   canGenerateVideos,
   isVideoExplainerEnabled,
-} from "~/server/video/config";
-import { readVideoArtifact } from "~/server/video/store";
+} from "~/server/explainer/config";
+import { readVideoArtifact } from "~/server/explainer/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -12,7 +12,6 @@ const config = [
       "dist/**",
       "coverage/**",
       "next-env.d.ts",
-      "video-lab/**",
       "public/video-engine/**",
     ],
   },
