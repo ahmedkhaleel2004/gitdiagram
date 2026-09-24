@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { VideoArtifact } from "~/features/explainer/types";
-import { renderExplainerPoster } from "./render";
+import { renderExplainerPoster, renderHostStats } from "./render";
 import { writeRender } from "./store";
 
 /**
@@ -25,6 +25,7 @@ export async function storePoster(
         event: "video.poster.stored",
         repository: artifact.repository,
         ms: Date.now() - started,
+        host: await renderHostStats(),
       }),
     );
     return true;
@@ -34,6 +35,7 @@ export async function storePoster(
         event: "video.poster.failed",
         repository: artifact.repository,
         error: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+        host: await renderHostStats(),
       }),
     );
     return false;

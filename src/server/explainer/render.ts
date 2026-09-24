@@ -2,8 +2,15 @@ import "server-only";
 
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import {
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  statfs,
+  writeFile,
+} from "node:fs/promises";
+import { freemem, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
 import type { SfxCue } from "~/features/explainer/audio-mixer";
@@ -73,6 +80,34 @@ async function launchBrowser(userDataDir: string): Promise<Browser> {
 async function closeBrowser(browser: Browser | null) {
   await browser?.close().catch(() => undefined);
   browser?.process()?.kill("SIGKILL");
+}
+
+/**
+ * What a render host has left, for render logs: an instance that runs short
+ * of memory, disk or processes makes Chromium fail in unhelpful ways
+ * ("Target closed", network errors) on every later render.
+ */
+export async function renderHostStats() {
+  const freeMb = async (path: string) => {
+    const stats = await statfs(path).catch(() => null);
+    return stats ? Math.round((stats.bavail * stats.bsize) / 2 ** 20) : null;
+  };
+  const pids = (await readdir("/proc").catch(() => [] as string[])).filter(
+    (name) => /^\d+$/.test(name),
+  );
+  const states = await Promise.all(
+    pids.map((pid) => readFile(`/proc/${pid}/stat`, "utf8").catch(() => "")),
+  );
+  const chromium = states.filter((stat) => /\((chrom|headless)/i.test(stat));
+  return {
+    memFreeMb: Math.round(freemem() / 2 ** 20),
+    tmpFreeMb: await freeMb(tmpdir()),
+    shmFreeMb: await freeMb("/dev/shm"),
+    tmpEntries: (await readdir(tmpdir()).catch(() => [])).length,
+    processes: pids.length,
+    chromium: chromium.length,
+    zombies: chromium.filter((stat) => /\) Z /.test(stat)).length,
+  };
 }
 
 async function ffmpegPath(): Promise<string> {
