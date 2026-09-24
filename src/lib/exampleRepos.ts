@@ -1,8 +1,7 @@
 export const exampleRepos = {
   FastAPI: "/fastapi/fastapi",
-  Streamlit: "/streamlit/streamlit",
+  GitDiagram: "/ahmedkhaleel2004/gitdiagram",
   Flask: "/pallets/flask",
-  "api-analytics": "/tom-draper/api-analytics",
   Monkeytype: "/monkeytypegame/monkeytype",
 };
 

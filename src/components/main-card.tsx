@@ -233,9 +233,7 @@ export default function MainCard({
                     type="button"
                     variant="outline"
                     className={`h-9 border-2 border-black bg-purple-400 px-3 text-sm font-semibold text-black hover:bg-purple-300 sm:h-10 sm:px-4 sm:text-base sm:font-medium dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19] ${
-                      name === "Streamlit" || name === "api-analytics"
-                        ? "hidden sm:inline-flex"
-                        : ""
+                      name === "GitDiagram" ? "hidden sm:inline-flex" : ""
                     }`}
                     onClick={(e) => handleExampleClick(path, e)}
                   >
