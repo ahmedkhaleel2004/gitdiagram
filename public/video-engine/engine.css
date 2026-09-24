@@ -421,6 +421,11 @@ svg.wires {
   padding: 0 110px;
 }
 
+/* offline renders: no full-frame noise filter (see stage.js) */
+html.render #grain {
+  display: none;
+}
+
 /* captions: the spoken beat, words lit as they are said */
 #captions {
   position: absolute;

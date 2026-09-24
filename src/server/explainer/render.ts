@@ -116,6 +116,7 @@ async function openStage(
       captions: options.captions,
       layout: options.format,
       poster: Boolean(options.poster),
+      render: true,
     },
   );
   return { page, sfx };
@@ -275,21 +276,40 @@ export async function renderVideoSegment(params: {
       stderr = (stderr + chunk.toString()).slice(-2000);
     });
     const finished = once(encoder, "close");
+    const timings = { seek: 0, capture: 0, write: 0 };
+    const opened = Date.now();
     for (let index = params.from; index < params.to; index++) {
+      const a = Date.now();
       await page.evaluate(
         (time) => (window as unknown as StageWindow).__renderSeek(time),
         index / RENDER_FPS,
       );
+      const b = Date.now();
       const jpeg = await page.screenshot({
         type: "jpeg",
         quality: 90,
         optimizeForSpeed: true,
       });
+      const c = Date.now();
       if (!encoder.stdin.write(jpeg)) await once(encoder.stdin, "drain");
+      timings.seek += b - a;
+      timings.capture += c - b;
+      timings.write += Date.now() - c;
     }
     encoder.stdin.end();
     const [code] = (await finished) as [number];
     if (code !== 0) throw new Error(`ffmpeg failed (${code}): ${stderr}`);
+    const frames = Math.max(1, params.to - params.from);
+    console.info(
+      JSON.stringify({
+        event: "video.segment.rendered",
+        frames,
+        ms: Date.now() - opened,
+        seekMs: Math.round(timings.seek / frames),
+        captureMs: Math.round(timings.capture / frames),
+        writeMs: Math.round(timings.write / frames),
+      }),
+    );
     return { mp4: await readFile(out), sfx };
   } finally {
     await browser.close().catch(() => undefined);

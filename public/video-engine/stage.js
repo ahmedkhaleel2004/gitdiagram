@@ -131,6 +131,10 @@
         fail("The scene engine failed to load.");
       };
       document.body.appendChild(engine);
+      // Offline renders (MP4s, posters) run in software on machines without a
+      // GPU: skip the full-frame noise filter, which would repaint every frame
+      // and is invisible after video compression anyway.
+      if (message.render) document.documentElement.classList.add("render");
       waitForTimeline({
         captions: Boolean(message.captions),
         layout: message.layout === "vertical" ? "vertical" : "landscape",
