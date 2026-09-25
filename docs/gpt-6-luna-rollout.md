@@ -10,7 +10,7 @@ Official sources checked on September 22:
 - [OpenAI pricing](https://developers.openai.com/api/docs/pricing)
 - [Release changelog](https://developers.openai.com/api/docs/changelog)
 
-Prices are USD per million tokens for prompts below 272K input tokens. GitDiagram's input limit is 195K.
+Prices are USD per million tokens for prompts below 272K input tokens. GitDiagram's input limit was 195K at this migration; on September 25 it was raised to 900K (`MAX_GENERATION_INPUT_TOKENS`, just under the model's 922K input limit), while the prompt itself stays bounded by the tree excerpt and source sampling.
 
 | Token type                  | GPT-5.6 Luna Standard | GPT-6 Luna Standard | Reduction |
 | --------------------------- | --------------------: | ------------------: | --------: |

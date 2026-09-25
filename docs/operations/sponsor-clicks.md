@@ -66,14 +66,19 @@ its impression is recorded.
 UUID, and same-origin JSON. It uses `sponsor_impression` with the same anonymous
 cookie as clicks. Inactive campaigns, previews, bots, speculative requests and
 DNT/GPC opt-outs do not count. After the response, Redis (`SET NX`) accepts each
-page view once and at most 120 impressions per network (IPv6 /64) and campaign
-per hour; keys hold a hash of the network, never the IP. If Redis is down,
-impressions are recorded without this check. `?test=1` permits controlled, excluded verification
-events before launch. No page/repository path or visitor IP is sent with the event.
-Website CTR divides website clicks by loaded website ads; it never includes
-README clicks. As with clicks, blocked requests, unavailable analytics, and
-PostHog ingestion caps can cause undercounting. Signups/conversions remain in the
-sponsor's own analytics. The existing $0 billing caps are unchanged.
+page view once and at most 120 impressions per network (IPv6 /48) and campaign
+per hour; keys hold a hash of the network, never the IP. Across all networks a
+campaign accepts at most `SPONSOR_IMPRESSIONS_PER_CAMPAIGN_HOUR` (default
+100,000) impressions an hour; events past it are dropped and logged once as
+`sponsor.campaign_ceiling.exceeded`. If Redis is down, impressions are recorded
+without these checks. `?test=1` permits controlled, excluded verification events
+before launch, but only from a browser signed in to `/admin`; for anyone else
+the flag is ignored. No page/repository path or visitor IP is sent with the
+event. Website CTR divides website clicks by loaded website ads; it never
+includes README clicks. As with clicks, blocked requests and unavailable
+analytics can cause undercounting. Signups/conversions remain in the sponsor's
+own analytics. Product Analytics has no PostHog billing cap (see [the PostHog
+runbook](./posthog.md)).
 
 For the separate preview project, set `SPONSOR_PREVIEW_CAMPAIGN=coderabbit-2026-10`.
 Production hostnames ignore that override. Preview visits never enter reporting.
@@ -103,12 +108,15 @@ campaign, the route immediately issues an uncached 302 to the sponsor with
 (`sent_30_days` for Sent), and the placement's `utm_content`. Both README links
 use `placement=readme`. Other campaigns redirect to `/advertise` (see above).
 
-Next.js `after()` sends one `sponsor_click` event to the existing PostHog project
-without holding up the redirect. Redis (`SET NX`) first accepts one click per
-network, campaign and placement every 30 minutes, so repeat clicks and replayed
-redirects count once; it fails open if Redis is down. Capture has a three-second timeout and fails
-open for navigation. Destinations and placements are allowlisted in code; URL
-parameters cannot turn this into an arbitrary redirect.
+Next.js `after()` sends one `sponsor_click` event to the existing PostHog
+project without holding up the redirect. Redis (`SET NX`) first accepts one
+click per network (IPv6 /48), campaign and placement every 30 minutes, so repeat
+clicks and replayed redirects count once, and at most
+`SPONSOR_CLICKS_PER_CAMPAIGN_HOUR` (default 5,000) clicks per campaign an hour
+across all networks (logged as `sponsor.campaign_ceiling.exceeded`); it fails
+open if Redis is down. Capture has a three-second timeout and fails open for
+navigation. Destinations and placements are allowlisted in code; URL parameters
+cannot turn this into an arbitrary redirect.
 
 Properties are `campaign`, `sponsor`, `placement`, and `is_test`. The anonymous
 distinct ID uses a random first-party `gd_sponsor_visitor` cookie, valid for 30
@@ -127,19 +135,21 @@ increase the count. Placement-level uniques overlap; the total deduplicates them
 
 Counts measure outbound clicks, not confirmed destination page loads, signups,
 sales, ad impressions or click-through rate. Conversion data requires Sent's
-analytics. Existing PostHog billing caps still apply and may stop ingestion; see
-[the PostHog runbook](./posthog.md). Do not add the existing browser `$autocapture`
-events to these counts, as that would double-count website clicks.
+analytics. Product Analytics has no PostHog billing cap, so caps do not stop
+ingestion; see [the PostHog runbook](./posthog.md). Do not add the existing
+browser `$autocapture` events to these counts, as that would double-count
+website clicks.
 
 ## Verification and future campaigns
 
-Add `&test=1` to a placement URL for controlled production checks. These clicks
-are captured with `is_test: true`, skip the Redis dedupe, reach the sponsor even
+Add `&test=1` to a placement URL for controlled production checks, from a
+browser signed in to `/admin` (anyone else's flag is ignored). These clicks are
+captured with `is_test: true`, skip the Redis dedupe, reach the sponsor even
 outside the campaign dates, and are excluded from all dashboard tiles. Use HEAD
 for routine URL checks without recording an event. Tests under
-`src/server/sponsor-clicks.test.ts` cover attribution, anonymous identity, bot and
-prefetch filtering, opt-outs, destination allowlisting, inactive campaigns,
-dedupe, and capture failures.
+`src/server/sponsor-clicks.test.ts` cover attribution, anonymous identity, bot
+and prefetch filtering, opt-outs, destination allowlisting, inactive campaigns,
+dedupe, campaign ceilings, and capture failures.
 
 Keep old campaign IDs in the schedule so historical README links resolve. Use a
 new campaign ID and a dated dashboard so reports do not mix different paid runs.

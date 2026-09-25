@@ -25,6 +25,8 @@ Use `bun ci` when you want an exact frozen-lockfile install, such as in CI.
 
 ## Configure
 
+`.env.example` lists every setting with its default and is the source of truth; this section covers the groups.
+
 Set these storage and coordination variables in `.env`:
 
 - `R2_ACCOUNT_ID`
@@ -50,6 +52,8 @@ Optional generation controls include:
 - `OPENROUTER_MODEL`
 - `OPENROUTER_SITE_URL`
 - `OPENROUTER_APP_NAME`
+- `GENERATION_RATE_LIMIT_MAX` / `GENERATION_RATE_LIMIT_WINDOW_SECONDS` (per-IP limit on server-funded runs, default 8 an hour)
+- `GENERATION_INFRASTRUCTURE_RATE_LIMIT_MAX` / `GENERATION_INFRASTRUCTURE_RATE_LIMIT_WINDOW_SECONDS` (per-IP limit on every caller, default 60 an hour)
 
 Optional GitHub authentication:
 
@@ -61,11 +65,19 @@ Optional browser analytics:
 
 - `NEXT_PUBLIC_POSTHOG_KEY`
 
+Optional explainer videos, operator dashboard and live presence:
+
+- `VIDEO_EXPLAINER_ENABLED=1` and `NEXT_PUBLIC_VIDEO_EXPLAINER=1` turn videos on. They need `OPENAI_API_KEY` (GPT-6 Sol and whisper-1) and `OPENROUTER_API_KEY` (the voice), plus `ANTHROPIC_API_KEY` while a configured video model is a Claude model (the default).
+- `VIDEO_ADMIN_TOKEN` (32+ characters) signs in to `/admin` and skips the video limits. `ANTHROPIC_ADMIN_KEY` lets `/admin` show the Claude credit left.
+- `NEXT_PUBLIC_PRESENCE_URL` and `PRESENCE_SECRET` connect the site to the presence worker (see [workers/presence/README.md](../workers/presence/README.md)).
+- Local MP4 renders need `VIDEO_RENDER_CHROME_PATH` and must run `next dev` under Node, not Bun.
+- The `VIDEO_*` limits, `SPONSOR_*` settings and `CRON_SECRET` are documented in `.env.example`.
+
 The default OpenAI configuration is:
 
 ```dotenv
 AI_PROVIDER=openai
-OPENAI_MODEL=gpt-5.6-terra
+OPENAI_MODEL=gpt-6-luna
 ```
 
 An OpenRouter example:
@@ -103,11 +115,11 @@ bun run knip           # unused files, exports and dependencies
 bun audit
 bun run test
 bun run build
-bun run check:video-tracing   # after build: MP4 render routes ship ffmpeg and Chromium
+bun run check:video-tracing   # after build: video routes trace ffmpeg and Chromium only where needed, within size ceilings
 bun run perf:budget           # after build: route, chunk and video engine size budgets
 ```
 
-This is the same sequence CI runs. `workers/presence` has its own lockfile and CI job; check it from that folder with `bun ci && bun run typecheck && bun audit`.
+This is the same sequence CI runs. `workers/presence` has its own lockfile and CI job; check it from that folder with `bun ci && bun run typecheck && bun run test && bun audit`.
 
 The test suite includes real Mermaid parser contract tests for the deterministic graph compiler, API route tests, cancellation and quota tests, storage concurrency tests, and browser-rendering safety tests.
 
@@ -127,4 +139,4 @@ vercel deploy --prod
 
 Local `.env` files and tooling artifacts are excluded by `.vercelignore`.
 
-The same source can be redeployed to Railway later through `Dockerfile` and `railway.json`. Those files are an offline recovery recipe, not a live standby. The container uses Next.js standalone output, listens on Railway's injected `PORT`, runs as a non-root user, and checks `/api/healthz` before promotion. See [deployment-failover.md](deployment-failover.md) for the recovery procedure, including why the video gate and per-network limits must not be trusted outside Vercel.
+The same source can be redeployed to Railway later through `Dockerfile` and `railway.json`. Those files are an offline recovery recipe, not a live standby. The container uses Next.js standalone output, listens on Railway's injected `PORT`, runs as a non-root user, and checks `/api/healthz` before promotion. `NEXT_PUBLIC_*` values are compiled in at build time, so they must be passed as build arguments (the `Dockerfile` declares them); MP4 renders there call the server on `http://127.0.0.1:$PORT` unless `VIDEO_INTERNAL_ORIGIN` is set. See [deployment-failover.md](deployment-failover.md) for the recovery procedure, including why the video gate and per-network limits must not be trusted outside Vercel.
