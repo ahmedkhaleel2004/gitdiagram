@@ -73,7 +73,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className={`neo-panel rounded-lg p-4 sm:p-5 ${className}`}>
+    <section className={`neo-panel min-w-0 rounded-lg p-4 sm:p-5 ${className}`}>
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-bold tracking-wide uppercase">{title}</h2>
         {aside ? (
@@ -212,6 +212,103 @@ function BarList({ rows }: { rows: Array<[string, number]> }) {
           </span>
         </li>
       ))}
+    </ul>
+  );
+}
+
+const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
+
+function countryName(code: string): string {
+  if (!/^[A-Z]{2}$/.test(code)) return "Unknown";
+  try {
+    return countryNames.of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** Every country on the site now; open one to see its cities. */
+function CountryList({ visitors }: { visitors: LiveVisitor[] }) {
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const countries = useMemo(() => {
+    const byCountry = new Map<string, LiveVisitor[]>();
+    for (const visitor of visitors) {
+      const list = byCountry.get(visitor.c) ?? [];
+      list.push(visitor);
+      byCountry.set(visitor.c, list);
+    }
+    return [...byCountry.entries()]
+      .map(([code, people]) => ({
+        code,
+        count: people.length,
+        cities: tally(
+          people,
+          (v) => [v.ct, v.r].filter(Boolean).join(", ") || "Unknown",
+          Number.POSITIVE_INFINITY,
+        ),
+      }))
+      .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+  }, [visitors]);
+  if (!countries.length)
+    return (
+      <p className="text-sm text-[hsl(var(--neo-soft-text))]">Nobody yet.</p>
+    );
+  const max = Math.max(1, countries[0]!.count);
+  const toggle = (code: string) =>
+    setOpen((current) => {
+      const next = new Set(current);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  return (
+    <ul className="flex max-h-[26rem] flex-col gap-1.5 overflow-y-auto">
+      {countries.map(({ code, count, cities }) => {
+        const expanded = open.has(code);
+        return (
+          <li key={code || "unknown"}>
+            <button
+              type="button"
+              aria-expanded={expanded}
+              onClick={() => toggle(code)}
+              className="relative flex w-full cursor-pointer items-center gap-2 text-left text-sm"
+            >
+              <div
+                className="absolute inset-y-0 left-0 rounded-sm bg-purple-400/35 dark:bg-purple-400/20"
+                style={{ width: `${(count / max) * 100}%` }}
+              />
+              <span className="relative min-w-0 flex-1 truncate px-1.5 py-0.5">
+                <span className="mr-1.5">{flag(code)}</span>
+                <span className="font-medium">{countryName(code)}</span>
+                <span className="ml-1.5 text-xs text-[hsl(var(--neo-soft-text))]">
+                  {expanded ? "▾" : "▸"}
+                </span>
+              </span>
+              <span className="relative w-12 shrink-0 text-right text-xs text-[hsl(var(--neo-soft-text))] tabular-nums">
+                {Math.round((count / visitors.length) * 100)}%
+              </span>
+              <span className="relative w-8 shrink-0 text-right font-semibold tabular-nums">
+                {count}
+              </span>
+            </button>
+            {expanded ? (
+              <ul className="mt-1 mb-1 ml-7 flex flex-col gap-0.5 border-l-2 border-black/15 pl-2 dark:border-white/15">
+                {cities.map(([city, people]) => (
+                  <li
+                    key={city}
+                    className="flex items-center justify-between gap-2 text-[13px]"
+                  >
+                    <span className="min-w-0 truncate">{city}</span>
+                    <span className="shrink-0 font-semibold tabular-nums">
+                      {people}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -469,16 +566,7 @@ export function AdminDashboard() {
   const mobile = visitors.filter((visitor) => visitor.d === "m").length;
   const priority = visitors.filter(isPriorityPlace).length;
   const pages = useMemo(() => tally(visitors, (v) => v.p, 8), [visitors]);
-  const places = useMemo(
-    () =>
-      tally(
-        visitors,
-        (v) =>
-          `${flag(v.c)} ${[v.ct, v.r, v.c].filter(Boolean).join(", ") || "Unknown"}`,
-        8,
-      ),
-    [visitors],
-  );
+  const countryCount = new Set(visitors.map((v) => v.c)).size;
   const sources = useMemo(
     () =>
       tally(
@@ -798,8 +886,11 @@ export function AdminDashboard() {
         >
           <BarList rows={pages} />
         </Panel>
-        <Panel title="Places">
-          <BarList rows={places} />
+        <Panel
+          title="Countries"
+          aside={`${countryCount} ${countryCount === 1 ? "country" : "countries"}`}
+        >
+          <CountryList visitors={visitors} />
         </Panel>
         <Panel title="Came from">
           <BarList rows={sources} />
