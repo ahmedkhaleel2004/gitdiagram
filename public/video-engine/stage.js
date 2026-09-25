@@ -8,6 +8,8 @@
   // The frame URL carries the engine version so a deploy never meets a stale engine.
   var version = new URLSearchParams(window.location.search).get("v") || "0";
   var captions = null;
+  // A captions toggle that arrives before the timeline is built waits here.
+  var captionsWanted = null;
 
   function post(message) {
     window.parent.postMessage(message, window.location.origin);
@@ -33,23 +35,34 @@
 
   // ---------- captions: the current beat's words, lit as they are spoken ----------
   function setupCaptions(host) {
-    captions = { box: el("div", "captions", host), beat: -1, words: [], on: true };
+    captions = { box: el("div", "captions", host), beat: -1, words: [], lit: [], on: true, shown: null };
+  }
+
+  // The latest beat that has started holds the caption, a little past its end
+  // (a pause keeps the line up), until the next one starts.
+  function captionBeat(t) {
+    var beats = window.TIMING.beats;
+    for (var i = beats.length - 1; i >= 0; i--) {
+      if (t >= beats[i].start - 0.12) return t <= beats[i].end + 0.35 ? i : -1;
+    }
+    return -1;
+  }
+
+  // Runs every frame: the DOM is only written when something changed.
+  function showCaptions(shown) {
+    if (captions.shown === shown) return;
+    captions.shown = shown;
+    captions.box.style.opacity = shown ? "1" : "0";
   }
 
   function updateCaptions(t) {
     if (!captions) return;
-    var beats = window.TIMING.beats;
-    var index = -1;
-    for (var i = 0; i < beats.length; i++) {
-      if (t >= beats[i].start - 0.12 && t <= beats[i].end + 0.35) {
-        index = i;
-        break;
-      }
-    }
+    var index = captionBeat(t);
     if (!captions.on || index < 0) {
-      captions.box.style.opacity = "0";
+      showCaptions(false);
       return;
     }
+    var beat = window.TIMING.beats[index];
     if (index !== captions.beat) {
       captions.beat = index;
       captions.box.textContent = "";
@@ -58,14 +71,19 @@
         if (k) captions.box.appendChild(document.createTextNode(" "));
         return el("span", "", captions.box, word);
       });
+      captions.lit = captions.words.map(function () {
+        return false;
+      });
     }
     // Timing words line up with the narration's whitespace-separated words.
-    var timed = beats[index].words;
+    var timed = beat.words;
     captions.words.forEach(function (span, k) {
-      var spoken = timed[k] ? timed[k].s <= t : t >= beats[index].end;
+      var spoken = timed[k] ? timed[k].s <= t : t >= beat.end;
+      if (captions.lit[k] === spoken) return;
+      captions.lit[k] = spoken;
       span.className = spoken ? "on" : "";
     });
-    captions.box.style.opacity = "1";
+    showCaptions(true);
   }
 
   // ---------- vertical (9:16) frame for Shorts, Reels and TikTok ----------
@@ -129,7 +147,7 @@
     timeline = built;
     var captionHost = options.layout === "vertical" ? setupVertical() : document.getElementById("root");
     setupCaptions(captionHost);
-    captions.on = options.captions;
+    captions.on = captionsWanted === null ? options.captions : captionsWanted;
     if (options.poster) showPoster();
     seek(0);
     // The renderer seeks directly, frame by frame, without a message round trip.
@@ -161,8 +179,10 @@
       });
     } else if (message.type === "seek" && timeline) {
       seek(message.time);
-    } else if (message.type === "captions" && captions) {
-      captions.on = Boolean(message.on);
+    } else if (message.type === "captions") {
+      captionsWanted = Boolean(message.on);
+      if (!captions) return;
+      captions.on = captionsWanted;
       if (timeline) updateCaptions(timeline.time());
     }
   });
