@@ -525,7 +525,7 @@ describe("explainer shots", () => {
     const built = new Set(
       [...engine.matchAll(/\bB\.(\w+) = function/g)].map((match) => match[1]),
     );
-    if (/e\.kind === "arrow"\) built = buildArrow/.test(engine))
+    if (/kind === "arrow"\) \{?\s*built = buildArrow\(/.test(engine))
       built.add("arrow");
     expect([...built].sort()).toEqual([...SHOT_KINDS].sort());
     const handled = new Set(
