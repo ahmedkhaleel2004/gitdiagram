@@ -228,7 +228,7 @@ export function ExplainerVideo({
           <span>
             Made with {modelLabel(video.stats.model)} in{" "}
             {(video.stats.totalMs / 1000).toFixed(0)}s
-            {cost !== null ? ` · $${cost.toFixed(2)} model` : ""}
+            {cost !== null ? ` for $${cost.toFixed(2)}` : ""}
           </span>
           {canRegenerate &&
             (confirming ? (
