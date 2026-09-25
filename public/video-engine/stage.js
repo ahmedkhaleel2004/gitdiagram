@@ -150,9 +150,37 @@
     captions.on = captionsWanted === null ? options.captions : captionsWanted;
     if (options.poster) showPoster();
     seek(0);
-    // The renderer seeks directly, frame by frame, without a message round trip.
-    window.__renderSeek = seek;
-    post({ type: "ready", duration: timeline.duration(), sfx: window.__SFX || [] });
+    // Posters and MP4 segments are captured right after "ready": every
+    // picture must be decoded by then, or it bakes in as an empty card.
+    whenImagesReady(function () {
+      // The renderer seeks directly, frame by frame, without a message round trip.
+      window.__renderSeek = seek;
+      post({ type: "ready", duration: timeline.duration(), sfx: window.__SFX || [] });
+    });
+  }
+
+  // A picture that cannot load (or takes too long) is not worth failing the
+  // film for: after this long the stage is ready with whatever has arrived.
+  var IMAGE_WAIT_MS = 5000;
+
+  function whenImagesReady(done) {
+    var images = Array.prototype.slice.call(document.querySelectorAll("#scenes img"));
+    var settled = false;
+    var timer = null;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      done();
+    }
+    if (!images.length) return finish();
+    timer = setTimeout(finish, IMAGE_WAIT_MS);
+    Promise.all(
+      images.map(function (img) {
+        // decode() waits for the load too; a broken picture only rejects.
+        return (typeof img.decode === "function" ? img.decode() : Promise.resolve()).catch(function () {});
+      }),
+    ).then(finish);
   }
 
   window.addEventListener("message", function (event) {

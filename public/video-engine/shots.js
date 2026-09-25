@@ -641,7 +641,7 @@ function build() {
     var status = null;
     if (e.status != null) {
       var ok = e.status < 400;
-      status = h("div", "", "padding:6px 12px;border:2.5px solid " + INK + ";border-radius:999px;background:" + (ok ? "var(--green-soft)" : "var(--red-soft)") + ";color:" + (ok ? "#0f7a48" : "#b3263a") + ";font:750 " + (fs - 2) + "px/1 'Geist Mono'", head, String(e.status));
+      status = h("div", "", "padding:6px 12px;border:2.5px solid " + INK + ";border-radius:999px;background:" + (ok ? "var(--green-soft)" : "var(--red-soft)") + ";color:" + (ok ? "#0f7a48" : "#b3263a") + ";font:750 " + (fs - 2) + "px/1 'Geist Mono'", head, esc(e.status));
     }
     var bodyLines = [];
     if (e.lines.length) {
@@ -672,7 +672,8 @@ function build() {
   // stored with the film: plan.images maps its id to a same-origin path.
   B.image = function (e, layer) {
     var src = String(own(S.images || {}, e.src) || "");
-    if (!/^\/(?!\/)/.test(src)) return null;
+    // Same-origin paths only: "//host" and "/\host" both leave the origin.
+    if (!/^\/(?![\/\\])/.test(src)) return null;
     var el = place(layer, e, cardStyle("var(--card)"));
     var img = h("img", "", "position:absolute;left:12px;right:12px;top:12px;bottom:12px;width:calc(100% - 24px);height:calc(100% - 24px);object-fit:" + (e.fit === "cover" ? "cover" : "contain") + ";border-radius:8px", el);
     img.src = src;
@@ -685,6 +686,8 @@ function build() {
       },
     };
   };
+  // The shapes the server's normalizer allows (src/server/explainer/shots.ts).
+  var SHAPES = { path: 1, rect: 1, circle: 1, line: 1, polyline: 1, polygon: 1 };
   B.svg = function (e, layer) {
     var el = place(layer, e, "");
     var svg = document.createElementNS(NS, "svg");
@@ -695,6 +698,8 @@ function build() {
     el.appendChild(svg);
     var drawn = [];
     (e.shapes || []).forEach(function (s) {
+      // Only drawing primitives: never a <script>, <foreignObject> or <a>.
+      if (!own(SHAPES, s.shape)) return;
       var node = document.createElementNS(NS, s.shape);
       ["x", "y", "width", "height", "r", "cx", "cy", "x1", "y1", "x2", "y2", "rx"].forEach(function (k) {
         if (s[k] != null) node.setAttribute(k, s[k]);
@@ -747,18 +752,35 @@ function build() {
     var my = (y1 + y2) / 2;
     return Math.abs(ac.x - bc.x) < 4 ? [[ac.x, y1], [ac.x, y2]] : [[ac.x, y1], [ac.x, my], [bc.x, my], [bc.x, y2]];
   }
+  function pathOf(pts) {
+    return "M" + pts.map(function (q) { return q[0].toFixed(1) + "," + q[1].toFixed(1); }).join(" L");
+  }
+  function lerpRect(a, b, k) {
+    return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, w: a.w + (b.w - a.w) * k, h: a.h + (b.h - a.h) * k };
+  }
+  // A route as four points (a straight one gets two in its middle), so any
+  // two routes tween point for point. It draws the same line.
+  function square(pts) {
+    if (pts.length === 4) return pts;
+    var m = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2];
+    return [pts[0], m, m.slice(), pts[1]];
+  }
+  // A moving end redraws its arrows in this many straight tweens.
+  var REROUTE_STEPS = 10;
   function buildArrow(e, layer, items) {
     var a = items[e.from];
     var b = items[e.to];
     if (!a || !b) return null;
-    var pts = route(rectOf(a), rectOf(b));
+    // The rects the route was last drawn between, and that route.
+    var ends = { a: rectOf(a), b: rectOf(b) };
+    var pts = route(ends.a, ends.b);
     var svg = document.createElementNS(NS, "svg");
     svg.setAttribute("class", "wires");
     svg.setAttribute("data-id", e.id);
     svg.setAttribute("data-kind", "arrow");
     layer.insertBefore(svg, layer.firstChild);
     var p = document.createElementNS(NS, "path");
-    p.setAttribute("d", "M" + pts.map(function (q) { return q[0].toFixed(1) + "," + q[1].toFixed(1); }).join(" L"));
+    p.setAttribute("d", pathOf(pts));
     p.setAttribute("fill", "none");
     p.setAttribute("stroke", INK);
     p.setAttribute("stroke-width", "4");
@@ -769,39 +791,79 @@ function build() {
     p.style.strokeDashoffset = e.dashed ? "0" : "1";
     if (e.dashed) p.style.opacity = 0;
     svg.appendChild(p);
-    var end = pts[pts.length - 1];
-    var prev = pts[pts.length - 2];
-    var ang = (Math.atan2(end[1] - prev[1], end[0] - prev[0]) * 180) / Math.PI;
+    function headAt(q) {
+      var end = q[q.length - 1];
+      var prev = q[q.length - 2];
+      var ang = (Math.atan2(end[1] - prev[1], end[0] - prev[0]) * 180) / Math.PI;
+      return "translate(" + end[0] + "," + end[1] + ") rotate(" + ang + ")";
+    }
     var head = document.createElementNS(NS, "path");
     head.setAttribute("d", "M -14 -9 L 1 0 L -14 9 Z");
     head.setAttribute("fill", INK);
-    head.setAttribute("transform", "translate(" + end[0] + "," + end[1] + ") rotate(" + ang + ")");
+    head.setAttribute("transform", headAt(pts));
     head.style.opacity = 0;
     svg.appendChild(head);
     var nodes = [svg];
     var label = null;
+    function labelAt(q) {
+      var mid = q[Math.floor((q.length - 1) / 2)];
+      var nxt = q[Math.floor((q.length - 1) / 2) + 1];
+      return { left: (mid[0] + nxt[0]) / 2 - 130 + "px", top: (mid[1] + nxt[1]) / 2 - 17 + "px" };
+    }
     if (e.label) {
-      var mid = pts[Math.floor((pts.length - 1) / 2)];
-      var nxt = pts[Math.floor((pts.length - 1) / 2) + 1];
-      label = h("div", "mono", "position:absolute;left:" + ((mid[0] + nxt[0]) / 2 - 130) + "px;top:" + ((mid[1] + nxt[1]) / 2 - 17) + "px;width:260px;text-align:center;font:600 18px/34px 'Geist Mono';color:var(--ink-2)", layer, '<span style="background:var(--paper);padding:3px 9px;border-radius:6px">' + esc(e.label) + "</span>");
+      var at = labelAt(pts);
+      label = h("div", "mono", "position:absolute;left:" + at.left + ";top:" + at.top + ";width:260px;text-align:center;font:600 18px/34px 'Geist Mono';color:var(--ink-2)", layer, '<span style="background:var(--paper);padding:3px 9px;border-radius:6px">' + esc(e.label) + "</span>");
       nodes.push(label);
     }
     // Packets ride in their own box, so an arrow that exits takes a packet
     // still running with it.
     var packets = h("div", "", "position:absolute;left:0;top:0", layer);
     nodes.push(packets);
-    var packet = h("div", "", "position:absolute;left:" + (pts[0][0] - 11) + "px;top:" + (pts[0][1] - 11) + "px;width:22px;height:22px;border-radius:50%;background:#7a2be0;border:3px solid " + INK + ";opacity:0", packets);
+    var home = pts[0];
+    var packet = h("div", "", "position:absolute;left:" + (home[0] - 11) + "px;top:" + (home[1] - 11) + "px;width:22px;height:22px;border-radius:50%;background:#7a2be0;border:3px solid " + INK + ";opacity:0", packets);
     // The route's bounds (padded to the label's height), for actions that
     // frame or mark the arrow.
-    var xs = pts.map(function (q) { return q[0]; });
-    var ys = pts.map(function (q) { return q[1]; });
-    var x0 = Math.min.apply(null, xs) - 20;
-    var y0 = Math.min.apply(null, ys) - 20;
+    function boxOf(q) {
+      var xs = q.map(function (r) { return r[0]; });
+      var ys = q.map(function (r) { return r[1]; });
+      var x0 = Math.min.apply(null, xs) - 20;
+      var y0 = Math.min.apply(null, ys) - 20;
+      return { x: x0 / U, y: y0 / U, w: (Math.max.apply(null, xs) + 20 - x0) / U, h: (Math.max.apply(null, ys) + 20 - y0) / U };
+    }
+    // Packet runs scheduled so far, so a reroute can send later ones the new way.
+    var trips = [];
+    function flow(t, until) {
+      var legs = [];
+      var total = 0;
+      for (var i = 1; i < pts.length; i++) {
+        var len = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+        legs.push(len);
+        total += len;
+      }
+      var trip = Math.max(0.5, Math.min(1.1, total / 700));
+      var runs = Math.max(1, Math.min(4, Math.floor((until - t) / (trip + 0.2))));
+      for (var r = 0; r < runs; r++) {
+        var t0 = t + r * (trip + 0.2);
+        var keys = [];
+        for (var j = 1; j < pts.length; j++) keys.push({ x: pts[j][0] - home[0], y: pts[j][1] - home[1], duration: (trip * legs[j - 1]) / total, ease: "none" });
+        trips.push({
+          t0: t0,
+          trip: trip,
+          until: until,
+          tweens: [
+            tl.fromTo(packet, { x: pts[0][0] - home[0], y: pts[0][1] - home[1], opacity: 1 }, { keyframes: keys, immediateRender: false }, t0).recent(),
+            tl.to(packet, { opacity: 0, duration: 0.1 }, t0 + trip).recent(),
+          ],
+        });
+      }
+    }
     return {
       el: svg,
       nodes: nodes,
       arrow: true,
-      box: { x: x0 / U, y: y0 / U, w: (Math.max.apply(null, xs) + 20 - x0) / U, h: (Math.max.apply(null, ys) + 20 - y0) / U },
+      from: a,
+      to: b,
+      box: boxOf(pts),
       highlight: function (t) {
         tl.to(p, { attr: { stroke: "#7a2be0" }, duration: 0.25 }, t);
         tl.to(head, { attr: { fill: "#7a2be0" }, duration: 0.25 }, t);
@@ -815,23 +877,49 @@ function build() {
         tl.fromTo(head, { opacity: 0 }, { opacity: 1, duration: 0.1 }, t + 0.3);
         if (label) riseIn(label, t + 0.25, { y: 8, d: 0.25 });
       },
-      flow: function (t, until) {
-        var legs = [];
-        var total = 0;
-        for (var i = 1; i < pts.length; i++) {
-          var len = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-          legs.push(len);
-          total += len;
+      flow: flow,
+      // An end moved (its pos is already the new one): redraw the route
+      // between the ends as they travel, on the move's own clock, and send
+      // packets not yet under way the new way. Returns the new bounds.
+      reroute: function (t, d, ease) {
+        var from = ends;
+        var to = { a: rectOf(a), b: rectOf(b) };
+        ends = to;
+        pts = route(to.a, to.b);
+        // The route between the ends where they are at each step of the
+        // move's ease, joined by linear tweens. Only tweens, no callbacks: a
+        // seek runs none, and the stage is driven by seeks.
+        var curve = gsap.parseEase(ease);
+        var steps = [];
+        for (var i = 0; i <= REROUTE_STEPS; i++) {
+          var k = curve(i / REROUTE_STEPS);
+          var q = square(route(lerpRect(from.a, to.a, k), lerpRect(from.b, to.b, k)));
+          steps.push({ d: pathOf(q), head: headAt(q), label: labelAt(q) });
         }
-        var trip = Math.max(0.5, Math.min(1.1, total / 700));
-        var runs = Math.max(1, Math.min(4, Math.floor((until - t) / (trip + 0.2))));
-        for (var r = 0; r < runs; r++) {
-          var t0 = t + r * (trip + 0.2);
-          var keys = [];
-          for (var j = 1; j < pts.length; j++) keys.push({ x: pts[j][0] - pts[0][0], y: pts[j][1] - pts[0][1], duration: (trip * legs[j - 1]) / total, ease: "none" });
-          tl.fromTo(packet, { x: 0, y: 0, opacity: 1 }, { keyframes: keys, immediateRender: false }, t0);
-          tl.to(packet, { opacity: 0, duration: 0.1 }, t0 + trip);
+        var step = d / REROUTE_STEPS;
+        for (var s = 0; s < REROUTE_STEPS; s++) {
+          var was = steps[s];
+          var now = steps[s + 1];
+          var when = t + s * step;
+          tl.fromTo(p, { attr: { d: was.d } }, { attr: { d: now.d }, duration: step, ease: "none", immediateRender: false }, when);
+          tl.fromTo(head, { attr: { transform: was.head } }, { attr: { transform: now.head }, duration: step, ease: "none", immediateRender: false }, when);
+          if (label) tl.fromTo(label, { left: was.label.left, top: was.label.top }, { left: now.label.left, top: now.label.top, duration: step, ease: "none", immediateRender: false }, when);
         }
+        var until = null;
+        var flying = false;
+        trips = trips.filter(function (run) {
+          if (run.t0 < t) {
+            if (run.t0 + run.trip > t) flying = true;
+            return true;
+          }
+          until = run.until;
+          run.tweens.forEach(function (tw) { tl.remove(tw); });
+          return false;
+        });
+        // A packet under way when the ends start moving leaves the old route.
+        if (flying) tl.to(packet, { opacity: 0, duration: 0.1 }, t);
+        if (until != null && until > t + d) flow(t + d, until);
+        return boxOf(pts);
       },
     };
   }
@@ -1025,6 +1113,11 @@ function build() {
           tl.to(n.el, { x: (Number(a.x) - n.home.x) * U, y: (Number(a.y) - n.home.y) * U, duration: 0.55, ease: "power3.inOut" }, t);
         });
         first.pos = { x: Number(a.x), y: Number(a.y), w: first.pos.w, h: first.pos.h };
+        // Arrows joined to it follow on the same tween, packets included.
+        Object.keys(items).forEach(function (id) {
+          var it = items[id];
+          if (it.arrow && (it.built.from === first || it.built.to === first)) it.pos = it.built.reroute(t, 0.55, "power3.inOut");
+        });
         break;
       case "type":
         if (!first || !first.built.pending || !first.built.pending.length) return;
