@@ -58,6 +58,8 @@ function clock(ms: number): string {
 function isPriorityPlace(visitor: LiveVisitor): boolean {
   if (visitor.c === "US") return ["CA", "WA", "NY"].includes(visitor.r);
   if (visitor.c === "CA") return ["ON", "BC"].includes(visitor.r);
+  if (visitor.c === "FR")
+    return visitor.r === "IDF" || /paris/i.test(visitor.ct);
   return visitor.c === "GB" && /london/i.test(visitor.ct);
 }
 
@@ -594,7 +596,7 @@ const AUDIENCES: Array<{ value: VideoAudience; label: string; hint: string }> =
     {
       value: "priority",
       label: "Priority places",
-      hint: "Any device in CA, WA, NY, Ontario, BC and London",
+      hint: "Any device in CA, WA, NY, Ontario, BC, London and Paris",
     },
     {
       value: "desktop",

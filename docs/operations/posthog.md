@@ -27,7 +27,9 @@ Replay uses two PostHog V2 recording groups (union, without duplicate recordings
   flag [`replay-priority-audiences`](https://us.posthog.com/project/113380/feature_flags/896554).
   The flag matches any of: macOS in the US or Canada; any device in California,
   Washington, New York, Ontario, or British Columbia; London, UK and recognized
-  London borough/locality names. Canada outside Ontario/BC is macOS only.
+  London borough/locality names; Paris and the rest of Île-de-France (Vercel
+  region `IDF`, or native city "Paris"). Canada outside Ontario/BC is macOS only.
+  Paris was added September 25, 2026 (flag version 4).
 - **General sample: paused (0%)**, with no conditions. Its 10-second minimum
   duration is retained for any future resumption.
 

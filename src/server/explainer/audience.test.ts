@@ -72,6 +72,26 @@ describe("who may make new videos", () => {
     expect(uk("", "", "London")).toBe(true);
   });
 
+  it("takes Paris and the area around it", () => {
+    const fr = (region: string, lat: string, lon: string, city = "") =>
+      isInVideoRegion(
+        request({
+          "x-vercel-ip-country": "FR",
+          "x-vercel-ip-country-region": region,
+          "x-vercel-ip-latitude": lat,
+          "x-vercel-ip-longitude": lon,
+          "x-vercel-ip-city": city,
+        }),
+      );
+    expect(fr("IDF", "", "")).toBe(true); // Île-de-France
+    expect(fr("", "48.8049", "2.1204")).toBe(true); // Versailles
+    expect(fr("", "48.4047", "2.7016")).toBe(true); // Fontainebleau
+    expect(fr("CVL", "48.4439", "1.4890")).toBe(false); // Chartres
+    expect(fr("", "", "", "Paris")).toBe(true);
+    expect(fr("ARA", "45.7640", "4.8357")).toBe(false); // Lyon
+    expect(fr("NOR", "49.4432", "1.0999")).toBe(false); // Rouen
+  });
+
   it("lets any device in from an early-access place", () => {
     const inOntario = {
       "x-vercel-ip-country": "CA",

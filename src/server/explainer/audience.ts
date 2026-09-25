@@ -14,10 +14,15 @@ import type { VideoAudience } from "~/features/admin/types";
 const REGIONS: Record<string, string[]> = {
   US: ["CA", "WA", "NY"],
   CA: ["ON", "BC"],
+  FR: ["IDF"], // Île-de-France: Paris and the area around it
 };
 
-// "Anywhere around London": within 60 km of central London.
-const LONDON = { lat: 51.5072, lon: -0.1276, km: 60 };
+// "Anywhere around" these cities: within 60 km of the center, or by city name
+// when there are no coordinates.
+const METROS = [
+  { country: "GB", lat: 51.5072, lon: -0.1276, km: 60, city: /london/i },
+  { country: "FR", lat: 48.8566, lon: 2.3522, km: 60, city: /paris/i },
+];
 
 const MOBILE =
   /Mobi|Android|iPhone|iPad|iPod|Windows Phone|webOS|BlackBerry|Opera Mini|IEMobile|Silk|Kindle/i;
@@ -50,13 +55,14 @@ export function isInVideoRegion(request: Request): boolean {
   const country = headers.get("x-vercel-ip-country") ?? "";
   const region = headers.get("x-vercel-ip-country-region") ?? "";
   if (REGIONS[country]?.includes(region)) return true;
-  if (country !== "GB") return false;
+  const metro = METROS.find((place) => place.country === country);
+  if (!metro) return false;
   const lat = Number.parseFloat(headers.get("x-vercel-ip-latitude") ?? "");
   const lon = Number.parseFloat(headers.get("x-vercel-ip-longitude") ?? "");
   if (Number.isFinite(lat) && Number.isFinite(lon))
-    return distanceKm({ lat, lon }, LONDON) <= LONDON.km;
+    return distanceKm({ lat, lon }, metro) <= metro.km;
   const city = decodeURIComponent(headers.get("x-vercel-ip-city") ?? "");
-  return /london/i.test(city);
+  return metro.city.test(city);
 }
 
 /**
