@@ -37,7 +37,6 @@ const { initializeMock, renderMock, resizeObserverObserveMock } = vi.hoisted(
 vi.mock("mermaid", () => ({
   default: {
     initialize: initializeMock,
-    registerLayoutLoaders: vi.fn(),
     render: renderMock,
   },
 }));

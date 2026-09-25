@@ -3,7 +3,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import mermaid from "mermaid";
-import elkLayouts from "@mermaid-js/layout-elk";
 import { useTheme } from "next-themes";
 
 import { MermaidDiagramToolbar } from "~/components/mermaid-diagram-toolbar";
@@ -36,9 +35,6 @@ const INTERACTIVE_VIEWER_PROPS = {
   role: "region",
   tabIndex: 0,
 };
-
-let elkLayoutRegistered = false;
-type MermaidLayoutLoaders = Parameters<typeof mermaid.registerLayoutLoaders>[0];
 
 const MermaidChart = ({
   chart,
@@ -93,11 +89,6 @@ const MermaidChart = ({
   useEffect(() => {
     let cancelled = false;
 
-    if (!elkLayoutRegistered) {
-      mermaid.registerLayoutLoaders(elkLayouts as MermaidLayoutLoaders);
-      elkLayoutRegistered = true;
-    }
-
     const baseConfig = {
       startOnLoad: false,
       suppressErrorRendering: true,
@@ -107,8 +98,12 @@ const MermaidChart = ({
       // Pure SVG labels survive strict sanitization without relying on
       // foreignObject HTML, which is both harder to secure and less portable.
       htmlLabels: false,
+      layout: "elk",
+      // Mermaid 12 defaults to the "neo" look and a 120px wrap, which splits
+      // file paths mid-name; keep the classic look and the old 200px wrap.
+      look: "classic" as const,
       flowchart: {
-        defaultRenderer: "elk" as const,
+        wrappingWidth: 200,
         curve: "linear" as const,
         nodeSpacing: 50,
         rankSpacing: 50,
