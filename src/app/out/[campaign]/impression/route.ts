@@ -9,20 +9,17 @@ import { getClientIp } from "~/server/http/client-ip";
 import { parseSameOriginJsonRequest } from "~/server/http/same-origin-json";
 import {
   claimSponsorEvent,
+  isSponsorTestRequest,
   recordSponsorEvent,
   shouldRecordSponsorEvent,
   sponsorVisitor,
 } from "~/server/sponsor-clicks";
 
 export const dynamic = "force-dynamic";
-const placement = z.enum(websiteSponsorPlacements);
-const schema = z.union([
-  z.strictObject({ placement, pageViewId: z.uuid() }),
-  // Tabs loaded before page-view IDs send a random ID per request instead.
-  z
-    .strictObject({ placement, eventId: z.uuid() })
-    .transform(({ eventId, ...event }) => ({ ...event, pageViewId: eventId })),
-]);
+const schema = z.strictObject({
+  placement: z.enum(websiteSponsorPlacements),
+  pageViewId: z.uuid(),
+});
 
 export async function POST(
   request: NextRequest,
@@ -41,7 +38,7 @@ export async function POST(
     status: 204,
     headers: { "Cache-Control": "no-store" },
   });
-  const isTest = request.nextUrl.searchParams.get("test") === "1";
+  const isTest = await isSponsorTestRequest(request);
   if (
     !shouldRecordSponsorEvent(request) ||
     !process.env.NEXT_PUBLIC_POSTHOG_KEY ||

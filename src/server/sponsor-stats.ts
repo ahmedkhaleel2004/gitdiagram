@@ -111,25 +111,6 @@ async function refreshRecentStats() {
       AND timestamp >= ${end} - INTERVAL 30 DAY
       AND timestamp < ${end}`;
 
-  const [posthog, github] = await Promise.all([
-    queryPostHog("sponsor-stats-30-days", query),
-    getGitHubApiHeaders()
-      .then((headers) =>
-        fetch("https://api.github.com/repos/ahmedkhaleel2004/gitdiagram", {
-          headers,
-          cache: "no-store",
-          signal: AbortSignal.timeout(10_000),
-        }),
-      )
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(
-            `Sponsor GitHub refresh failed (${response.status}).`,
-          );
-        }
-        return (await response.json()) as unknown;
-      }),
-  ]);
   const [
     monthlyPageviews,
     monthlyVisitors,
@@ -137,8 +118,8 @@ async function refreshRecentStats() {
     repoPageviews,
     homePageviews,
     browsePageviews,
-  ] = recentResponse.parse(posthog).results[0]!;
-  const { stargazers_count: githubStars } = githubResponse.parse(github);
+  ] = recentResponse.parse(await queryPostHog("sponsor-stats-30-days", query))
+    .results[0]!;
 
   if (
     monthlyVisitors > monthlyPageviews ||
@@ -156,8 +137,22 @@ async function refreshRecentStats() {
     repoPageviews,
     homePageviews,
     browsePageviews,
-    githubStars,
   };
+}
+
+async function refreshGitHubStars() {
+  const response = await fetch(
+    "https://api.github.com/repos/ahmedkhaleel2004/gitdiagram",
+    {
+      headers: await getGitHubApiHeaders(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Sponsor GitHub refresh failed (${response.status}).`);
+  }
+  return githubResponse.parse(await response.json()).stargazers_count;
 }
 
 async function refreshLifetimeStats() {
@@ -200,17 +195,31 @@ const readLifetimeStats = unstable_cache(
   ["sponsor-stats-lifetime-v2"],
   { revalidate: LIFETIME_CACHE_SECONDS },
 );
+// Stars have their own cache, so a GitHub error or rate limit never discards
+// good PostHog figures: it keeps the last star count, or the snapshot's.
+const readGitHubStars = unstable_cache(
+  refreshGitHubStars,
+  ["sponsor-stats-stars-v1"],
+  { revalidate: RECENT_CACHE_SECONDS },
+);
 
 export async function getSponsorStats(): Promise<SponsorStats> {
   if (!process.env.POSTHOG_PERSONAL_API_KEY?.trim()) {
     return VERIFIED_SNAPSHOT;
   }
 
+  const [analytics, stars] = await Promise.allSettled([
+    Promise.all([readRecentStats(), readLifetimeStats()]),
+    readGitHubStars(),
+  ]);
+  if (stars.status === "rejected")
+    console.warn("Sponsor star count unavailable; using the snapshot's.");
+  const githubStars =
+    stars.status === "fulfilled" ? stars.value : VERIFIED_SNAPSHOT.githubStars;
+
   try {
-    const [recent, lifetime] = await Promise.all([
-      readRecentStats(),
-      readLifetimeStats(),
-    ]);
+    if (analytics.status === "rejected") throw analytics.reason;
+    const [recent, lifetime] = analytics.value;
     // Lifetime totals end at the start of the UTC day, up to a day before the
     // 30-day window ends, but still far exceed it; a smaller one is bad data.
     if (
@@ -219,11 +228,11 @@ export async function getSponsorStats(): Promise<SponsorStats> {
     ) {
       throw new Error("Sponsor analytics returned inconsistent totals.");
     }
-    return { ...recent, ...lifetime };
+    return { ...recent, ...lifetime, githubStars };
   } catch {
     console.warn(
       "Sponsor analytics unavailable; serving the dated fallback snapshot.",
     );
-    return VERIFIED_SNAPSHOT;
+    return { ...VERIFIED_SNAPSHOT, githubStars };
   }
 }

@@ -85,6 +85,7 @@ describe("sponsor stats", () => {
     expect([...caches].map(([key, { options }]) => [key, options])).toEqual([
       ["sponsor-stats-recent-v2", { revalidate: 3600 }],
       ["sponsor-stats-lifetime-v2", { revalidate: 86400 }],
+      ["sponsor-stats-stars-v1", { revalidate: 3600 }],
     ]);
     const recent = queryBody("sponsor-stats-30-days");
     // 2026-09-17T23:00:00Z: the scan is bounded to the 30-day window.
@@ -126,14 +127,35 @@ describe("sponsor stats", () => {
     expect((await getSponsorStats()).asOf).toBe("2026-09-17T22:40:53.000Z");
   });
 
-  it("preserves a dated fallback if GitHub is rate limited", async () => {
+  it("keeps fresh PostHog figures when GitHub is rate limited", async () => {
+    request.mockImplementation(async (url, init) => {
+      if (String(url).includes("github.com"))
+        return new Response(null, { status: 403 });
+      const { name } = JSON.parse(init!.body as string) as QueryBody;
+      return Response.json({
+        results: [name === "sponsor-stats-lifetime" ? lifetimeRow : recentRow],
+      });
+    });
+    const result = await getSponsorStats();
+    // The star count falls back to the snapshot's; the audience stays fresh.
+    expect(result.githubStars).toBe(16178);
+    expect(result.asOf).toBe("2026-09-17T23:00:00.000Z");
+    expect(result.monthlyVisitors).toBe(32000);
+    await expect(
+      caches.get("sponsor-stats-stars-v1")!.callback(),
+    ).rejects.toThrow("refresh failed (403)");
+  });
+
+  it("keeps a fresh star count when PostHog fails", async () => {
     request.mockImplementation(async (url) =>
       String(url).includes("github.com")
-        ? new Response(null, { status: 403 })
-        : Response.json({ results: [recentRow] }),
+        ? Response.json({ stargazers_count: 16300 })
+        : new Response(null, { status: 503 }),
     );
-    expect((await getSponsorStats()).githubStars).toBe(16178);
-    expect((await getSponsorStats()).asOf).toBe("2026-09-17T22:40:53.000Z");
+    const result = await getSponsorStats();
+    expect(result.asOf).toBe("2026-09-17T22:40:53.000Z");
+    expect(result.monthlyVisitors).toBe(31666);
+    expect(result.githubStars).toBe(16300);
   });
 
   it("rejects incomplete query responses instead of publishing zero metrics", async () => {
@@ -151,12 +173,14 @@ describe("sponsor stats", () => {
     sources({ lifetime: [900000, 380000, 0] });
     expect((await getSponsorStats()).asOf).toBe("2026-09-17T22:40:53.000Z");
     sources({ stars: "unknown" });
-    expect((await getSponsorStats()).asOf).toBe("2026-09-17T22:40:53.000Z");
+    expect((await getSponsorStats()).githubStars).toBe(16178);
   });
 
   it("does not send credentials to a malformed project URL", async () => {
     vi.stubEnv("POSTHOG_PROJECT_ID", "../other");
     await getSponsorStats();
-    expect(request).not.toHaveBeenCalled();
+    expect(
+      request.mock.calls.filter(([url]) => String(url).includes("posthog")),
+    ).toEqual([]);
   });
 });
