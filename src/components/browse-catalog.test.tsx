@@ -23,11 +23,14 @@ vi.mock("next/link", () => ({
     href,
     children,
     className,
+    // Next-only props such as prefetch are not valid DOM attributes.
+    prefetch: _prefetch,
     ...props
   }: {
     href: string;
     children: React.ReactNode;
     className?: string;
+    prefetch?: boolean | null;
   }) => (
     <a href={href} className={className} {...props}>
       {children}

@@ -53,6 +53,10 @@ function createGitHubFetch(
 describe("getGithubData repository input bounds", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // The GitHub client logs structured JSON on failures and public fallbacks;
+    // keep it out of the test output.
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
     getGitHubApiHeaders.mockReset();
     getGitHubApiHeaders.mockResolvedValue({
       Accept: "application/vnd.github+json",
