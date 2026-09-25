@@ -613,3 +613,54 @@
     animation: none;
   }
 }
+
+/* Phone hero stars drift slowly. Two durations keep them from moving in step.
+   Only `transform` animates; the placement uses the separate `translate` and
+   `rotate` properties, so the two compose. */
+.flank-sparkle {
+  animation: flank-float 4.2s ease-in-out infinite;
+}
+
+/* The left star sits under the "R" of "Repository", so it rests a little
+   lower, drifts up and away to the left, and tilts so its arms stay clear. */
+.flank-sparkle-left {
+  animation-name: flank-float-left;
+}
+
+.flank-sparkle-alt {
+  animation-duration: 5.2s;
+  animation-delay: -1.7s;
+  animation-direction: reverse;
+}
+
+@keyframes flank-float {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translate(3px, -8px) rotate(14deg) scale(1.08);
+  }
+  66% {
+    transform: translate(-3px, -3px) rotate(-9deg) scale(0.96);
+  }
+}
+
+@keyframes flank-float-left {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translate(-3px, -4px) rotate(12deg) scale(1.08);
+  }
+  66% {
+    transform: translate(2px, 2px) rotate(-8deg) scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flank-sparkle {
+    animation: none;
+  }
+}

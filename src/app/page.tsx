@@ -29,7 +29,7 @@ export default function HomePage() {
         )}
       >
         {VIDEOS_ENABLED && (
-          <div className="-mt-10 mb-[3.75rem] flex justify-center sm:mt-0 sm:mb-8 lg:mb-4">
+          <div className="-mt-10 mb-[5rem] flex justify-center max-[389px]:mb-[4.25rem] sm:mt-0 sm:mb-8 lg:mb-4">
             <div className="promo-banner relative isolate">
               <span aria-hidden="true" className="promo-banner-glow" />
               <Link

@@ -42,16 +42,49 @@ const SkySparkle = ({ className }: { className?: string }) => (
   </svg>
 );
 
+// The SkySparkle star alone, without its small outline stars, in a tight
+// viewBox so it can be centered on a line of text.
+const FlankSparkle = ({
+  className,
+  fillClassName,
+}: {
+  className?: string;
+  fillClassName: string;
+}) => (
+  <svg
+    className={className}
+    viewBox="10.8 10.2 61.4 60"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden
+  >
+    <path
+      d="m35.213 16.953.595-5.261 2.644 4.587a35.056 35.056 0 0 0 26.432 17.33l5.261.594-4.587 2.644A35.056 35.056 0 0 0 48.23 63.28l-.595 5.26-2.644-4.587a35.056 35.056 0 0 0-26.432-17.328l-5.261-.595 4.587-2.644a35.056 35.056 0 0 0 17.329-26.433Z"
+      className={`${fillClassName} stroke-black dark:stroke-black`}
+      strokeWidth="2.868"
+    />
+  </svg>
+);
+
 const Hero = () => {
   return (
     <>
-      <div className="relative mx-auto w-fit sm:hidden">
-        <VioletSparkle className="pointer-events-none absolute -top-11 -left-9 h-auto w-12 -rotate-12 max-[360px]:-left-4" />
+      <div className="mx-auto w-fit sm:hidden">
         <h1 className="text-center text-[clamp(2.5rem,11.5vw,3.3rem)] leading-[0.95] font-bold tracking-tight">
           Repository to <br />
-          diagram
+          {/* Sizes are in em so the stars scale with the fluid title. */}
+          <span className="relative inline-block">
+            diagram
+            <FlankSparkle
+              className="flank-sparkle flank-sparkle-left pointer-events-none absolute top-[57%] -left-[1.18em] h-auto w-[0.8em] -translate-y-1/2 -rotate-10"
+              fillClassName="fill-violet-500 dark:fill-[hsl(var(--neo-button))]"
+            />
+            <FlankSparkle
+              className="flank-sparkle flank-sparkle-alt pointer-events-none absolute top-1/2 -right-[1.18em] h-auto w-[0.8em] -translate-y-1/2 rotate-10"
+              fillClassName="fill-sky-400 dark:fill-[hsl(var(--neo-button-hover))]"
+            />
+          </span>
         </h1>
-        <SkySparkle className="pointer-events-none absolute -right-9 -bottom-6 h-auto w-12 rotate-6 max-[360px]:-right-4" />
       </div>
 
       <div className="relative mx-auto hidden w-full flex-row items-center justify-center sm:flex">

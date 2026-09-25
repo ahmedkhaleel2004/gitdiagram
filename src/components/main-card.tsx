@@ -3,7 +3,7 @@
 import styles from "./repository-toolbar.module.css";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Sparkles } from "lucide-react";
+import { ArrowRight, ChevronDown, Sparkles } from "lucide-react";
 import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
 import { exampleRepos, isExampleRepo } from "~/lib/exampleRepos";
@@ -12,7 +12,6 @@ import { Switch } from "~/components/ui/switch";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
 import { SponsorSlot } from "~/components/sponsor-slot";
 import type { GenerationCostSummary } from "~/features/diagram/cost";
-
 interface MainCardProps {
   isHome?: boolean;
   username?: string;
@@ -89,7 +88,13 @@ export default function MainCard({
       }
     >
       <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+        <div
+          className={
+            isHome
+              ? "flex gap-2.5 sm:gap-4"
+              : "flex flex-col gap-3 sm:flex-row sm:gap-4"
+          }
+        >
           <label htmlFor="repository-input" className="sr-only">
             GitHub repository
           </label>
@@ -98,7 +103,7 @@ export default function MainCard({
             placeholder="owner/repo or GitHub URL"
             className={
               isHome
-                ? "neo-input h-14 min-w-0 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:h-10 sm:flex-1 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
+                ? "neo-input h-14 min-w-0 flex-1 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:h-10 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
                 : styles.input
             }
             value={repoUrl}
@@ -111,11 +116,20 @@ export default function MainCard({
             type="submit"
             className={
               isHome
-                ? "neo-button h-14 px-4 text-base sm:h-10 sm:p-6 sm:px-6 sm:text-lg"
+                ? "neo-button size-14 shrink-0 p-0 text-base sm:h-10 sm:w-auto sm:p-6 sm:px-6 sm:text-lg [&_svg]:size-6"
                 : styles.submit
             }
           >
-            Diagram
+            {isHome && (
+              <ArrowRight
+                className="sm:hidden"
+                strokeWidth={2.75}
+                aria-hidden="true"
+              />
+            )}
+            <span className={isHome ? "max-sm:sr-only" : undefined}>
+              Diagram
+            </span>
           </Button>
         </div>
 
@@ -222,9 +236,12 @@ export default function MainCard({
 
         {isHome && (
           <div className="space-y-4">
-            <div className="space-y-2 sm:space-y-3">
-              <div className="text-sm font-medium text-gray-700 sm:text-base dark:text-neutral-300">
-                Try these example repositories:
+            <div className="flex items-center gap-2.5 sm:block sm:space-y-3">
+              <div className="shrink-0 text-sm font-medium text-gray-700 sm:text-base dark:text-neutral-300">
+                <span className="sm:hidden">Try:</span>
+                <span className="hidden sm:inline">
+                  Try these example repositories:
+                </span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(exampleRepos).map(([name, path]) => (
@@ -242,7 +259,10 @@ export default function MainCard({
                 ))}
               </div>
             </div>
-            <SponsorSlot surface="home" />
+            <SponsorSlot
+              surface="home"
+              className="max-[389px]:mt-7 max-sm:mt-10"
+            />
           </div>
         )}
       </form>
