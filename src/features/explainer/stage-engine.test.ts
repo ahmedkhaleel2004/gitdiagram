@@ -21,12 +21,19 @@ import {
 const ENGINE = "public/video-engine/";
 const read = (name: string) => readFileSync(`${ENGINE}${name}`, "utf8");
 const SOURCES = {
-  gsap: read("assets/vendor/gsap.min.js"),
-  stage: read("stage.js"),
-  shots: read("shots.js"),
   html: read("stage.html"),
   css: read("engine.css"),
 };
+const STAGE_SCRIPTS = [
+  ...SOURCES.html.matchAll(/<script src="([^"]+)"><\/script>/g),
+].map((match) => match[1]!);
+const scripts = new Map<string, string>();
+/** An engine script by its URL in the stage (the version query dropped). */
+function script(src: string): string {
+  const name = src.replace(/\?.*$/, "");
+  if (!scripts.has(name)) scripts.set(name, read(name));
+  return scripts.get(name)!;
+}
 
 interface Gsap {
   getProperty(target: Element, property: string): number | string;
@@ -85,14 +92,14 @@ async function openStage(
   const append = document.body.appendChild.bind(document.body);
   document.body.appendChild = (<T extends Node>(node: T): T => {
     if (node instanceof window.HTMLScriptElement) {
-      window.eval(SOURCES.shots);
+      window.eval(script(node.getAttribute("src") ?? ""));
       return node;
     }
     return append(node);
   }) as typeof document.body.appendChild;
   options.setup?.(window);
-  window.eval(SOURCES.gsap);
-  window.eval(SOURCES.stage);
+  // stage.html's own scripts, in its order (gsap, the kit, then stage.js).
+  for (const src of STAGE_SCRIPTS) window.eval(script(src));
 
   const ready = new Promise<number>((resolve, reject) => {
     const timer = setTimeout(
