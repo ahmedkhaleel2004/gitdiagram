@@ -9,8 +9,9 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "GitDiagram - Visualize Any GitHub Repository",
-  description:
-    "Turn any GitHub repository into an interactive architecture diagram for quick codebase understanding.",
+  description: VIDEOS_ENABLED
+    ? "Turn any GitHub repository into an interactive architecture diagram or a one-minute explainer video for quick codebase understanding."
+    : "Turn any GitHub repository into an interactive architecture diagram for quick codebase understanding.",
   alternates: {
     canonical: "/",
   },
@@ -47,8 +48,9 @@ export default function HomePage() {
           )}
         >
           <p>
-            Turn any GitHub repository into an interactive diagram for
-            visualization.
+            {VIDEOS_ENABLED
+              ? "Turn any GitHub repository into an interactive diagram or explainer video."
+              : "Turn any GitHub repository into an interactive diagram for visualization."}
           </p>
           <p className="hidden sm:block">
             Or, replace &apos;hub&apos; with &apos;diagram&apos; in any GitHub
