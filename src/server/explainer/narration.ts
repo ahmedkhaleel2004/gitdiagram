@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { VideoTiming } from "~/features/explainer/types";
+import type { VideoTiming, VideoWord } from "~/features/explainer/types";
 import { speak, voicePausedUntil } from "./voice";
 import { normalizeWord } from "./text";
 
@@ -64,7 +64,7 @@ export async function narrateBeats(
   });
 
   const take = await speak(text, signal);
-  const words = take.words.map((word) => ({
+  const words = take.words.map((word): VideoWord & { offset: number } => ({
     w: normalizeWord(text.slice(word.from, word.to)),
     s: seconds(LEAD_IN_SECONDS + word.start),
     e: seconds(LEAD_IN_SECONDS + word.end),

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import {
   CircleAlert,
   Captions,
@@ -30,11 +36,34 @@ const SPEEDS = [1, 1.25, 1.5, 2, 0.75];
 // Pressing and holding either side of the picture plays at this speed.
 const HOLD_SPEED = 2;
 const HOLD_DELAY_MS = 300;
+// Arrow keys on the seek bar move this far.
+const SEEK_STEP_SECONDS = 5;
 
 const formatTime = (seconds: number) => {
   const whole = Math.max(0, Math.floor(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 };
+
+/**
+ * Makes everything on the page but `element` inert (no focus, no clicks,
+ * hidden from assistive technology); returns the undo.
+ */
+function inertAround(element: HTMLElement): () => void {
+  const changed: Element[] = [];
+  for (
+    let node: Element = element;
+    node.parentElement && node !== document.body;
+    node = node.parentElement
+  )
+    for (const sibling of node.parentElement.children)
+      if (sibling !== node && !sibling.hasAttribute("inert")) {
+        sibling.setAttribute("inert", "");
+        changed.push(sibling);
+      }
+  return () => {
+    for (const sibling of changed) sibling.removeAttribute("inert");
+  };
+}
 
 // Preferences are best effort: storage can be blocked (private modes, strict
 // cookie settings), and the player works the same without it.
@@ -84,34 +113,53 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   const held = useRef(false);
   const captionsRef = useRef(captions);
   const duration = artifact.timing.DURATION;
+  const createdAt = artifact.createdAt;
+  const totalTime = formatTime(duration);
 
-  const seekStage = useCallback((time: number) => {
-    frame.current?.contentWindow?.postMessage(
-      { type: "seek", time },
-      window.location.origin,
+  const seekStage = useCallback(
+    (time: number) => {
+      frame.current?.contentWindow?.postMessage(
+        { type: "seek", time },
+        window.location.origin,
+      );
+      if (scrubber.current) scrubber.current.value = String(time);
+      // Runs every frame; the clock text only changes once a second.
+      const shown = formatTime(time);
+      if (clock.current && shown !== shownTime.current) {
+        shownTime.current = shown;
+        clock.current.textContent = shown;
+        scrubber.current?.setAttribute(
+          "aria-valuetext",
+          `${shown} of ${totalTime}`,
+        );
+      }
+    },
+    [totalTime],
+  );
+
+  useEffect(() => {
+    scrubber.current?.setAttribute(
+      "aria-valuetext",
+      `${shownTime.current} of ${totalTime}`,
     );
-    if (scrubber.current) scrubber.current.value = String(time);
-    // Runs every frame; the clock text only changes once a second.
-    const shown = formatTime(time);
-    if (clock.current && shown !== shownTime.current) {
-      shownTime.current = shown;
-      clock.current.textContent = shown;
-    }
-  }, []);
+  }, [totalTime]);
 
-  // Full window: the page behind must not scroll, and Escape leaves.
+  // Full window: the page behind must not scroll or take focus, and Escape
+  // leaves.
   useEffect(() => {
     if (!expanded) return;
     const element = shell.current;
     const root = document.documentElement;
     const overflow = root.style.overflow;
     root.style.overflow = "hidden";
+    const restoreInert = element ? inertAround(element) : () => undefined;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setExpanded(false);
     };
     window.addEventListener("keydown", onKey);
     return () => {
       root.style.overflow = overflow;
+      restoreInert();
       window.removeEventListener("keydown", onKey);
       // Safari tints its status bar and toolbar from the full-window player
       // and keeps that black after it shrinks back, until the element leaves
@@ -137,8 +185,13 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
+  const currentArtifact = useEffectEvent(() => artifact);
+
   // Hand the plan to the stage, then load the audio the stage says it needs.
+  // Keyed like the frame (the video's createdAt and the attempt), so this
+  // only starts over when the frame does and sends stage-ready again.
   useEffect(() => {
+    const artifact = currentArtifact();
     let cancelled = false;
     // Never spin forever: a stage that neither loads nor reports an error
     // fails. The narration download gets its own allowance once the stage is
@@ -216,19 +269,15 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
       audio.current?.dispose();
       audio.current = null;
     };
-  }, [artifact, attempt]);
+  }, [createdAt, attempt]);
 
   const rate = holding && playing ? HOLD_SPEED : speed;
   useEffect(() => {
-    if (ready) void audio.current?.setRate(rate);
+    if (ready)
+      audio.current?.setRate(rate).catch((error: unknown) => {
+        console.error("Explainer speed change failed", error);
+      });
   }, [rate, ready]);
-
-  // Stretch the narration for a held press ahead of time, so it starts at once.
-  useEffect(() => {
-    if (!ready) return;
-    const id = window.setTimeout(() => audio.current?.prewarm(HOLD_SPEED), 500);
-    return () => window.clearTimeout(id);
-  }, [ready]);
 
   // While playing, every frame seeks the stage to the audio clock.
   useEffect(() => {
@@ -256,7 +305,15 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     async (from?: number) => {
       const mixer = audio.current;
       if (!mixer || !ready) return;
-      await mixer.play(from ?? (ended ? 0 : mixer.currentTime()));
+      let started = false;
+      try {
+        started = await mixer.play(from ?? (ended ? 0 : mixer.currentTime()));
+      } catch (error) {
+        // The browser would not start the sound; the video stays paused.
+        console.error("Explainer audio could not start", error);
+      }
+      // A pause, seek or newer play took over while this one waited.
+      if (!started || audio.current !== mixer) return;
       setEnded(false);
       setPlaying(true);
     },
@@ -278,6 +335,9 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     const side =
       event.target instanceof HTMLElement ? event.target.dataset.side : null;
     if (!playing || !side || !event.isPrimary || event.button !== 0) return;
+    // Stretch the narration for a hold now, so a hold starts at once. Only
+    // viewers who might hold pay for it (a phone's CPU and memory).
+    audio.current?.prewarm(HOLD_SPEED);
     window.clearTimeout(holdTimer.current);
     holdTimer.current = window.setTimeout(() => {
       held.current = true;
@@ -290,9 +350,13 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     setHolding(false);
   };
 
-  const onSurfaceClick = () => {
-    if (held.current) held.current = false;
-    else toggle();
+  const onSurfaceClick = (event: React.MouseEvent) => {
+    const afterHold = held.current;
+    held.current = false;
+    // Only the pointer's own click ends a hold; Enter or Space (a click with
+    // no detail) always toggles, even after a hold released off the player.
+    if (afterHold && event.detail !== 0) return;
+    toggle();
   };
 
   const toggleCaptions = () => {
@@ -336,6 +400,24 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     }
   };
 
+  // Arrow keys move a few seconds, not a range input's tiny step.
+  const onScrubberKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const now = Number(event.currentTarget.value);
+    const to =
+      event.key === "ArrowLeft" || event.key === "ArrowDown"
+        ? now - SEEK_STEP_SECONDS
+        : event.key === "ArrowRight" || event.key === "ArrowUp"
+          ? now + SEEK_STEP_SECONDS
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? duration
+              : null;
+    if (to === null) return;
+    event.preventDefault();
+    scrub(Math.min(duration, Math.max(0, to)));
+  };
+
   return (
     <div
       ref={shell}
@@ -344,7 +426,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     >
       <div className={styles.player}>
         <iframe
-          key={attempt}
+          key={`${createdAt}:${attempt}`}
           ref={frame}
           className={styles.stage}
           src={STAGE_PATH}
@@ -429,10 +511,11 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
           disabled={!ready}
           aria-label="Seek"
           onChange={(event) => scrub(Number(event.target.value))}
+          onKeyDown={onScrubberKey}
         />
         <span className={styles.time}>
           <span ref={clock}>0:00</span>
-          <span className={styles.total}>{` / ${formatTime(duration)}`}</span>
+          <span className={styles.total}>{` / ${totalTime}`}</span>
         </span>
         <button
           type="button"
