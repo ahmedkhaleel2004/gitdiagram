@@ -1,6 +1,11 @@
 import "server-only";
 
 import type { ClaudeCredit } from "~/features/admin/types";
+import {
+  claudeCostUsd,
+  claudePrice,
+  HIGHEST_CLAUDE_PRICE,
+} from "~/server/anthropic-pricing";
 import { upstashCommand } from "~/server/storage/upstash";
 
 // Anthropic has no API for the prepaid credit balance, only for what was spent.
@@ -23,21 +28,6 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-// USD per million tokens at API list prices. Cache writes cost 1.25× input for
-// 5 minutes and 2× for an hour. Unknown models are priced as the most
-// expensive one, so the balance errs low.
-const PRICES: Record<
-  string,
-  { input: number; output: number; cacheRead: number }
-> = {
-  "claude-fable-5-1": { input: 10, output: 50, cacheRead: 0.25 },
-  "claude-fable-5": { input: 10, output: 50, cacheRead: 1 },
-  "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2 },
-  "claude-opus-5": { input: 5, output: 25, cacheRead: 0.5 },
-  "claude-sonnet-5": { input: 2, output: 10, cacheRead: 0.2 },
-  "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.1 },
-};
-const FALLBACK_PRICE = PRICES["claude-fable-5-1"]!;
 const WEB_SEARCH_USD = 0.01;
 
 export type CostWindow =
@@ -90,17 +80,18 @@ interface UsageResult {
 
 /** List-price cost in USD of one usage report row. */
 export function priceUsage(row: UsageResult): number {
-  const price = (row.model && PRICES[row.model]) || FALLBACK_PRICE;
+  // Unknown models are priced as the most expensive one, so the balance errs low.
+  const price = (row.model && claudePrice(row.model)) || HIGHEST_CLAUDE_PRICE;
   const writes = row.cache_creation ?? {};
-  const tokens =
-    row.uncached_input_tokens * price.input +
-    (writes.ephemeral_5m_input_tokens ?? 0) * price.input * 1.25 +
-    (writes.ephemeral_1h_input_tokens ?? 0) * price.input * 2 +
-    row.cache_read_input_tokens * price.cacheRead +
-    row.output_tokens * price.output;
+  const tokenCost = claudeCostUsd(price, {
+    input: row.uncached_input_tokens,
+    cacheWrite5m: writes.ephemeral_5m_input_tokens,
+    cacheWrite1h: writes.ephemeral_1h_input_tokens,
+    cacheRead: row.cache_read_input_tokens,
+    output: row.output_tokens,
+  });
   return (
-    tokens / 1_000_000 +
-    (row.server_tool_use?.web_search_requests ?? 0) * WEB_SEARCH_USD
+    tokenCost + (row.server_tool_use?.web_search_requests ?? 0) * WEB_SEARCH_USD
   );
 }
 
