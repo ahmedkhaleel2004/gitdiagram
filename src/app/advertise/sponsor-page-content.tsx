@@ -3,7 +3,6 @@ import Image from "next/image";
 import { SponsorEmailActions } from "./sponsor-email-actions";
 import { SponsorPlacementPreview } from "./sponsor-placement-preview";
 import {
-  SPONSOR_AVAILABILITY,
   SPONSOR_EMAIL,
   SPONSOR_EMAIL_ADDRESS,
   SPONSOR_PRICE,
@@ -60,7 +59,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
             Shared or exclusive placements
           </span>
         </p>
-        <p className={styles.availability}>{SPONSOR_AVAILABILITY}</p>
+        <p className={styles.availability}>{content.availability}</p>
         <div className={styles.heroActions}>
           <SponsorEmailActions
             email={SPONSOR_EMAIL_ADDRESS}
@@ -89,9 +88,9 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
             <time dateTime={content.asOf}>Updated {content.updatedAt}.</time>
           </p>
           <p>
-            Figures refresh about every five minutes. The 30-day window ends at
-            the time shown. Visitors are unique within each window. Pageviews
-            measure site traffic, not ad impressions.
+            Figures refresh about every hour, lifetime totals daily. The 30-day
+            window ends at the time shown. Visitors are unique within each
+            window. Pageviews measure site traffic, not ad impressions.
           </p>
         </div>
       </section>
@@ -152,31 +151,39 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
         id="sponsor-offer"
         aria-labelledby="offer-title"
       >
-        <p className={styles.bookingNote}>
-          <span>October 20 campaign booked by</span>
-          <Image
-            src="/sponsors/coderabbit-wordmark.svg"
-            alt="CodeRabbit"
-            width={2152}
-            height={314}
-            className={styles.bookingLogoLight}
-            unoptimized
-          />
-          <Image
-            src="/sponsors/coderabbit-wordmark-white.svg"
-            alt="CodeRabbit"
-            width={2152}
-            height={313}
-            className={styles.bookingLogoDark}
-            unoptimized
-          />
-        </p>
+        {content.bookedBy && (
+          <p className={styles.bookingNote}>
+            <span>{content.bookedBy.label}</span>
+            <Image
+              src={content.bookedBy.logo.src}
+              alt={content.bookedBy.name}
+              width={content.bookedBy.logo.width}
+              height={content.bookedBy.logo.height}
+              className={
+                content.bookedBy.logo.darkSrc
+                  ? styles.bookingLogoLight
+                  : undefined
+              }
+              unoptimized
+            />
+            {content.bookedBy.logo.darkSrc && (
+              <Image
+                src={content.bookedBy.logo.darkSrc}
+                alt={content.bookedBy.name}
+                width={content.bookedBy.logo.width}
+                height={content.bookedBy.logo.height}
+                className={styles.bookingLogoDark}
+                unoptimized
+              />
+            )}
+          </p>
+        )}
         <div className={styles.offerHeading}>
           <div>
             <h2 id="offer-title">Advertise for 30 days</h2>
             <p className={styles.offerDescription}>
-              New campaigns start from late November 2026, after CodeRabbit’s
-              run. Choose a shared website spot or an exclusive campaign.
+              {content.offerTiming} Choose a shared website spot or an exclusive
+              campaign.
             </p>
           </div>
         </div>

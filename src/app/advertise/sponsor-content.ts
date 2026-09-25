@@ -1,10 +1,11 @@
+import { lastBookedSponsorCampaign } from "~/lib/sponsor-campaign";
+import { sponsorCreatives } from "~/lib/sponsor-creative";
 import type { SponsorStats } from "~/server/sponsor-stats";
 
 export const SPONSOR_EMAIL_ADDRESS = "ahmedkhaleel2004@gmail.com";
 export const SPONSOR_EMAIL = `mailto:${SPONSOR_EMAIL_ADDRESS}?subject=Advertising%20on%20GitDiagram`;
 export const SPONSOR_PRICE = "$999";
 export const SPONSOR_EXCLUSIVE_PRICE = "$2,499";
-export const SPONSOR_AVAILABILITY = "Next available: late November 2026.";
 export const sponsorFits = [
   "AI coding tools and repo agents",
   "Code review, security, and dependency tools",
@@ -39,11 +40,47 @@ const updatedAtFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
   minute: "2-digit",
 });
+const bookingDayFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  day: "numeric",
+  timeZone: "America/Toronto",
+});
+const bookingDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "America/Toronto",
+});
 const format = (value: number) => numberFormatter.format(value);
 const date = (value: string, includeTime = false) =>
   (includeTime ? updatedAtFormatter : dateFormatter).format(new Date(value));
 
-export function createSponsorContent(stats: SponsorStats) {
+// Availability and the booking note follow the campaign schedule, so they
+// never outlive a booking.
+export function createSponsorBooking(now = Date.now()) {
+  const campaign = lastBookedSponsorCampaign(now);
+  if (!campaign)
+    return {
+      availability: "Available now.",
+      offerTiming: "New campaigns can start right away.",
+      bookedBy: null,
+    };
+  const creative = sponsorCreatives[campaign.id];
+  const nextStart = bookingDateFormatter.format(new Date(campaign.endsAt));
+  const bookedFrom =
+    "bookedFrom" in campaign ? campaign.bookedFrom : campaign.startsAt;
+  return {
+    availability: `Next available: ${nextStart}.`,
+    offerTiming: `New campaigns start from ${nextStart}, after ${creative.name}’s run.`,
+    bookedBy: {
+      label: `${bookingDayFormatter.format(new Date(bookedFrom))} campaign booked by`,
+      name: creative.name,
+      logo: creative.logo,
+    },
+  };
+}
+
+export function createSponsorContent(stats: SponsorStats, now = Date.now()) {
   const monthly: SponsorMetric[] = [
     {
       label: "Unique visitors",
@@ -137,6 +174,7 @@ export function createSponsorContent(stats: SponsorStats) {
     },
   ];
   return {
+    ...createSponsorBooking(now),
     monthlyVisitors: format(stats.monthlyVisitors),
     monthly,
     lifetime,
