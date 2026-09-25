@@ -7,7 +7,7 @@ const store = vi.hoisted(() => ({
     repo: string;
     lastSuccessfulAt: string;
   }>,
-  videos: [] as Array<{ owner: string; repo: string; updatedAt?: Date }>,
+  videos: [] as Array<{ owner: string; repo: string; createdAt?: string }>,
   videosOn: true,
 }));
 
@@ -20,8 +20,8 @@ vi.mock("~/server/browse-index-cache", () => ({
 vi.mock("~/server/explainer/config", () => ({
   isVideoExplainerEnabled: () => store.videosOn,
 }));
-vi.mock("~/server/explainer/store", () => ({
-  listStoredVideos: async () => store.videos,
+vi.mock("~/server/explainer/catalog", () => ({
+  listVideoCards: async () => store.videos,
 }));
 vi.mock("~/lib/sitemaps", async (importOriginal) => ({
   ...(await importOriginal<typeof Sitemaps>()),

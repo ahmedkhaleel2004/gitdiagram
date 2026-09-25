@@ -41,7 +41,7 @@ export type SegmentJob = z.infer<typeof segmentJobSchema>;
 /** How long every segment of a render has, retries included. */
 export const RENDER_DEADLINE_MS = 700_000;
 /** One attempt at one segment; a 5 s segment normally takes well under a minute. */
-export const SEGMENT_ATTEMPT_MS = 240_000;
+const SEGMENT_ATTEMPT_MS = 240_000;
 /** Attempts per segment that fail for real (an instance that is only busy is not one). */
 const SEGMENT_ATTEMPTS = 3;
 /** Below this, a new attempt could not finish before the deadline. */

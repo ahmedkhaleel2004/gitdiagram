@@ -6,25 +6,28 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-const routes = [
-  "api/video/render",
-  "api/video/render/segment",
-  "api/video/generate",
-];
-
 // Real binaries are tens of megabytes; anything tiny is a stub or a failed
 // download.
-const requiredFiles = [
-  { file: "node_modules/ffmpeg-static/ffmpeg", minBytes: 10_000_000 },
-  {
-    file: "node_modules/@sparticuz/chromium/bin/chromium.br",
-    minBytes: 10_000_000,
-  },
+const ffmpeg = {
+  file: "node_modules/ffmpeg-static/ffmpeg",
+  minBytes: 10_000_000,
+};
+const chromium = {
+  file: "node_modules/@sparticuz/chromium/bin/chromium.br",
+  minBytes: 10_000_000,
+};
+
+// The render route only joins segments, so it ships ffmpeg alone; Chromium
+// runs in the segment route (frames and posters) and in generate (posters).
+const routes = [
+  { route: "api/video/render", requiredFiles: [ffmpeg] },
+  { route: "api/video/render/segment", requiredFiles: [ffmpeg, chromium] },
+  { route: "api/video/generate", requiredFiles: [ffmpeg, chromium] },
 ];
 
 const failures = [];
 
-for (const route of routes) {
+for (const { route, requiredFiles } of routes) {
   const nftFile = `.next/server/app/${route}/route.js.nft.json`;
   if (!existsSync(nftFile)) {
     failures.push(`${nftFile} is missing. Run the production build first.`);
@@ -57,6 +60,6 @@ if (failures.length) {
   process.exitCode = 1;
 } else {
   console.log(
-    `Video render routes trace ${requiredFiles.map(({ file }) => path.basename(file)).join(" and ")}.`,
+    "Video render routes trace the ffmpeg and Chromium binaries they need.",
   );
 }
