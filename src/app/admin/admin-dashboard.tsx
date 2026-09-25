@@ -168,6 +168,17 @@ export function AdminDashboard() {
         </p>
       ) : null}
 
+      {live.protocolMismatch ? (
+        <p
+          role="alert"
+          className="rounded-md border-2 border-black bg-amber-100 p-3 text-sm text-black"
+        >
+          The presence worker speaks a different protocol than this site. Deploy
+          it from workers/presence (bunx wrangler deploy) so the live panels
+          stay accurate.
+        </p>
+      ) : null}
+
       {state && !state.presence ? (
         <p className="rounded-md border-2 border-black bg-amber-100 p-3 text-sm text-black">
           Live presence is not set up here (NEXT_PUBLIC_PRESENCE_URL and
