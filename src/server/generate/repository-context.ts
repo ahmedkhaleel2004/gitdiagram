@@ -70,57 +70,85 @@ function score(path: string): number {
   return value;
 }
 
+type SourceCandidate = {
+  path: string;
+  directory: string;
+  score: number;
+  /** The score with the size adjustments, before the diversity penalty. */
+  base: number;
+  manifest: boolean;
+};
+
+/**
+ * Whether `a` ranks ahead of `b`: higher priority, then locale order, then
+ * (for paths that compare equal) higher score and the tree's own order, which
+ * is where a stable sort of the candidates would have left them.
+ */
+function ranksAhead(
+  a: SourceCandidate,
+  aPriority: number,
+  b: SourceCandidate,
+  bPriority: number,
+): boolean {
+  if (aPriority !== bPriority) return aPriority > bPriority;
+  const order = a.path.localeCompare(b.path);
+  if (order !== 0) return order < 0;
+  return a.score > b.score;
+}
+
 export function selectSourcePaths(
   data: Pick<GithubData, "pathTypes" | "sourceBlobs">,
 ): string[] {
-  const candidates = [...data.pathTypes]
-    .filter(([path, type]) => {
-      const blob = data.sourceBlobs?.get(path);
-      return (
-        type === "blob" &&
-        isArchitectureSource(path) &&
-        (!blob || blob.size <= MAX_SOURCE_FILE_BYTES)
-      );
-    })
-    .map(([path]) => path)
-    .sort((a, b) => score(b) - score(a) || a.localeCompare(b));
+  // Scores are fixed per path, so they are computed once; each pick is then
+  // one pass over the candidates (in tree order) with only the diversity
+  // penalty changing between picks.
+  const candidates: SourceCandidate[] = [];
+  for (const [path, type] of data.pathTypes) {
+    const size = data.sourceBlobs?.get(path)?.size;
+    if (
+      type !== "blob" ||
+      !isArchitectureSource(path) ||
+      (size !== undefined && size > MAX_SOURCE_FILE_BYTES)
+    )
+      continue;
+    const value = score(path);
+    candidates.push({
+      path,
+      directory: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "",
+      score: value,
+      base:
+        value -
+        // Empty package barrels and tiny wrappers should not crowd out
+        // substantial runtime modules; size is only a modest tie-breaker.
+        (size !== undefined && size < 250 ? 15 : 0) +
+        Math.min(10, Math.log2(1 + (size ?? 0) / 1000)),
+      manifest: MANIFEST.test(path),
+    });
+  }
   const selected: string[] = [];
   const directories = new Map<string, number>();
   // A soft diversity penalty lets important siblings coexist while keeping
   // another subsystem's entry point ahead of an inventory of helper files.
-  const remaining = new Set(candidates);
+  const taken = new Set<SourceCandidate>();
   let manifests = 0;
-  while (remaining.size && selected.length < MAX_SOURCE_FILES) {
-    const ranked = [...remaining]
-      .filter((path) => !MANIFEST.test(path) || manifests < 1)
-      .sort((a, b) => {
-        const priority = (path: string) =>
-          score(path) -
-          // Empty package barrels and tiny wrappers should not crowd out
-          // substantial runtime modules; size is only a modest tie-breaker.
-          (data.sourceBlobs?.get(path)?.size !== undefined &&
-          data.sourceBlobs.get(path)!.size < 250
-            ? 15
-            : 0) +
-          Math.min(
-            10,
-            Math.log2(1 + (data.sourceBlobs?.get(path)?.size ?? 0) / 1000),
-          ) -
-          5 *
-            (directories.get(
-              path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "",
-            ) ?? 0);
-        return priority(b) - priority(a) || a.localeCompare(b);
-      });
-    const path = ranked[0];
-    if (!path) break;
-    remaining.delete(path);
-    selected.push(path);
-    const directory = path.includes("/")
-      ? path.slice(0, path.lastIndexOf("/"))
-      : "";
-    directories.set(directory, (directories.get(directory) ?? 0) + 1);
-    if (MANIFEST.test(path)) manifests++;
+  while (selected.length < MAX_SOURCE_FILES) {
+    let best: SourceCandidate | undefined;
+    let bestPriority = 0;
+    for (const candidate of candidates) {
+      if (taken.has(candidate) || (candidate.manifest && manifests >= 1))
+        continue;
+      const priority =
+        candidate.base - 5 * (directories.get(candidate.directory) ?? 0);
+      if (!best || ranksAhead(candidate, priority, best, bestPriority)) {
+        best = candidate;
+        bestPriority = priority;
+      }
+    }
+    if (!best) break;
+    taken.add(best);
+    selected.push(best.path);
+    directories.set(best.directory, (directories.get(best.directory) ?? 0) + 1);
+    if (best.manifest) manifests++;
   }
   return selected;
 }
@@ -156,7 +184,10 @@ export function prepareRepositoryContext(data: GithubData) {
       data.readme.length > MAX_README_CHARACTERS
         ? `${data.readme.slice(0, MAX_README_CHARACTERS)}\n[README excerpt ends here.]`
         : data.readme,
-    treeTruncated: paths.length < allPaths.length,
+    // GitHub's own partial listing counts too: the tree excerpt may then
+    // miss parts of the repository even when every listed path fits.
+    treeTruncated:
+      Boolean(data.treeTruncated) || paths.length < allPaths.length,
   };
 }
 

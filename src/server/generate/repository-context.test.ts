@@ -132,6 +132,12 @@ describe("repository evidence preparation", () => {
     expect(data.pathTypes.size).toBe(5001);
     expect(context.treeTruncated).toBe(true);
   });
+  it("reports GitHub's partial listing even when every listed path fits", () => {
+    const data = repository(["src/main.ts"]);
+    expect(prepareRepositoryContext(data).treeTruncated).toBe(false);
+    data.treeTruncated = true;
+    expect(prepareRepositoryContext(data).treeTruncated).toBe(true);
+  });
 });
 
 describe("analysis model routing", () => {

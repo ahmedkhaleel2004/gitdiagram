@@ -8,6 +8,7 @@ import {
   markQuotaReservationStartedInUpstash,
 } from "~/server/storage/quota-store";
 import { upstashCommand } from "~/server/storage/upstash";
+import { readIntEnv } from "~/server/env";
 import type { AIProvider } from "~/server/generate/model-config";
 import {
   EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
@@ -48,16 +49,6 @@ function readEnvFlag(name: string): boolean {
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
-function readEnvInt(name: string, fallback: number): number {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    return fallback;
-  }
-
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 function readEnvString(name: string, fallback: string): string {
   return process.env[name]?.trim().toLowerCase() || fallback;
 }
@@ -75,9 +66,10 @@ export function isComplimentaryGateEnabled(): boolean {
 }
 
 export function getComplimentaryDailyLimitTokens(): number {
-  return readEnvInt(
+  return readIntEnv(
     "OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS",
     DEFAULT_DAILY_LIMIT_TOKENS,
+    { min: 1 },
   );
 }
 
