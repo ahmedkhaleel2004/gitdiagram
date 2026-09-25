@@ -8,6 +8,8 @@ export function Footer() {
           Made by{" "}
           <Link
             href="https://ahmedkhaleel.com"
+            target="_blank"
+            rel="noopener noreferrer"
             className="neo-link hover:underline"
           >
             Ahmed Khaleel
