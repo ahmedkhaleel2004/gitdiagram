@@ -519,7 +519,10 @@ describe("explainer shots", () => {
       SHOT_ACTIONS,
     );
 
-    const engine = readFileSync("public/video-engine/shots.js", "utf8");
+    // The engine's tables live in kit.js; its builders and transitions in shots.js.
+    const engine = ["kit.js", "shots.js"]
+      .map((file) => readFileSync(`public/video-engine/${file}`, "utf8"))
+      .join("\n");
     const built = new Set(
       [...engine.matchAll(/\bB\.(\w+) = function/g)].map((match) => match[1]),
     );
@@ -638,7 +641,10 @@ describe("README pictures in a plan", () => {
 });
 
 describe("the engine's field values", () => {
-  const engine = readFileSync("public/video-engine/shots.js", "utf8");
+  // The engine's tables live in kit.js; its builders and transitions in shots.js.
+  const engine = ["kit.js", "shots.js"]
+    .map((file) => readFileSync(`public/video-engine/${file}`, "utf8"))
+    .join("\n");
   const keysOf = (name: string) => {
     const body = new RegExp(`var ${name} = \\{([\\s\\S]*?)\\};`).exec(
       engine,
@@ -656,6 +662,7 @@ describe("the engine's field values", () => {
     );
     expect([...moves, "cut"].sort()).toEqual([...SHOT_TRANSITIONS].sort());
     expect(engine).toContain("document.createElementNS(NS, s.shape)");
+    expect(keysOf("SHAPES").sort()).toEqual([...SVG_SHAPES].sort());
 
     const box = SHOT_SYSTEM.slice(SHOT_SYSTEM.indexOf("\n- box:"));
     for (const icon of SHOT_ICONS) expect(box).toContain(icon);
