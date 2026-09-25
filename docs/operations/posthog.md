@@ -3,88 +3,67 @@
 Project: [GitDiagram 113380](https://us.posthog.com/project/113380).
 
 The browser enables click/submit autocapture, page views and exits, click/scroll
-heatmaps, rage/dead clicks, native Web Vitals, unhandled errors, and sampled session
-replay. Native `$web_vitals` replaces the separate custom `web_vital` events, avoiding
+heatmaps, rage/dead clicks, native Web Vitals, unhandled errors, and session replay configured for all sessions. Native `$web_vitals` replaces the separate custom `web_vital` events, avoiding
 duplicate collection and making the metrics available in PostHog's built-in views.
 
-## Free-tier controls
+## Startup credits and collection
 
-Configured September 18, 2026 in organization billing; the organization moved
-to the paid plan by September 25, 2026:
+Verified September 25, 2026 after PostHog approved GitDiagram for the startup
+program: **US$50,000 in credits**, with the standard 12-month expiry waived under
+the open-source provision. The billing API reports `discount_amount_usd: 50000`
+and `amount_off_expires_at: null`. Credits are a finite usage balance, not a
+monthly allowance or cash payment.
 
-- Session replay: **$0 cap**, 5,000 web recordings per billing period.
-- Product analytics: **$10 cap**, about 1,200,000 events per billing period
-  (1,000,000 free, then $0.00005 per event).
-- Error tracking: **$0 cap**, 100,000 exceptions per billing period.
-- Feature flags: **$0 cap**, 1,000,000 requests per billing period.
+Support ticket #75104 confirms that the credits cover Product Analytics, Session
+Replay, and the other ordinary products, but exclude **PostHog AI, Self-driving
+inbox, Replay vision, and PostHog Desktop**. Those four products retain **$0
+billing limits** (`posthog_ai`, `inbox`, `replay_vision`, `posthog_code_usage`).
 
-Caps apply across the organization and stop ingestion when the allowance is
-exhausted. Data dropped while capped is not recovered later. Caps are independent
-of sampling; keep the other products at zero when changing collection settings. Check the live
-billing page for the current period and allowances.
+The user's instruction to remove the old cost restrictions supersedes the former
+$10 Product Analytics and $0 Session Replay caps. Billing limits were removed for:
 
-Replay uses two PostHog V2 recording groups (union, without duplicate recordings):
+- Product Analytics and Session Replay.
+- Data pipelines, Feature flags & Experiments, Surveys, and Data warehouse.
+- Error tracking, AI Observability, Logs, and Workflows.
 
-- **Priority audiences: 5%, no minimum duration**, gated by the boolean feature
-  flag [`replay-priority-audiences`](https://us.posthog.com/project/113380/feature_flags/896554).
-  The flag matches any of: macOS in the US or Canada; any device in California,
-  Washington, New York, Ontario, or British Columbia; London, UK and recognized
-  London borough/locality names; Paris and the rest of Île-de-France (Vercel
-  region `IDF`, or native city "Paris"). Canada outside Ontario/BC is macOS only.
-  Paris was added September 25, 2026 (flag version 4).
-- **General sample: paused (0%)**, with no conditions. Its 10-second minimum
-  duration is retained for any future resumption.
+PostHog enforces caps even when credits would cover usage. The API now reports
+`usage_limit: null` for those ten products, with no next-period cap overrides.
+Paid platform/support add-ons were not enabled. The user wants full credit-covered
+usage with no out-of-pocket charges and explicitly rejected restoring $0 caps on
+covered products, since those caps would also stop credit-covered ingestion.
+There is no verified self-service credit-balance cutoff. Removing caps can permit
+charges after credits are exhausted; do not promise otherwise. A support request
+for an account-level credit-only hard stop is pending in ticket #75104. Keep the
+four excluded AI products at $0; their free allowances remain available.
 
-Both groups are managed in PostHog project settings, with strict minimum duration
-in the SDK. Both the V2 fallback and legacy sample rate are 0%, so clients falling
-back to legacy controls do not spend the remaining recording allowance. Do not add
-a client `sampleRate`, which would interfere with remote sampling controls. No URL
-or event triggers bypass these rules.
+## Session replay coverage
 
-These temporary reductions were applied September 20, 2026, with the audience
-flag unchanged (version 3). Billing showed 3,495 of 5,000 recordings used, while
-the replay store was slightly ahead at 3,536 at 05:28 Toronto time. The preceding
-24-hour audit found about 2,593 recordings, including roughly 1,055 priority
-recordings. At the same traffic level, 5% priority sampling with general capture
-paused projects to about 53 recordings/day and roughly 4,600 for the period.
-This is an estimate, not an allowance guarantee; keep the $0 billing cap.
+Replay now has one PostHog V2 trigger group:
 
-The current billing period ends October 10 at 01:41:45 UTC (October 9 at 21:41:45
-Toronto time). Review usage and sampling after traffic settles or the allowance
-resets. Rates do not automatically revert at renewal. Restore broader recording
-only after recalculating its expected usage from recent sessions.
+- **All sessions — 100%**, with no URL, event, feature-flag, geographic, or device
+  condition and **no minimum duration**.
+- V2 fallback sampling is **100%**; legacy sample rate is **1.00**, with a legacy
+  minimum duration of **0 ms** and no linked flag.
+- Replay is enabled, with no recording-domain restriction or URL blocklist.
 
-The SDK supplies browser/OS properties before its first flag evaluation using
-PostHog's official customization. `/api/analytics-context` adds only Vercel's
-country and first-level region codes, as flag-only `replay_region_country` and
-`replay_region_code` overrides. PostHog's native flag GeoIP includes country/city
-but not state/province. The endpoint is uncached and does not return IP addresses,
-coordinates, or credentials; it does not create person profiles. A failed lookup
-clears stale region overrides and leaves native country/device/city targeting and
-the general sample available. Initialization waits at most two seconds for it.
+The former priority-only 5% group and paused general group were replaced. The
+historical `replay-priority-audiences` flag (ID `896554`) remains for reference but
+is no longer used by recording rules. The client's coarse region/property flag
+overrides do not restrict recording. Do not add a client `sampleRate`, which would
+interfere with the remote settings.
 
-Location is approximate IP geolocation, not a guaranteed physical boundary.
-London uses country `GB` plus city/locality names, not every possible Greater
-London borough code: those codes are unavailable during native flag evaluation.
-VPNs, missing geolocation, blockers, or closing before SDK initialization can
-prevent capture. macOS identifies Macs, not specifically MacBook hardware.
+Verified the same-origin production configuration at
+`/phx9a/array/<project-key>/config`, then used a fresh Helium private session with a
+marked URL. PostHog stored its pageview, autocapture, and Web Vitals, as well as a
+37-second web recording with two clicks (session
+`01a0d851-3f4b-7d00-8af8-6621d5d506ec`). A direct replay-store query also confirmed a
+stored batch. Sampling changes affect new sessions; sessions with an earlier
+sampling decision can retain that decision until a new session starts.
 
-The original 100% priority / 20% general rules were sized for pre-surge traffic.
-The 88 complete days before the September 16 surge averaged 436 sessions/day;
-the maximum was 1,065. The most recent 60 pre-spike days averaged about 12,600
-sessions per 30 days. Of 25,235 sessions in July 18–September 15, 2,530 matched
-the priority union (counting overlaps once). This projects to 1,265 priority
-recordings plus 2,271 general recordings per 30 days: **3,536 total**, or **4,596
-with another 30% traffic increase**, before the general duration filter.
-This uses historical PostHog geography as an estimate for Vercel region matching.
-
-The September 17 peak was 22,372 sessions, and September 18 remained elevated at
-roughly 650–800 sessions/hour when checked. Sustained surge traffic could exhaust
-5,000 recordings in about a day. The $0 cap then stops ingestion, including
-priority recordings, until the allowance resets. Priority rules do not reserve
-quota for later sessions. This is fixed sampling, not adaptive sampling. The
-earlier 0.5% rate was raised to 25%, then replaced by priority groups, which were
-reduced to the current rates on September 20 to preserve the remaining allowance.
+100% is the configured selection rate, not a guarantee of delivery from every
+browser. Opt-outs, disabled JavaScript/storage, explicit blockers, network
+failures, or early exits can still prevent capture. The masking and recording
+boundaries below remain unchanged.
 
 ## Sponsor events and /advertise figures
 

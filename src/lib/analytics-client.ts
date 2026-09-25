@@ -78,9 +78,9 @@ function getPostHog() {
       disable_session_recording: false,
       enable_recording_console_log: false,
       session_recording: {
-        // Priority audiences: 100%, no minimum. Others: 20%, 10s minimum.
-        // Both recording groups are managed in PostHog settings.
-        // The separate $0 billing cap stops ingestion at the free allowance.
+        // All sessions: 100%, no minimum, managed in PostHog settings.
+        // Startup credits cover replay; no replay billing cap is set.
+        // Input masking and secret-field exclusions remain independent.
         maskAllInputs: true,
         blockSelector:
           ".ph-no-capture, input[type='hidden'], input[type='file']",
