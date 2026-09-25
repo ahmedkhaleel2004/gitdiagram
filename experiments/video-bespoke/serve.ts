@@ -1,9 +1,9 @@
 // Serves public/ so headless Chromium can load the video stage.
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { extname, join } from "node:path";
+import { extname, join, resolve } from "node:path";
 
-const root = join(process.cwd(), process.env.STAGE_ROOT ?? "public");
+const root = resolve(process.cwd(), process.env.STAGE_ROOT ?? "public");
 const types: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { probePicture, readmePictures } from "./readme-images";
+import { isPublicAddress, probePicture, readmePictures } from "./readme-images";
 
 const pictures = (readme: string) =>
   readmePictures({ readme, owner: "acme", repo: "widget", branch: "HEAD" }).map(
@@ -143,5 +143,34 @@ describe("reading a picture's header", () => {
         ),
       ),
     ).toBeNull();
+  });
+});
+
+describe("public addresses", () => {
+  it("refuses loopback, private, link-local and mapped private addresses", () => {
+    for (const address of [
+      "127.0.0.1",
+      "10.1.2.3",
+      "172.16.0.1",
+      "192.168.1.1",
+      "169.254.169.254",
+      "100.64.0.1",
+      "0.0.0.0",
+      "::1",
+      "fd00::1",
+      "fe80::1",
+      "::ffff:127.0.0.1",
+    ])
+      expect(isPublicAddress(address)).toBe(false);
+    for (const address of [
+      "140.82.112.3",
+      "185.199.108.133",
+      "2606:50c0:8000::154",
+    ])
+      expect(isPublicAddress(address)).toBe(true);
+  });
+
+  it("treats a trailing-dot local name as local", () => {
+    expect(pictures("![a](https://localhost./a.png)")).toEqual([]);
   });
 });

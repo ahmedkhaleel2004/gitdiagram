@@ -1,5 +1,8 @@
 import "server-only";
 
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
 import type { FilmImage } from "./director";
 
 // The pictures a README shows (a logo, a screenshot of the product) make a
@@ -73,7 +76,8 @@ function resolve(raw: string, owner: string, repo: string, branch: string) {
 
 /** https on a public host name: no IP literals, no local or internal hosts. */
 function isPublicHttps(url: URL): boolean {
-  const host = url.hostname.toLowerCase();
+  // "localhost." is localhost: compare names without the root dot.
+  const host = url.hostname.toLowerCase().replace(/\.+$/, "");
   return (
     url.protocol === "https:" &&
     !/^[\d.]+$/.test(host) &&
@@ -97,6 +101,8 @@ async function fetchPicture(
     let url = new URL(picture.url);
     let response: Response | null = null;
     for (let hop = 0; hop <= 3; hop++) {
+      // Checked by address too, so a public name pointing inward is refused.
+      if (!(await resolvesPublic(url))) return null;
       response = await fetch(url, {
         signal: abort,
         redirect: "manual",
@@ -125,6 +131,46 @@ async function fetchPicture(
 }
 
 export type PictureType = FilmImage["mediaType"];
+
+/** Whether an address is one the public internet routes (not loopback, private, link-local, …). */
+export function isPublicAddress(address: string): boolean {
+  const v4 =
+    isIP(address) === 4 ? address : /^::ffff:([\d.]+)$/i.exec(address)?.[1];
+  if (v4) {
+    const [a, b] = v4.split(".").map(Number) as [number, number];
+    return !(
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a >= 224
+    );
+  }
+  const v6 = address.toLowerCase();
+  return !(
+    v6 === "::" ||
+    v6 === "::1" ||
+    /^f[cd]/.test(v6) ||
+    /^fe[89ab]/.test(v6) ||
+    v6.startsWith("ff")
+  );
+}
+
+/** Every address the host name resolves to must be public. */
+async function resolvesPublic(url: URL): Promise<boolean> {
+  try {
+    const addresses = await lookup(url.hostname, { all: true });
+    return (
+      addresses.length > 0 &&
+      addresses.every(({ address }) => isPublicAddress(address))
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The type and size of a still picture, read from its header: PNG (not
