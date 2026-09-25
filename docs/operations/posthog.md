@@ -9,16 +9,18 @@ duplicate collection and making the metrics available in PostHog's built-in view
 
 ## Free-tier controls
 
-Configured September 18, 2026 in organization billing:
+Configured September 18, 2026 in organization billing; the organization moved
+to the paid plan by September 25, 2026:
 
 - Session replay: **$0 cap**, 5,000 web recordings per billing period.
-- Product analytics: **$0 cap**, 1,000,000 events per billing period.
+- Product analytics: **$10 cap**, about 1,200,000 events per billing period
+  (1,000,000 free, then $0.00005 per event).
 - Error tracking: **$0 cap**, 100,000 exceptions per billing period.
 - Feature flags: **$0 cap**, 1,000,000 requests per billing period.
 
 Caps apply across the organization and stop ingestion when the allowance is
 exhausted. Data dropped while capped is not recovered later. Caps are independent
-of sampling; keep them at zero when changing collection settings. Check the live
+of sampling; keep the other products at zero when changing collection settings. Check the live
 billing page for the current period and allowances.
 
 Replay uses two PostHog V2 recording groups (union, without duplicate recordings):

@@ -3,10 +3,10 @@ import "server-only";
 import { dangerouslyDeleteByTag } from "@vercel/functions";
 import { revalidatePath, revalidateTag } from "next/cache";
 
-// A new video for a repository replaces the stored one, and the files of the
-// one it replaced are deleted right away (see pruneVideoFiles). Every cached
-// copy that still names the old version is dropped here, so nobody is served
-// a video whose narration is gone.
+// A new video for a repository replaces the stored one. The version it
+// replaced keeps its files until the next regeneration, so open tabs still
+// play; older versions are deleted (see pruneVideoFiles). Every cached copy
+// that still names an old version is dropped here.
 
 const repoKey = (username: string, repo: string) =>
   `${username.toLowerCase()}/${repo.toLowerCase()}`;

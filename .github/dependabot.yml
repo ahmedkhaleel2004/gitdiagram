@@ -25,6 +25,17 @@ updates:
       - dependency-name: "typescript"
         update-types:
           - "version-update:semver-major"
+      # puppeteer-core must target the same Chrome as @sparticuz/chromium;
+      # bump them together by hand.
+      - dependency-name: "puppeteer-core"
+
+  - package-ecosystem: "bun"
+    directory: "/workers/presence"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
+    cooldown:
+      default-days: 3
 
   - package-ecosystem: "github-actions"
     directory: "/"
