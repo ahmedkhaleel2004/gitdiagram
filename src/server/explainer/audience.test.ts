@@ -183,10 +183,12 @@ describe("the limited countries", () => {
     expect(rule("US", "blocked")).toBeNull();
     expect(rule("DE", "some", 0)).toBeNull();
     expect(rule("", "blocked")).toBeNull();
+    for (const country of ["EG", "ZA", "LY", "MA", "DZ"])
+      expect(rule(country, "blocked")).toBeNull();
   });
 
   it("blocks, draws or opens as the operator picks", () => {
-    for (const country of ["IN", "VN", "BR", "PH", "PK", "ID"])
+    for (const country of ["IN", "VN", "BR", "PH", "PK", "ID", "NG", "KE"])
       expect(rule(country, "blocked")).toBe("blocked");
     expect(rule("IN", "open")).toBeNull();
     expect(rule("IN", "some", 0)).toBe("blocked");

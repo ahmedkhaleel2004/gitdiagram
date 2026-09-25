@@ -16,10 +16,16 @@ const LIMITED_COUNTRIES: readonly string[] = [
   "PH", // Philippines
   "PK", // Pakistan
   "ID", // Indonesia
+  // All of Africa except Egypt, South Africa, Libya, Morocco and Algeria.
+  ...["AO", "BJ", "BW", "BF", "BI", "CV", "CM", "CF", "TD", "KM", "CG", "CD"],
+  ...["CI", "DJ", "GQ", "ER", "SZ", "ET", "GA", "GM", "GH", "GN", "GW", "KE"],
+  ...["LS", "LR", "MG", "MW", "ML", "MR", "MU", "MZ", "NA", "NE", "NG", "RW"],
+  ...["ST", "SN", "SC", "SL", "SO", "SS", "SD", "TZ", "TG", "TN", "UG", "ZM"],
+  ...["ZW", "EH", "SH", "RE", "YT"],
 ];
 
 export const LIMITED_COUNTRY_NAMES =
-  "India, Vietnam, Brazil, the Philippines, Pakistan and Indonesia";
+  "India, Vietnam, Brazil, the Philippines, Pakistan, Indonesia, and all of Africa except Egypt, South Africa, Libya, Morocco and Algeria";
 
 /** Percent of connections let in each day under "some", unless set in /admin. */
 export const DEFAULT_LIMITED_COUNTRY_SHARE = 10;
