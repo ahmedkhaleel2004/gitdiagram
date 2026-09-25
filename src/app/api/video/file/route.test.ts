@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   readVideoArtifact: vi.fn(),
   hasRender: vi.fn(),
+  readPicture: vi.fn(),
   readRender: vi.fn(),
   renderDownloadUrl: vi.fn(),
 }));
@@ -13,6 +14,7 @@ vi.mock("~/server/explainer/config", () => ({
 }));
 vi.mock("~/server/explainer/store", () => ({
   hasRender: mocks.hasRender,
+  readPicture: mocks.readPicture,
   readRender: mocks.readRender,
   readVideoArtifact: mocks.readVideoArtifact,
   renderDownloadUrl: mocks.renderDownloadUrl,
@@ -62,6 +64,18 @@ describe("GET /api/video/file", () => {
     const bare = await get({ format: "still" });
     expect(bare.status).toBe(200);
     expect(bare.headers.get("cache-control")).not.toContain("immutable");
+  });
+
+  it("serves a film's README picture forever, and only picture ids", async () => {
+    mocks.readPicture.mockResolvedValue(Buffer.from("webp"));
+    const found = await get({ format: "picture", id: "img2" });
+    expect(found.status).toBe(200);
+    expect(found.headers.get("content-type")).toBe("image/webp");
+    expect(found.headers.get("cache-control")).toContain("immutable");
+    expect(mocks.readPicture).toHaveBeenCalledWith("acme", "widget", v, "img2");
+    expect((await get({ format: "picture", id: "../x" })).status).toBe(400);
+    mocks.readPicture.mockResolvedValue(null);
+    expect((await get({ format: "picture", id: "img1" })).status).toBe(404);
   });
 
   it("never caches an MP4 streamed from local storage", async () => {

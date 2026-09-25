@@ -71,6 +71,7 @@ beforeEach(() => {
     prompt: {},
     facts: {},
     sourceFileCount: 3,
+    pictures: [],
   });
   mocks.direct.mockResolvedValue(SCRIPT);
   mocks.design.mockResolvedValue(new Map());

@@ -6,6 +6,8 @@ import { choosePlanner } from "./planner";
 
 const OPUS = { model: "claude-opus-5-5", effort: "low" };
 const SOL = { model: "gpt-6-sol", effort: "medium" };
+// Opus writes the script, Sol designs the scenes.
+const STANDARD = { ...OPUS, designer: SOL };
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -24,10 +26,10 @@ function choose(overrides: Partial<Parameters<typeof choosePlanner>[0]> = {}) {
 }
 
 describe("choosing the video planner", () => {
-  it("gives everyone else GPT-6 Sol without touching the premium count", async () => {
+  it("gives everyone else the Opus-and-Sol planner without touching the premium count", async () => {
     const takePremium = vi.fn();
     const choice = await choose({ takePremium });
-    expect(choice.planner).toEqual(SOL);
+    expect(choice.planner).toEqual(STANDARD);
     expect(takePremium).not.toHaveBeenCalled();
   });
 
@@ -39,7 +41,7 @@ describe("choosing the video planner", () => {
       priority: true,
       takePremium: vi.fn(async () => null),
     });
-    expect(later.planner).toEqual(SOL);
+    expect(later.planner).toEqual(STANDARD);
   });
 
   it("makes popular repositories and the operator's videos with Opus", async () => {
@@ -53,7 +55,7 @@ describe("choosing the video planner", () => {
     expect(takePremium).not.toHaveBeenCalled();
   });
 
-  it("falls back to Sol when the premium count cannot be read", async () => {
+  it("falls back to the standard planner when the premium count cannot be read", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const choice = await choose({
       priority: true,
@@ -61,7 +63,12 @@ describe("choosing the video planner", () => {
         throw new Error("redis down");
       }),
     });
-    expect(choice.planner).toEqual(SOL);
+    expect(choice.planner).toEqual(STANDARD);
+  });
+
+  it("lets Sol write the standard script too when configured", async () => {
+    vi.stubEnv("VIDEO_STANDARD_DIRECTOR_MODEL", "gpt-6-sol");
+    expect((await choose()).planner).toEqual(SOL);
   });
 
   it("uses Opus for everyone when there is no OpenAI key", async () => {

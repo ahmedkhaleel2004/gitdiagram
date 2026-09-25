@@ -51,7 +51,9 @@ export async function generateExplainerVideo({
 
   // The director writes the script; then every scene is designed in parallel
   // while the narration is recorded, since the voice only needs the words.
-  const writers = createFilmWriters(repository.prompt, planner);
+  const writers = createFilmWriters(repository.prompt, planner, {
+    images: repository.pictures,
+  });
   onEvent({
     status: "planning",
     elapsedMs: readMs,
@@ -109,10 +111,29 @@ export async function generateExplainerVideo({
   signal.throwIfAborted();
 
   onEvent({ status: "saving", elapsedMs: elapsedMs() });
+  const createdAt = new Date().toISOString();
+  // Only pictures the film shows are stored, beside its narration.
+  const shown = new Set(
+    repository.pictures.length
+      ? plan.beats.flatMap((beat) =>
+          beat.elements.flatMap((element) =>
+            element.kind === "image" ? [String(element.src)] : [],
+          ),
+        )
+      : [],
+  );
+  const pictures = repository.pictures.filter((p) => shown.has(p.id));
+  if (pictures.length)
+    plan.images = Object.fromEntries(
+      pictures.map((picture) => [
+        picture.id,
+        `/api/video/file?${new URLSearchParams({ username, repo, format: "picture", id: picture.id, v: createdAt })}`,
+      ]),
+    );
   const artifact: VideoArtifact = {
     version: 2,
     repository: `${username}/${repo}`.toLowerCase(),
-    createdAt: new Date().toISOString(),
+    createdAt,
     meta: repository.meta,
     plan,
     timing: narration.timing,
@@ -132,7 +153,7 @@ export async function generateExplainerVideo({
     },
   };
   artifact.stats.totalMs = elapsedMs();
-  await writeVideo(artifact, narration.clips);
+  await writeVideo(artifact, narration.clips, pictures);
   console.info(
     JSON.stringify({
       event: "video.generated",
@@ -143,6 +164,8 @@ export async function generateExplainerVideo({
       voiceMs,
       calls: writers.usage.calls,
       costUsd: writers.usage.costUsd,
+      model: writers.model,
+      pictures: pictures.length,
       warnings,
     }),
   );

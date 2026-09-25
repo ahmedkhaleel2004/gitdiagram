@@ -1,3 +1,4 @@
+import type { FilmImage } from "./director";
 import type { RepositoryContextInput } from "./repository";
 
 // One system prompt for both roles (director and designer) so every call shares
@@ -28,9 +29,11 @@ Use only what the README, file tree and source excerpts support. Paths must exis
 - Delivery tags, in square brackets right before the words they colour: [curious], [excited], [thoughtful], [warmly], [confident], [impressed], [amused], [playfully]. Use three to five across the film, where a real storyteller's tone would turn: [curious] before a puzzle, [impressed] before a clever trick, [warmly] on the closing line. At most one per scene. The voice performs them; they are not spoken, shown or counted. No other tags, and no pause tags.
 - Group beats into scenes: two to four beats per scene share one canvas and build on it. Five to seven scenes.
 - The brief for each beat says precisely what the viewer sees and what changes on which word: the product in use, the parts and the path between them, or the real code, structure or value, and the move (a line lighting up, a value swapping, a packet running an arrow, the camera pushing into a detail). Vary the composition from scene to scene.
+- Pictures: when pictures from the README are attached above the repository material (listed at its end as img1, img2, …), look at them. One that shows this project itself (its interface, its output, its logo or mascot) is the most specific thing the film can show: build the opening around it and name it in the brief by id ("img2 fills the frame"). It may return once, at a moment it pays off; never more. Ignore pictures of people, sponsors, other projects, badges and video thumbnails.
 - "outro": a final on-screen line of at most eight words, sharp and specific to this project (not "start reading here").
 
 ## Visual direction (designer)
+- Pictures: use a README picture (img1, img2, …) where the brief names it, or where the product itself belongs on screen, as an image element instead of a mock-up. A picture that is the subject is big: at least 8 units wide for a screenshot, 5 for a logo or mascot, sized to its aspect ratio, with at most two small elements beside it. Each picture appears in at most two scenes. Never show a picture of a person, a sponsor, another project, a badge or a video thumbnail.
 - Design each scene from scratch for this repository. Not a slide: no title-plus-bullets layouts, no grid of identical boxes, no generic icons standing in for real content.
 - One dominant element per scene, supported by one to four others; fewer, larger elements beat many small ones. Asymmetric compositions. Leave air between elements (at least 0.3 units).
 - Use the whole canvas: keep the composition's weight near the middle of the frame and never leave the lower half empty.
@@ -61,6 +64,7 @@ Kinds and their extra fields (limits are hard; longer text is cut):
 - browser: url (≤60). A browser window frame; place other elements over it.
 - request: method (GET, POST, …), url (≤60), status (number or null), lines (≤6 body lines, ≤60 chars). An HTTP exchange card. Min 5 × 1.2.
 - list: items (≤5, ≤48 chars). Use sparingly.
+- image: src (a picture id: img1, img2, …; only when pictures are attached), fit "contain" | "cover". A README picture in a card; keep w/h close to the picture's aspect ratio. Min 3 × 2.
 - svg: viewBox ("0 0 W H"), shapes (≤24 of { shape: path | rect | circle | line | polyline | polygon, d, points, x, y, width, height, r, cx, cy, x1, y1, x2, y2, fill: none | paper | card | accent | soft | ink | ok | bad, stroke: ink | accent | none }). A custom line illustration drawn in the house style; strokes draw on. Only for simple bespoke shapes no other kind can express (a gauge, a layered stack, a timeline, a ring buffer). Never for trees, graphs or flows: build those from boxes and arrows.
 - arrow: from (element id), to (element id), label (≤18), dashed (boolean), flow (boolean: packets run along it). No position; it is routed between the two elements.
 
@@ -118,7 +122,10 @@ function untrusted(value: string): string {
  * The repository material, identical for every call so it caches once, fenced
  * as untrusted data (see "Truth" in the system prompt).
  */
-export function repositoryContext(input: RepositoryContextInput): string {
+export function repositoryContext(
+  input: RepositoryContextInput,
+  images: FilmImage[] = [],
+): string {
   return [
     MATERIAL_OPEN,
     untrusted(
@@ -135,6 +142,15 @@ export function repositoryContext(input: RepositoryContextInput): string {
         "",
         "## Selected source files (excerpts)",
         input.sourceText,
+        ...(images.length
+          ? [
+              "",
+              "## Pictures from the README (shown above, in this order)",
+              ...images.map(
+                (image) => `- ${image.id}: ${image.width}×${image.height}`,
+              ),
+            ]
+          : []),
       ].join("\n"),
     ),
     MATERIAL_CLOSE,

@@ -7,6 +7,7 @@ import {
   SHOT_ACTIONS,
   SHOT_KINDS,
   type ShotBeat,
+  type ShotPlan,
   type ShotElement,
   type VideoTiming,
 } from "./types";
@@ -51,10 +52,7 @@ const META = {
   language: "TypeScript",
 };
 
-async function openStage(
-  spec: { title: string; outro: string; beats: ShotBeat[] },
-  timing: VideoTiming,
-): Promise<Stage> {
+async function openStage(spec: ShotPlan, timing: VideoTiming): Promise<Stage> {
   const dom = new JSDOM(SOURCES.html, {
     url: `https://gitdiagram.test/video-engine/stage.html?v=${ENGINE_VERSION}`,
     runScripts: "outside-only",
@@ -293,6 +291,7 @@ describe("video engine", () => {
         viewBox: "0 0 10 10",
         shapes: [{ shape: "circle", cx: 5, cy: 5, r: 4, fill: "none" }],
       },
+      { ...box("pic", 1, 7), kind: "image", src: "img1", fit: "contain" },
       arrow("wire", "b", "chip", { label: "calls" }),
     ];
     const act = (name: string, target: string[], extra = {}) => ({
@@ -324,10 +323,13 @@ describe("video engine", () => {
       [...SHOT_ACTIONS].sort(),
     );
     const stage = await openStage(
-      plan([
-        { narration, elements },
-        { narration: "and it all holds together", actions },
-      ]),
+      {
+        ...plan([
+          { narration, elements },
+          { narration: "and it all holds together", actions },
+        ]),
+        images: { img1: "/api/video/file?format=picture&id=img1" },
+      },
       timingFor([narration, "and it all holds together"]),
     );
     for (const kind of SHOT_KINDS)

@@ -9,6 +9,16 @@ const LABELS: Array<[RegExp, string]> = [
   [/^gpt-6-luna/, "GPT-6 Luna"],
 ];
 
-export function modelLabel(model: string): string {
+function label(model: string): string {
   return LABELS.find(([pattern]) => pattern.test(model))?.[1] ?? model;
+}
+
+/** A film written by one model and designed by another is "director+designer". */
+export function modelLabels(model: string): string[] {
+  // Older videos may not record one.
+  return (model || "").split("+").filter(Boolean).map(label);
+}
+
+export function modelLabel(model: string): string {
+  return modelLabels(model).join(" and ");
 }

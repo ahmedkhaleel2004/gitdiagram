@@ -11,6 +11,7 @@ import {
 import { prepareRepositoryContext } from "~/server/generate/repository-context";
 import { fetchSourceContext } from "~/server/generate/source-context";
 import type { VideoMeta } from "~/features/explainer/types";
+import { readReadmeImages, type StoredPicture } from "./readme-images";
 import type { PlanRepositoryFacts } from "./text";
 
 /** Everything the film's writers see about the repository. */
@@ -77,6 +78,8 @@ export interface VideoRepository {
   facts: PlanRepositoryFacts;
   /** Source files whose excerpts the model reads. */
   sourceFileCount: number;
+  /** Pictures from the README the writers may show (best effort, often none). */
+  pictures: StoredPicture[];
 }
 
 /**
@@ -97,13 +100,22 @@ export async function readRepositoryForVideo(params: {
     },
   );
   const prepared = prepareRepositoryContext(data);
-  const source = await fetchSourceContext({
-    username,
-    repo,
-    githubData: data,
-    selectedPaths: prepared.selectedPaths,
-    signal,
-  });
+  const [source, pictures] = await Promise.all([
+    fetchSourceContext({
+      username,
+      repo,
+      githubData: data,
+      selectedPaths: prepared.selectedPaths,
+      signal,
+    }),
+    readReadmeImages({
+      readme: data.readme,
+      owner: username,
+      repo,
+      branch: "HEAD",
+      signal,
+    }),
+  ]);
   const meta: VideoMeta = {
     owner: username,
     repo,
@@ -115,6 +127,7 @@ export async function readRepositoryForVideo(params: {
   return {
     meta,
     sourceFileCount: prepared.selectedPaths.length,
+    pictures,
     prompt: {
       owner: username,
       repo,
@@ -133,6 +146,7 @@ export async function readRepositoryForVideo(params: {
       paths: data.fileTree.split("\n").filter(Boolean),
       // README examples are real code too; on-screen code may quote either.
       sourceText: `${source.text}\n${prepared.readme}`,
+      images: pictures.map((picture) => picture.id),
     },
   };
 }

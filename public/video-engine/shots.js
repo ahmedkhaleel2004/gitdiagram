@@ -347,7 +347,7 @@ function build() {
     var extra = future.filter(function (a) { return a.do === "type"; }).map(function (a) { return a.line || ""; });
     var all = e.lines.concat(extra);
     var lh = 1.62;
-    var fs = monoFit(all, e.w * U - 96, e.h * U - 52 - 26, 25, 17, lh);
+    var fs = monoFit(all, e.w * U - 96, e.h * U - 52 - 26, 34, 17, lh);
     var maxChars = Math.floor((e.w * U - 96) / (fs * 0.6));
     all = all.map(function (l) { return l.length > maxChars ? l.slice(0, maxChars - 1) + "…" : l; });
     e = Object.assign({}, e, { lines: all.slice(0, e.lines.length) });
@@ -387,7 +387,7 @@ function build() {
     head.innerHTML = '<i style="width:12px;height:12px;border-radius:50%;background:#ff6b6b;display:block"></i><i style="width:12px;height:12px;border-radius:50%;background:#ffd166;display:block"></i><i style="width:12px;height:12px;border-radius:50%;background:#7ee2a8;display:block"></i><span style="margin-left:8px">' + esc(e.title || "terminal") + "</span>";
     var extra = future.filter(function (a) { return a.do === "type"; }).map(function (a) { return a.line || ""; });
     var all = e.lines.concat(extra);
-    var fs = monoFit(all, e.w * U - 48, e.h * U - 44 - 24, 24, 17, 1.55);
+    var fs = monoFit(all, e.w * U - 48, e.h * U - 44 - 24, 32, 17, 1.55);
     var cut = Math.floor((e.w * U - 48) / (fs * 0.6));
     all = all.map(function (l) { return l.length > cut ? l.slice(0, cut - 1) + "…" : l; });
     e = Object.assign({}, e, { lines: all.slice(0, e.lines.length) });
@@ -668,6 +668,23 @@ function build() {
     });
     return { el: el, enter: function (t) { rows.forEach(function (r, i) { riseIn(r, t + i * 0.1, { x: -16, y: 0, d: 0.3 }); }); } };
   };
+  // A real picture from the repository's README (a logo, a screenshot),
+  // stored with the film: plan.images maps its id to a same-origin path.
+  B.image = function (e, layer) {
+    var src = String(own(S.images || {}, e.src) || "");
+    if (!/^\/(?!\/)/.test(src)) return null;
+    var el = place(layer, e, cardStyle("var(--card)"));
+    var img = h("img", "", "position:absolute;left:12px;right:12px;top:12px;bottom:12px;width:calc(100% - 24px);height:calc(100% - 24px);object-fit:" + (e.fit === "cover" ? "cover" : "contain") + ";border-radius:8px", el);
+    img.src = src;
+    img.alt = "";
+    return {
+      el: el,
+      enter: function (t) {
+        riseIn(el, t, { y: 40, d: 0.5 });
+        sfx("pop", t, -17, 0.8);
+      },
+    };
+  };
   B.svg = function (e, layer) {
     var el = place(layer, e, "");
     var svg = document.createElementNS(NS, "svg");
@@ -884,6 +901,35 @@ function build() {
     }
     return null;
   }
+  // The directed camera: each beat frames what is on screen by its end, inside
+  // the area the label and captions leave free, so a scene opens close on its
+  // first element and widens as it builds. Focus pushes in from there; reset
+  // returns to it.
+  var AUTO_MAX = 1.45;
+  function autoView(sc) {
+    var box = null;
+    Object.keys(sc.items).forEach(function (id) {
+      var it = sc.items[id];
+      if (it.gone) return;
+      var q = rectOf(it);
+      box = box ? { x0: Math.min(box.x0, q.x), y0: Math.min(box.y0, q.y), x1: Math.max(box.x1, q.x + q.w), y1: Math.max(box.y1, q.y + q.h) } : { x0: q.x, y0: q.y, x1: q.x + q.w, y1: q.y + q.h };
+    });
+    if (!box) return { s: 1, x: 0, y: 0 };
+    var L = 110, R = 1810, TOP = 125, BOT = 895;
+    var s = Math.max(1, Math.min(AUTO_MAX, (R - L) / (box.x1 - box.x0 + 70), (BOT - TOP) / (box.y1 - box.y0 + 70)));
+    var x = (L + R) / 2 - s * (box.x0 + box.x1) / 2;
+    var y = (TOP + BOT) / 2 - s * (box.y0 + box.y1) / 2;
+    // Content bigger than the safe area is never pushed further out of it
+    // than the designer placed it (under the label or the captions).
+    x = Math.max(Math.min(x, Math.max(box.x1, R) - s * box.x1), Math.min(box.x0, L) - s * box.x0);
+    y = Math.max(Math.min(y, Math.max(box.y1, BOT) - s * box.y1), Math.min(box.y0, TOP) - s * box.y0);
+    return { s: s, x: x, y: y };
+  }
+  function camTo(sc, v, t, d) {
+    if (t == null) tl.set(sc.cam, { scale: v.s, x: v.x, y: v.y }, sc.tIn);
+    else tl.to(sc.cam, { scale: v.s, x: v.x, y: v.y, duration: d || 0.9, ease: "power2.inOut" }, t);
+    sc.view = v;
+  }
   function applyAction(a, t, sc) {
     var items = sc.items;
     var targets = (a.target || []).map(function (id) { return items[id]; }).filter(Boolean);
@@ -1000,12 +1046,14 @@ function build() {
       case "focus":
         if (!targets.length) return;
         var view = focusView(targets, sc);
-        if (!view) break;
+        // A push-in that would barely zoom past the framing is skipped.
+        if (!view || view.s < sc.view.s * 1.08) break;
         tl.to(sc.cam, { scale: view.s, x: 960 - view.s * view.cx, y: 540 - view.s * view.cy, duration: 0.75, ease: "power3.inOut" }, t);
+        sc.view = { s: view.s, x: 960 - view.s * view.cx, y: 540 - view.s * view.cy };
         sc.focused = true;
         break;
       case "reset":
-        tl.to(sc.cam, { scale: 1, x: 0, y: 0, duration: 0.65, ease: "power3.inOut" }, t);
+        camTo(sc, autoView(sc), t, 0.65);
         sc.focused = false;
         break;
     }
@@ -1028,6 +1076,7 @@ function build() {
     var cam = h("div", "", "position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0", drift);
     sc.cam = cam;
     sc.items = dict();
+    sc.view = { s: 1, x: 0, y: 0 };
     tl.set(sec, { visibility: "visible" }, sc.tIn);
     transitionIn(inner, sc.transition, sc.tIn);
     if (!RENDER) tl.fromTo(drift, { scale: 1 }, { scale: 1.015, duration: Math.max(0.5, sc.tOut - sc.tIn), ease: "none" }, sc.tIn);
@@ -1048,12 +1097,6 @@ function build() {
     sc.beats.forEach(function (bi, j) {
       var beat = beats[bi];
       var floor = j === 0 ? sc.tIn + 0.3 : TB[bi].start - 0.05;
-      // A beat that adds elements while the camera is pushed in pulls back
-      // first, so nothing new appears off camera.
-      if (j > 0 && sc.focused && beat.elements.length && !beat.actions.some(function (a) { return a.do === "focus"; })) {
-        tl.to(sc.cam, { scale: 1, x: 0, y: 0, duration: 0.6, ease: "power3.inOut" }, TB[bi].start - 0.25);
-        sc.focused = false;
-      }
       // Cue times follow the plan's order, but every arrow is built after the
       // elements it joins, wherever the designer listed it.
       var stagger = 0;
@@ -1112,6 +1155,12 @@ function build() {
         // starts them on a later word.
         if (e.flow && built.flow && !(future[e.id] || []).some(function (a) { return a.do === "flow"; })) built.flow(t + 0.45, sc.tOut - 0.3);
       });
+      // Every beat is framed as it starts, unless the camera is pushed in and
+      // nothing new appears (a focus holds across such beats).
+      if (!(j > 0 && sc.focused && !beat.elements.length)) {
+        camTo(sc, autoView(sc), j === 0 ? null : TB[bi].start - 0.3);
+        sc.focused = false;
+      }
       beat.actions.forEach(function (a) {
         var cued = cueTime(bi, a.at);
         var t = Math.max(floor + 0.35, cued == null ? (TB[bi].start + TB[bi].end) / 2 : cued - 0.03);

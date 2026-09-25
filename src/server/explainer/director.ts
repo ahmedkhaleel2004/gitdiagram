@@ -22,13 +22,15 @@ import {
   type Script,
 } from "./shots";
 
+type Effort = "low" | "medium" | "high";
+
 /** Which model writes and designs a film, and how hard it thinks. */
 export interface Planner {
   model: string;
-  effort: "low" | "medium" | "high";
+  effort: Effort;
+  /** A different model for the scene designers; `model` then only directs. */
+  designer?: { model: string; effort: Effort };
 }
-
-type Effort = Planner["effort"];
 
 function readEffort(name: string, fallback: Effort): Effort {
   const value = process.env[name]?.trim();
@@ -49,12 +51,33 @@ export function premiumPlanner(): Planner {
   };
 }
 
-/** GPT-6 Sol at medium effort: close behind, for every other film. */
+/**
+ * Every other film: Claude Opus writes the script (one call, where the story
+ * is made) and GPT-6 Sol at medium effort designs the scenes. Blind-judged
+ * about level with Opus alone and faster than Sol alone (see
+ * experiments/video-bespoke). VIDEO_STANDARD_DIRECTOR_MODEL set to the
+ * standard model makes Sol do both.
+ */
 export function standardPlanner(): Planner {
-  return {
+  const designer = {
     model: process.env.VIDEO_STANDARD_MODEL?.trim() || "gpt-6-sol",
     effort: readEffort("VIDEO_STANDARD_EFFORT", "medium"),
   };
+  const director =
+    process.env.VIDEO_STANDARD_DIRECTOR_MODEL?.trim() || "claude-opus-5-5";
+  if (director === designer.model) return designer;
+  return {
+    model: director,
+    effort: readEffort("VIDEO_PLANNER_EFFORT", "low"),
+    designer,
+  };
+}
+
+/** How a film's models are recorded: "director+designer" when they differ. */
+function plannerModel(planner: Planner): string {
+  return planner.designer && planner.designer.model !== planner.model
+    ? `${planner.model}+${planner.designer.model}`
+    : planner.model;
 }
 
 /** Whether the standard planner can run here (it needs an OpenAI key). */
@@ -101,9 +124,28 @@ class UnusableReplyError extends Error {}
  * the repository block for caching, so the designers after the director pay
  * cache-read prices for the bulk of their input.
  */
+/** A picture from the README the writers may look at and put on screen. */
+export interface FilmImage {
+  id: string;
+  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  /** Base64 bytes. */
+  data: string;
+  width: number;
+  height: number;
+}
+
+/** Prompt overrides, for experiments. */
+export interface FilmPrompts {
+  system?: string;
+  directorTask?: string;
+  designerTask?: typeof designerTask;
+}
+
 interface ToolCall {
   model: string;
   context: string;
+  images: FilmImage[];
+  system: string;
   task: string;
   tool: string;
   effort: Effort;
@@ -128,13 +170,22 @@ async function callClaudeTool(
     {
       model,
       max_tokens: MAX_TOKENS,
-      system: SHOT_SYSTEM,
+      system: params.system,
       tools: [SCRIPT_TOOL, SHOTS_TOOL] as Anthropic.Tool[],
       tool_choice: { type: "auto" },
       messages: [
         {
           role: "user",
           content: [
+            // Pictures sit inside the cached prefix, before the repository text.
+            ...params.images.map((image) => ({
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: image.mediaType,
+                data: image.data,
+              },
+            })),
             {
               type: "text",
               text: params.context,
@@ -193,7 +244,7 @@ async function callOpenAITool(
   const response = await client.responses.create(
     {
       model,
-      instructions: SHOT_SYSTEM,
+      instructions: params.system,
       tools: [SCRIPT_TOOL, SHOTS_TOOL].map((tool) => ({
         type: "function" as const,
         name: tool.name,
@@ -206,6 +257,11 @@ async function callOpenAITool(
         {
           role: "user",
           content: [
+            ...params.images.map((image) => ({
+              type: "input_image" as const,
+              image_url: `data:${image.mediaType};base64,${image.data}`,
+              detail: "low" as const,
+            })),
             { type: "input_text", text: params.context },
             { type: "input_text", text: params.task },
           ],
@@ -298,13 +354,26 @@ export function pickScript(drafts: Array<Script | null>): Script | null {
     : null;
 }
 
+const clientFor = (model: string) =>
+  isOpenAIModel(model) ? new OpenAI() : new Anthropic();
+
 export function createFilmWriters(
   input: RepositoryContextInput,
   planner: Planner = premiumPlanner(),
+  options: { images?: FilmImage[]; prompts?: FilmPrompts } = {},
 ) {
-  const { model, effort } = planner;
-  const client = isOpenAIModel(model) ? new OpenAI() : new Anthropic();
-  const context = repositoryContext(input);
+  const designerPlanner = planner.designer ?? planner;
+  let director = { model: planner.model, effort: planner.effort };
+  let client = clientFor(director.model);
+  const designClient =
+    designerPlanner.model === director.model
+      ? client
+      : clientFor(designerPlanner.model);
+  let model = plannerModel(planner);
+  const images = options.images ?? [];
+  const system = options.prompts?.system ?? SHOT_SYSTEM;
+  const design = options.prompts?.designerTask ?? designerTask;
+  const context = repositoryContext(input, images);
   const usage: ModelUsage = {
     calls: 0,
     inputTokens: 0,
@@ -312,77 +381,145 @@ export function createFilmWriters(
     costUsd: 0,
   };
 
-  return {
-    model,
-    usage,
-    /** The script, checked and within length, before any parallel work starts. */
-    async direct(signal?: AbortSignal): Promise<Script> {
-      // A script too thin to film is an unusable reply like any other.
-      const write = (task: string) =>
-        withRetry(async () => {
-          const raw = await callTool({
-            client,
-            model,
-            context,
-            task,
-            tool: SCRIPT_TOOL.name,
-            effort,
-            usage,
-            signal,
-          });
-          try {
-            return normalizeScript(raw, input.repo, context);
-          } catch (error) {
-            throw new UnusableReplyError(
-              error instanceof Error ? error.message : "Unusable script.",
-            );
-          }
-        }, signal);
-      const script = await write(DIRECTOR_TASK);
-      const words = scriptWordCount(script);
-      if (words <= SCRIPT_WORD_LIMIT) return script;
-      // The voice runs at a natural pace, so a long script means a long film.
-      // A failed shortening only leaves the first draft to be judged alone.
-      let trimmed: Script | null = null;
-      try {
-        trimmed = await write(
-          trimTask({
-            // As written, delivery tags included, so the trim keeps them.
-            script: JSON.stringify({
-              ...script,
-              beats: script.beats.map(({ spoken, ...beat }) => ({
-                ...beat,
-                narration: spoken,
-              })),
-            }),
-            words,
-            target: SCRIPT_WORD_TARGET,
+  /** The script, written by the current director. */
+  async function directWith(signal?: AbortSignal): Promise<Script> {
+    // A script too thin to film is an unusable reply like any other.
+    const write = (task: string) =>
+      withRetry(async () => {
+        const raw = await callTool({
+          client,
+          model: director.model,
+          context,
+          images,
+          system,
+          task,
+          tool: SCRIPT_TOOL.name,
+          effort: director.effort,
+          usage,
+          signal,
+        });
+        try {
+          return normalizeScript(raw, input.repo, context);
+        } catch (error) {
+          throw new UnusableReplyError(
+            error instanceof Error ? error.message : "Unusable script.",
+          );
+        }
+      }, signal);
+    const script = await write(options.prompts?.directorTask ?? DIRECTOR_TASK);
+    const words = scriptWordCount(script);
+    if (words <= SCRIPT_WORD_LIMIT) return script;
+    // The voice runs at a natural pace, so a long script means a long film.
+    // A failed shortening only leaves the first draft to be judged alone.
+    let trimmed: Script | null = null;
+    try {
+      trimmed = await write(
+        trimTask({
+          // As written, delivery tags included, so the trim keeps them.
+          script: JSON.stringify({
+            ...script,
+            beats: script.beats.map(({ spoken, ...beat }) => ({
+              ...beat,
+              narration: spoken,
+            })),
           }),
-        );
+          words,
+          target: SCRIPT_WORD_TARGET,
+        }),
+      );
+    } catch (error) {
+      signal?.throwIfAborted();
+      console.warn(
+        JSON.stringify({
+          event: "video.script.trim_failed",
+          error:
+            error instanceof Error ? error.message.slice(0, 200) : "unknown",
+        }),
+      );
+    }
+    const chosen = pickScript([script, trimmed]);
+    console.info(
+      JSON.stringify({
+        event: "video.script.trimmed",
+        from: words,
+        to: trimmed ? scriptWordCount(trimmed) : null,
+        chosen: chosen ? scriptWordCount(chosen) : null,
+      }),
+    );
+    if (!chosen)
+      throw new Error(
+        `The script stayed too long (${words} words, hard limit ${SCRIPT_HARD_WORD_LIMIT}).`,
+      );
+    return chosen;
+  }
+
+  return {
+    /** The models making the film (see plannerModel). */
+    get model() {
+      return model;
+    },
+    usage,
+    /** Write the shared prompt cache (for callers that design without directing). */
+    async warmup(): Promise<void> {
+      if (client instanceof OpenAI) return;
+      await client.messages.create({
+        model: director.model,
+        max_tokens: 16,
+        system,
+        tools: [SCRIPT_TOOL, SHOTS_TOOL] as Anthropic.Tool[],
+        messages: [
+          {
+            role: "user",
+            content: [
+              ...images.map((image) => ({
+                type: "image" as const,
+                source: {
+                  type: "base64" as const,
+                  media_type: image.mediaType,
+                  data: image.data,
+                },
+              })),
+              {
+                type: "text",
+                text: context,
+                cache_control: { type: "ephemeral" },
+              },
+              { type: "text", text: "Reply with OK." },
+            ],
+          },
+        ],
+      });
+    },
+    /**
+     * The script, checked and within length, before any parallel work starts.
+     * When a separate director fails (out of credit, overloaded, an unusable
+     * reply), the designers' model writes the script instead, so the film is
+     * still made. A refusal or the deadline ends the run.
+     */
+    async direct(signal?: AbortSignal): Promise<Script> {
+      try {
+        return await directWith(signal);
       } catch (error) {
         signal?.throwIfAborted();
+        if (
+          error instanceof VideoRefusalError ||
+          director.model === designerPlanner.model
+        )
+          throw error;
         console.warn(
           JSON.stringify({
-            event: "video.script.trim_failed",
+            event: "video.director.fallback",
+            from: director.model,
+            to: designerPlanner.model,
             error:
               error instanceof Error ? error.message.slice(0, 200) : "unknown",
           }),
         );
+        director = designerPlanner;
+        client = designClient;
+        model = designerPlanner.model;
+        return directWith(signal);
       }
-      const chosen = pickScript([script, trimmed]);
-      console.info(
-        JSON.stringify({
-          event: "video.script.trimmed",
-          from: words,
-          to: trimmed ? scriptWordCount(trimmed) : null,
-          chosen: chosen ? scriptWordCount(chosen) : null,
-        }),
-      );
-      if (!chosen)
-        throw new Error(
-          `The script stayed too long (${words} words, hard limit ${SCRIPT_HARD_WORD_LIMIT}).`,
-        );
-      return chosen;
     },
 
     /** One designer per scene, all at once; a failed scene falls back to plain type. */
@@ -402,16 +539,18 @@ export function createFilmWriters(
             const raw = await withRetry(
               () =>
                 callTool({
-                  client,
-                  model,
+                  client: designClient,
+                  model: designerPlanner.model,
                   context,
-                  task: designerTask({
+                  images,
+                  system,
+                  task: design({
                     script: outline,
                     scenes: [group.scene],
                     beats: group.beats,
                   }),
                   tool: SHOTS_TOOL.name,
-                  effort,
+                  effort: designerPlanner.effort,
                   usage,
                   signal,
                 }),

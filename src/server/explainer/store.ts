@@ -13,7 +13,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { dirname, join, sep } from "node:path";
 import { ENGINE_VERSION } from "~/features/explainer/engine";
-import type { VideoArtifact } from "~/features/explainer/types";
+import { PICTURE_ID, type VideoArtifact } from "~/features/explainer/types";
 import { readRequiredEnv } from "~/server/storage/config";
 import {
   deleteObject,
@@ -43,6 +43,7 @@ const prefix = (username: string, repo: string) =>
   `video/v1/${segment(username)}/${segment(repo)}`;
 const clipName = (index: number) =>
   `beat-${String(index).padStart(2, "0")}.mp3`;
+const pictureName = (id: string) => `picture-${id}.webp`;
 
 export type RenderName =
   "landscape.mp4" | "vertical.mp4" | "poster.jpg" | "still.jpg";
@@ -133,27 +134,48 @@ export async function readVoiceClip(
   return readObject(versionedKey(username, repo, createdAt, clipName(index)));
 }
 
+/** A README picture stored with a video (WebP), by id. */
+export async function readPicture(
+  username: string,
+  repo: string,
+  createdAt: string,
+  id: string,
+): Promise<Buffer | null> {
+  if (!PICTURE_ID.test(id)) return null;
+  return readObject(versionedKey(username, repo, createdAt, pictureName(id)));
+}
+
 /**
- * Clips first, artifact last: the artifact is what makes a video visible.
- * Then the CDN's copy of the old answer is dropped, and only after that are
- * files pruned, so nothing cached points at a deleted file.
+ * Clips and pictures first, artifact last: the artifact is what makes a video
+ * visible. Then the CDN's copy of the old answer is dropped, and only after
+ * that are files pruned, so nothing cached points at a deleted file.
  */
-export async function writeVideo(artifact: VideoArtifact, clips: Buffer[]) {
+export async function writeVideo(
+  artifact: VideoArtifact,
+  clips: Buffer[],
+  pictures: Array<{ id: string; bytes: Buffer }> = [],
+) {
   const { owner, repo } = artifact.meta;
   const clipKey = (index: number) =>
     versionedKey(owner, repo, artifact.createdAt, clipName(index));
+  const pictureKey = (id: string) =>
+    versionedKey(owner, repo, artifact.createdAt, pictureName(id));
   const artifactKey = `${prefix(owner, repo)}/artifact.json`;
   if (videoStoreBackend() === "local") {
-    await Promise.all(
-      clips.map((clip, index) => writeLocal(clipKey(index), clip)),
-    );
+    await Promise.all([
+      ...clips.map((clip, index) => writeLocal(clipKey(index), clip)),
+      ...pictures.map((p) => writeLocal(pictureKey(p.id), p.bytes)),
+    ]);
     await writeLocal(artifactKey, JSON.stringify(artifact));
   } else {
-    await Promise.all(
-      clips.map((clip, index) =>
+    await Promise.all([
+      ...clips.map((clip, index) =>
         putBinaryObject(bucket(), clipKey(index), clip, "audio/mpeg"),
       ),
-    );
+      ...pictures.map((p) =>
+        putBinaryObject(bucket(), pictureKey(p.id), p.bytes, "image/webp"),
+      ),
+    ]);
     await putJsonObject(bucket(), artifactKey, artifact);
     await indexVideo(artifact);
     await purgeVideoResponse(owner, repo);

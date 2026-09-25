@@ -162,6 +162,87 @@ describe("the director", () => {
     expect(writers.usage.costUsd).toBeCloseTo(3.2);
   });
 
+  it("lets Opus write the script and GPT-6 Sol design the scenes", async () => {
+    stream.mockReturnValueOnce(scriptReply(120));
+    create.mockResolvedValue({
+      status: "completed",
+      usage: { input_tokens: 0, output_tokens: 0 },
+      output: [
+        {
+          type: "function_call",
+          name: "write_shots",
+          arguments: JSON.stringify({ shots: [] }),
+        },
+      ],
+    });
+    const writers = createFilmWriters(input, {
+      model: "claude-opus-5-5",
+      effort: "low",
+      designer: { model: "gpt-6-sol", effort: "medium" },
+    });
+    expect(writers.model).toBe("claude-opus-5-5+gpt-6-sol");
+    const script = await writers.direct();
+    await writers.design(script);
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(designGroups(script).length);
+    expect(create.mock.calls[0]![0]).toMatchObject({
+      model: "gpt-6-sol",
+      reasoning: { effort: "medium" },
+      tool_choice: { name: "write_shots" },
+    });
+  });
+
+  it("has the designers' model write the script when the director fails", async () => {
+    stream.mockReturnValue({
+      finalMessage: async () => {
+        throw new Error("400 Your credit balance is too low");
+      },
+    });
+    create.mockResolvedValueOnce(openAIScriptReply(120));
+    const writers = createFilmWriters(input, {
+      model: "claude-opus-5-5",
+      effort: "low",
+      designer: { model: "gpt-6-sol", effort: "medium" },
+    });
+    const script = await writers.direct();
+    expect(script.beats).toHaveLength(4);
+    expect(create.mock.calls[0]![0]).toMatchObject({ model: "gpt-6-sol" });
+    expect(writers.model).toBe("gpt-6-sol");
+  });
+
+  it("does not hand a refused repository to the designers' model", async () => {
+    stream.mockReturnValue(reply({ stop_reason: "refusal" }));
+    await expect(
+      createFilmWriters(input, {
+        model: "claude-opus-5-5",
+        effort: "low",
+        designer: { model: "gpt-6-sol", effort: "medium" },
+      }).direct(),
+    ).rejects.toBeInstanceOf(VideoRefusalError);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("shows README pictures to the model before the repository text", async () => {
+    stream.mockReturnValueOnce(scriptReply(120));
+    await createFilmWriters(input, undefined, {
+      images: [
+        {
+          id: "img1",
+          mediaType: "image/webp",
+          data: "AAAA",
+          width: 800,
+          height: 400,
+        },
+      ],
+    }).direct();
+    const request = stream.mock.calls[0]![0] as {
+      messages: Array<{ content: Array<{ type: string; text?: string }> }>;
+    };
+    const content = request.messages[0]!.content;
+    expect(content[0]!.type).toBe("image");
+    expect(content[1]!.text).toContain("- img1: 800×400");
+  });
+
   it("retries an OpenAI reply that stopped early", async () => {
     create
       .mockResolvedValueOnce(openAIScriptReply(120, "incomplete"))

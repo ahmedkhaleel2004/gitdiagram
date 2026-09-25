@@ -17,7 +17,7 @@ import {
 } from "~/features/explainer/runs";
 import type { VideoGenerationStage } from "~/features/explainer/types";
 import { useAdminTools } from "~/features/admin/tools";
-import { modelLabel } from "~/features/explainer/model-label";
+import { modelLabel, modelLabels } from "~/features/explainer/model-label";
 import { ActivityMark } from "~/components/generation/activity-mark";
 import { useGenerationClock } from "~/components/generation/generation-status";
 import controls from "~/components/generation/workspace.module.css";
@@ -118,6 +118,27 @@ function Elapsed({ startedAt }: { startedAt: number }) {
 }
 
 /** A player-shaped placeholder while the stored video is looked up. */
+/** Who is making the film, and roughly how long it takes. */
+function MakingLine({ model, repo }: { model?: string; repo: string }) {
+  const [director, designer] = model ? modelLabels(model) : [];
+  if (director && designer)
+    return (
+      <>
+        {director} writes the script for {repo}, and {designer} designs every
+        scene while the narration is recorded. Usually about a minute.
+      </>
+    );
+  return (
+    <>
+      {director ?? "GitDiagram"} reads {repo}, writes a script and designs every
+      scene while the narration is recorded.{" "}
+      {model?.startsWith("gpt-")
+        ? "Usually a minute or two."
+        : "Usually under a minute."}
+    </>
+  );
+}
+
 function PlayerSkeleton() {
   return (
     <div className={styles.panel} aria-busy="true">
@@ -279,14 +300,7 @@ export function ExplainerVideo({
           <Elapsed startedAt={state.startedAt} />
         </div>
         <p className={controls.description}>
-          {state.progress.model
-            ? modelLabel(state.progress.model)
-            : "GitDiagram"}{" "}
-          reads {repo}, writes a script and designs every scene while the
-          narration is recorded.{" "}
-          {state.progress.model?.startsWith("gpt-")
-            ? "Usually a minute or two."
-            : "Usually under a minute."}
+          <MakingLine model={state.progress.model} repo={repo} />
         </p>
         <div className={styles.progressBody}>
           <GenerationRows stage={state.stage} progress={state.progress} />

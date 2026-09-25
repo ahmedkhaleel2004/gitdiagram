@@ -24,6 +24,7 @@ export const SHOT_KINDS = [
   "request",
   "list",
   "svg",
+  "image",
   "arrow",
 ] as const;
 export type ShotKind = (typeof SHOT_KINDS)[number];
@@ -48,6 +49,9 @@ export const SHOT_ACTIONS = [
   "reset",
 ] as const;
 type ShotActionName = (typeof SHOT_ACTIONS)[number];
+
+/** README pictures a film shows are img1, img2 or img3. */
+export const PICTURE_ID = /^img[1-3]$/;
 
 export interface ShotElement {
   /** Lowercase snake_case, at most 32 characters, unique within its scene. */
@@ -84,6 +88,8 @@ export interface ShotPlan {
   title: string;
   outro: string;
   beats: ShotBeat[];
+  /** README pictures by id: same-origin paths to the copies stored with the film. */
+  images?: Record<string, string>;
 }
 
 export interface VideoMeta {

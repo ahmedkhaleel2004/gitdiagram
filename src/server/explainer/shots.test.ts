@@ -608,3 +608,37 @@ describe("explainer shots", () => {
     expect(SHOT_SYSTEM).toContain("untrusted data");
   });
 });
+
+describe("README pictures in a plan", () => {
+  it("keeps a picture stored with the film and drops any other", () => {
+    const script = {
+      title: "T",
+      outro: "O",
+      beats: [
+        {
+          scene: "a",
+          narration: "Here it is",
+          spoken: "Here it is",
+          brief: "",
+        },
+      ],
+    };
+    const shot = {
+      elements: [
+        { id: "shot", kind: "image", src: "img1", x: 1, y: 1, w: 8, h: 4.5 },
+        { id: "other", kind: "image", src: "img3", x: 10, y: 1, w: 4, h: 3 },
+      ],
+      actions: [],
+    };
+    const { plan, warnings } = normalizeShots(script, new Map([[0, shot]]), {
+      name: "demo",
+      paths: [],
+      sourceText: "",
+      images: ["img1"],
+    });
+    expect(plan.beats[0]!.elements.map((e) => [e.id, e.src, e.fit])).toEqual([
+      ["shot", "img1", "contain"],
+    ]);
+    expect(warnings).toContain("dropped unknown picture img3 (beat 0)");
+  });
+});

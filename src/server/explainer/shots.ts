@@ -116,6 +116,8 @@ export const SHOTS_TOOL = {
               status: { type: ["integer", "null"] },
               viewBox: str,
               shapes: arr({ type: "object" }),
+              src: str,
+              fit: str,
               from: str,
               to: str,
               dashed: bool,
@@ -291,6 +293,7 @@ const MIN_SIZE: Record<Exclude<ShotKind, "arrow">, [number, number]> = {
   request: [5, 1.1],
   list: [3, 1.2],
   svg: [1.5, 1.5],
+  image: [3, 2],
 };
 
 // The canvas an element may occupy: the top band (y < 0.95) belongs to the
@@ -485,6 +488,15 @@ function normalizeElement(
       break;
     case "list":
       element.items = strings(raw.items, 5, 48);
+      break;
+    case "image":
+      // Only a picture stored with the film; anything else is dropped.
+      if (!facts.images?.includes(text(raw.src))) {
+        warnings.push(`dropped unknown picture ${text(raw.src)} (${where})`);
+        return null;
+      }
+      element.src = text(raw.src);
+      element.fit = text(raw.fit) === "cover" ? "cover" : "contain";
       break;
     case "svg":
       element.viewBox = /^[\d.\s-]+$/.test(text(raw.viewBox))

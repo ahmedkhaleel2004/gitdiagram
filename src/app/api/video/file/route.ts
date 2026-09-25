@@ -4,10 +4,12 @@ import {
   githubRepoSchema,
   githubUsernameSchema,
 } from "~/server/generate/types";
+import { PICTURE_ID } from "~/features/explainer/types";
 import { jsonErrorResponse } from "~/server/http/same-origin-json";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import {
   hasRender,
+  readPicture,
   readRender,
   readVideoArtifact,
   renderDownloadUrl,
@@ -21,7 +23,9 @@ export const maxDuration = 30;
 const querySchema = z.object({
   username: githubUsernameSchema,
   repo: githubRepoSchema,
-  format: z.enum(["landscape", "vertical", "poster", "still"]),
+  format: z.enum(["landscape", "vertical", "poster", "still", "picture"]),
+  // A README picture the film shows (format "picture").
+  id: z.string().regex(PICTURE_ID).optional(),
   // The video's createdAt: renders live under their video's version folder.
   v: z.iso.datetime(),
   // When a poster or still was made. A remake keeps the file's name, so this
@@ -53,7 +57,20 @@ export async function GET(request: Request): Promise<Response> {
     Object.fromEntries(url.searchParams.entries()),
   );
   if (!parsed.success) return jsonErrorResponse("Invalid file request.", 400);
-  const { username, repo, format, v, p } = parsed.data;
+  const { username, repo, format, v, p, id } = parsed.data;
+  if (format === "picture") {
+    // Named by the video version, so the bytes behind a URL never change.
+    const body = id ? await readPicture(username, repo, v, id) : null;
+    if (!body) return jsonErrorResponse("This picture does not exist.", 404);
+    return new Response(new Uint8Array(body), {
+      headers: {
+        "Content-Type": "image/webp",
+        "Cache-Control":
+          "public, max-age=31536000, s-maxage=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
   const artifact = await readVideoArtifact(username, repo);
   if (!artifact) return jsonErrorResponse("This video does not exist.", 404);
   const version = { ...artifact, createdAt: v };

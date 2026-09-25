@@ -36,6 +36,8 @@ export interface PlanRepositoryFacts {
   paths: string[];
   /** Source excerpts the planner saw; code on screen must come from here. */
   sourceText: string;
+  /** Ids of the README pictures stored with the film (plan.images). */
+  images?: string[];
 }
 
 // Delivery directions the voice (ElevenLabs v3) performs. Any other bracketed
