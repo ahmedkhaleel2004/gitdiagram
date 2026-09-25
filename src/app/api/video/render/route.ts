@@ -8,9 +8,11 @@ import {
 import { getClientIp } from "~/server/http/client-ip";
 import {
   jsonErrorResponse,
+  NO_STORE_RESPONSE_HEADERS,
   parseSameOriginJsonRequest,
 } from "~/server/http/same-origin-json";
 import { emitLiveEvent } from "~/server/admin/live-events";
+import { refreshVideoPages } from "~/server/explainer/cache";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import {
   isTrustedVideoCaller,
@@ -19,8 +21,10 @@ import {
   tryVideoLock,
   type Reservation,
 } from "~/server/explainer/limits";
-import { storePoster } from "~/server/explainer/posters";
-import { renderMp4InSegments } from "~/server/explainer/segments";
+import {
+  remakePosterRemotely,
+  renderMp4InSegments,
+} from "~/server/explainer/segments";
 import {
   hasRender,
   readVideoArtifact,
@@ -42,7 +46,14 @@ const requestSchema = z.strictObject({
   repo: githubRepoSchema,
   // "poster" (re)makes the link-preview still; operator only.
   format: z.enum(["landscape", "vertical", "poster"]),
+  // The version (createdAt) of the video the viewer has open. Optional so a
+  // tab loaded before this field existed, or the operator's poster call,
+  // still works.
+  v: z.iso.datetime().optional(),
 });
+
+const STALE_MESSAGE =
+  "This video was just updated. Reload the page to get the new one.";
 
 /**
  * Make a video's MP4 once, then serve the stored file forever. The response is
@@ -63,9 +74,16 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
     crossOriginError: "Video downloads must come from GitDiagram.",
   });
   if (!parsed.success) return parsed.response;
-  const { username, repo, format } = parsed.data;
+  const { username, repo, format, v } = parsed.data;
   const artifact = await readVideoArtifact(username, repo);
   if (!artifact) return jsonErrorResponse("This video does not exist.", 404);
+  // The viewer has an older version open: its MP4 would not match what they
+  // watched, and its files are on their way out.
+  if (v && v !== artifact.createdAt)
+    return Response.json(
+      { ok: false, error: STALE_MESSAGE, stale: true },
+      { status: 409, headers: NO_STORE_RESPONSE_HEADERS },
+    );
   const events = (list: VideoRenderEvent[]) =>
     new Response(list.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(""), {
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
@@ -73,7 +91,13 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
   if (format === "poster") {
     if (!isTrustedVideoCaller(request))
       return jsonErrorResponse("Forbidden.", 403);
-    const stored = await storePoster(artifact, new URL(request.url).origin);
+    // Rendered on a render instance, so this route never ships Chromium.
+    const stored = await remakePosterRemotely(
+      artifact,
+      new URL(request.url).origin,
+    );
+    // The new poster has a new URL; point the pages that show it there.
+    if (stored) refreshVideoPages(username, repo);
     return events([
       stored
         ? { status: "complete" }
@@ -86,29 +110,35 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
   let reservation: Reservation | null = null;
   let releaseLock: (() => Promise<void>) | null = null;
   try {
-    if (!isTrustedVideoCaller(request)) {
-      reservation = await reserveRenderSlot({
-        visitorId: visitor.id,
-        clientIp: getClientIp(request),
-      });
-      if (!reservation.ok)
-        return jsonErrorResponse(renderLimitMessage(reservation.reason), 429);
-    }
     if (process.env.NODE_ENV === "production") {
       releaseLock = await tryVideoLock(
         `render:${artifact.repository}:${artifact.createdAt}:${format}`,
         14 * 60_000,
       );
-      if (!releaseLock) {
-        if (reservation?.ok) await reservation.refund();
+      if (!releaseLock)
         return jsonErrorResponse(
           "This MP4 is being made right now. Try again in a minute or two.",
           409,
         );
+      // Another render may have stored it between the first check and the lock.
+      if (await hasRender(artifact, name)) {
+        await releaseLock();
+        return events([{ status: "complete" }]);
+      }
+    }
+    if (!isTrustedVideoCaller(request)) {
+      reservation = await reserveRenderSlot({
+        visitorId: visitor.id,
+        clientIp: getClientIp(request),
+      });
+      if (!reservation.ok) {
+        await releaseLock?.();
+        return jsonErrorResponse(renderLimitMessage(reservation.reason), 429);
       }
     }
   } catch {
     if (reservation?.ok) await reservation.refund();
+    await releaseLock?.();
     return jsonErrorResponse(
       "Downloads are unavailable right now. Try again soon.",
       503,
@@ -154,6 +184,24 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
         },
       })
         .then(async (mp4) => {
+          // A regenerated video replaced this one while it rendered: its
+          // folder is no longer current, so the file is not kept. (If the
+          // check itself fails, keeping a finished MP4 is the better bet.)
+          const current = await readVideoArtifact(username, repo).catch(
+            () => artifact,
+          );
+          if (current?.createdAt !== artifact.createdAt) {
+            console.info(
+              JSON.stringify({
+                event: "video.render.superseded",
+                repository: artifact.repository,
+                format,
+              }),
+            );
+            send({ status: "error", error: STALE_MESSAGE });
+            if (reservation?.ok) await reservation.refund();
+            return;
+          }
           await writeRender(artifact, name, mp4);
           console.info(
             JSON.stringify({

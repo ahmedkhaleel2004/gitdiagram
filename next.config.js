@@ -56,11 +56,12 @@ const videoStagePolicy = [
 
 // Explainer videos are rendered to MP4 in headless Chromium with ffmpeg. Both
 // ship native binaries that must stay out of the bundle and be traced into the
-// functions that launch them.
-const videoRenderFiles = [
-  "./node_modules/@sparticuz/chromium/bin/**",
-  "./node_modules/ffmpeg-static/ffmpeg",
-];
+// functions that launch them. The render route only mixes and joins with
+// ffmpeg (segments and posters render through /api/video/render/segment), so
+// it leaves Chromium's ~60 MB out.
+const chromiumFiles = ["./node_modules/@sparticuz/chromium/bin/**"];
+const ffmpegFiles = ["./node_modules/ffmpeg-static/ffmpeg"];
+const videoRenderFiles = [...chromiumFiles, ...ffmpegFiles];
 
 /** @type {import("next").NextConfig} */
 const config = {
@@ -71,9 +72,12 @@ const config = {
     "ffmpeg-static",
   ],
   outputFileTracingIncludes: {
-    "/api/video/render": videoRenderFiles,
+    "/api/video/render": ffmpegFiles,
     "/api/video/render/segment": videoRenderFiles,
     "/api/video/generate": videoRenderFiles,
+  },
+  outputFileTracingExcludes: {
+    "/api/video/render": chromiumFiles,
   },
   allowedDevOrigins: ["127.0.0.1"],
   ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
