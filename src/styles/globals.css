@@ -329,29 +329,6 @@
       opacity 180ms var(--ease-out),
       transform 180ms var(--ease-out);
   }
-
-  .copy-button-content {
-    display: grid;
-    min-width: 12.75rem;
-  }
-
-  .copy-button-state {
-    grid-area: 1 / 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    transition:
-      opacity 160ms var(--ease-out),
-      transform 160ms var(--ease-out),
-      filter 160ms var(--ease-out);
-  }
-
-  .copy-button-state[data-active="false"] {
-    opacity: 0;
-    filter: blur(2px);
-    transform: translateY(2px);
-  }
 }
 
 @keyframes loading-ellipsis {
@@ -480,9 +457,7 @@
   .tooltip-content,
   .tooltip-content[data-state="delayed-open"],
   .tooltip-content[data-state="instant-open"],
-  .status-message,
-  .copy-button-state,
-  .copy-button-state[data-active="false"] {
+  .status-message {
     filter: none;
     transform: none;
   }
