@@ -62,7 +62,7 @@ export function useVideoRun(username: string, repo: string) {
 }
 
 /** Whether a run for this repository is still streaming. */
-export function isVideoRunActive(username: string, repo: string) {
+function isVideoRunActive(username: string, repo: string) {
   return runs.get(runKey(username, repo))?.kind === "generating";
 }
 

@@ -1,862 +1,841 @@
 {
- "repository": "ahmedkhaleel2004/gitdiagram",
- "createdAt": "2026-09-25T07:18:29.003Z",
- "meta": {
-  "owner": "ahmedkhaleel2004",
-  "repo": "gitdiagram",
-  "url": "https://github.com/ahmedkhaleel2004/gitdiagram",
-  "description": "Free, simple, fast interactive diagrams and explainer videos for any GitHub repository",
-  "stars": 17079,
-  "language": "TypeScript"
- },
- "timing": {
-  "DURATION": 29.527,
-  "SPEECH_END": 26.027,
-  "beats": [
-   {
-    "start": 0.4,
-    "end": 4.96,
-    "words": [
-     {
-      "w": "a",
-      "s": 0.4,
-      "e": 0.48
-     },
-     {
-      "w": "new",
-      "s": 0.52,
-      "e": 0.64
-     },
-     {
-      "w": "repository",
-      "s": 0.698,
-      "e": 1.44
-     },
-     {
-      "w": "thousands",
-      "s": 1.48,
-      "e": 1.84
-     },
-     {
-      "w": "of",
-      "s": 1.893,
-      "e": 2
-     },
-     {
-      "w": "files",
-      "s": 2.067,
-      "e": 2.88
-     },
-     {
-      "w": "and",
-      "s": 2.92,
-      "e": 3.04
-     },
-     {
-      "w": "no",
-      "s": 3.12,
-      "e": 3.28
-     },
-     {
-      "w": "idea",
-      "s": 3.344,
-      "e": 3.6
-     },
-     {
-      "w": "where",
-      "s": 3.653,
-      "e": 3.92
-     },
-     {
-      "w": "anything",
-      "s": 3.973,
-      "e": 4.4
-     },
-     {
-      "w": "lives",
-      "s": 4.467,
-      "e": 4.96
-     }
+  "repository": "ahmedkhaleel2004/gitdiagram",
+  "createdAt": "2026-09-25T07:18:29.003Z",
+  "meta": {
+    "owner": "ahmedkhaleel2004",
+    "repo": "gitdiagram",
+    "url": "https://github.com/ahmedkhaleel2004/gitdiagram",
+    "description": "Free, simple, fast interactive diagrams and explainer videos for any GitHub repository",
+    "stars": 17079,
+    "language": "TypeScript"
+  },
+  "timing": {
+    "DURATION": 29.527,
+    "SPEECH_END": 26.027,
+    "beats": [
+      {
+        "start": 0.4,
+        "end": 4.96,
+        "words": [
+          {
+            "w": "a",
+            "s": 0.4,
+            "e": 0.48
+          },
+          {
+            "w": "new",
+            "s": 0.52,
+            "e": 0.64
+          },
+          {
+            "w": "repository",
+            "s": 0.698,
+            "e": 1.44
+          },
+          {
+            "w": "thousands",
+            "s": 1.48,
+            "e": 1.84
+          },
+          {
+            "w": "of",
+            "s": 1.893,
+            "e": 2
+          },
+          {
+            "w": "files",
+            "s": 2.067,
+            "e": 2.88
+          },
+          {
+            "w": "and",
+            "s": 2.92,
+            "e": 3.04
+          },
+          {
+            "w": "no",
+            "s": 3.12,
+            "e": 3.28
+          },
+          {
+            "w": "idea",
+            "s": 3.344,
+            "e": 3.6
+          },
+          {
+            "w": "where",
+            "s": 3.653,
+            "e": 3.92
+          },
+          {
+            "w": "anything",
+            "s": 3.973,
+            "e": 4.4
+          },
+          {
+            "w": "lives",
+            "s": 4.467,
+            "e": 4.96
+          }
+        ]
+      },
+      {
+        "start": 5.2,
+        "end": 8.48,
+        "words": [
+          {
+            "w": "so",
+            "s": 5.2,
+            "e": 5.68
+          },
+          {
+            "w": "you",
+            "s": 5.7,
+            "e": 5.76
+          },
+          {
+            "w": "swap",
+            "s": 5.824,
+            "e": 6.08
+          },
+          {
+            "w": "one",
+            "s": 6.12,
+            "e": 6.24
+          },
+          {
+            "w": "word",
+            "s": 6.288,
+            "e": 6.8
+          },
+          {
+            "w": "hub",
+            "s": 6.88,
+            "e": 7.12
+          },
+          {
+            "w": "becomes",
+            "s": 7.19,
+            "e": 7.68
+          },
+          {
+            "w": "diagram",
+            "s": 7.77,
+            "e": 8.48
+          }
+        ]
+      },
+      {
+        "start": 8.88,
+        "end": 11.68,
+        "words": [
+          {
+            "w": "and",
+            "s": 8.88,
+            "e": 9.12
+          },
+          {
+            "w": "gitdiagram",
+            "s": 9.2,
+            "e": 9.84
+          },
+          {
+            "w": "hands",
+            "s": 9.907,
+            "e": 10.24
+          },
+          {
+            "w": "back",
+            "s": 10.272,
+            "e": 10.4
+          },
+          {
+            "w": "an",
+            "s": 10.427,
+            "e": 10.48
+          },
+          {
+            "w": "architecture",
+            "s": 10.523,
+            "e": 11.04
+          },
+          {
+            "w": "map",
+            "s": 11.1,
+            "e": 11.68
+          }
+        ]
+      },
+      {
+        "start": 11.72,
+        "end": 14.2,
+        "words": [
+          {
+            "w": "where",
+            "s": 11.72,
+            "e": 11.92
+          },
+          {
+            "w": "every",
+            "s": 11.96,
+            "e": 12.16
+          },
+          {
+            "w": "box",
+            "s": 12.3,
+            "e": 12.72
+          },
+          {
+            "w": "links",
+            "s": 12.8,
+            "e": 13.2
+          },
+          {
+            "w": "to",
+            "s": 13.227,
+            "e": 13.28
+          },
+          {
+            "w": "its",
+            "s": 13.32,
+            "e": 13.44
+          },
+          {
+            "w": "real",
+            "s": 13.488,
+            "e": 13.68
+          },
+          {
+            "w": "file",
+            "s": 13.776,
+            "e": 14.2
+          }
+        ]
+      },
+      {
+        "start": 14.4,
+        "end": 17.6,
+        "words": [
+          {
+            "w": "behind",
+            "s": 14.4,
+            "e": 15.36
+          },
+          {
+            "w": "it",
+            "s": 15.387,
+            "e": 15.84
+          },
+          {
+            "w": "one",
+            "s": 15.9,
+            "e": 16.08
+          },
+          {
+            "w": "streaming",
+            "s": 16.12,
+            "e": 16.48
+          },
+          {
+            "w": "request",
+            "s": 16.53,
+            "e": 16.88
+          },
+          {
+            "w": "does",
+            "s": 16.928,
+            "e": 17.12
+          },
+          {
+            "w": "the",
+            "s": 17.14,
+            "e": 17.2
+          },
+          {
+            "w": "work",
+            "s": 17.264,
+            "e": 17.6
+          }
+        ]
+      },
+      {
+        "start": 17.76,
+        "end": 22.8,
+        "words": [
+          {
+            "w": "the",
+            "s": 17.76,
+            "e": 18.24
+          },
+          {
+            "w": "server",
+            "s": 18.286,
+            "e": 18.56
+          },
+          {
+            "w": "pulls",
+            "s": 18.613,
+            "e": 18.88
+          },
+          {
+            "w": "the",
+            "s": 18.9,
+            "e": 18.96
+          },
+          {
+            "w": "readme",
+            "s": 19.017,
+            "e": 19.84
+          },
+          {
+            "w": "tree",
+            "s": 19.92,
+            "e": 20.24
+          },
+          {
+            "w": "and",
+            "s": 20.32,
+            "e": 20.56
+          },
+          {
+            "w": "a",
+            "s": 20.6,
+            "e": 20.64
+          },
+          {
+            "w": "dozen",
+            "s": 20.72,
+            "e": 21.12
+          },
+          {
+            "w": "key",
+            "s": 21.2,
+            "e": 21.44
+          },
+          {
+            "w": "files",
+            "s": 21.493,
+            "e": 21.76
+          },
+          {
+            "w": "from",
+            "s": 21.792,
+            "e": 21.92
+          },
+          {
+            "w": "github",
+            "s": 21.977,
+            "e": 22.8
+          }
+        ]
+      },
+      {
+        "start": 22.84,
+        "end": 26.027,
+        "words": [
+          {
+            "w": "and",
+            "s": 22.84,
+            "e": 22.96
+          },
+          {
+            "w": "a",
+            "s": 23,
+            "e": 23.04
+          },
+          {
+            "w": "model",
+            "s": 23.093,
+            "e": 23.36
+          },
+          {
+            "w": "explains",
+            "s": 23.404,
+            "e": 23.76
+          },
+          {
+            "w": "the",
+            "s": 23.78,
+            "e": 23.84
+          },
+          {
+            "w": "architecture",
+            "s": 23.883,
+            "e": 24.64
+          },
+          {
+            "w": "streaming",
+            "s": 24.696,
+            "e": 25.2
+          },
+          {
+            "w": "text",
+            "s": 25.248,
+            "e": 25.44
+          },
+          {
+            "w": "back",
+            "s": 25.504,
+            "e": 26.027
+          }
+        ]
+      }
     ]
-   },
-   {
-    "start": 5.2,
-    "end": 8.48,
-    "words": [
-     {
-      "w": "so",
-      "s": 5.2,
-      "e": 5.68
-     },
-     {
-      "w": "you",
-      "s": 5.7,
-      "e": 5.76
-     },
-     {
-      "w": "swap",
-      "s": 5.824,
-      "e": 6.08
-     },
-     {
-      "w": "one",
-      "s": 6.12,
-      "e": 6.24
-     },
-     {
-      "w": "word",
-      "s": 6.288,
-      "e": 6.8
-     },
-     {
-      "w": "hub",
-      "s": 6.88,
-      "e": 7.12
-     },
-     {
-      "w": "becomes",
-      "s": 7.19,
-      "e": 7.68
-     },
-     {
-      "w": "diagram",
-      "s": 7.77,
-      "e": 8.48
-     }
+  },
+  "voices": [
+    {
+      "start": 0.4
+    }
+  ],
+  "version": 2,
+  "plan": {
+    "title": "GitDiagram: a map from a URL",
+    "outro": "Swap hub for diagram. Any repository.",
+    "beats": [
+      {
+        "scene": "1",
+        "narration": "A new repository, thousands of files, and no idea where anything lives.",
+        "transition": "cut",
+        "elements": [
+          {
+            "id": "win",
+            "kind": "browser",
+            "at": "",
+            "x": 1.2,
+            "y": 1.3,
+            "w": 13.6,
+            "h": 7.1,
+            "url": "github.com/ahmedkhaleel2004/gitdiagram"
+          },
+          {
+            "id": "ft",
+            "kind": "tree",
+            "at": "thousands",
+            "x": 1.8,
+            "y": 2.5,
+            "w": 6.4,
+            "h": 5.5,
+            "paths": [
+              "src/app/api/generate/stream/route.ts",
+              "src/app/api/video/render/route.ts",
+              "src/components/mermaid-diagram.tsx",
+              "src/features/diagram/graph.ts",
+              "src/hooks/useDiagram.ts",
+              "src/server/generate/graph-planner.ts",
+              "src/server/generate/repository-context.ts",
+              "src/server/storage/r2.ts",
+              "src/server/explainer/director.ts",
+              "public/video-engine/stage.js"
+            ],
+            "focus": []
+          },
+          {
+            "id": "lost",
+            "kind": "text",
+            "at": "idea",
+            "x": 9,
+            "y": 3.4,
+            "w": 5.4,
+            "h": 1.2,
+            "text": "where does anything live?",
+            "size": "l",
+            "tone": "muted",
+            "mono": false
+          },
+          {
+            "id": "cnt",
+            "kind": "chip",
+            "at": "files",
+            "x": 9,
+            "y": 5.2,
+            "w": 3.2,
+            "h": 0.6,
+            "text": "270+ files",
+            "tone": "soft"
+          }
+        ],
+        "actions": [
+          {
+            "do": "scan",
+            "at": "files",
+            "target": ["ft"]
+          },
+          {
+            "do": "shake",
+            "at": "idea",
+            "target": ["ft"]
+          }
+        ]
+      },
+      {
+        "scene": "1",
+        "narration": "So you swap one word, hub becomes diagram,",
+        "transition": "",
+        "elements": [
+          {
+            "id": "swap",
+            "kind": "chip",
+            "at": "swap",
+            "x": 9,
+            "y": 6.4,
+            "w": 4.4,
+            "h": 0.7,
+            "text": "hub \u2192 diagram",
+            "tone": "accent"
+          }
+        ],
+        "actions": [
+          {
+            "do": "focus",
+            "at": "swap",
+            "target": ["win"]
+          },
+          {
+            "do": "replace",
+            "at": "diagram",
+            "target": ["win"],
+            "text": "gitdiagram.com/ahmedkhaleel2004/gitdiagram"
+          },
+          {
+            "do": "pulse",
+            "at": "diagram",
+            "target": ["swap"]
+          }
+        ]
+      },
+      {
+        "scene": "2",
+        "narration": "and GitDiagram hands back an architecture map,",
+        "transition": "push",
+        "elements": [
+          {
+            "id": "br",
+            "kind": "browser",
+            "at": "",
+            "x": 0.8,
+            "y": 1.2,
+            "w": 14.4,
+            "h": 7.3,
+            "url": "gitdiagram.com/owner/repo"
+          },
+          {
+            "id": "b_front",
+            "kind": "box",
+            "at": "architecture",
+            "x": 1.6,
+            "y": 2.6,
+            "w": 3,
+            "h": 1,
+            "label": "Frontend",
+            "sub": "src/app",
+            "icon": "browser",
+            "tone": "plain"
+          },
+          {
+            "id": "b_api",
+            "kind": "box",
+            "at": "architecture",
+            "x": 5.8,
+            "y": 2.6,
+            "w": 3.4,
+            "h": 1,
+            "label": "Generate API",
+            "sub": "stream route",
+            "icon": "server",
+            "tone": "accent"
+          },
+          {
+            "id": "b_gh",
+            "kind": "box",
+            "at": "map",
+            "x": 1.6,
+            "y": 5.2,
+            "w": 3,
+            "h": 1,
+            "label": "GitHub",
+            "sub": "",
+            "icon": "globe",
+            "tone": "plain"
+          },
+          {
+            "id": "b_ai",
+            "kind": "box",
+            "at": "map",
+            "x": 5.8,
+            "y": 5.2,
+            "w": 3.4,
+            "h": 1,
+            "label": "AI model",
+            "sub": "",
+            "icon": "cpu",
+            "tone": "plain"
+          },
+          {
+            "id": "a1",
+            "kind": "arrow",
+            "at": "map",
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "from": "b_front",
+            "to": "b_api",
+            "label": "",
+            "dashed": false,
+            "flow": false
+          },
+          {
+            "id": "a2",
+            "kind": "arrow",
+            "at": "map",
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "from": "b_api",
+            "to": "b_gh",
+            "label": "",
+            "dashed": false,
+            "flow": false
+          },
+          {
+            "id": "a3",
+            "kind": "arrow",
+            "at": "map",
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "from": "b_api",
+            "to": "b_ai",
+            "label": "",
+            "dashed": false,
+            "flow": false
+          }
+        ],
+        "actions": []
+      },
+      {
+        "scene": "2",
+        "narration": "where every box links to its real file.",
+        "transition": "",
+        "elements": [
+          {
+            "id": "f",
+            "kind": "file",
+            "at": "file",
+            "x": 10.2,
+            "y": 4,
+            "w": 4.6,
+            "h": 0.9,
+            "path": "src/app/api/generate/stream/route.ts"
+          },
+          {
+            "id": "a4",
+            "kind": "arrow",
+            "at": "file",
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "from": "b_api",
+            "to": "f",
+            "label": "",
+            "dashed": true,
+            "flow": true
+          }
+        ],
+        "actions": [
+          {
+            "do": "pulse",
+            "at": "box",
+            "target": ["b_api"]
+          },
+          {
+            "do": "focus",
+            "at": "real",
+            "target": ["b_api", "f"]
+          }
+        ]
+      },
+      {
+        "scene": "3",
+        "narration": "Behind it, one streaming request does the work.",
+        "transition": "push",
+        "elements": [
+          {
+            "id": "req",
+            "kind": "request",
+            "at": "streaming",
+            "x": 0.8,
+            "y": 3.6,
+            "w": 5.2,
+            "h": 1.6,
+            "method": "POST",
+            "url": "/api/generate/stream",
+            "status": null,
+            "lines": []
+          },
+          {
+            "id": "server",
+            "kind": "box",
+            "at": "work",
+            "x": 6.8,
+            "y": 3.5,
+            "w": 3.6,
+            "h": 1.6,
+            "label": "Server route",
+            "sub": "api/generate/stream/route.ts",
+            "icon": "server",
+            "tone": "accent"
+          },
+          {
+            "id": "a1",
+            "kind": "arrow",
+            "at": "work",
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "from": "req",
+            "to": "server",
+            "label": "",
+            "dashed": false,
+            "flow": true
+          }
+        ],
+        "actions": []
+      },
+      {
+        "scene": "3",
+        "narration": "The server pulls the README, tree and a dozen key files from GitHub,",
+        "transition": "",
+        "elements": [
+          {
+            "id": "gh",
+            "kind": "box",
+            "at": "github",
+            "x": 6.8,
+            "y": 1.3,
+            "w": 3.6,
+            "h": 1.1,
+            "label": "GitHub",
+            "sub": "owner/repo",
+            "icon": "globe",
+            "tone": "soft"
+          },
+          {
+            "id": "a2",
+            "kind": "arrow",
+            "at": "github",
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "from": "gh",
+            "to": "server",
+            "label": "",
+            "dashed": false,
+            "flow": true
+          },
+          {
+            "id": "c1",
+            "kind": "chip",
+            "at": "readme",
+            "x": 1,
+            "y": 1.5,
+            "w": 3.4,
+            "h": 0.6,
+            "text": "README + file tree",
+            "tone": "soft"
+          },
+          {
+            "id": "c2",
+            "kind": "chip",
+            "at": "dozen",
+            "x": 1,
+            "y": 2.4,
+            "w": 3.4,
+            "h": 0.6,
+            "text": "12 source files",
+            "tone": "accent"
+          }
+        ],
+        "actions": [
+          {
+            "do": "pulse",
+            "at": "pulls",
+            "target": ["server"]
+          }
+        ]
+      },
+      {
+        "scene": "3",
+        "narration": "and a model explains the architecture, streaming text back.",
+        "transition": "",
+        "elements": [
+          {
+            "id": "model",
+            "kind": "box",
+            "at": "model",
+            "x": 11.6,
+            "y": 3.5,
+            "w": 3.6,
+            "h": 1.6,
+            "label": "Model",
+            "sub": "OpenAI / OpenRouter",
+            "icon": "cpu",
+            "tone": "plain"
+          },
+          {
+            "id": "a3",
+            "kind": "arrow",
+            "at": "model",
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "from": "server",
+            "to": "model",
+            "label": "",
+            "dashed": false,
+            "flow": true
+          },
+          {
+            "id": "term",
+            "kind": "terminal",
+            "at": "streaming",
+            "x": 2.5,
+            "y": 6,
+            "w": 11,
+            "h": 2.3,
+            "title": "explanation stream",
+            "lines": ["The app is a Next.js frontend with API routes..."]
+          },
+          {
+            "id": "a4",
+            "kind": "arrow",
+            "at": "back",
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "from": "server",
+            "to": "term",
+            "label": "",
+            "dashed": false,
+            "flow": true
+          }
+        ],
+        "actions": [
+          {
+            "do": "type",
+            "at": "back",
+            "target": ["term"],
+            "line": "Generation streams via server-sent events..."
+          }
+        ]
+      }
     ]
-   },
-   {
-    "start": 8.88,
-    "end": 11.68,
-    "words": [
-     {
-      "w": "and",
-      "s": 8.88,
-      "e": 9.12
-     },
-     {
-      "w": "gitdiagram",
-      "s": 9.2,
-      "e": 9.84
-     },
-     {
-      "w": "hands",
-      "s": 9.907,
-      "e": 10.24
-     },
-     {
-      "w": "back",
-      "s": 10.272,
-      "e": 10.4
-     },
-     {
-      "w": "an",
-      "s": 10.427,
-      "e": 10.48
-     },
-     {
-      "w": "architecture",
-      "s": 10.523,
-      "e": 11.04
-     },
-     {
-      "w": "map",
-      "s": 11.1,
-      "e": 11.68
-     }
-    ]
-   },
-   {
-    "start": 11.72,
-    "end": 14.2,
-    "words": [
-     {
-      "w": "where",
-      "s": 11.72,
-      "e": 11.92
-     },
-     {
-      "w": "every",
-      "s": 11.96,
-      "e": 12.16
-     },
-     {
-      "w": "box",
-      "s": 12.3,
-      "e": 12.72
-     },
-     {
-      "w": "links",
-      "s": 12.8,
-      "e": 13.2
-     },
-     {
-      "w": "to",
-      "s": 13.227,
-      "e": 13.28
-     },
-     {
-      "w": "its",
-      "s": 13.32,
-      "e": 13.44
-     },
-     {
-      "w": "real",
-      "s": 13.488,
-      "e": 13.68
-     },
-     {
-      "w": "file",
-      "s": 13.776,
-      "e": 14.2
-     }
-    ]
-   },
-   {
-    "start": 14.4,
-    "end": 17.6,
-    "words": [
-     {
-      "w": "behind",
-      "s": 14.4,
-      "e": 15.36
-     },
-     {
-      "w": "it",
-      "s": 15.387,
-      "e": 15.84
-     },
-     {
-      "w": "one",
-      "s": 15.9,
-      "e": 16.08
-     },
-     {
-      "w": "streaming",
-      "s": 16.12,
-      "e": 16.48
-     },
-     {
-      "w": "request",
-      "s": 16.53,
-      "e": 16.88
-     },
-     {
-      "w": "does",
-      "s": 16.928,
-      "e": 17.12
-     },
-     {
-      "w": "the",
-      "s": 17.14,
-      "e": 17.2
-     },
-     {
-      "w": "work",
-      "s": 17.264,
-      "e": 17.6
-     }
-    ]
-   },
-   {
-    "start": 17.76,
-    "end": 22.8,
-    "words": [
-     {
-      "w": "the",
-      "s": 17.76,
-      "e": 18.24
-     },
-     {
-      "w": "server",
-      "s": 18.286,
-      "e": 18.56
-     },
-     {
-      "w": "pulls",
-      "s": 18.613,
-      "e": 18.88
-     },
-     {
-      "w": "the",
-      "s": 18.9,
-      "e": 18.96
-     },
-     {
-      "w": "readme",
-      "s": 19.017,
-      "e": 19.84
-     },
-     {
-      "w": "tree",
-      "s": 19.92,
-      "e": 20.24
-     },
-     {
-      "w": "and",
-      "s": 20.32,
-      "e": 20.56
-     },
-     {
-      "w": "a",
-      "s": 20.6,
-      "e": 20.64
-     },
-     {
-      "w": "dozen",
-      "s": 20.72,
-      "e": 21.12
-     },
-     {
-      "w": "key",
-      "s": 21.2,
-      "e": 21.44
-     },
-     {
-      "w": "files",
-      "s": 21.493,
-      "e": 21.76
-     },
-     {
-      "w": "from",
-      "s": 21.792,
-      "e": 21.92
-     },
-     {
-      "w": "github",
-      "s": 21.977,
-      "e": 22.8
-     }
-    ]
-   },
-   {
-    "start": 22.84,
-    "end": 26.027,
-    "words": [
-     {
-      "w": "and",
-      "s": 22.84,
-      "e": 22.96
-     },
-     {
-      "w": "a",
-      "s": 23,
-      "e": 23.04
-     },
-     {
-      "w": "model",
-      "s": 23.093,
-      "e": 23.36
-     },
-     {
-      "w": "explains",
-      "s": 23.404,
-      "e": 23.76
-     },
-     {
-      "w": "the",
-      "s": 23.78,
-      "e": 23.84
-     },
-     {
-      "w": "architecture",
-      "s": 23.883,
-      "e": 24.64
-     },
-     {
-      "w": "streaming",
-      "s": 24.696,
-      "e": 25.2
-     },
-     {
-      "w": "text",
-      "s": 25.248,
-      "e": 25.44
-     },
-     {
-      "w": "back",
-      "s": 25.504,
-      "e": 26.027
-     }
-    ]
-   }
-  ]
- },
- "voices": [
-  {
-   "start": 0.4
   }
- ],
- "version": 2,
- "plan": {
-  "title": "GitDiagram: a map from a URL",
-  "outro": "Swap hub for diagram. Any repository.",
-  "beats": [
-   {
-    "scene": "1",
-    "narration": "A new repository, thousands of files, and no idea where anything lives.",
-    "transition": "cut",
-    "elements": [
-     {
-      "id": "win",
-      "kind": "browser",
-      "at": "",
-      "x": 1.2,
-      "y": 1.3,
-      "w": 13.6,
-      "h": 7.1,
-      "url": "github.com/ahmedkhaleel2004/gitdiagram"
-     },
-     {
-      "id": "ft",
-      "kind": "tree",
-      "at": "thousands",
-      "x": 1.8,
-      "y": 2.5,
-      "w": 6.4,
-      "h": 5.5,
-      "paths": [
-       "src/app/api/generate/stream/route.ts",
-       "src/app/api/video/render/route.ts",
-       "src/components/mermaid-diagram.tsx",
-       "src/features/diagram/graph.ts",
-       "src/hooks/useDiagram.ts",
-       "src/server/generate/graph-planner.ts",
-       "src/server/generate/repository-context.ts",
-       "src/server/storage/r2.ts",
-       "src/server/explainer/director.ts",
-       "public/video-engine/stage.js"
-      ],
-      "focus": []
-     },
-     {
-      "id": "lost",
-      "kind": "text",
-      "at": "idea",
-      "x": 9,
-      "y": 3.4,
-      "w": 5.4,
-      "h": 1.2,
-      "text": "where does anything live?",
-      "size": "l",
-      "tone": "muted",
-      "mono": false
-     },
-     {
-      "id": "cnt",
-      "kind": "chip",
-      "at": "files",
-      "x": 9,
-      "y": 5.2,
-      "w": 3.2,
-      "h": 0.6,
-      "text": "270+ files",
-      "tone": "soft"
-     }
-    ],
-    "actions": [
-     {
-      "do": "scan",
-      "at": "files",
-      "target": [
-       "ft"
-      ]
-     },
-     {
-      "do": "shake",
-      "at": "idea",
-      "target": [
-       "ft"
-      ]
-     }
-    ]
-   },
-   {
-    "scene": "1",
-    "narration": "So you swap one word, hub becomes diagram,",
-    "transition": "",
-    "elements": [
-     {
-      "id": "swap",
-      "kind": "chip",
-      "at": "swap",
-      "x": 9,
-      "y": 6.4,
-      "w": 4.4,
-      "h": 0.7,
-      "text": "hub \u2192 diagram",
-      "tone": "accent"
-     }
-    ],
-    "actions": [
-     {
-      "do": "focus",
-      "at": "swap",
-      "target": [
-       "win"
-      ]
-     },
-     {
-      "do": "replace",
-      "at": "diagram",
-      "target": [
-       "win"
-      ],
-      "text": "gitdiagram.com/ahmedkhaleel2004/gitdiagram"
-     },
-     {
-      "do": "pulse",
-      "at": "diagram",
-      "target": [
-       "swap"
-      ]
-     }
-    ]
-   },
-   {
-    "scene": "2",
-    "narration": "and GitDiagram hands back an architecture map,",
-    "transition": "push",
-    "elements": [
-     {
-      "id": "br",
-      "kind": "browser",
-      "at": "",
-      "x": 0.8,
-      "y": 1.2,
-      "w": 14.4,
-      "h": 7.3,
-      "url": "gitdiagram.com/owner/repo"
-     },
-     {
-      "id": "b_front",
-      "kind": "box",
-      "at": "architecture",
-      "x": 1.6,
-      "y": 2.6,
-      "w": 3,
-      "h": 1,
-      "label": "Frontend",
-      "sub": "src/app",
-      "icon": "browser",
-      "tone": "plain"
-     },
-     {
-      "id": "b_api",
-      "kind": "box",
-      "at": "architecture",
-      "x": 5.8,
-      "y": 2.6,
-      "w": 3.4,
-      "h": 1,
-      "label": "Generate API",
-      "sub": "stream route",
-      "icon": "server",
-      "tone": "accent"
-     },
-     {
-      "id": "b_gh",
-      "kind": "box",
-      "at": "map",
-      "x": 1.6,
-      "y": 5.2,
-      "w": 3,
-      "h": 1,
-      "label": "GitHub",
-      "sub": "",
-      "icon": "globe",
-      "tone": "plain"
-     },
-     {
-      "id": "b_ai",
-      "kind": "box",
-      "at": "map",
-      "x": 5.8,
-      "y": 5.2,
-      "w": 3.4,
-      "h": 1,
-      "label": "AI model",
-      "sub": "",
-      "icon": "cpu",
-      "tone": "plain"
-     },
-     {
-      "id": "a1",
-      "kind": "arrow",
-      "at": "map",
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "from": "b_front",
-      "to": "b_api",
-      "label": "",
-      "dashed": false,
-      "flow": false
-     },
-     {
-      "id": "a2",
-      "kind": "arrow",
-      "at": "map",
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "from": "b_api",
-      "to": "b_gh",
-      "label": "",
-      "dashed": false,
-      "flow": false
-     },
-     {
-      "id": "a3",
-      "kind": "arrow",
-      "at": "map",
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "from": "b_api",
-      "to": "b_ai",
-      "label": "",
-      "dashed": false,
-      "flow": false
-     }
-    ],
-    "actions": []
-   },
-   {
-    "scene": "2",
-    "narration": "where every box links to its real file.",
-    "transition": "",
-    "elements": [
-     {
-      "id": "f",
-      "kind": "file",
-      "at": "file",
-      "x": 10.2,
-      "y": 4,
-      "w": 4.6,
-      "h": 0.9,
-      "path": "src/app/api/generate/stream/route.ts"
-     },
-     {
-      "id": "a4",
-      "kind": "arrow",
-      "at": "file",
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "from": "b_api",
-      "to": "f",
-      "label": "",
-      "dashed": true,
-      "flow": true
-     }
-    ],
-    "actions": [
-     {
-      "do": "pulse",
-      "at": "box",
-      "target": [
-       "b_api"
-      ]
-     },
-     {
-      "do": "focus",
-      "at": "real",
-      "target": [
-       "b_api",
-       "f"
-      ]
-     }
-    ]
-   },
-   {
-    "scene": "3",
-    "narration": "Behind it, one streaming request does the work.",
-    "transition": "push",
-    "elements": [
-     {
-      "id": "req",
-      "kind": "request",
-      "at": "streaming",
-      "x": 0.8,
-      "y": 3.6,
-      "w": 5.2,
-      "h": 1.6,
-      "method": "POST",
-      "url": "/api/generate/stream",
-      "status": null,
-      "lines": []
-     },
-     {
-      "id": "server",
-      "kind": "box",
-      "at": "work",
-      "x": 6.8,
-      "y": 3.5,
-      "w": 3.6,
-      "h": 1.6,
-      "label": "Server route",
-      "sub": "api/generate/stream/route.ts",
-      "icon": "server",
-      "tone": "accent"
-     },
-     {
-      "id": "a1",
-      "kind": "arrow",
-      "at": "work",
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "from": "req",
-      "to": "server",
-      "label": "",
-      "dashed": false,
-      "flow": true
-     }
-    ],
-    "actions": []
-   },
-   {
-    "scene": "3",
-    "narration": "The server pulls the README, tree and a dozen key files from GitHub,",
-    "transition": "",
-    "elements": [
-     {
-      "id": "gh",
-      "kind": "box",
-      "at": "github",
-      "x": 6.8,
-      "y": 1.3,
-      "w": 3.6,
-      "h": 1.1,
-      "label": "GitHub",
-      "sub": "owner/repo",
-      "icon": "globe",
-      "tone": "soft"
-     },
-     {
-      "id": "a2",
-      "kind": "arrow",
-      "at": "github",
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "from": "gh",
-      "to": "server",
-      "label": "",
-      "dashed": false,
-      "flow": true
-     },
-     {
-      "id": "c1",
-      "kind": "chip",
-      "at": "readme",
-      "x": 1,
-      "y": 1.5,
-      "w": 3.4,
-      "h": 0.6,
-      "text": "README + file tree",
-      "tone": "soft"
-     },
-     {
-      "id": "c2",
-      "kind": "chip",
-      "at": "dozen",
-      "x": 1,
-      "y": 2.4,
-      "w": 3.4,
-      "h": 0.6,
-      "text": "12 source files",
-      "tone": "accent"
-     }
-    ],
-    "actions": [
-     {
-      "do": "pulse",
-      "at": "pulls",
-      "target": [
-       "server"
-      ]
-     }
-    ]
-   },
-   {
-    "scene": "3",
-    "narration": "and a model explains the architecture, streaming text back.",
-    "transition": "",
-    "elements": [
-     {
-      "id": "model",
-      "kind": "box",
-      "at": "model",
-      "x": 11.6,
-      "y": 3.5,
-      "w": 3.6,
-      "h": 1.6,
-      "label": "Model",
-      "sub": "OpenAI / OpenRouter",
-      "icon": "cpu",
-      "tone": "plain"
-     },
-     {
-      "id": "a3",
-      "kind": "arrow",
-      "at": "model",
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "from": "server",
-      "to": "model",
-      "label": "",
-      "dashed": false,
-      "flow": true
-     },
-     {
-      "id": "term",
-      "kind": "terminal",
-      "at": "streaming",
-      "x": 2.5,
-      "y": 6,
-      "w": 11,
-      "h": 2.3,
-      "title": "explanation stream",
-      "lines": [
-       "The app is a Next.js frontend with API routes..."
-      ]
-     },
-     {
-      "id": "a4",
-      "kind": "arrow",
-      "at": "back",
-      "x": 0,
-      "y": 0,
-      "w": 0,
-      "h": 0,
-      "from": "server",
-      "to": "term",
-      "label": "",
-      "dashed": false,
-      "flow": true
-     }
-    ],
-    "actions": [
-     {
-      "do": "type",
-      "at": "back",
-      "target": [
-       "term"
-      ],
-      "line": "Generation streams via server-sent events..."
-     }
-    ]
-   }
-  ]
- }
 }

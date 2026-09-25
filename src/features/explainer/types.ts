@@ -47,7 +47,7 @@ export const SHOT_ACTIONS = [
   "focus",
   "reset",
 ] as const;
-export type ShotActionName = (typeof SHOT_ACTIONS)[number];
+type ShotActionName = (typeof SHOT_ACTIONS)[number];
 
 export interface ShotElement {
   /** Lowercase snake_case, at most 32 characters, unique within its scene. */
