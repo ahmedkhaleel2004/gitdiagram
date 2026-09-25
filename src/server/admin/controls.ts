@@ -9,13 +9,14 @@ import { upstashCommand } from "~/server/storage/upstash";
 // - videoAudience: who may make new videos: the early-access places on
 //   desktop ("priority"), any desktop, or everyone.
 // - videosPaused: stop every new video, whoever asks.
-// - videoDailyLimit, videoNetworkDailyLimit: override VIDEO_DAILY_LIMIT and
-//   VIDEO_IP_DAILY_LIMIT.
+// - videoDailyLimit, videoPersonDailyLimit, videoNetworkDailyLimit: override
+//   VIDEO_DAILY_LIMIT, VIDEO_PERSON_DAILY_LIMIT and VIDEO_NETWORK_DAILY_LIMIT.
 
 export const DEFAULT_CONTROLS: LiveControls = {
   videoAudience: "priority",
   videosPaused: false,
   videoDailyLimit: null,
+  videoPersonDailyLimit: null,
   videoNetworkDailyLimit: null,
 };
 
@@ -45,6 +46,7 @@ export function parseControls(fields: string[] | null): LiveControls {
         : DEFAULT_CONTROLS.videoAudience,
     videosPaused: map.get("videosPaused") === "1",
     videoDailyLimit: parseLimit(map.get("videoDailyLimit")),
+    videoPersonDailyLimit: parseLimit(map.get("videoPersonDailyLimit")),
     videoNetworkDailyLimit: parseLimit(map.get("videoNetworkDailyLimit")),
   };
 }

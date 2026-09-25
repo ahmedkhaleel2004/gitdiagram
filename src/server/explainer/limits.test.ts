@@ -55,40 +55,65 @@ describe("explainer video limits", () => {
     vi.unstubAllEnvs();
   });
 
-  it("reserves against the daily and per-network budgets", async () => {
+  it("reserves against the daily, per-person and per-connection budgets", async () => {
     process.env.VIDEO_DAILY_LIMIT = "25";
-    process.env.VIDEO_IP_DAILY_LIMIT = "2";
+    process.env.VIDEO_PERSON_DAILY_LIMIT = "1";
+    process.env.VIDEO_NETWORK_DAILY_LIMIT = "10";
+    const alice = { visitorId: "alice", clientIp: "203.0.113.9" };
     upstashEval.mockResolvedValueOnce(0);
-    const granted = await reserveVideoSlot("203.0.113.9");
+    const granted = await reserveVideoSlot(alice);
     expect(granted.ok).toBe(true);
     const call = upstashEval.mock.calls[0]![0] as {
       keys: string[];
       args: number[];
     };
     expect(call.keys[0]).toMatch(/^video:v1:generate:all:\d+$/);
-    expect(call.keys[1]).toMatch(/^video:v1:generate:net:203\.0\.113\.9:\d+$/);
-    expect(call.args.slice(0, 2)).toEqual([25, 2]);
+    expect(call.keys[1]).toMatch(/^video:v1:generate:who:alice:\d+$/);
+    expect(call.keys[2]).toMatch(/^video:v1:generate:net:203\.0\.113\.9:\d+$/);
+    expect(call.args.slice(0, 3)).toEqual([25, 1, 10]);
 
     upstashEval.mockResolvedValueOnce(1);
-    expect(await reserveVideoSlot("203.0.113.9")).toEqual({
+    expect(await reserveVideoSlot(alice)).toEqual({
       ok: false,
       reason: "daily",
       limit: 25,
     });
     upstashEval.mockResolvedValueOnce(2);
-    expect(await reserveVideoSlot(null)).toEqual({
+    expect(await reserveVideoSlot(alice)).toEqual({
+      ok: false,
+      reason: "person",
+      limit: 1,
+    });
+    upstashEval.mockResolvedValueOnce(3);
+    expect(
+      await reserveVideoSlot({ visitorId: "bob", clientIp: null }),
+    ).toEqual({
       ok: false,
       reason: "network",
-      limit: 2,
+      limit: 10,
     });
     expect(
-      (upstashEval.mock.calls[2]![0] as { keys: string[] }).keys[1],
+      (upstashEval.mock.calls[3]![0] as { keys: string[] }).keys[2],
     ).toContain(":net:unknown:");
+  });
+
+  it("counts people who share a connection separately", async () => {
+    upstashEval.mockResolvedValue(0);
+    await reserveVideoSlot({ visitorId: "alice", clientIp: "203.0.113.9" });
+    await reserveVideoSlot({ visitorId: "bob", clientIp: "203.0.113.9" });
+    const [alice, bob] = upstashEval.mock.calls.map(
+      (args) => (args[0] as { keys: string[] }).keys,
+    );
+    expect(alice![1]).not.toBe(bob![1]);
+    expect(alice![2]).toBe(bob![2]);
   });
 
   it("refunds a slot against the same keys it took", async () => {
     upstashEval.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
-    const granted = await reserveVideoSlot("198.51.100.4");
+    const granted = await reserveVideoSlot({
+      visitorId: "carol",
+      clientIp: "198.51.100.4",
+    });
     if (!granted.ok) throw new Error("expected a slot");
     await granted.refund();
     const [taken, refunded] = upstashEval.mock.calls.map(
@@ -123,18 +148,19 @@ describe("explainer video limits", () => {
   it("tells people their own limit and when it resets", () => {
     // 17:00 UTC: seven hours until the budgets reset.
     const at = Date.UTC(2026, 8, 24, 17, 0);
-    expect(limitMessage("network", 1, at)).toBe(
+    expect(limitMessage("person", 1, at)).toBe(
       "You've already made your free video for today. You can make another in about 7 hours. Every video that's already been made is still free to watch.",
     );
-    expect(limitMessage("network", 3, at)).toContain(
+    expect(limitMessage("person", 3, at)).toContain(
       "You've already made your 3 free videos for today.",
     );
     expect(limitMessage("daily", 25, at)).toContain(
       "New ones open up in about 7 hours.",
     );
-    expect(limitMessage("network", 1, Date.UTC(2026, 8, 24, 23, 30))).toContain(
+    expect(limitMessage("person", 1, Date.UTC(2026, 8, 24, 23, 30))).toContain(
       "in under an hour",
     );
-    expect(limitMessage("network", 1, at)).not.toMatch(/network/i);
+    expect(limitMessage("person", 1, at)).not.toMatch(/network/i);
+    expect(limitMessage("network", 10, at)).not.toMatch(/network/i);
   });
 });

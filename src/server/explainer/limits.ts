@@ -7,9 +7,13 @@ import { toRateLimitBucket } from "~/server/generate/rate-limit";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
 // Every new video spends real money (Claude plus ElevenLabs), so the public
-// path is budgeted per UTC day, both overall and per network. Unlike the
-// diagram limiter this fails closed: the daily budget lives in Redis too, so
-// without Redis there is no bound on spend.
+// path is budgeted per UTC day: overall, per person (one browser, see
+// visitor.ts), and per internet connection. The per-person limit is the one
+// people normally meet. The per-connection limit is a looser backstop, high
+// enough that an office or a university can share one connection, and it
+// stops one person from clearing cookies for more. Unlike the diagram limiter
+// this fails closed: the daily budget lives in Redis too, so without Redis
+// there is no bound on spend.
 
 const DAY_SECONDS = 86_400;
 
@@ -18,22 +22,34 @@ function readLimit(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+interface Limits {
+  daily: number;
+  person: number;
+  network: number;
+}
+
 /**
- * New videos the public may create per UTC day, across everyone and per
- * network. The operator can override both live from /admin.
+ * New videos the public may create per UTC day: across everyone, per person
+ * and per connection. The operator can override each live from /admin.
  */
-async function videoLimits(): Promise<{ daily: number; network: number }> {
+async function videoLimits(): Promise<Limits> {
   const controls = await readControls();
   return {
     daily: controls.videoDailyLimit ?? readLimit("VIDEO_DAILY_LIMIT", 25),
+    person:
+      controls.videoPersonDailyLimit ??
+      readLimit("VIDEO_PERSON_DAILY_LIMIT", 1),
     network:
-      controls.videoNetworkDailyLimit ?? readLimit("VIDEO_IP_DAILY_LIMIT", 1),
+      controls.videoNetworkDailyLimit ??
+      readLimit("VIDEO_NETWORK_DAILY_LIMIT", 10),
   };
 }
 /** MP4 renders started per UTC day. Finished renders are cached and free to download. */
-const renderDailyLimit = () => readLimit("VIDEO_RENDER_DAILY_LIMIT", 300);
-const renderNetworkDailyLimit = () =>
-  readLimit("VIDEO_RENDER_IP_DAILY_LIMIT", 8);
+const renderLimits = (): Limits => ({
+  daily: readLimit("VIDEO_RENDER_DAILY_LIMIT", 300),
+  person: readLimit("VIDEO_RENDER_PERSON_DAILY_LIMIT", 8),
+  network: readLimit("VIDEO_RENDER_NETWORK_DAILY_LIMIT", 40),
+});
 
 /**
  * The operator skips limits and may regenerate: by the token
@@ -53,15 +69,18 @@ export function isTrustedVideoCaller(request: Request): boolean {
 
 const today = () => Math.floor(Date.now() / 1000 / DAY_SECONDS);
 
+// KEYS: everyone, this person, this connection. ARGV: their limits, then TTL.
+// Returns 0 when a slot was taken, else which limit is used up (1, 2 or 3).
 const RESERVE_SCRIPT = `
-local used = tonumber(redis.call("GET", KEYS[1]) or "0")
-if used >= tonumber(ARGV[1]) then return 1 end
-local mine = tonumber(redis.call("GET", KEYS[2]) or "0")
-if mine >= tonumber(ARGV[2]) then return 2 end
-redis.call("INCR", KEYS[1])
-redis.call("EXPIRE", KEYS[1], ARGV[3])
-redis.call("INCR", KEYS[2])
-redis.call("EXPIRE", KEYS[2], ARGV[3])
+for index = 1, 3 do
+  if tonumber(redis.call("GET", KEYS[index]) or "0") >= tonumber(ARGV[index]) then
+    return index
+  end
+end
+for index = 1, 3 do
+  redis.call("INCR", KEYS[index])
+  redis.call("EXPIRE", KEYS[index], ARGV[4])
+end
 return 0
 `;
 
@@ -74,31 +93,40 @@ end
 return 0
 `;
 
+export type LimitReason = "daily" | "person" | "network";
+
 export type Reservation =
   | { ok: true; refund: () => Promise<void> }
-  | { ok: false; reason: "daily" | "network"; limit: number };
+  | { ok: false; reason: LimitReason; limit: number };
+
+const REASONS: LimitReason[] = ["daily", "person", "network"];
+
+/** Who is asking: their browser's visitor id and their IP address. */
+export interface Requester {
+  visitorId: string;
+  clientIp: string | null;
+}
 
 async function reserve(
   kind: "generate" | "render",
-  clientIp: string | null,
-  dailyLimit: number,
-  networkLimit: number,
+  { visitorId, clientIp }: Requester,
+  limits: Limits,
 ): Promise<Reservation> {
   const day = today();
   // Unattributable callers share one bucket rather than escaping the limit.
   const network = encodeURIComponent(toRateLimitBucket(clientIp ?? "unknown"));
   const keys = [
     `video:v1:${kind}:all:${day}`,
+    `video:v1:${kind}:who:${encodeURIComponent(visitorId)}:${day}`,
     `video:v1:${kind}:net:${network}:${day}`,
   ];
   const result = await upstashEval<number>({
     script: RESERVE_SCRIPT,
     keys,
-    args: [dailyLimit, networkLimit, DAY_SECONDS * 2],
+    args: [limits.daily, limits.person, limits.network, DAY_SECONDS * 2],
   });
-  if (result === 1) return { ok: false, reason: "daily", limit: dailyLimit };
-  if (result === 2)
-    return { ok: false, reason: "network", limit: networkLimit };
+  const reason = REASONS[result - 1];
+  if (reason) return { ok: false, reason, limit: limits[reason] };
   return {
     ok: true,
     // A run that failed on our side should not use up anyone's budget.
@@ -117,18 +145,12 @@ async function reserve(
   };
 }
 
-export async function reserveVideoSlot(clientIp: string | null) {
-  const limits = await videoLimits();
-  return reserve("generate", clientIp, limits.daily, limits.network);
+export async function reserveVideoSlot(requester: Requester) {
+  return reserve("generate", requester, await videoLimits());
 }
 
-export function reserveRenderSlot(clientIp: string | null) {
-  return reserve(
-    "render",
-    clientIp,
-    renderDailyLimit(),
-    renderNetworkDailyLimit(),
-  );
+export function reserveRenderSlot(requester: Requester) {
+  return reserve("render", requester, renderLimits());
 }
 
 /** How many more videos the public may start today. */
@@ -155,12 +177,14 @@ export async function videoUsageToday() {
     videos: {
       used: Number(videos) || 0,
       limit: limits.daily,
+      personLimit: limits.person,
       networkLimit: limits.network,
     },
     renders: {
       used: Number(renders) || 0,
-      limit: renderDailyLimit(),
-      networkLimit: renderNetworkDailyLimit(),
+      limit: renderLimits().daily,
+      personLimit: renderLimits().person,
+      networkLimit: renderLimits().network,
     },
   };
 }
@@ -222,16 +246,26 @@ const STILL_FREE =
   "Every video that's already been made is still free to watch.";
 
 export function limitMessage(
-  reason: "daily" | "network",
+  reason: LimitReason,
   limit = 1,
   now = Date.now(),
 ): string {
   const wait = timeUntilReset(now);
   if (reason === "daily")
     return `Today's free videos have all been made. New ones open up in ${wait}. ${STILL_FREE}`;
+  if (reason === "network")
+    return `Lots of videos have been made from your internet connection today, so new ones from it are paused. You can make another in ${wait}. ${STILL_FREE}`;
   const used =
     limit === 1
       ? "You've already made your free video for today"
       : `You've already made your ${limit} free videos for today`;
   return `${used}. You can make another in ${wait}. ${STILL_FREE}`;
+}
+
+/** The MP4 download limit, worded for whichever budget ran out. */
+export function renderLimitMessage(reason: LimitReason): string {
+  const wait = timeUntilReset();
+  return reason === "daily"
+    ? `Today's MP4 downloads have all been used. More open up in ${wait}.`
+    : `You've reached today's limit for new MP4 downloads. You can download more in ${wait}.`;
 }

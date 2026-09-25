@@ -19,6 +19,8 @@ describe("live controls", () => {
         "1",
         "videoDailyLimit",
         "200",
+        "videoPersonDailyLimit",
+        "2",
         "videoNetworkDailyLimit",
         "3",
       ]),
@@ -26,6 +28,7 @@ describe("live controls", () => {
       videoAudience: "everyone",
       videosPaused: true,
       videoDailyLimit: 200,
+      videoPersonDailyLimit: 2,
       videoNetworkDailyLimit: 3,
     });
   });

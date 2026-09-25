@@ -19,6 +19,7 @@ const requestSchema = z
     videoAudience: z.enum(["priority", "desktop", "everyone"]),
     videosPaused: z.boolean(),
     videoDailyLimit: limit(10_000),
+    videoPersonDailyLimit: limit(1_000),
     videoNetworkDailyLimit: limit(1_000),
   })
   .partial();

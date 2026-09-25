@@ -418,7 +418,8 @@ const HELD_BACK: Record<string, string> = {
   audience: "Not in early access",
   paused: "Videos are paused",
   daily: "Today's video limit is used up",
-  network: "Their network already made today's video",
+  person: "They already made today's video",
+  network: "Their connection hit its daily backstop",
   credits: "Voice credits are low",
 };
 
@@ -717,7 +718,11 @@ export function AdminDashboard() {
             meter={
               video ? video.videos.used / Math.max(1, video.videos.limit) : null
             }
-            sub={video ? `${video.videos.networkLimit} per network` : undefined}
+            sub={
+              video
+                ? `${video.videos.personLimit} per person · ${video.videos.networkLimit} per connection`
+                : undefined
+            }
           />
           <Tile
             label="Voice credits"
@@ -849,7 +854,15 @@ export function AdminDashboard() {
                   onSave={(value) => void change({ videoDailyLimit: value })}
                 />
                 <LimitField
-                  label="Per network per day"
+                  label="Per person per day"
+                  override={controls.videoPersonDailyLimit}
+                  effective={video?.videos.personLimit}
+                  onSave={(value) =>
+                    void change({ videoPersonDailyLimit: value })
+                  }
+                />
+                <LimitField
+                  label="Per connection per day (backstop)"
                   override={controls.videoNetworkDailyLimit}
                   effective={video?.videos.networkLimit}
                   onSave={(value) =>

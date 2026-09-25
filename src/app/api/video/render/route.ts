@@ -15,7 +15,7 @@ import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import {
   isTrustedVideoCaller,
   reserveRenderSlot,
-  timeUntilReset,
+  renderLimitMessage,
   tryVideoLock,
   type Reservation,
 } from "~/server/explainer/limits";
@@ -26,6 +26,11 @@ import {
   readVideoArtifact,
   writeRender,
 } from "~/server/explainer/store";
+import {
+  readVisitor,
+  withVisitorCookie,
+  type Visitor,
+} from "~/server/explainer/visitor";
 import type { VideoRenderEvent } from "~/features/explainer/types";
 
 export const runtime = "nodejs";
@@ -45,6 +50,11 @@ const requestSchema = z.strictObject({
  * /api/video/file.
  */
 export async function POST(request: Request): Promise<Response> {
+  const visitor = readVisitor(request);
+  return withVisitorCookie(await render(request, visitor), visitor);
+}
+
+async function render(request: Request, visitor: Visitor): Promise<Response> {
   if (!isVideoExplainerEnabled())
     return jsonErrorResponse("Explainer videos are not enabled.", 404);
   const parsed = await parseSameOriginJsonRequest(request, {
@@ -77,12 +87,12 @@ export async function POST(request: Request): Promise<Response> {
   let releaseLock: (() => Promise<void>) | null = null;
   try {
     if (!isTrustedVideoCaller(request)) {
-      reservation = await reserveRenderSlot(getClientIp(request));
+      reservation = await reserveRenderSlot({
+        visitorId: visitor.id,
+        clientIp: getClientIp(request),
+      });
       if (!reservation.ok)
-        return jsonErrorResponse(
-          `You've reached today's limit for new MP4 downloads. You can download more in ${timeUntilReset()}.`,
-          429,
-        );
+        return jsonErrorResponse(renderLimitMessage(reservation.reason), 429);
     }
     if (process.env.NODE_ENV === "production") {
       releaseLock = await tryVideoLock(

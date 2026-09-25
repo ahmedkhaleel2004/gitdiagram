@@ -6,15 +6,23 @@ export interface LiveControls {
   videoAudience: VideoAudience;
   videosPaused: boolean;
   videoDailyLimit: number | null;
+  videoPersonDailyLimit: number | null;
   videoNetworkDailyLimit: number | null;
+}
+
+export interface DailyBudget {
+  used: number;
+  limit: number;
+  personLimit: number;
+  networkLimit: number;
 }
 
 export interface AdminState {
   now: number;
   controls: LiveControls;
   video: {
-    videos: { used: number; limit: number; networkLimit: number };
-    renders: { used: number; limit: number; networkLimit: number };
+    videos: DailyBudget;
+    renders: DailyBudget;
   } | null;
   voiceCredits: number | null;
   diagramQuota: {

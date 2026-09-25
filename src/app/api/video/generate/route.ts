@@ -34,6 +34,11 @@ import { hasNarrationCredits } from "~/server/explainer/narration";
 import { storePoster } from "~/server/explainer/posters";
 import { VideoInputError } from "~/server/explainer/repository";
 import { readVideoArtifact } from "~/server/explainer/store";
+import {
+  readVisitor,
+  withVisitorCookie,
+  type Visitor,
+} from "~/server/explainer/visitor";
 import type { VideoGenerationEvent } from "~/features/explainer/types";
 
 export const runtime = "nodejs";
@@ -52,7 +57,13 @@ function publicMessage(error: unknown): string {
   return "The explainer video could not be generated. Try again.";
 }
 
+/** Every response names the visitor, so their next request counts as them. */
 export async function POST(request: Request): Promise<Response> {
+  const visitor = readVisitor(request);
+  return withVisitorCookie(await generate(request, visitor), visitor);
+}
+
+async function generate(request: Request, visitor: Visitor): Promise<Response> {
   if (!isVideoExplainerEnabled())
     return jsonErrorResponse("Explainer videos are not enabled.", 404);
   const parsed = await parseSameOriginJsonRequest(request, {
@@ -105,7 +116,10 @@ export async function POST(request: Request): Promise<Response> {
         gated("credits");
         return jsonErrorResponse(limitMessage("daily"), 503);
       }
-      reservation = await reserveVideoSlot(getClientIp(request));
+      reservation = await reserveVideoSlot({
+        visitorId: visitor.id,
+        clientIp: getClientIp(request),
+      });
       if (!reservation.ok) {
         gated(reservation.reason);
         return jsonErrorResponse(
