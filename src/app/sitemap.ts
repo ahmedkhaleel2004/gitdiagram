@@ -55,6 +55,16 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
       changeFrequency: "daily",
       priority: 0.8,
     },
+    ...(isVideoExplainerEnabled()
+      ? [
+          {
+            url: `${SITE_URL}/videos`,
+            lastModified: new Date(),
+            changeFrequency: "daily" as const,
+            priority: 0.8,
+          },
+        ]
+      : []),
     {
       url: `${SITE_URL}/advertise`,
       lastModified: new Date("2026-09-19"),

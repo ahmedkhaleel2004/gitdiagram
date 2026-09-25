@@ -1,17 +1,19 @@
 import type { MetadataRoute } from "next";
-import { getCachedBrowseIndex } from "~/server/browse-index-cache";
 import { SITE_URL } from "~/lib/site";
-import { getSitemapCount, getSitemapUrls } from "~/lib/sitemaps";
+import { getSitemapUrls } from "~/lib/sitemaps";
+import { generateSitemaps } from "./sitemap";
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
-  const browseEntries = await getCachedBrowseIndex().catch(() => null);
-  const sitemapCount = getSitemapCount(browseEntries?.length ?? 0);
+  // The same pages the sitemap splits into, so every shard is listed.
+  const sitemaps = await generateSitemaps();
 
   return {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
+        // Video posters live under /api but are link previews: X and LinkedIn
+        // honor robots.txt before fetching og:image. The longer rule wins.
+        allow: ["/", "/api/video/file"],
         disallow: ["/api/", "/out/"],
       },
       {
@@ -22,6 +24,6 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
         disallow: ["/api/", "/out/", "/*/*"],
       },
     ],
-    sitemap: getSitemapUrls(SITE_URL, sitemapCount),
+    sitemap: getSitemapUrls(SITE_URL, sitemaps.length),
   };
 }
