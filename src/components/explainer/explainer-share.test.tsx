@@ -12,15 +12,24 @@ import { ExplainerShare } from "~/components/explainer/explainer-share";
 import type * as ExplainerApi from "~/features/explainer/api";
 import type { VideoArtifact } from "~/features/explainer/types";
 
-const api = vi.hoisted(() => ({ streamExplainerRender: vi.fn() }));
+const api = vi.hoisted(() => ({
+  streamExplainerRender: vi.fn(),
+  capture: vi.fn(),
+}));
+vi.mock("~/lib/analytics-client", () => ({
+  captureAnalyticsEvent: api.capture,
+}));
 vi.mock("~/features/explainer/api", async (importOriginal) => ({
   ...(await importOriginal<typeof ExplainerApi>()),
   streamExplainerRender: api.streamExplainerRender,
 }));
 
 const video = {
+  repository: "acme/tiny",
   createdAt: "2026-09-24T00:00:00.000Z",
   meta: { owner: "acme", repo: "tiny" },
+  stats: { model: "claude-opus-5-5" },
+  timing: { DURATION: 58.4 },
 } as unknown as VideoArtifact;
 
 let clicked: string[] = [];
@@ -38,6 +47,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   api.streamExplainerRender.mockReset();
+  api.capture.mockReset();
 });
 
 describe("ExplainerShare MP4 downloads", () => {
@@ -124,12 +134,30 @@ describe("ExplainerShare links", () => {
       await act(async () =>
         fireEvent.click(screen.getByRole("button", { name: "README badge" })),
       );
+      await act(async () =>
+        fireEvent.click(screen.getByRole("button", { name: "README picture" })),
+      );
       expect(writeText.mock.calls).toEqual([
         ["https://gitdiagram.com/acme/tiny/video"],
         [
           "[![Watch a one-minute video tour of tiny](https://gitdiagram.com/video-badge.svg)](https://gitdiagram.com/acme/tiny/video)",
         ],
+        [
+          "[![acme/tiny, explained in a one-minute video](https://gitdiagram.com/api/video/file?username=acme&repo=tiny&format=poster)](https://gitdiagram.com/acme/tiny/video)",
+        ],
       ]);
+      expect(api.capture.mock.calls).toEqual(
+        ["link", "badge", "picture"].map((method) => [
+          "video_shared",
+          {
+            video_repo: "acme/tiny",
+            video_created_at: "2026-09-24T00:00:00.000Z",
+            video_model: "claude-opus-5-5",
+            video_duration: 58,
+            method,
+          },
+        ]),
+      );
     } finally {
       vi.unstubAllGlobals();
     }

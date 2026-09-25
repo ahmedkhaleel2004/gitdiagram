@@ -6,6 +6,7 @@ import {
 } from "~/server/generate/types";
 import { PICTURE_ID } from "~/features/explainer/types";
 import { jsonErrorResponse } from "~/server/http/same-origin-json";
+import { videoResponseTag } from "~/server/explainer/cache";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import { probePicture } from "~/server/explainer/readme-images";
 import {
@@ -28,7 +29,9 @@ const querySchema = z.object({
   // A README picture the film shows (format "picture").
   id: z.string().regex(PICTURE_ID).optional(),
   // The video's createdAt: renders live under their video's version folder.
-  v: z.iso.datetime(),
+  // Only a poster may leave it out, for the latest video's poster (a README
+  // picture that must keep working when the video is made again).
+  v: z.iso.datetime().optional(),
   // When a poster or still was made. A remake keeps the file's name, so this
   // is what gives it a new URL.
   p: z
@@ -59,9 +62,12 @@ export async function GET(request: Request): Promise<Response> {
   );
   if (!parsed.success) return jsonErrorResponse("Invalid file request.", 400);
   const { username, repo, format, v, p, id } = parsed.data;
+  const latest = !v;
+  if (latest && format !== "poster")
+    return jsonErrorResponse("Invalid file request.", 400);
   if (format === "picture") {
     // Named by the video version, so the bytes behind a URL never change.
-    const body = id ? await readPicture(username, repo, v, id) : null;
+    const body = id && v ? await readPicture(username, repo, v, id) : null;
     // Its type comes from its own bytes, checked when it was stored.
     const picture = body && probePicture(body);
     if (!body || !picture)
@@ -77,7 +83,7 @@ export async function GET(request: Request): Promise<Response> {
   }
   const artifact = await readVideoArtifact(username, repo);
   if (!artifact) return jsonErrorResponse("This video does not exist.", 404);
-  const version = { ...artifact, createdAt: v };
+  const version = { ...artifact, createdAt: v ?? artifact.createdAt };
   const name = FILES[format];
   const filename = `${artifact.meta.owner}-${artifact.meta.repo}-explained${format === "vertical" ? "-vertical" : ""}.mp4`;
   const missing = () =>
@@ -107,12 +113,18 @@ export async function GET(request: Request): Promise<Response> {
         ? // Only local storage streams MP4s, and its URL does not name the
           // engine that drew the file.
           "no-store"
-        : p
-          ? // The URL names the video version and when the poster was made,
-            // so its bytes never change.
-            "public, max-age=31536000, s-maxage=31536000, immutable"
-          : // Without a stamp a remade poster would reuse this URL.
-            "public, max-age=3600, s-maxage=86400",
+        : latest
+          ? // Whichever video is current; a new one purges the CDN's copy.
+            "public, max-age=3600, s-maxage=86400"
+          : p
+            ? // The URL names the video version and when the poster was made,
+              // so its bytes never change.
+              "public, max-age=31536000, s-maxage=31536000, immutable"
+            : // Without a stamp a remade poster would reuse this URL.
+              "public, max-age=3600, s-maxage=86400",
+      ...(latest
+        ? { "Vercel-Cache-Tag": videoResponseTag(username, repo) }
+        : {}),
       "X-Content-Type-Options": "nosniff",
     },
   });

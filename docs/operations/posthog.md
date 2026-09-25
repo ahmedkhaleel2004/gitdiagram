@@ -65,6 +65,18 @@ browser. Opt-outs, disabled JavaScript/storage, explicit blockers, network
 failures, or early exits can still prevent capture. The masking and recording
 boundaries below remain unchanged.
 
+## Video events
+
+The explainer player and share row send custom events (added September 25,
+2026, `src/features/explainer/watch-analytics.ts`): `video_started` (first play
+per page load), `video_progress` with `percent` 25/50/75/100 of the film
+actually played (seeks and gaps over a second never count, so it can only
+undercount), and `video_shared` with `method` (`mp4_landscape`, `mp4_vertical`,
+`native`, `link`, `badge`, `picture`). Each carries `video_repo`,
+`video_created_at`, `video_model` and `video_duration`. Compare prompt versions
+by `video_created_at`: films made from September 25, 2026 on the practical-first
+prompt (see `experiments/video-practical/`).
+
 ## Sponsor events and /advertise figures
 
 Sponsor clicks and impressions are server-side analytics events (see

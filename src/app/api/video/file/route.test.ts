@@ -12,6 +12,10 @@ vi.mock("server-only", () => ({}));
 vi.mock("~/server/explainer/config", () => ({
   isVideoExplainerEnabled: () => true,
 }));
+vi.mock("~/server/explainer/cache", () => ({
+  videoResponseTag: (username: string, repo: string) =>
+    `video/${username}/${repo}`,
+}));
 vi.mock("~/server/explainer/store", () => ({
   hasRender: mocks.hasRender,
   readPicture: mocks.readPicture,
@@ -64,6 +68,28 @@ describe("GET /api/video/file", () => {
     const bare = await get({ format: "still" });
     expect(bare.status).toBe(200);
     expect(bare.headers.get("cache-control")).not.toContain("immutable");
+  });
+
+  it("serves the latest video's poster without a version, and nothing else", async () => {
+    mocks.readRender.mockResolvedValue(Buffer.from("jpg"));
+    const latest = await get({ format: "poster", v: "" });
+    expect(latest.status).toBe(400);
+    const request = (format: string) =>
+      GET(
+        new Request(
+          `https://gitdiagram.com/api/video/file?username=acme&repo=widget&format=${format}`,
+        ),
+      );
+    const poster = await request("poster");
+    expect(poster.status).toBe(200);
+    expect(poster.headers.get("cache-control")).not.toContain("immutable");
+    expect(poster.headers.get("vercel-cache-tag")).toBe("video/acme/widget");
+    expect(mocks.readRender).toHaveBeenLastCalledWith(
+      expect.objectContaining({ createdAt: v }),
+      "poster.jpg",
+    );
+    for (const format of ["still", "landscape", "vertical", "picture"])
+      expect((await request(format)).status).toBe(400);
   });
 
   it("serves a film's README picture forever, and only picture ids", async () => {

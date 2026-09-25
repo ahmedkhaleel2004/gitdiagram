@@ -22,6 +22,10 @@ import { ExplainerAudio, type SfxCue } from "~/features/explainer/audio-mixer";
 import { ActivityMark } from "~/components/generation/activity-mark";
 import { STAGE_PATH } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
+import {
+  captureVideoEvent,
+  WatchTracker,
+} from "~/features/explainer/watch-analytics";
 import styles from "./explainer-video.module.css";
 
 type StageMessage =
@@ -115,6 +119,21 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   const duration = artifact.timing.DURATION;
   const createdAt = artifact.createdAt;
   const totalTime = formatTime(duration);
+  // How much of this video has been watched, for analytics; a new video
+  // starts over.
+  const tracker = useRef<{ createdAt: string; watch: WatchTracker } | null>(
+    null,
+  );
+  const watch = useCallback(() => {
+    if (tracker.current?.createdAt !== createdAt)
+      tracker.current = {
+        createdAt,
+        watch: new WatchTracker(duration, (event, extra) =>
+          captureVideoEvent(event, artifact, extra),
+        ),
+      };
+    return tracker.current.watch;
+  }, [artifact, createdAt, duration]);
 
   const seekStage = useCallback(
     (time: number) => {
@@ -239,7 +258,9 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
         const mixer = new ExplainerAudio(artifact, message.sfx, HOLD_SPEED);
         // A call or an app switch stopped the sound: show the video paused.
         mixer.onInterrupted = () => {
-          if (!cancelled) setPlaying(false);
+          if (cancelled) return;
+          tracker.current?.watch.pause();
+          setPlaying(false);
         };
         audio.current = mixer;
         wait("The narration took too long to load.");
@@ -287,7 +308,9 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
       const mixer = audio.current;
       if (!mixer?.isPlaying) return;
       const time = mixer.currentTime();
+      watch().frame(Math.min(time, duration));
       if (time >= duration) {
+        watch().pause();
         mixer.pause();
         seekStage(duration);
         setPlaying(false);
@@ -299,7 +322,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     };
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, [playing, duration, seekStage]);
+  }, [playing, duration, seekStage, watch]);
 
   const play = useCallback(
     async (from?: number) => {
@@ -316,14 +339,16 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
       if (!started || audio.current !== mixer) return;
       setEnded(false);
       setPlaying(true);
+      watch().play(mixer.currentTime());
     },
-    [ended, ready],
+    [ended, ready, watch],
   );
 
   const pause = useCallback(() => {
     audio.current?.pause();
+    watch().pause();
     setPlaying(false);
-  }, []);
+  }, [watch]);
 
   const toggle = () => (playing ? pause() : void play());
 
@@ -393,6 +418,8 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     const mixer = audio.current;
     if (!mixer) return;
     setEnded(false);
+    // A jump is not watching; playing resumes the count from the new time.
+    watch().pause();
     if (mixer.isPlaying) void play(time);
     else {
       mixer.seek(time);

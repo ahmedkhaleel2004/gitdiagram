@@ -19,7 +19,7 @@ Turn any public or private GitHub repository into an interactive architecture di
 
 ## New: explainer videos
 
-GitDiagram can now turn a repository into a narrated video of about a minute. The video tells the story from the top down: what the project does, how its main parts fit together, and a few decisions under the hood.
+GitDiagram can now turn a repository into a narrated video of about a minute. The video starts with what the project is for and what people do with it, then shows briefly how its main parts fit together and one decision under the hood.
 
 [![Watch GitDiagram explain itself in a minute](./docs/readme_video.jpg)](https://gitdiagram.com/ahmedkhaleel2004/gitdiagram/video)
 

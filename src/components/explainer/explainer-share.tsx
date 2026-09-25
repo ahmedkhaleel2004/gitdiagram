@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Check,
   Download,
+  Image as ImageIcon,
   Link2,
   Share2,
   Smartphone,
@@ -20,12 +21,13 @@ import type {
   VideoArtifact,
   VideoRenderStep,
 } from "~/features/explainer/types";
+import { captureVideoEvent } from "~/features/explainer/watch-analytics";
 import controls from "~/components/generation/workspace.module.css";
 import { SITE_URL } from "~/lib/site";
 import { JobRow } from "./explainer-progress";
 import styles from "./explainer-video.module.css";
 
-type Copied = "link" | "badge" | null;
+type Copied = "link" | "badge" | "picture" | null;
 
 const RENDER_FAILED = "The MP4 could not be made. Try again.";
 
@@ -46,8 +48,8 @@ function triggerDownload(href: string) {
 
 /**
  * Everything a viewer needs to pass a video on: the MP4 for feeds (landscape
- * and 9:16, captions burned in), the watch link, the phone's share sheet and a
- * README badge.
+ * and 9:16, captions burned in), the watch link, the phone's share sheet, and
+ * a README badge or picture.
  */
 export function ExplainerShare({ video }: { video: VideoArtifact }) {
   const { owner, repo } = video.meta;
@@ -76,6 +78,7 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
   );
 
   const download = async (format: RenderFormat) => {
+    captureVideoEvent("video_shared", video, { method: `mp4_${format}` });
     const controller = new AbortController();
     render.current = controller;
     setError(null);
@@ -116,6 +119,7 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(what);
+      captureVideoEvent("video_shared", video, { method: what });
       window.clearTimeout(copyTimer.current);
       copyTimer.current = window.setTimeout(() => setCopied(null), 1800);
     } catch {
@@ -124,6 +128,10 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
   };
 
   const badge = `[![Watch a one-minute video tour of ${repo}](${SITE_URL}/video-badge.svg)](${url})`;
+  // The latest video's poster (a play button on the title card), so the
+  // picture stays right when the video is made again.
+  const poster = `${SITE_URL}/api/video/file?${new URLSearchParams({ username: owner, repo, format: "poster" }).toString()}`;
+  const picture = `[![${owner}/${repo}, explained in a one-minute video](${poster})](${url})`;
   const label = (format: RenderFormat, idle: string) =>
     job?.format === format ? "Making MP4…" : idle;
 
@@ -159,6 +167,11 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
                   title: `${owner}/${repo}, explained in a minute`,
                   url,
                 })
+                .then(() =>
+                  captureVideoEvent("video_shared", video, {
+                    method: "native",
+                  }),
+                )
                 .catch(() => undefined)
             }
           >
@@ -191,6 +204,19 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
             <Code2 size={15} aria-hidden="true" />
           )}
           {copied === "badge" ? "Badge copied" : "README badge"}
+        </button>
+        <button
+          type="button"
+          className={controls.actionButton}
+          onClick={() => void copy(picture, "picture")}
+          title="Markdown for a README picture that opens this video"
+        >
+          {copied === "picture" ? (
+            <Check size={15} aria-hidden="true" />
+          ) : (
+            <ImageIcon size={15} aria-hidden="true" />
+          )}
+          {copied === "picture" ? "Picture copied" : "README picture"}
         </button>
       </div>
       {/* Announces each step once; the percentage beside it is not read out. */}
