@@ -183,12 +183,18 @@ export function BudgetTiles({
       />
       <div className="col-span-2">
         <Tile
-          label="Narration (Gemini 3.8 Flash)"
-          value={state?.voicePausedUntil ? "Paused" : "Ready"}
+          label="Voice balance (OpenRouter)"
+          value={
+            state?.voiceCreditUsd == null
+              ? "–"
+              : `$${state.voiceCreditUsd.toFixed(2)}`
+          }
           sub={
             state?.voicePausedUntil
-              ? `Voice quota used up until ${new Date(state.voicePausedUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-              : "Voicing new videos"
+              ? `Ran out: new videos paused until ${new Date(state.voicePausedUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+              : state?.voiceCreditUsd == null
+                ? "Balance unreadable"
+                : `≈ ${Math.floor(state.voiceCreditUsd / 0.002).toLocaleString()} videos at ~$0.002 each`
           }
         />
       </div>

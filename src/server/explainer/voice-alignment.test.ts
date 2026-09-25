@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { alignTake, speechSegments } from "./voice-alignment";
+import { alignTake } from "./voice-alignment";
 
 /** The time a script word got: the start of its first character, the end of its last. */
 function timeOf(
@@ -16,16 +16,6 @@ function timeOf(
 }
 
 describe("voice alignment", () => {
-  it("splits the script at its delivery tags", () => {
-    expect(
-      speechSegments("You open a repo. [curious] Lost? [warmly] It helps."),
-    ).toEqual([
-      { tag: null, text: "You open a repo. " },
-      { tag: "curious", text: "Lost? " },
-      { tag: "warmly", text: "It helps." },
-    ]);
-  });
-
   it("times each script word from the words heard", () => {
     const text = "[curious] So what happens next?";
     const alignment = alignTake(text, [

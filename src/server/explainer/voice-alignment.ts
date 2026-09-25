@@ -16,20 +16,6 @@ export interface HeardWord {
   end: number;
 }
 
-/** The script's text as runs of words, each with the delivery tag that colours it. */
-export function speechSegments(
-  text: string,
-): Array<{ tag: string | null; text: string }> {
-  const parts = text.split(/\[([a-z ]+)\]\s*/i);
-  const segments: Array<{ tag: string | null; text: string }> = [];
-  if (parts[0]!.trim()) segments.push({ tag: null, text: parts[0]! });
-  for (let index = 1; index < parts.length; index += 2) {
-    const words = parts[index + 1] ?? "";
-    if (words.trim()) segments.push({ tag: parts[index]!, text: words });
-  }
-  return segments;
-}
-
 const comparable = (word: string) =>
   word.toLowerCase().replace(/[^a-z0-9]+/g, "");
 

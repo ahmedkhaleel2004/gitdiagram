@@ -3,38 +3,41 @@ import "server-only";
 import { spawn } from "node:child_process";
 import OpenAI, { toFile } from "openai";
 import { upstashCommand } from "~/server/storage/upstash";
-import { alignTake, speechSegments, type Alignment } from "./voice-alignment";
+import { alignTake, type Alignment } from "./voice-alignment";
 
 // Gemini 3.8 Flash TTS, voice Charon, narrates every video: it won a blind
-// bake-off by ear (experiments/voices). It returns audio only, so whisper-1
+// bake-off by ear (experiments/voices). It is called through OpenRouter,
+// which bills per use from a prepaid balance and sets no per-minute or
+// per-day limits on paid models (Google's own API capped this project at
+// about 10 a minute and 100 a day). It returns audio only, so whisper-1
 // transcribes the take with word times, which are matched back onto the
 // script (voice-alignment.ts).
 //
-// The script's delivery tags ([curious], [warmly]) become the style of the
-// words after them: Gemini 3.8 reads `text` verbatim and takes direction
-// from each block's speech_metadata style.
+// Through OpenRouter one style directs the whole take. The script's
+// delivery tags are left out of the words: read inline, Gemini speaks them.
+// Blind listening rated this level with a style per tag.
 //
-// The Gemini API limits requests per minute and per day. A per-minute limit
-// is waited out. A used-up day pauses new videos until Google's quota resets
-// (midnight Pacific), so no run pays for a script it cannot voice.
+// There is no other voice. When the OpenRouter balance runs out, new videos
+// pause (see voicePausedUntil) instead of paying for scripts no one can voice.
 
-const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta";
-const VOICE_MODEL = "gemini-3.8-flash-tts";
+const SPEECH_API = "https://openrouter.ai/api/v1/audio/speech";
+const VOICE_MODEL = "google/gemini-3.8-flash-tts";
 const VOICE_NAME = "Charon";
 const STYLE =
   "a warm, confident senior engineer telling a smart colleague the story of a project they love; natural conversational pace with varied rhythm, breathing at commas and full stops";
 // One take of a minute's script comes back in well under this.
 const TAKE_TIMEOUT_MS = 90_000;
-// Waits for a per-minute limit longer than this pause videos instead.
-const MAX_QUOTA_WAIT_MS = 65_000;
 const PAUSE_KEY = "video:v1:voice:paused-until";
+// How long new videos wait after the balance ran out before trying again.
+const OUT_OF_CREDIT_PAUSE_MS = 10 * 60_000;
 
-/** The day's voice quota is used up; new videos are paused until it resets. */
-export class VoiceQuotaError extends Error {}
+/** The voice cannot be paid for right now; new videos are paused. */
+export class VoiceUnavailableError extends Error {}
 
 export function isGeminiVoiceConfigured(): boolean {
   return Boolean(
-    process.env.GEMINI_API_KEY?.trim() && process.env.OPENAI_API_KEY?.trim(),
+    process.env.OPENROUTER_API_KEY?.trim() &&
+    process.env.OPENAI_API_KEY?.trim(),
   );
 }
 
@@ -58,32 +61,22 @@ async function pauseVoice(ms: number, reason: string) {
   );
 }
 
-/** Milliseconds until Google's daily quotas reset, at midnight Pacific. */
-export function untilPacificMidnight(now = new Date()): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Los_Angeles",
-    hourCycle: "h23",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(now);
-  const part = (type: string) =>
-    Number(parts.find((each) => each.type === type)?.value ?? 0);
-  const elapsed =
-    (part("hour") * 3600 + part("minute") * 60 + part("second")) * 1000;
-  return 86_400_000 - elapsed;
-}
-
-/** What a 429 says: how long to wait, and whether the day's quota is gone. */
-export function readQuotaError(body: string): {
-  retryMs: number | null;
-  daily: boolean;
-} {
-  const retry = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(body);
-  return {
-    retryMs: retry ? Math.ceil(Number(retry[1]) * 1000) : null,
-    daily: /PerDay/i.test(body),
+/** The OpenRouter balance left in USD, for /admin; null when unreadable. */
+export async function voiceCreditUsd(): Promise<number | null> {
+  const response = await fetch("https://openrouter.ai/api/v1/credits", {
+    headers: {
+      authorization: `Bearer ${process.env.OPENROUTER_API_KEY?.trim() ?? ""}`,
+    },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) return null;
+  const body = (await response.json()) as {
+    data?: { total_credits?: number; total_usage?: number };
   };
+  const { total_credits: credits, total_usage: usage } = body.data ?? {};
+  return typeof credits === "number" && typeof usage === "number"
+    ? credits - usage
+    : null;
 }
 
 function wait(ms: number, signal?: AbortSignal): Promise<void> {
@@ -101,78 +94,54 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** The take as raw 24 kHz mono 16-bit PCM, the only format Gemini sends here. */
 async function takeFromGemini(
   text: string,
   signal?: AbortSignal,
 ): Promise<Buffer> {
+  const words = text.replace(/\[[a-z ]+\]\s*/gi, "");
   for (let attempt = 0; ; attempt++) {
     const timeout = AbortSignal.timeout(TAKE_TIMEOUT_MS);
-    const response = await fetch(`${GEMINI_API}/interactions`, {
+    const response = await fetch(SPEECH_API, {
       method: "POST",
       headers: {
-        "x-goog-api-key": process.env.GEMINI_API_KEY?.trim() ?? "",
+        authorization: `Bearer ${process.env.OPENROUTER_API_KEY?.trim() ?? ""}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
         model: VOICE_MODEL,
-        input: [
-          {
-            type: "user_input",
-            content: speechSegments(text).map((segment) => ({
-              type: "text",
-              text: segment.text,
-              annotations: [
-                {
-                  type: "speech_metadata",
-                  style: segment.tag
-                    ? `${STYLE}; this part ${segment.tag}`
-                    : STYLE,
-                },
-              ],
-            })),
+        input: words,
+        voice: VOICE_NAME,
+        response_format: "pcm",
+        provider: {
+          options: {
+            "google-ai-studio": { speech_metadata: { style: STYLE } },
           },
-        ],
-        response_format: { type: "audio", mime_type: "audio/wav" },
-        generation_config: { speech_config: [{ voice: VOICE_NAME }] },
+        },
       }),
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
-    if (response.status === 429) {
-      const quota = readQuotaError(await response.text());
-      if (quota.daily) {
-        await pauseVoice(untilPacificMidnight(), "daily");
-        throw new VoiceQuotaError("Today's voice quota is used up.");
-      }
-      const retryMs = quota.retryMs ?? 20_000;
-      if (retryMs > MAX_QUOTA_WAIT_MS || attempt >= 3) {
-        await pauseVoice(Math.max(retryMs, 60_000), "rate");
-        throw new VoiceQuotaError("The voice is at its rate limit.");
-      }
-      await wait(retryMs + Math.random() * 1_000, signal);
-      continue;
+    if (response.status === 402) {
+      await pauseVoice(OUT_OF_CREDIT_PAUSE_MS, "credit");
+      throw new VoiceUnavailableError("The voice balance has run out.");
     }
-    // A server error is tried once more.
-    if (response.status >= 500 && attempt < 1) {
-      await wait(2_000, signal);
+    // Busy upstream or a server error: tried again, a little later each time.
+    if ((response.status === 429 || response.status >= 500) && attempt < 3) {
+      await wait(1_500 * 2 ** attempt, signal);
       continue;
     }
     if (!response.ok)
       throw new Error(
         `The voice failed (${response.status}): ${(await response.text()).slice(0, 200)}`,
       );
-    const body = (await response.json()) as {
-      steps?: Array<{ content?: Array<{ type?: string; data?: string }> }>;
-    };
-    const audio = body.steps
-      ?.flatMap((step) => step.content ?? [])
-      .find((part) => part.type === "audio" && part.data);
-    if (!audio?.data) throw new Error("The voice returned no audio.");
-    return Buffer.from(audio.data, "base64");
+    const audio = Buffer.from(await response.arrayBuffer());
+    if (!audio.length) throw new Error("The voice returned no audio.");
+    return audio;
   }
 }
 
-/** Gemini's 24 kHz WAV as the 44.1 kHz, 128 kbps MP3 every stored take uses. */
-async function toMp3(wav: Buffer): Promise<Buffer> {
+/** The PCM take as the 44.1 kHz, 128 kbps MP3 every stored take uses. */
+async function toMp3(pcm: Buffer): Promise<Buffer> {
   const ffmpeg = (await import("ffmpeg-static")).default as unknown as
     string | null;
   if (!ffmpeg) throw new Error("No ffmpeg binary for this platform.");
@@ -181,6 +150,12 @@ async function toMp3(wav: Buffer): Promise<Buffer> {
     [
       "-loglevel",
       "error",
+      "-f",
+      "s16le",
+      "-ar",
+      "24000",
+      "-ac",
+      "1",
       "-i",
       "pipe:0",
       "-ar",
@@ -205,7 +180,7 @@ async function toMp3(wav: Buffer): Promise<Buffer> {
     child.on("error", reject);
     child.on("close", resolve);
   });
-  child.stdin.end(wav);
+  child.stdin.end(pcm);
   const code = await done;
   if (code !== 0) throw new Error(`ffmpeg failed (${code}): ${stderr}`);
   return Buffer.concat(chunks);

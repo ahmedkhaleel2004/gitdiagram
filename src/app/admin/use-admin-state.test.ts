@@ -20,6 +20,7 @@ const adminState = (overrides: Partial<LiveControls> = {}): AdminState => ({
   controls: controls(overrides),
   video: null,
   voicePausedUntil: null,
+  voiceCreditUsd: null,
   claudeCredit: null,
   diagramQuota: null,
   presence: null,

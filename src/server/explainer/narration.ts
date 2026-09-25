@@ -4,6 +4,7 @@ import type { VideoTiming, VideoWord } from "~/features/explainer/types";
 import {
   isGeminiVoiceConfigured,
   speakWithGemini,
+  voiceCreditUsd,
   voicePausedUntil,
 } from "./gemini-voice";
 import { normalizeWord } from "./text";
@@ -26,8 +27,9 @@ export function isNarrationConfigured(): boolean {
 }
 
 /**
- * Whether a new video can be voiced now: false while the day's voice quota is
- * used up (see gemini-voice.ts), so no run pays for a script it cannot voice.
+ * Whether a new video can be voiced now: false for a while after the voice's
+ * balance ran out (see gemini-voice.ts), so no run pays for a script it
+ * cannot voice.
  * If Redis cannot say, the budget check that follows fails closed anyway.
  */
 export async function isNarrationAvailable(): Promise<boolean> {
@@ -37,6 +39,11 @@ export async function isNarrationAvailable(): Promise<boolean> {
 /** When new videos can be voiced again, for /admin; null when they can now. */
 export function narrationPausedUntil(): Promise<number | null> {
   return voicePausedUntil();
+}
+
+/** The voice's prepaid balance in USD, for /admin; null when unreadable. */
+export function narrationCreditUsd(): Promise<number | null> {
+  return voiceCreditUsd();
 }
 
 /**

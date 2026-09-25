@@ -32,6 +32,7 @@ const state: AdminState = {
   },
   video: { videos: budget, renders: budget },
   voicePausedUntil: null,
+  voiceCreditUsd: null,
   claudeCredit: { setUsd: 50, setAt: 0, spentUsd: 5 },
   diagramQuota: null,
   presence: null,

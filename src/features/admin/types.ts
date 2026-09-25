@@ -43,6 +43,8 @@ export interface AdminState {
   } | null;
   /** When new videos can be voiced again (ms); null when they can now or unknown. */
   voicePausedUntil: number | null;
+  /** The voice's prepaid OpenRouter balance in USD; null when unreadable. */
+  voiceCreditUsd: number | null;
   /** Null when ANTHROPIC_ADMIN_KEY is missing or a report failed. */
   claudeCredit: ClaudeCredit | null;
   diagramQuota: {

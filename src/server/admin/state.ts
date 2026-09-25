@@ -8,7 +8,10 @@ import {
   presenceSocketUrl,
 } from "~/server/admin/live-events";
 import { videoUsageToday } from "~/server/explainer/limits";
-import { narrationPausedUntil } from "~/server/explainer/narration";
+import {
+  narrationCreditUsd,
+  narrationPausedUntil,
+} from "~/server/explainer/narration";
 import { readComplimentaryUsageToday } from "~/server/generate/complimentary-gate";
 
 async function orNull<T>(promise: Promise<T>): Promise<T | null> {
@@ -21,14 +24,21 @@ async function orNull<T>(promise: Promise<T>): Promise<T | null> {
 
 /** Everything the dashboard polls: switches, today's budgets, balances. */
 export async function readAdminState(): Promise<AdminState> {
-  const [controls, video, voicePausedUntil, claudeCredit, diagramQuota] =
-    await Promise.all([
-      readControls({ fresh: true }),
-      orNull(videoUsageToday()),
-      orNull(narrationPausedUntil()),
-      orNull(readClaudeCredit()),
-      orNull(readComplimentaryUsageToday()),
-    ]);
+  const [
+    controls,
+    video,
+    voicePausedUntil,
+    voiceCreditUsd,
+    claudeCredit,
+    diagramQuota,
+  ] = await Promise.all([
+    readControls({ fresh: true }),
+    orNull(videoUsageToday()),
+    orNull(narrationPausedUntil()),
+    orNull(narrationCreditUsd()),
+    orNull(readClaudeCredit()),
+    orNull(readComplimentaryUsageToday()),
+  ]);
   const url = presenceSocketUrl();
   const token = createPresenceToken();
   return {
@@ -36,6 +46,7 @@ export async function readAdminState(): Promise<AdminState> {
     controls,
     video,
     voicePausedUntil,
+    voiceCreditUsd,
     claudeCredit,
     diagramQuota,
     presence: url && token ? { url, token } : null,
