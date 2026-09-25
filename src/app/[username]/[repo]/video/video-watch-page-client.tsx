@@ -19,7 +19,7 @@ const ExplainerVideo = dynamic(
  * on, and the way into the full interactive diagram. It never starts a diagram
  * run, so shared links stay fast and cheap.
  */
-export default function WatchPageClient({
+export default function VideoWatchPageClient({
   username,
   repo,
 }: {

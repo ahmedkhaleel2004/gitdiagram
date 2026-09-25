@@ -5,9 +5,9 @@ import { SITE_URL } from "~/lib/site";
 import { videoSummaryTag } from "~/server/explainer/cache";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import { hasRender, readVideoArtifact } from "~/server/explainer/store";
-import WatchPageClient from "./watch-page-client";
+import VideoWatchPageClient from "./video-watch-page-client";
 
-type WatchPageProps = {
+type VideoWatchPageProps = {
   params: Promise<{ username: string; repo: string }>;
 };
 
@@ -50,7 +50,7 @@ function getVideoSummary(username: string, repo: string) {
 
 export async function generateMetadata({
   params,
-}: WatchPageProps): Promise<Metadata> {
+}: VideoWatchPageProps): Promise<Metadata> {
   const { username, repo } = await params;
   const path = `/${username.toLowerCase()}/${repo.toLowerCase()}/video`;
   const summary = isVideoExplainerEnabled()
@@ -117,10 +117,10 @@ export async function generateMetadata({
   };
 }
 
-export default async function WatchPage({ params }: WatchPageProps) {
+export default async function VideoWatchPage({ params }: VideoWatchPageProps) {
   if (!isVideoExplainerEnabled()) notFound();
   const { username, repo } = await params;
   if (username !== username.toLowerCase() || repo !== repo.toLowerCase())
     permanentRedirect(`/${username.toLowerCase()}/${repo.toLowerCase()}/video`);
-  return <WatchPageClient username={username} repo={repo} />;
+  return <VideoWatchPageClient username={username} repo={repo} />;
 }
