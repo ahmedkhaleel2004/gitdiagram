@@ -34,6 +34,28 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+export function exportMermaidSvgAsSvg(svgElement: SVGSVGElement): void {
+  const clone = svgElement.cloneNode(true) as SVGSVGElement;
+  const bbox = svgElement.getBBox();
+  const viewBox = svgElement.viewBox.baseVal;
+  const width = viewBox.width > 0 ? viewBox.width : bbox.width;
+  const height = viewBox.height > 0 ? viewBox.height : bbox.height;
+  if (width <= 0 || height <= 0) {
+    throw new Error("Diagram has no exportable dimensions.");
+  }
+
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", String(width));
+  clone.setAttribute("height", String(height));
+  clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+  const svgData = new XMLSerializer().serializeToString(clone);
+  downloadBlob(
+    new Blob([svgData], { type: "image/svg+xml;charset=utf-8" }),
+    "diagram.svg",
+  );
+}
+
 export async function exportMermaidSvgAsPng(
   svgElement: SVGSVGElement,
   backgroundColor = "white",
