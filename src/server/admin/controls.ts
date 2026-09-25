@@ -6,8 +6,8 @@ import { upstashCommand } from "~/server/storage/upstash";
 // Switches the operator flips from /admin while the site is running. They live
 // in Redis so every server instance sees a change within a second, with no
 // redeploy. Anything unset falls back to the deployment's environment:
-// - videoAudience: who may make new videos: the early-access places on
-//   desktop ("priority"), any desktop, or everyone.
+// - videoAudience: who may make new videos: the early-access places on any
+//   device ("priority"), those plus any desktop, or everyone.
 // - videosPaused: stop every new video, whoever asks.
 // - videoDailyLimit, videoPersonDailyLimit, videoNetworkDailyLimit: override
 //   VIDEO_DAILY_LIMIT, VIDEO_PERSON_DAILY_LIMIT and VIDEO_NETWORK_DAILY_LIMIT.

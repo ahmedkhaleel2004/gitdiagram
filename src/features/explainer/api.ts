@@ -4,13 +4,15 @@ import type {
   VideoRenderEvent,
 } from "./types";
 
+/** Why a visitor cannot start a video: early access, device, or today's budget. */
+export type VideoPausedReason = "audience" | "device" | "limit";
+
 export interface ExplainerVideoState {
   video: VideoArtifact | null;
   canGenerate: boolean;
-  /** Why a visitor cannot start a video: early access, or today's budget. */
-  paused: "audience" | "limit" | null;
-  /** The operator opened video making to everyone, tablets included. */
-  openToAll: boolean;
+  paused: VideoPausedReason | null;
+  /** This visitor may make videos from any device, tablets included. */
+  anyDevice: boolean;
 }
 
 export type RenderFormat = "landscape" | "vertical";
@@ -26,8 +28,8 @@ export async function fetchExplainerVideo(
     ok?: boolean;
     video?: VideoArtifact | null;
     canGenerate?: boolean;
-    paused?: "audience" | "limit" | null;
-    openToAll?: boolean;
+    paused?: VideoPausedReason | null;
+    anyDevice?: boolean;
     error?: string;
   };
   if (!response.ok || !body.ok)
@@ -36,7 +38,7 @@ export async function fetchExplainerVideo(
     video: body.video ?? null,
     canGenerate: Boolean(body.canGenerate),
     paused: body.paused ?? null,
-    openToAll: Boolean(body.openToAll),
+    anyDevice: Boolean(body.anyDevice),
   };
 }
 

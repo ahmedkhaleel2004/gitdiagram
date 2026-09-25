@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  anyDeviceHere,
+  audienceBlock,
+  audienceMessage,
   canMakeVideosHere,
   isDesktopRequest,
   isInVideoRegion,
@@ -69,26 +72,37 @@ describe("who may make new videos", () => {
     expect(uk("", "", "London")).toBe(true);
   });
 
-  it("needs both a desktop and an early-access place", () => {
-    const inNewYork = {
-      "x-vercel-ip-country": "US",
-      "x-vercel-ip-country-region": "NY",
+  it("lets any device in from an early-access place", () => {
+    const inOntario = {
+      "x-vercel-ip-country": "CA",
+      "x-vercel-ip-country-region": "ON",
     };
     expect(
-      canMakeVideosHere(request({ ...inNewYork, "user-agent": MAC })),
+      canMakeVideosHere(request({ ...inOntario, "user-agent": MAC })),
     ).toBe(true);
     expect(
-      canMakeVideosHere(request({ ...inNewYork, "user-agent": IPHONE })),
-    ).toBe(false);
+      canMakeVideosHere(request({ ...inOntario, "user-agent": IPHONE })),
+    ).toBe(true);
     expect(
-      canMakeVideosHere(
-        request({
-          "x-vercel-ip-country": "US",
-          "x-vercel-ip-country-region": "TX",
-          "user-agent": MAC,
-        }),
-      ),
-    ).toBe(false);
+      canMakeVideosHere(request({ ...inOntario, "user-agent": ANDROID })),
+    ).toBe(true);
+    expect(anyDeviceHere(request({ ...inOntario, "user-agent": MAC }))).toBe(
+      true,
+    );
+  });
+
+  it("keeps everyone else out, with the reason", () => {
+    const texas = (agent: string) =>
+      request({
+        "x-vercel-ip-country": "US",
+        "x-vercel-ip-country-region": "TX",
+        "user-agent": agent,
+      });
+    expect(audienceBlock(texas(MAC))).toBe("place");
+    expect(audienceBlock(texas(IPHONE))).toBe("place");
+    expect(audienceBlock(texas(IPHONE), "desktop")).toBe("mobile");
+    expect(audienceMessage("place")).toMatch(/early access/);
+    expect(audienceMessage("mobile")).toMatch(/computer/);
   });
 
   it("widens to any desktop, then everyone, when the operator says so", () => {
@@ -104,7 +118,9 @@ describe("who may make new videos", () => {
     });
     expect(canMakeVideosHere(texasMac, "priority")).toBe(false);
     expect(canMakeVideosHere(texasMac, "desktop")).toBe(true);
+    expect(anyDeviceHere(texasMac, "desktop")).toBe(false);
     expect(canMakeVideosHere(texasPhone, "desktop")).toBe(false);
     expect(canMakeVideosHere(texasPhone, "everyone")).toBe(true);
+    expect(anyDeviceHere(texasPhone, "everyone")).toBe(true);
   });
 });

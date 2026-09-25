@@ -473,9 +473,13 @@ const AUDIENCES: Array<{ value: VideoAudience; label: string; hint: string }> =
     {
       value: "priority",
       label: "Priority places",
-      hint: "Desktops in CA, WA, NY, Ontario, BC and London",
+      hint: "Any device in CA, WA, NY, Ontario, BC and London",
     },
-    { value: "desktop", label: "All desktops", hint: "Any desktop, anywhere" },
+    {
+      value: "desktop",
+      label: "All desktops",
+      hint: "Priority places, plus any desktop",
+    },
     { value: "everyone", label: "Everyone", hint: "Every device, anywhere" },
   ];
 

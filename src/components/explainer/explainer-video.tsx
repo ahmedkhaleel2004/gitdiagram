@@ -6,6 +6,7 @@ import { CircleAlert, Clapperboard } from "lucide-react";
 import {
   fetchExplainerVideo,
   streamExplainerVideo,
+  type VideoPausedReason,
 } from "~/features/explainer/api";
 import type {
   VideoArtifact,
@@ -31,9 +32,11 @@ function isTouchMac() {
   return navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent);
 }
 
-const PAUSED: Record<"audience" | "limit", string> = {
+const PAUSED: Record<VideoPausedReason, string> = {
   audience:
     "Making new videos is in early access in a few places for now. Every video already made is free to watch.",
+  device:
+    "Making new videos needs a computer here for now. Every video already made is free to watch.",
   limit:
     "Today's free videos have all been made. Check back tomorrow; every video already made is free to watch.",
 };
@@ -46,7 +49,7 @@ type PanelState =
   | {
       kind: "empty";
       canGenerate: boolean;
-      paused: "audience" | "limit" | null;
+      paused: VideoPausedReason | null;
     }
   | {
       kind: "generating";
@@ -100,14 +103,14 @@ export function ExplainerVideo({
   useEffect(() => {
     const controller = new AbortController();
     fetchExplainerVideo(username, repo, controller.signal)
-      .then(({ video, canGenerate, paused, openToAll }) =>
+      .then(({ video, canGenerate, paused, anyDevice }) =>
         setState(
           video
             ? { kind: "ready", video }
-            : // iPads report a desktop Mac to the server; early access is for
-              // desktops unless the operator opened it to everyone.
-              isTouchMac() && !openToAll
-              ? { kind: "empty", canGenerate: false, paused: "audience" }
+            : // iPads report a desktop Mac to the server; hold them back when
+              // this visitor was let in only as a desktop.
+              isTouchMac() && !anyDevice
+              ? { kind: "empty", canGenerate: false, paused: "device" }
               : { kind: "empty", canGenerate, paused },
         ),
       )

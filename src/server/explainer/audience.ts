@@ -2,10 +2,10 @@ import "server-only";
 
 import type { VideoAudience } from "~/features/admin/types";
 
-// Who may make new explainer videos during early access: desktop visitors
-// (Mac, Windows, Linux) in the places GitDiagram's most valuable audience
-// lives. It mirrors the PostHog "priority audiences" (docs/operations/posthog.md).
-// Everyone can still watch and download every video already made.
+// Who may make new explainer videos during early access: anyone, on any
+// device, in the places GitDiagram's most valuable audience lives. It mirrors
+// the PostHog "priority audiences" (docs/operations/posthog.md). Everyone can
+// still watch and download every video already made.
 //
 // Location is Vercel's IP geolocation and the device is the browser's own
 // report, so this is an access rule, not a security boundary: VPNs and
@@ -61,7 +61,7 @@ export function isInVideoRegion(request: Request): boolean {
 
 /**
  * Whether this visitor may make new videos. The operator widens the audience
- * from /admin: early-access places on desktop, any desktop, or everyone.
+ * from /admin: the early-access places, plus any desktop, or everyone.
  */
 export function canMakeVideosHere(
   request: Request,
@@ -71,18 +71,37 @@ export function canMakeVideosHere(
 }
 
 /**
- * Why the audience rule holds this visitor back: not on a desktop, or outside
- * the early-access places. Null when it lets them in.
+ * Why the audience rule holds this visitor back: outside the early-access
+ * places, or, once the operator opens it to all desktops, not on a desktop.
+ * Null when it lets them in.
  */
 export function audienceBlock(
   request: Request,
   audience: VideoAudience = "priority",
 ): "mobile" | "place" | null {
-  if (audience === "everyone") return null;
-  if (!isDesktopRequest(request)) return "mobile";
-  if (audience === "desktop" || isInVideoRegion(request)) return null;
-  return "place";
+  if (audience === "everyone" || isInVideoRegion(request)) return null;
+  if (audience !== "desktop") return "place";
+  return isDesktopRequest(request) ? null : "mobile";
 }
 
-export const EARLY_ACCESS_MESSAGE =
+/**
+ * Whether this visitor may make videos from any device, tablets included.
+ * Only visitors let in as "any desktop" need to be on one.
+ */
+export function anyDeviceHere(
+  request: Request,
+  audience: VideoAudience = "priority",
+): boolean {
+  return audience === "everyone" || isInVideoRegion(request);
+}
+
+const EARLY_ACCESS_MESSAGE =
   "Making new videos is in early access in a few places for now. Every video already made is free to watch.";
+
+const DESKTOP_ONLY_MESSAGE =
+  "Making new videos needs a computer here for now. Every video already made is free to watch.";
+
+/** What to tell a visitor the audience rule holds back. */
+export function audienceMessage(block: "mobile" | "place"): string {
+  return block === "mobile" ? DESKTOP_ONLY_MESSAGE : EARLY_ACCESS_MESSAGE;
+}

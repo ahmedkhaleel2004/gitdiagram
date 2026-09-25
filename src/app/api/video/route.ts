@@ -14,10 +14,11 @@ import {
 } from "~/server/explainer/config";
 import { readControls } from "~/server/admin/controls";
 import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
-import { audienceBlock } from "~/server/explainer/audience";
+import { anyDeviceHere, audienceBlock } from "~/server/explainer/audience";
 import { isVideoAdmin, videosLeftToday } from "~/server/explainer/limits";
 import { hasNarrationCredits } from "~/server/explainer/narration";
 import { readVideoArtifact } from "~/server/explainer/store";
+import type { VideoPausedReason } from "~/features/explainer/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,28 +31,28 @@ const querySchema = z.object({
 
 /**
  * Whether this visitor could start a new video right now, and if not, why:
- * "audience" (early access is limited to a few places) or "limit" (today's
- * budget is spent).
+ * "audience" (early access is limited to a few places), "device" (open to
+ * desktops only here) or "limit" (today's budget is spent).
  */
 async function videoAvailability(
   request: Request,
   repository: string,
 ): Promise<{
   canGenerate: boolean;
-  paused: "audience" | "limit" | null;
-  openToAll?: boolean;
+  paused: VideoPausedReason | null;
+  anyDevice?: boolean;
 }> {
   if (!canGenerateVideos()) return { canGenerate: false, paused: "limit" };
   if (process.env.NODE_ENV !== "production") {
-    // Local preview of the paused states: VIDEO_PREVIEW_PAUSED=audience|limit.
+    // Local preview of the paused states: VIDEO_PREVIEW_PAUSED=audience|device|limit.
     const preview = process.env.VIDEO_PREVIEW_PAUSED;
-    return preview === "audience" || preview === "limit"
+    return preview === "audience" || preview === "device" || preview === "limit"
       ? { canGenerate: false, paused: preview }
       : { canGenerate: true, paused: null };
   }
   // The operator, signed in to /admin, may always make videos.
   if (isVideoAdmin(request))
-    return { canGenerate: true, paused: null, openToAll: true };
+    return { canGenerate: true, paused: null, anyDevice: true };
   // Someone wanted a video and was held back: demand the operator sees, with
   // the reason, on the /admin feed.
   const heldBack = (reason: string) =>
@@ -63,8 +64,9 @@ async function videoAvailability(
       ...requestOrigin(request),
     });
   const controls = await readControls();
-  // "Everyone" includes tablets, which the page otherwise holds back.
-  const openToAll = controls.videoAudience === "everyone";
+  // Tablets pass as desktops here, so the page holds them back itself unless
+  // this visitor may use any device.
+  const anyDevice = anyDeviceHere(request, controls.videoAudience);
   if (controls.videosPaused) {
     heldBack("paused");
     return { canGenerate: false, paused: "limit" };
@@ -72,7 +74,10 @@ async function videoAvailability(
   const blocked = audienceBlock(request, controls.videoAudience);
   if (blocked) {
     heldBack(blocked);
-    return { canGenerate: false, paused: "audience" };
+    return {
+      canGenerate: false,
+      paused: blocked === "mobile" ? "device" : "audience",
+    };
   }
   try {
     const [left, credits] = await Promise.all([
@@ -80,7 +85,7 @@ async function videoAvailability(
       hasNarrationCredits(),
     ]);
     if (left > 0 && credits)
-      return { canGenerate: true, paused: null, openToAll };
+      return { canGenerate: true, paused: null, anyDevice };
     heldBack(left > 0 ? "credits" : "daily");
     return { canGenerate: false, paused: "limit" };
   } catch {

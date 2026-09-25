@@ -13,10 +13,7 @@ import {
 } from "~/server/http/same-origin-json";
 import { readControls } from "~/server/admin/controls";
 import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
-import {
-  audienceBlock,
-  EARLY_ACCESS_MESSAGE,
-} from "~/server/explainer/audience";
+import { audienceBlock, audienceMessage } from "~/server/explainer/audience";
 import {
   canGenerateVideos,
   isVideoExplainerEnabled,
@@ -89,7 +86,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     });
   if (!trusted) {
     // The operator sets who may start new videos, and can pause them, live
-    // from /admin. By default only desktops in a few places may.
+    // from /admin. By default anyone in a few places may.
     const controls = await readControls();
     if (controls.videosPaused) {
       gated("paused");
@@ -98,7 +95,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     const blocked = audienceBlock(request, controls.videoAudience);
     if (blocked) {
       gated(blocked);
-      return jsonErrorResponse(EARLY_ACCESS_MESSAGE, 403);
+      return jsonErrorResponse(audienceMessage(blocked), 403);
     }
   }
 
