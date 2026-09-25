@@ -155,8 +155,12 @@ describe("the Worker's routes", () => {
     // The token in the URL (which lands in logs) is no longer accepted.
     expect((await open(`${BASE}/admin?t=${good}`)).status).toBe(403);
     expect(
-      (await open(`${BASE}/admin`, `${ADMIN_PROTOCOL}, ${good.slice(0, -1)}0`))
-        .status,
+      (
+        await open(
+          `${BASE}/admin`,
+          `${ADMIN_PROTOCOL}, ${good.slice(0, -1)}${good.endsWith("0") ? "1" : "0"}`,
+        )
+      ).status,
     ).toBe(403);
     const forged = await token(Date.now() + 45_000, "t".repeat(40));
     expect(
