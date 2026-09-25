@@ -22,7 +22,7 @@ const config = [
       "dist/**",
       "coverage/**",
       "next-env.d.ts",
-      "public/video-engine/**",
+      "public/video-engine/assets/**",
       "workers/**",
     ],
   },
@@ -48,6 +48,23 @@ const config = [
       "@typescript-eslint/require-await": "off",
       "react-hooks/set-state-in-effect": "off",
     },
+  },
+  {
+    // The video engine: plain browser scripts, loaded by stage.html.
+    files: ["public/video-engine/*.js"],
+    languageOptions: {
+      sourceType: "script",
+      globals: {
+        window: "readonly",
+        document: "readonly",
+        getComputedStyle: "readonly",
+        setTimeout: "readonly",
+        URLSearchParams: "readonly",
+        Promise: "readonly",
+        gsap: "readonly",
+      },
+    },
+    rules: { "no-undef": "error" },
   },
 ];
 
