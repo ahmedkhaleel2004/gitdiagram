@@ -2,161 +2,195 @@
 
 import { useEffect, useReducer, useRef, useState } from "react";
 
-import type {
-  LiveFeedEvent,
-  LiveJob,
-  LiveVisitor,
-  PresenceMessage,
-} from "~/features/admin/types";
-import { peopleHere } from "~/features/admin/presence";
+import {
+  EMPTY_SITE,
+  isTokenFresh,
+  reconnectDelay,
+  reduceSite,
+} from "~/features/admin/live-link";
+import {
+  ADMIN_PROTOCOL,
+  tokenExpiry,
+} from "~/features/admin/presence-protocol";
+import type { LiveFeedEvent, PresenceMessage } from "~/features/admin/types";
 
 // The dashboard's side of the presence worker: one socket that is pushed every
 // visitor arriving, moving and leaving, every running job and every event, as
 // it happens. Nothing here polls.
+//
+// The socket's token is short-lived and comes with the dashboard's polled
+// state. A dropped socket reconnects with growing, jittered waits, never
+// while the tab is hidden (it comes back when the tab is shown), and asks for
+// a fresh token instead of retrying with one that has expired. The token
+// travels as a WebSocket subprotocol, so it stays out of request logs; newer
+// ones are sent over the open socket so it is not cut off when the first one
+// expires.
 
-const KEPT_EVENTS = 200;
-const HISTORY_POINTS = 600; // ten minutes, one point a second
 const PING_MS = 5_000;
-
-interface LiveSite {
-  visitors: Record<string, LiveVisitor>;
-  events: LiveFeedEvent[];
-  jobs: LiveJob[];
-  peak: { day: string; count: number; at: number } | null;
-}
-
-const EMPTY: LiveSite = { visitors: {}, events: [], jobs: [], peak: null };
-
-function reduce(site: LiveSite, message: PresenceMessage): LiveSite {
-  switch (message.type) {
-    case "snapshot":
-      return {
-        visitors: Object.fromEntries(message.visitors.map((v) => [v.id, v])),
-        events: message.events.slice(0, KEPT_EVENTS),
-        jobs: message.jobs,
-        peak: message.peak,
-      };
-    case "join":
-      return {
-        ...site,
-        visitors: { ...site.visitors, [message.visitor.id]: message.visitor },
-      };
-    case "update": {
-      const visitor = site.visitors[message.id];
-      if (!visitor) return site;
-      return {
-        ...site,
-        visitors: {
-          ...site.visitors,
-          [message.id]: {
-            ...visitor,
-            ...(message.p !== undefined ? { p: message.p } : {}),
-            ...(message.v !== undefined ? { v: message.v } : {}),
-            ...(message.h !== undefined ? { h: message.h } : {}),
-          },
-        },
-      };
-    }
-    case "leave": {
-      if (!site.visitors[message.id]) return site;
-      const visitors = { ...site.visitors };
-      delete visitors[message.id];
-      return { ...site, visitors };
-    }
-    case "event":
-      if (site.events.some((event) => event.id === message.event.id))
-        return site;
-      return {
-        ...site,
-        events: [message.event, ...site.events].slice(0, KEPT_EVENTS),
-      };
-    case "jobs":
-      return { ...site, jobs: message.jobs };
-    case "peak":
-      return { ...site, peak: message.peak };
-  }
-}
+// No pong this long after a ping: the connection died without closing (the
+// laptop slept, the network changed). Timers in background tabs can be
+// slowed to once a minute, so this is measured from the ping itself.
+const PONG_TIMEOUT_MS = 2 * PING_MS + 2_000;
+// Every poll brings a new token; the open socket is handed one only when the
+// token it holds has less than this left, so about every five minutes.
+const RENEW_BEFORE_MS = 5 * 60_000;
 
 export type LinkStatus = "connecting" | "live" | "offline";
 
 export function useLiveSite(
   presence: { url: string; token: string } | null,
-  onEvent: (event: LiveFeedEvent) => void,
+  {
+    onEvent,
+    onTokenNeeded,
+  }: {
+    onEvent: (event: LiveFeedEvent) => void;
+    /** Ask for a fresh token (the dashboard re-reads its state). */
+    onTokenNeeded: () => void;
+  },
 ) {
-  const [site, dispatch] = useReducer(reduce, EMPTY);
+  const [site, dispatch] = useReducer(reduceSite, EMPTY_SITE);
   const [status, setStatus] = useState<LinkStatus>("connecting");
   const [latency, setLatency] = useState<number | null>(null);
-  const [history, setHistory] = useState<number[]>([]);
-  const token = useRef(presence);
-  const handler = useRef(onEvent);
-  const visitors = useRef<LiveVisitor[]>([]);
+  const latest = useRef({ presence, onEvent, onTokenNeeded });
+  // Hooks for the token effect below into the running connection.
+  const link = useRef<{ tokenChanged: () => void } | null>(null);
   const url = presence?.url ?? null;
+  const token = presence?.token ?? null;
 
   useEffect(() => {
-    token.current = presence;
-    handler.current = onEvent;
+    latest.current = { presence, onEvent, onTokenNeeded };
   });
-
-  useEffect(() => {
-    visitors.current = Object.values(site.visitors);
-  }, [site.visitors]);
 
   useEffect(() => {
     if (!url) return;
     let socket: WebSocket | null = null;
     let stopped = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
+    // The expired token a fresh one was asked for in place of, if any.
+    let waitingForToken: string | null = null;
+    let sentToken: string | null = null;
     let pingSentAt = 0;
+    let awaitingPong = false;
 
-    const connect = () => {
-      const current = token.current;
-      if (stopped || !current) return;
+    const hidden = () => document.visibilityState === "hidden";
+
+    const retryLater = () => {
+      clearTimeout(retry);
+      if (stopped || hidden()) return;
+      retry = setTimeout(connect, reconnectDelay(failures));
+      failures += 1;
+    };
+
+    const lost = (ws: WebSocket) => {
+      if (socket !== ws) return;
+      socket = null;
+      awaitingPong = false;
+      setStatus("offline");
+      setLatency(null);
+      retryLater();
+    };
+
+    function connect() {
+      clearTimeout(retry);
+      const current = latest.current.presence;
+      if (stopped || socket || hidden() || !current) return;
+      if (!isTokenFresh(current.token, Date.now())) {
+        waitingForToken = current.token;
+        latest.current.onTokenNeeded();
+        return;
+      }
+      waitingForToken = null;
       setStatus("connecting");
-      const ws = new WebSocket(
-        `${current.url}/admin?t=${encodeURIComponent(current.token)}`,
-      );
+      const ws = new WebSocket(`${current.url}/admin`, [
+        ADMIN_PROTOCOL,
+        current.token,
+      ]);
       socket = ws;
-      ws.onopen = () => setStatus("live");
+      sentToken = current.token;
+      let opened = false;
+      ws.onopen = () => {
+        opened = true;
+        failures = 0;
+        setStatus("live");
+      };
       ws.onmessage = (message) => {
         if (message.data === "pong") {
-          if (pingSentAt)
-            setLatency(Math.round(performance.now() - pingSentAt));
+          awaitingPong = false;
+          setLatency(Math.round(performance.now() - pingSentAt));
           return;
         }
+        let parsed: PresenceMessage;
         try {
-          const parsed = JSON.parse(String(message.data)) as PresenceMessage;
-          dispatch(parsed);
-          if (parsed.type === "event") handler.current(parsed.event);
+          parsed = JSON.parse(String(message.data)) as PresenceMessage;
         } catch {
-          // Not ours.
+          return; // Not ours.
         }
+        dispatch({ message: parsed, at: Date.now() });
+        if (parsed.type === "event") latest.current.onEvent(parsed.event);
       };
-      ws.onclose = () => {
-        if (socket === ws) socket = null;
-        setStatus("offline");
-        setLatency(null);
-        if (!stopped) retry = setTimeout(connect, 1_000);
+      ws.onclose = (event) => {
+        // Refused before opening, or closed because the token ran out
+        // (4001): the token may be the problem, so fetch a new one for the
+        // next try.
+        if (!opened || event.code === 4001) latest.current.onTokenNeeded();
+        lost(ws);
       };
+    }
+
+    const ping = setInterval(() => {
+      const ws = socket;
+      if (ws?.readyState !== WebSocket.OPEN) return;
+      if (awaitingPong && performance.now() - pingSentAt > PONG_TIMEOUT_MS) {
+        ws.onclose = null;
+        ws.onmessage = null;
+        ws.close();
+        lost(ws);
+        return;
+      }
+      if (awaitingPong) return;
+      awaitingPong = true;
+      pingSentAt = performance.now();
+      ws.send("ping");
+    }, PING_MS);
+
+    const onVisibility = () => {
+      if (hidden()) return;
+      failures = 0;
+      connect();
+    };
+
+    link.current = {
+      tokenChanged() {
+        const current = latest.current.presence;
+        if (!current) return;
+        if (socket?.readyState === WebSocket.OPEN) {
+          const left = (tokenExpiry(sentToken ?? "") ?? 0) - Date.now();
+          if (current.token !== sentToken && left < RENEW_BEFORE_MS) {
+            socket.send(`t:${current.token}`);
+            sentToken = current.token;
+          }
+        } else if (waitingForToken && waitingForToken !== current.token) {
+          connect();
+        }
+      },
     };
 
     connect();
-    const ping = setInterval(() => {
-      if (socket?.readyState !== WebSocket.OPEN) return;
-      pingSentAt = performance.now();
-      socket.send("ping");
-    }, PING_MS);
-    const sample = setInterval(() => {
-      const here = peopleHere(visitors.current, Date.now()).length;
-      setHistory((points) => [...points, here].slice(-HISTORY_POINTS));
-    }, 1_000);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       stopped = true;
+      link.current = null;
       clearTimeout(retry);
       clearInterval(ping);
-      clearInterval(sample);
+      document.removeEventListener("visibilitychange", onVisibility);
       socket?.close(1000);
     };
   }, [url]);
 
-  return { ...site, status, latency, history };
+  useEffect(() => {
+    if (token) link.current?.tokenChanged();
+  }, [token]);
+
+  return { ...site, status, latency };
 }

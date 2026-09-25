@@ -131,6 +131,3 @@ export function hasClockMismatch(
   const address = offsetMinutes(visitor.iz, at);
   return browser !== null && address !== null && browser !== address;
 }
-
-/** @deprecated Renamed; kept until the dashboard moves over. */
-export const isLikelyVpn = hasClockMismatch;
