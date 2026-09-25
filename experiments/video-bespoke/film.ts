@@ -13,6 +13,7 @@ import {
   type Planner,
 } from "~/server/explainer/director";
 import { narrateBeats } from "~/server/explainer/narration";
+import { probePicture } from "~/server/explainer/readme-images";
 import type { VideoRepository } from "~/server/explainer/repository";
 import { normalizeShots, scriptWordCount } from "~/server/explainer/shots";
 import { videoVersion } from "~/server/explainer/store";
@@ -39,20 +40,19 @@ export const filmDir = (config: string, repo: string) =>
   join(OUT, "films", config, slugOf(repo).toLowerCase());
 
 async function pictures(repo: string): Promise<FilmImage[]> {
-  const sharp = (await import("sharp")).default;
   const found: FilmImage[] = [];
   for (let i = 1; i <= 3; i++) {
     const bytes = await readFile(
       join(OUT, "images", slugOf(repo), `img${i}.webp`),
     ).catch(() => null);
     if (!bytes) break;
-    const meta = await sharp(bytes).metadata();
+    const meta = probePicture(bytes)!;
     found.push({
       id: `img${i}`,
-      mediaType: "image/webp",
+      mediaType: meta.type,
       data: bytes.toString("base64"),
-      width: meta.width!,
-      height: meta.height!,
+      width: meta.width,
+      height: meta.height,
     });
   }
   return found;

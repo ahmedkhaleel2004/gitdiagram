@@ -7,6 +7,7 @@ import {
 import { PICTURE_ID } from "~/features/explainer/types";
 import { jsonErrorResponse } from "~/server/http/same-origin-json";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
+import { probePicture } from "~/server/explainer/readme-images";
 import {
   hasRender,
   readPicture,
@@ -61,10 +62,13 @@ export async function GET(request: Request): Promise<Response> {
   if (format === "picture") {
     // Named by the video version, so the bytes behind a URL never change.
     const body = id ? await readPicture(username, repo, v, id) : null;
-    if (!body) return jsonErrorResponse("This picture does not exist.", 404);
+    // Its type comes from its own bytes, checked when it was stored.
+    const picture = body && probePicture(body);
+    if (!body || !picture)
+      return jsonErrorResponse("This picture does not exist.", 404);
     return new Response(new Uint8Array(body), {
       headers: {
-        "Content-Type": "image/webp",
+        "Content-Type": picture.type,
         "Cache-Control":
           "public, max-age=31536000, s-maxage=31536000, immutable",
         "X-Content-Type-Options": "nosniff",

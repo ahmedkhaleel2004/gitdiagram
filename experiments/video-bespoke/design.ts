@@ -9,6 +9,7 @@ import OpenAI from "openai";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { VideoArtifact } from "~/features/explainer/types";
+import { probePicture } from "~/server/explainer/readme-images";
 import { createFilmWriters, type FilmImage } from "~/server/explainer/director";
 import type { VideoRepository } from "~/server/explainer/repository";
 import { normalizeShots, type Script } from "~/server/explainer/shots";
@@ -73,14 +74,13 @@ async function pictures(repo: string): Promise<FilmImage[]> {
   for (let i = 1; i <= 3; i++) {
     const bytes = await readFile(join(dir, `img${i}.webp`)).catch(() => null);
     if (!bytes) break;
-    const sharp = (await import("sharp")).default;
-    const meta = await sharp(bytes).metadata();
+    const meta = probePicture(bytes)!;
     found.push({
       id: `img${i}`,
-      mediaType: "image/webp",
+      mediaType: meta.type,
       data: bytes.toString("base64"),
-      width: meta.width!,
-      height: meta.height!,
+      width: meta.width,
+      height: meta.height,
     });
   }
   return found;

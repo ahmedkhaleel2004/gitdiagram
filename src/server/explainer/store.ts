@@ -43,7 +43,7 @@ const prefix = (username: string, repo: string) =>
   `video/v1/${segment(username)}/${segment(repo)}`;
 const clipName = (index: number) =>
   `beat-${String(index).padStart(2, "0")}.mp3`;
-const pictureName = (id: string) => `picture-${id}.webp`;
+const pictureName = (id: string) => `picture-${id}`;
 
 export type RenderName =
   "landscape.mp4" | "vertical.mp4" | "poster.jpg" | "still.jpg";
@@ -134,7 +134,7 @@ export async function readVoiceClip(
   return readObject(versionedKey(username, repo, createdAt, clipName(index)));
 }
 
-/** A README picture stored with a video (WebP), by id. */
+/** A README picture stored with a video (PNG, JPEG or WebP), by id. */
 export async function readPicture(
   username: string,
   repo: string,
@@ -153,7 +153,7 @@ export async function readPicture(
 export async function writeVideo(
   artifact: VideoArtifact,
   clips: Buffer[],
-  pictures: Array<{ id: string; bytes: Buffer }> = [],
+  pictures: Array<{ id: string; mediaType: string; bytes: Buffer }> = [],
 ) {
   const { owner, repo } = artifact.meta;
   const clipKey = (index: number) =>
@@ -173,7 +173,7 @@ export async function writeVideo(
         putBinaryObject(bucket(), clipKey(index), clip, "audio/mpeg"),
       ),
       ...pictures.map((p) =>
-        putBinaryObject(bucket(), pictureKey(p.id), p.bytes, "image/webp"),
+        putBinaryObject(bucket(), pictureKey(p.id), p.bytes, p.mediaType),
       ),
     ]);
     await putJsonObject(bucket(), artifactKey, artifact);

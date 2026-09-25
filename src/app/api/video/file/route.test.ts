@@ -67,13 +67,18 @@ describe("GET /api/video/file", () => {
   });
 
   it("serves a film's README picture forever, and only picture ids", async () => {
-    mocks.readPicture.mockResolvedValue(Buffer.from("webp"));
+    // A JPEG header: SOI, then SOF0 (height 600, width 800).
+    const jpeg = Buffer.alloc(40);
+    jpeg.set([0xff, 0xd8, 0xff, 0xc0, 0, 17, 8, 2, 88, 3, 32]);
+    mocks.readPicture.mockResolvedValue(jpeg);
     const found = await get({ format: "picture", id: "img2" });
     expect(found.status).toBe(200);
-    expect(found.headers.get("content-type")).toBe("image/webp");
+    expect(found.headers.get("content-type")).toBe("image/jpeg");
     expect(found.headers.get("cache-control")).toContain("immutable");
     expect(mocks.readPicture).toHaveBeenCalledWith("acme", "widget", v, "img2");
     expect((await get({ format: "picture", id: "../x" })).status).toBe(400);
+    mocks.readPicture.mockResolvedValue(Buffer.from("<svg onload=alert(1)>"));
+    expect((await get({ format: "picture", id: "img1" })).status).toBe(404);
     mocks.readPicture.mockResolvedValue(null);
     expect((await get({ format: "picture", id: "img1" })).status).toBe(404);
   });
