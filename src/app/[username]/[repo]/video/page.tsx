@@ -4,7 +4,11 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { SITE_URL } from "~/lib/site";
 import { videoSummaryTag } from "~/server/explainer/cache";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
-import { hasRender, readVideoArtifact } from "~/server/explainer/store";
+import {
+  hasRender,
+  readVideoArtifact,
+  renderStamp,
+} from "~/server/explainer/store";
 import VideoWatchPageClient from "./video-watch-page-client";
 
 type VideoWatchPageProps = {
@@ -27,7 +31,9 @@ function getVideoSummary(username: string, repo: string) {
       const video = await readVideoArtifact(username, repo);
       if (!video) return null;
       const [poster, mp4] = await Promise.all([
-        hasRender(video, "poster.jpg"),
+        // When the poster was made (or null): its URL carries it, so a
+        // remade poster is not hidden behind the old one's cache.
+        renderStamp(video, "poster.jpg"),
         hasRender(video, "landscape.mp4"),
       ]);
       return {
@@ -67,6 +73,9 @@ export async function generateMetadata({
           repo: summary.repo,
           format,
           v: summary.createdAt,
+          ...(format === "poster" && typeof summary.poster === "number"
+            ? { p: String(summary.poster) }
+            : {}),
         }).toString()}`
       : "";
   const image = summary?.poster

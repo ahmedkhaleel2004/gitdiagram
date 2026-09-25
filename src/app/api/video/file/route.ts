@@ -7,6 +7,7 @@ import {
 import { jsonErrorResponse } from "~/server/http/same-origin-json";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import {
+  hasRender,
   readRender,
   readVideoArtifact,
   renderDownloadUrl,
@@ -23,6 +24,12 @@ const querySchema = z.object({
   format: z.enum(["landscape", "vertical", "poster", "still"]),
   // The video's createdAt: renders live under their video's version folder.
   v: z.iso.datetime(),
+  // When a poster or still was made. A remake keeps the file's name, so this
+  // is what gives it a new URL.
+  p: z
+    .string()
+    .regex(/^\d{1,16}$/)
+    .optional(),
 });
 
 const FILES: Record<"landscape" | "vertical" | "poster" | "still", RenderName> =
@@ -46,31 +53,45 @@ export async function GET(request: Request): Promise<Response> {
     Object.fromEntries(url.searchParams.entries()),
   );
   if (!parsed.success) return jsonErrorResponse("Invalid file request.", 400);
-  const { username, repo, format, v } = parsed.data;
+  const { username, repo, format, v, p } = parsed.data;
   const artifact = await readVideoArtifact(username, repo);
   if (!artifact) return jsonErrorResponse("This video does not exist.", 404);
   const version = { ...artifact, createdAt: v };
   const name = FILES[format];
   const filename = `${artifact.meta.owner}-${artifact.meta.repo}-explained${format === "vertical" ? "-vertical" : ""}.mp4`;
+  const missing = () =>
+    jsonErrorResponse("This file has not been made yet.", 404);
 
-  if (format === "landscape" || format === "vertical") {
+  const mp4 = format === "landscape" || format === "vertical";
+  if (mp4) {
     const signed = await renderDownloadUrl(version, name, filename);
-    if (signed)
+    if (signed) {
+      // A signed URL for a file that is not there lands on R2's XML error.
+      if (!(await hasRender(version, name))) return missing();
       return new Response(null, {
         status: 302,
         headers: { Location: signed, "Cache-Control": "no-store" },
       });
+    }
   }
   const body = await readRender(version, name);
-  if (!body) return jsonErrorResponse("This file has not been made yet.", 404);
+  if (!body) return missing();
   return new Response(new Uint8Array(body), {
     headers: {
-      "Content-Type": name.endsWith(".jpg") ? "image/jpeg" : "video/mp4",
-      ...(name.endsWith(".jpg")
-        ? {}
-        : { "Content-Disposition": `attachment; filename="${filename}"` }),
-      // The URL names the video version, so its bytes never change.
-      "Cache-Control": "public, max-age=31536000, s-maxage=31536000, immutable",
+      "Content-Type": mp4 ? "video/mp4" : "image/jpeg",
+      ...(mp4
+        ? { "Content-Disposition": `attachment; filename="${filename}"` }
+        : {}),
+      "Cache-Control": mp4
+        ? // Only local storage streams MP4s, and its URL does not name the
+          // engine that drew the file.
+          "no-store"
+        : p
+          ? // The URL names the video version and when the poster was made,
+            // so its bytes never change.
+            "public, max-age=31536000, s-maxage=31536000, immutable"
+          : // Without a stamp a remade poster would reuse this URL.
+            "public, max-age=3600, s-maxage=86400",
       "X-Content-Type-Options": "nosniff",
     },
   });
