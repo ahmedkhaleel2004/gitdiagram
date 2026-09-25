@@ -5,14 +5,16 @@ import {
   readdir,
   readFile,
   rename,
+  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { ENGINE_VERSION } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
 import { readRequiredEnv } from "~/server/storage/config";
 import {
+  deleteObject,
   getBinaryObject,
   getJsonObject,
   hasObject,
@@ -26,7 +28,8 @@ import {
 // never collide with or overwrite a diagram artifact. Everything a video
 // references (narration clips, renders) sits under its own version folder, so a
 // regenerated video never mixes with the files of the one it replaced and every
-// file can be cached forever.
+// file can be cached forever. Once a newer version or engine replaces them, the
+// old files are deleted (see pruneVideoFiles).
 const segment = (value: string) =>
   encodeURIComponent(value.trim().toLowerCase());
 const prefix = (username: string, repo: string) =>
@@ -135,6 +138,7 @@ export async function writeVideo(artifact: VideoArtifact, clips: Buffer[]) {
     ),
   );
   await putJsonObject(bucket(), artifactKey, artifact);
+  await pruneVideoFiles(artifact);
 }
 
 export async function readRender(
@@ -171,13 +175,94 @@ export async function writeRender(
 ) {
   const { owner, repo } = artifact.meta;
   const key = versionedKey(owner, repo, artifact.createdAt, renderFile(name));
-  if (videoStoreBackend() === "local") return writeLocal(key, body);
-  await putBinaryObject(
-    bucket(),
-    key,
-    body,
-    name.endsWith(".mp4") ? "video/mp4" : "image/jpeg",
+  if (videoStoreBackend() === "local") await writeLocal(key, body);
+  else
+    await putBinaryObject(
+      bucket(),
+      key,
+      body,
+      name.endsWith(".mp4") ? "video/mp4" : "image/jpeg",
+    );
+  // A new MP4 replaces any drawn by an older engine.
+  if (name.endsWith(".mp4")) await pruneVideoFiles(artifact);
+}
+
+/**
+ * Files a video's current version can no longer reach: the folders of the
+ * versions it replaced (their narration and renders) and renders drawn by an
+ * older engine. Only older files are named, so a server still running an older
+ * release during a deploy never deletes a newer one's files.
+ */
+export function staleVideoKeys(
+  keys: string[],
+  artifact: VideoArtifact,
+): string[] {
+  const version = videoVersion(artifact.createdAt);
+  if (!version) return [];
+  const root = `${prefix(artifact.meta.owner, artifact.meta.repo)}/`;
+  const engine = Number(ENGINE_VERSION);
+  return keys.filter((key) => {
+    if (!key.startsWith(root)) return false;
+    const [folder, name, ...rest] = key.slice(root.length).split("/");
+    if (!name || rest.length > 0 || !/^\d+$/.test(folder!)) return false;
+    if (folder !== version) return Number(folder) < Number(version);
+    const drawn = /\.e(\d+)\.(mp4|jpg)$/.exec(name);
+    if (!drawn) return false;
+    // Posters no longer carry an engine version, so any that does is left over.
+    return drawn[2] === "jpg"
+      ? Number(drawn[1]) <= engine
+      : Number(drawn[1]) < engine;
+  });
+}
+
+async function listVideoKeys(root: string): Promise<string[]> {
+  if (videoStoreBackend() === "r2")
+    return (await listObjects(bucket(), root)).map((object) => object.key);
+  const entries = await readdir(localPath(root), { recursive: true }).catch(
+    () => [] as string[],
   );
+  return entries.map((entry) => `${root}${entry.split(sep).join("/")}`);
+}
+
+/**
+ * Delete the files a video no longer uses; resolves how many went. Never
+ * throws: a leftover file only costs storage.
+ */
+async function pruneVideoFiles(
+  artifact: VideoArtifact,
+): Promise<number> {
+  try {
+    const root = `${prefix(artifact.meta.owner, artifact.meta.repo)}/`;
+    const stale = staleVideoKeys(await listVideoKeys(root), artifact);
+    for (let index = 0; index < stale.length; index += 20)
+      await Promise.all(
+        stale
+          .slice(index, index + 20)
+          .map((key) =>
+            videoStoreBackend() === "r2"
+              ? deleteObject(bucket(), key)
+              : rm(localPath(key), { force: true }),
+          ),
+      );
+    if (stale.length > 0)
+      console.info(
+        JSON.stringify({
+          event: "video.pruned",
+          repository: artifact.repository,
+          files: stale.length,
+        }),
+      );
+    return stale.length;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "video.prune_failed",
+        repository: artifact.repository,
+        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+      }),
+    );
+    return 0;
+  }
 }
 
 /**
