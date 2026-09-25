@@ -8,6 +8,9 @@ import {
 import {
   ADMIN_PROTOCOL,
   FEED_EVENTS,
+  MAX_PATH,
+  PRESENCE_PROTOCOL,
+  SIGNED_OUT_EVERYWHERE,
   tokenFromProtocols,
 } from "../../../src/features/admin/presence-protocol";
 import type {
@@ -15,6 +18,7 @@ import type {
   LiveVisitor,
   PresenceMessage,
 } from "../../../src/features/admin/types";
+import { networkOf } from "../../../src/lib/network";
 import {
   ADMIN_STALE_MS,
   adminTokenExpiry,
@@ -24,8 +28,6 @@ import {
   hostOf,
   isFresh,
   jobKey,
-  MAX_PATH,
-  networkOf,
   Outbox,
   type Peak,
   rollPeak,
@@ -60,9 +62,10 @@ export interface Env {
 }
 
 type VisitorAttachment = { k: "visitor" } & LiveVisitor & {
-    /** Message allowance: window start and count (see countMessage). */
+    /** Message allowance: window start and counts (see countMessage). */
     mw?: number;
     mc?: number;
+    mf?: number;
   };
 /** A dashboard: when it connected, and when its token expires. */
 type AdminAttachment = { k: "admin"; t?: number; x?: number };
@@ -71,8 +74,16 @@ type Attachment = VisitorAttachment | AdminAttachment;
 const MAX_EVENT_BYTES = 4_000;
 // Sockets one network may hold, so a script cannot inflate the count cheaply.
 // Generous, because a whole office or campus can share one address.
+// Quiet sockets are closed first, so a network is never refused for tabs
+// that are long gone.
 const MAX_SOCKETS_PER_NETWORK = 64;
+// How often quiet sockets are swept: often while a dashboard watches, rarely
+// while only visitors are connected (so gone tabs still free their network's
+// places), never while nobody is.
 const SWEEP_MS = 30_000;
+const IDLE_SWEEP_MS = 5 * 60_000;
+// A dashboard's messages are its renewed tokens.
+const MAX_ADMIN_MESSAGE = 200;
 // A job with no end event (its server died) drops off after this long. An
 // end that arrives before its start is remembered as long, so the late start
 // does not bring the job back.
@@ -80,7 +91,6 @@ const JOB_TTL_MS = 15 * 60_000;
 const FLUSH_MS = 250;
 // Set only by the Worker below; the object is not reachable any other way.
 const EXPIRY_HEADER = "x-presence-admin-expiry";
-const PROTOCOL_HEADER = "x-presence-admin-protocol";
 
 export class Presence extends DurableObject<Env> {
   private roster: Map<string, { ws: WebSocket; visitor: LiveVisitor }> | null =
@@ -122,27 +132,30 @@ export class Presence extends DurableObject<Env> {
       x: Number(request.headers.get(EXPIRY_HEADER)) || undefined,
     } satisfies AdminAttachment);
     server.send(JSON.stringify(this.snapshot(now)));
-    await this.scheduleSweep();
+    await this.scheduleSweep(now);
     // A browser that offered subprotocols fails the handshake unless one is
-    // chosen; dashboards that sent the token in the URL offered none.
+    // chosen.
     return new Response(null, {
       status: 101,
       webSocket: client,
-      headers:
-        request.headers.get(PROTOCOL_HEADER) === "1"
-          ? { "Sec-WebSocket-Protocol": ADMIN_PROTOCOL }
-          : undefined,
+      headers: { "Sec-WebSocket-Protocol": ADMIN_PROTOCOL },
     });
   }
 
-  private acceptVisitor(request: Request, url: URL): Response {
+  private async acceptVisitor(request: Request, url: URL): Promise<Response> {
+    const now = Date.now();
     const network = `net:${networkOf(clip(request.headers.get("cf-connecting-ip"), 64))}`;
-    if (this.ctx.getWebSockets(network).length >= MAX_SOCKETS_PER_NETWORK)
+    const sockets = this.ctx.getWebSockets(network);
+    if (
+      sockets.length >= MAX_SOCKETS_PER_NETWORK &&
+      this.closeStale(sockets, now) >= MAX_SOCKETS_PER_NETWORK
+    )
       return new Response("Too many connections", { status: 429 });
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
-    const id = crypto.randomUUID().slice(0, 8);
+    // 64 random bits: ids are how the dashboard tells tabs apart.
+    const id = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
     const browser = url.searchParams.get("b") ?? "";
     const visible = url.searchParams.get("v") !== "0";
     const visitor: LiveVisitor = {
@@ -160,7 +173,7 @@ export class Presence extends DurableObject<Env> {
       la: coordinate(url.searchParams.get("gla"), 90),
       lo: coordinate(url.searchParams.get("glo"), 180),
       ref: clip(url.searchParams.get("r"), 100),
-      t: Date.now(),
+      t: now,
     };
     this.ctx.acceptWebSocket(server, ["visitor", network]);
     server.serializeAttachment({
@@ -171,48 +184,70 @@ export class Presence extends DurableObject<Env> {
     this.queue({ type: "join", visitor });
     if (visible) this.peakDirty = true;
     this.scheduleFlush();
+    await this.scheduleSweep(now);
     return new Response(null, { status: 101, webSocket: client });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-    if (typeof message !== "string" || message.length > MAX_PATH + 2) return;
     const state = ws.deserializeAttachment() as Attachment | null;
     if (state?.k === "admin") {
-      if (message.startsWith("t:")) await this.renewAdmin(ws, state, message);
+      if (
+        typeof message === "string" &&
+        message.length <= MAX_ADMIN_MESSAGE &&
+        message.startsWith("t:")
+      )
+        await this.renewAdmin(ws, state, message);
       return;
     }
     if (state?.k !== "visitor") return;
 
+    // Every message is counted before anything else, so none can keep
+    // waking the object for free; ones that change nothing are not held
+    // against the tab's allowance of changes (see countMessage).
     const now = Date.now();
-    const allowance = countMessage(state, now);
-    if (!allowance.allowed) {
-      this.drop(ws, 1008, "Too many messages");
-      return;
-    }
-    const next: VisitorAttachment = {
-      ...state,
-      mw: allowance.mw,
-      mc: allowance.mc,
-    };
+    const text =
+      typeof message === "string" && message.length <= MAX_PATH + 2
+        ? message
+        : null;
+    const next: VisitorAttachment = { ...state };
+    let understood = false;
     let update: Extract<PresenceMessage, { type: "update" }> | null = null;
-    if (message.startsWith("p:")) {
-      const p = message.slice(2) || "/";
+    if (text?.startsWith("p:")) {
+      understood = true;
+      const p = text.slice(2) || "/";
       if (p !== state.p) {
         next.p = p;
         update = { type: "update", id: state.id, p };
       }
-    } else if (message === "v:0" || message === "v:1") {
-      const v = message === "v:1" ? 1 : 0;
+    } else if (text === "v:0" || text === "v:1") {
+      understood = true;
+      const v = text === "v:1" ? 1 : 0;
       if (v !== state.v) {
         const h = v ? 0 : now;
         next.v = v;
         next.h = h;
         update = { type: "update", id: state.id, v, h };
-        // Only someone who was not already counted can raise the peak.
-        if (v && !isHere(state, now)) this.peakDirty = true;
       }
     }
+    const allowance = countMessage(state, now, !understood || update !== null);
+    if (!allowance.allowed) {
+      this.drop(ws, 1008, "Too many messages");
+      return;
+    }
+    if (typeof message !== "string") {
+      this.drop(ws, 1003, "Text only");
+      return;
+    }
+    if (text === null) {
+      this.drop(ws, 1009, "Too long");
+      return;
+    }
+    next.mw = allowance.mw;
+    next.mc = allowance.mc;
+    next.mf = allowance.mf;
     ws.serializeAttachment(next);
+    // Only someone who was not already counted can raise the peak.
+    if (update?.v === 1 && !isHere(state, now)) this.peakDirty = true;
     if (!update) return;
     const entry = this.roster?.get(state.id);
     if (entry)
@@ -230,10 +265,12 @@ export class Presence extends DurableObject<Env> {
   }
 
   /**
-   * While a dashboard is open, every 30 s: close sockets that went quiet
-   * (visitors and dashboards), close dashboards whose token ran out, forget
-   * orphaned jobs, and start a new day's peak at midnight UTC. Nothing needs
-   * this while nobody watches: counts and peaks only ever use live sockets.
+   * Every 30 s while a dashboard is open (and as a dashboard's token runs
+   * out), every 5 minutes while only visitors are connected: close sockets
+   * that went quiet (visitors and dashboards), close dashboards whose token
+   * ran out, forget orphaned jobs, and start a new day's peak at midnight
+   * UTC. Counts and peaks only ever use live sockets, so the slow sweep is
+   * there to give a network back the places its vanished tabs held.
    */
   async alarm() {
     const now = Date.now();
@@ -253,13 +290,44 @@ export class Presence extends DurableObject<Env> {
     sql.exec("DELETE FROM ended WHERE at < ?", now - JOB_TTL_MS);
     this.recordPeak(now);
     this.flush();
-    await this.scheduleSweep();
+    await this.scheduleSweep(now);
   }
 
-  private async scheduleSweep() {
-    if (!this.admins().length) return;
-    if ((await this.ctx.storage.getAlarm()) === null)
-      await this.ctx.storage.setAlarm(Date.now() + SWEEP_MS);
+  /** Sets the next sweep (see alarm), unless one is due sooner. */
+  private async scheduleSweep(now: number) {
+    let at: number | null = null;
+    const admins = this.admins().filter(
+      (ws) => ws.readyState === WebSocket.OPEN,
+    );
+    if (admins.length) {
+      at = now + SWEEP_MS;
+      for (const ws of admins) {
+        const state = ws.deserializeAttachment() as AdminAttachment | null;
+        if (state?.x && state.x < at) at = Math.max(state.x, now + 1_000);
+      }
+    } else if (this.ctx.getWebSockets("visitor").length) {
+      at = now + IDLE_SWEEP_MS;
+    }
+    if (at === null) return;
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || current > at) await this.ctx.storage.setAlarm(at);
+  }
+
+  /**
+   * Closes the quiet visitor sockets among `sockets`, and says how many are
+   * left. Their pings are answered without waking the object, so this is
+   * how a network whose tabs vanished (a laptop that slept) gets its places
+   * back as soon as it needs them.
+   */
+  private closeStale(sockets: WebSocket[], now: number): number {
+    let left = 0;
+    for (const ws of sockets) {
+      const state = ws.deserializeAttachment() as Attachment | null;
+      if (state?.k === "visitor" && !this.isLive(ws, state.t, STALE_MS, now))
+        this.drop(ws);
+      else left += 1;
+    }
+    return left;
   }
 
   /** A dashboard sends its newer token as it gets one, to stay connected. */
@@ -304,15 +372,20 @@ export class Presence extends DurableObject<Env> {
   }
 
   private async receiveEvent(request: Request): Promise<Response> {
-    const text = await request.text();
-    if (text.length > MAX_EVENT_BYTES)
-      return new Response("Too large", { status: 413 });
-    let event: Record<string, unknown>;
+    const tooLarge = () => new Response("Too large", { status: 413 });
+    if (Number(request.headers.get("content-length")) > MAX_EVENT_BYTES)
+      return tooLarge();
+    const bytes = await request.arrayBuffer();
+    if (bytes.byteLength > MAX_EVENT_BYTES) return tooLarge();
+    let parsed: unknown;
     try {
-      event = JSON.parse(text) as Record<string, unknown>;
+      parsed = JSON.parse(new TextDecoder().decode(bytes));
     } catch {
       return new Response("Bad JSON", { status: 400 });
     }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return new Response("Not an event", { status: 400 });
+    const event = parsed as Record<string, unknown>;
     if (typeof event.kind !== "string")
       return new Response("Missing kind", { status: 400 });
     const now = Date.now();
@@ -373,6 +446,11 @@ export class Presence extends DurableObject<Env> {
     });
     if (jobsChanged) this.queue({ type: "jobs", jobs: this.jobs(now) });
     this.scheduleFlush();
+    // Every dashboard's session just ended. 4001 makes a dashboard ask the
+    // site for a new token, which a signed-out browser no longer gets; the
+    // tokens' short life is the backstop if this event is lost.
+    if (event.kind === SIGNED_OUT_EVERYWHERE)
+      for (const ws of this.admins()) this.drop(ws, 4001, "Signed out");
     return Response.json({ ok: true });
   }
 
@@ -388,7 +466,7 @@ export class Presence extends DurableObject<Env> {
         if (ws.readyState !== WebSocket.OPEN) continue;
         const state = ws.deserializeAttachment() as Attachment | null;
         if (state?.k !== "visitor") continue;
-        const { k: _, mw: __, mc: ___, ...visitor } = state;
+        const { k: _, mw: __, mc: ___, mf: ____, ...visitor } = state;
         this.roster.set(state.id, { ws, visitor: normalizeVisitor(visitor) });
       }
     }
@@ -431,6 +509,7 @@ export class Presence extends DurableObject<Env> {
         JSON.stringify(peak),
       );
       this.queue({ type: "peak", peak });
+      this.scheduleFlush();
     }
     return peak;
   }
@@ -445,6 +524,7 @@ export class Presence extends DurableObject<Env> {
       .map((row) => ({ ...(JSON.parse(row.body) as object), id: row.id }));
     return {
       type: "snapshot",
+      protocol: PRESENCE_PROTOCOL,
       now,
       visitors: this.visitors(now),
       events: events as Extract<
@@ -461,19 +541,21 @@ export class Presence extends DurableObject<Env> {
     if (this.admins().length) this.outbox.push(message);
   }
 
+  /** In a moment: record a possible new peak, and push what is waiting. */
   private scheduleFlush() {
-    if (this.flushTimer === null)
-      this.flushTimer = setTimeout(() => this.flush(), FLUSH_MS);
+    if (this.flushTimer !== null) return;
+    if (!this.peakDirty && !this.admins().length) return;
+    this.flushTimer = setTimeout(() => this.flush(), FLUSH_MS);
   }
 
   /** Record a new peak if one may have happened, then push what is waiting. */
   private flush() {
-    if (this.flushTimer !== null) clearTimeout(this.flushTimer);
-    this.flushTimer = null;
     if (this.peakDirty) {
       this.peakDirty = false;
       this.recordPeak(Date.now());
     }
+    if (this.flushTimer !== null) clearTimeout(this.flushTimer);
+    this.flushTimer = null;
     const messages = this.outbox.drain();
     const admins = this.admins();
     if (!messages.length || !admins.length) return;
@@ -535,20 +617,19 @@ export default {
     }
 
     if (url.pathname === "/admin" && upgrade) {
-      // New dashboards send the token as a WebSocket subprotocol, so it stays
-      // out of request logs; dashboards from before that send it as ?t=.
-      const offered = tokenFromProtocols(
+      // Dashboards send the token as a WebSocket subprotocol, so it stays out
+      // of request logs.
+      const token = tokenFromProtocols(
         request.headers.get("sec-websocket-protocol"),
       );
-      const token = offered ?? url.searchParams.get("t") ?? "";
-      const expires = await adminTokenExpiry(token, secret, Date.now());
+      const expires = token
+        ? await adminTokenExpiry(token, secret, Date.now())
+        : null;
       if (expires === null) return new Response("Forbidden", { status: 403 });
       const forwarded = new URL(request.url);
       forwarded.search = "";
       const headers = new Headers(request.headers);
       headers.set(EXPIRY_HEADER, String(expires));
-      if (offered) headers.set(PROTOCOL_HEADER, "1");
-      else headers.delete(PROTOCOL_HEADER);
       return stub().fetch(new Request(forwarded, { method: "GET", headers }));
     }
 

@@ -1,16 +1,17 @@
 // The presence worker's pure parts: no Durable Object, no Cloudflare-only
-// APIs, so they run under plain Vitest (logic.test.ts).
+// APIs (logic.test.ts; the object itself is tested in index.test.ts).
 
 import type {
   LiveVisitor,
   PresenceMessage,
 } from "../../../src/features/admin/types";
 import {
+  DASHBOARD_TOKEN_PREFIX,
   MAX_DASHBOARD_TOKEN_MS,
+  MAX_JOB_ID,
   tokenExpiry,
 } from "../../../src/features/admin/presence-protocol";
 
-export const MAX_PATH = 300;
 // Tabs ping every 30 s (throttled to about once a minute in the background).
 // A socket silent for longer than this lost its network without closing.
 export const STALE_MS = 150_000;
@@ -18,18 +19,26 @@ export const STALE_MS = 150_000;
 // once a minute, so allow a little more than that.
 export const ADMIN_STALE_MS = 90_000;
 // A tab sends a message when it changes page or goes in or out of view. More
-// than this in a minute is a script, not a person; the socket is closed.
+// changes (or messages the worker does not understand) than this in a minute
+// is a script, not a person; the socket is closed. Messages that change
+// nothing are not held against a person, but every message wakes the object,
+// so there is a looser cap on all of them too.
 export const MESSAGE_WINDOW_MS = 60_000;
 export const MAX_MESSAGES_PER_WINDOW = 30;
-// Job ids longer than this are hashed, never cut, so two long ids that share
-// a beginning (the same repo rendered in two formats) stay two jobs.
-const MAX_JOB_ID = 120;
+export const MAX_FRAMES_PER_WINDOW = 120;
 
 export const clip = (value: string | null | undefined, max: number) =>
   (value ?? "").slice(0, max);
 
+/**
+ * The referring site's host. Tabs send the referrer's origin (older ones sent
+ * the whole address); a bare host is taken as it is.
+ */
 export function hostOf(value: string | null): string {
   if (!value) return "";
+  // Checked first: "host:8443" also reads as an address with scheme "host:".
+  if (/^[a-z0-9.-]+(?::\d{1,5})?$/i.test(value))
+    return value.toLowerCase().slice(0, 100);
   try {
     return new URL(value).host.slice(0, 100);
   } catch {
@@ -39,60 +48,41 @@ export function hostOf(value: string | null): string {
 
 export const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
-/** A coordinate from Cloudflare's geolocation ("51.50720"), or null. */
+/**
+ * A coordinate from Cloudflare's geolocation ("51.50720"), or null. Kept to
+ * one decimal (about 11 km), enough for the dashboard's 60 km priority areas
+ * and no closer to where someone is than that needs.
+ */
 export function coordinate(value: string | null, limit: number): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) && Math.abs(parsed) <= limit
-    ? Math.round(parsed * 1000) / 1000
+    ? Math.round(parsed * 10) / 10
     : null;
 }
 
 /**
- * The network an address belongs to. One IPv6 subscriber gets a whole /64 (or
- * more), so per-network limits keyed on the full address would let one person
- * use billions of keys. IPv4 addresses stay whole.
- */
-export function networkOf(ip: string): string {
-  const address = ip.trim().toLowerCase();
-  if (!address.includes(":")) return address;
-  const [head, tail] = address.split("::", 2);
-  const headGroups = head ? head.split(":").filter(Boolean) : [];
-  const tailGroups = tail ? tail.split(":").filter(Boolean) : [];
-  // An embedded IPv4 literal is not a plain hextet: keep the address whole.
-  if ([...headGroups, ...tailGroups].some((group) => group.includes(".")))
-    return address;
-  const groups =
-    tail === undefined
-      ? headGroups
-      : [
-          ...headGroups,
-          ...Array.from(
-            { length: Math.max(8 - headGroups.length - tailGroups.length, 0) },
-            () => "0",
-          ),
-          ...tailGroups,
-        ];
-  if (groups.length < 8) return address;
-  return `${groups
-    .slice(0, 4)
-    .map((group) => group.padStart(4, "0"))
-    .join(":")}::/64`;
-}
-
-/**
- * Counts one message against a socket's per-minute allowance. The window and
- * count live in the socket's attachment (`mw`, `mc`), so they survive the
- * object hibernating between messages.
+ * Counts one message against a socket's per-minute allowance: every message
+ * against the frame cap (`mf`), and ones that changed something or were not
+ * understood (`counted`) against the message cap (`mc`). The window and counts
+ * live in the socket's attachment (`mw`), so they survive the object
+ * hibernating between messages.
  */
 export function countMessage(
-  state: { mw?: number; mc?: number },
+  state: { mw?: number; mc?: number; mf?: number },
   now: number,
-): { mw: number; mc: number; allowed: boolean } {
+  counted = true,
+): { mw: number; mc: number; mf: number; allowed: boolean } {
   const fresh = state.mw === undefined || now - state.mw >= MESSAGE_WINDOW_MS;
   const mw = fresh ? now : state.mw!;
-  const mc = (fresh ? 0 : (state.mc ?? 0)) + 1;
-  return { mw, mc, allowed: mc <= MAX_MESSAGES_PER_WINDOW };
+  const mc = (fresh ? 0 : (state.mc ?? 0)) + (counted ? 1 : 0);
+  const mf = (fresh ? 0 : (state.mf ?? 0)) + 1;
+  return {
+    mw,
+    mc,
+    mf,
+    allowed: mc <= MAX_MESSAGES_PER_WINDOW && mf <= MAX_FRAMES_PER_WINDOW,
+  };
 }
 
 /**
@@ -274,7 +264,10 @@ export async function adminTokenExpiry(
   if (expires === null) return null;
   if (expires <= now || expires > now + MAX_DASHBOARD_TOKEN_MS) return null;
   const [expiry = "", signature = ""] = token.split(".");
-  return sameText(signature, await hmacHex(secret, `presence-admin:${expiry}`))
+  return sameText(
+    signature,
+    await hmacHex(secret, `${DASHBOARD_TOKEN_PREFIX}${expiry}`),
+  )
     ? expires
     : null;
 }

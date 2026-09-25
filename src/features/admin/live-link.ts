@@ -1,5 +1,9 @@
 import { normalizeVisitor } from "./presence";
-import { FEED_EVENTS, tokenExpiry } from "./presence-protocol";
+import {
+  FEED_EVENTS,
+  PRESENCE_PROTOCOL,
+  tokenExpiry,
+} from "./presence-protocol";
 import type {
   LiveFeedEvent,
   LiveJob,
@@ -24,6 +28,11 @@ export interface LiveSite {
   offset: number;
   /** When the last message that changed anything arrived (operator's clock). */
   at: number;
+  /**
+   * The worker's PRESENCE_PROTOCOL, from the last snapshot: null before one
+   * arrives, 0 from a worker older than protocol versions.
+   */
+  protocol: number | null;
 }
 
 export const EMPTY_SITE: LiveSite = {
@@ -33,7 +42,16 @@ export const EMPTY_SITE: LiveSite = {
   peak: null,
   offset: 0,
   at: 0,
+  protocol: null,
 };
+
+/**
+ * Whether the worker speaks another version of the protocol than this site:
+ * one of the two was deployed without the other.
+ */
+export function isProtocolMismatch(site: Pick<LiveSite, "protocol">): boolean {
+  return site.protocol !== null && site.protocol !== PRESENCE_PROTOCOL;
+}
 
 /** A message from the worker, and when it arrived on the operator's clock. */
 export interface Received {
@@ -75,6 +93,7 @@ function apply(site: LiveSite, { message, at }: Received): LiveSite {
         peak: { ...message.peak, at: local(message.peak.at, offset) },
         offset,
         at,
+        protocol: typeof message.protocol === "number" ? message.protocol : 0,
       };
     }
     case "join":

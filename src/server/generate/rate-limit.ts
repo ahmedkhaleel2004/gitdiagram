@@ -1,3 +1,4 @@
+import { networkOf } from "~/lib/network";
 import { upstashEval } from "~/server/storage/upstash";
 
 const DEFAULT_MAX_GENERATIONS = 8;
@@ -97,45 +98,11 @@ function getCurrentRateLimitWindow(windowSeconds: number): {
 }
 
 /**
- * Collapses an IPv6 address to its /64 prefix.
- *
- * A residential IPv6 allocation is a whole /64 or larger, so keying the limiter
- * on the full /128 lets one client occupy an effectively unlimited number of
- * buckets. IPv4 (and IPv4-mapped) addresses are returned unchanged.
+ * The limiter's bucket for an address: an IPv6 address's /64, IPv4 (and
+ * IPv4-mapped) addresses whole. See networkOf.
  */
 export function toRateLimitBucket(clientIp: string): string {
-  if (!clientIp.includes(":")) {
-    return clientIp;
-  }
-
-  const [head, tail] = clientIp.split("::", 2);
-  const headGroups = head ? head.split(":").filter(Boolean) : [];
-  const tailGroups = tail ? tail.split(":").filter(Boolean) : [];
-  // An embedded IPv4 literal is not a plain hextet, so leave the address whole
-  // rather than risk mangling it into a different prefix.
-  if ([...headGroups, ...tailGroups].some((group) => group.includes("."))) {
-    return clientIp;
-  }
-
-  const groups =
-    tail === undefined
-      ? headGroups
-      : [
-          ...headGroups,
-          ...Array.from(
-            { length: Math.max(8 - headGroups.length - tailGroups.length, 0) },
-            () => "0",
-          ),
-          ...tailGroups,
-        ];
-  if (groups.length < 8) {
-    return clientIp;
-  }
-
-  return `${groups
-    .slice(0, 4)
-    .map((group) => group.padStart(4, "0"))
-    .join(":")}::/64`;
+  return networkOf(clientIp);
 }
 
 export function buildGenerationRateLimitKey(

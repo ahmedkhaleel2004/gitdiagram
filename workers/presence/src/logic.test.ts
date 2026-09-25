@@ -9,11 +9,12 @@ import {
   adminTokenExpiry,
   coordinate,
   countMessage,
+  hostOf,
   isFresh,
   jobKey,
+  MAX_FRAMES_PER_WINDOW,
   MAX_MESSAGES_PER_WINDOW,
   MESSAGE_WINDOW_MS,
-  networkOf,
   Outbox,
   rollPeak,
   sameText,
@@ -61,22 +62,6 @@ async function siteToken(expires: number, secret = SECRET): Promise<string> {
   return `${expires}.${hex}`;
 }
 
-describe("networks", () => {
-  it("groups an IPv6 subscriber's whole /64", () => {
-    expect(networkOf("2001:db8:1:2:aaaa::1")).toBe("2001:0db8:0001:0002::/64");
-    expect(networkOf("2001:db8:1:2:ffff:ffff:ffff:ffff")).toBe(
-      "2001:0db8:0001:0002::/64",
-    );
-    expect(networkOf("2001:DB8:1:3::1")).toBe("2001:0db8:0001:0003::/64");
-  });
-
-  it("keeps IPv4 and odd addresses whole", () => {
-    expect(networkOf("203.0.113.9")).toBe("203.0.113.9");
-    expect(networkOf("::ffff:203.0.113.9")).toBe("::ffff:203.0.113.9");
-    expect(networkOf("")).toBe("");
-  });
-});
-
 describe("message allowance", () => {
   it("closes a socket that sends more than a person would", () => {
     let state: { mw?: number; mc?: number } = {};
@@ -90,7 +75,39 @@ describe("message allowance", () => {
     expect(countMessage(state, NOW + MESSAGE_WINDOW_MS + 1)).toMatchObject({
       allowed: true,
       mc: 1,
+      mf: 1,
     });
+  });
+
+  it("does not hold messages that change nothing against a person, up to a point", () => {
+    let state: { mw?: number; mc?: number; mf?: number } = {};
+    for (let sent = 1; sent <= MAX_FRAMES_PER_WINDOW; sent++) {
+      const result = countMessage(state, NOW + sent, false);
+      expect(result.allowed).toBe(true);
+      state = result;
+    }
+    expect(state).toMatchObject({ mc: 0, mf: MAX_FRAMES_PER_WINDOW });
+    expect(countMessage(state, NOW + 200, false).allowed).toBe(false);
+  });
+
+  it("reads allowances written before frames were counted", () => {
+    expect(countMessage({ mw: NOW, mc: 3 }, NOW + 1)).toMatchObject({
+      mc: 4,
+      mf: 1,
+      allowed: true,
+    });
+  });
+});
+
+describe("referrers", () => {
+  it("keeps only the referring host, from an address or a bare host", () => {
+    expect(hostOf("https://news.example.com/item?id=1")).toBe(
+      "news.example.com",
+    );
+    expect(hostOf("https://news.example.com")).toBe("news.example.com");
+    expect(hostOf("News.Example.com:8443")).toBe("news.example.com:8443");
+    expect(hostOf("not a host")).toBe("");
+    expect(hostOf(null)).toBe("");
   });
 });
 
@@ -225,8 +242,9 @@ describe("dashboard tokens", () => {
 
 describe("coordinates", () => {
   it("reads Cloudflare's coordinates and rejects nonsense", () => {
-    expect(coordinate("51.50720", 90)).toBe(51.507);
-    expect(coordinate("-0.12760", 180)).toBe(-0.128);
+    expect(coordinate("51.50720", 90)).toBe(51.5);
+    expect(coordinate("-0.12760", 180)).toBe(-0.1);
+    expect(coordinate("48.85660", 90)).toBe(48.9);
     expect(coordinate("", 90)).toBeNull();
     expect(coordinate("abc", 90)).toBeNull();
     expect(coordinate("123", 90)).toBeNull();

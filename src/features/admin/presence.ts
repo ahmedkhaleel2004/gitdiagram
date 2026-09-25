@@ -79,11 +79,15 @@ export function normalizeVisitor(
   };
 }
 
+// Formatters by time zone name. Visitors send any name they like, so the
+// cache starts over once it holds more than the world has zones.
 const formats = new Map<string, Intl.DateTimeFormat | null>();
+const MAX_FORMATS = 700;
 
 /** A time zone's offset from UTC at a moment, in minutes; null if unknown. */
 export function offsetMinutes(timeZone: string, at: Date): number | null {
   if (!formats.has(timeZone)) {
+    if (formats.size >= MAX_FORMATS) formats.clear();
     try {
       formats.set(
         timeZone,

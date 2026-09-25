@@ -3,17 +3,23 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
+import { reconnectDelay } from "~/features/admin/live-link";
+import { MAX_PATH } from "~/features/admin/presence-protocol";
+
 // Each open tab holds one small WebSocket to the presence worker
 // (workers/presence), so the operator's dashboard counts exactly who is on the
 // site right now. It sends only the path, whether the tab is in view, desktop
-// or mobile, the referring site, the browser's time zone setting, and a random
-// id this browser keeps so several tabs count as one person.
+// or mobile, the referring site (its origin: never the page or query it came
+// from), the browser's time zone setting, and a random id this browser keeps
+// so several tabs count as one person.
 //
 // It opens once the page is idle and has been in view (a tab opened in the
 // background never counts, so it waits until someone looks at it), retries
 // gently with random spacing (so a worker deploy does not bring every tab
-// back at once), skips automated browsers, and closes on pagehide so the
-// back/forward cache still works.
+// back at once) and stops after a few failures until the tab is used again,
+// skips automated browsers, and closes on pagehide so the back/forward cache
+// still works. It only reports a page or visibility that changed: the worker
+// closes a tab that sends more than a person would.
 //
 // Paths are sent as they are, repository pages included. Whether a
 // repository is private is not known here cheaply (the GitHub token is
@@ -38,6 +44,17 @@ function isMobile(): boolean {
 }
 
 const skipped = (path: string) => path.startsWith("/admin");
+const clipPath = (path: string) => path.slice(0, MAX_PATH);
+
+/** Where the visitor came from, as an origin ("https://news.example"), or "". */
+function referrerOrigin(): string {
+  try {
+    const origin = new URL(document.referrer).origin;
+    return origin === "null" ? "" : origin;
+  } catch {
+    return "";
+  }
+}
 
 let memoryId: string | null = null;
 
@@ -74,8 +91,8 @@ export function LivePresence() {
   const pathname = usePathname();
   const path = useRef(pathname);
   const socket = useRef<WebSocket | null>(null);
-  // Set by the effect below: open now if we may, or report a new page.
-  const control = useRef<{ open: () => void; revive: () => void } | null>(null);
+  // Set by the effect below: report a new page, or open now if we may.
+  const control = useRef<{ navigated: () => void } | null>(null);
 
   useEffect(() => {
     if (!PRESENCE_URL || navigator.webdriver) return;
@@ -83,22 +100,39 @@ export function LivePresence() {
     let ready = false; // the page went idle once
     let failures = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
+    // What the worker was last told about this tab, so nothing is sent twice.
+    let told = { p: "", v: "" };
 
     const visible = () => (document.visibilityState === "visible" ? "1" : "0");
     const send = (message: string) => {
       if (socket.current?.readyState === WebSocket.OPEN)
         socket.current.send(message);
     };
+    /** Tells the worker the page and visibility, where either changed. */
+    const report = () => {
+      if (socket.current?.readyState !== WebSocket.OPEN) return;
+      const p = clipPath(path.current);
+      if (p !== told.p && !skipped(p)) {
+        send(`p:${p}`);
+        told.p = p;
+      }
+      const v = visible();
+      if (v !== told.v) {
+        send(`v:${v}`);
+        told.v = v;
+      }
+    };
 
     const open = () => {
       clearTimeout(retry);
+      retry = undefined;
       if (stopped || !ready || socket.current || skipped(path.current)) return;
       if (visible() !== "1") return; // the visibility handler opens it later
-      const sent = { p: path.current, v: visible() };
+      told = { p: clipPath(path.current), v: visible() };
       const params = new URLSearchParams({
-        ...sent,
+        ...told,
         d: isMobile() ? "m" : "d",
-        r: document.referrer,
+        r: referrerOrigin(),
         b: browserId(),
         z: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "",
       });
@@ -106,10 +140,7 @@ export function LivePresence() {
       socket.current = ws;
       ws.onopen = () => {
         failures = 0;
-        // Pages and visibility that changed while connecting.
-        if (path.current !== sent.p && !skipped(path.current))
-          ws.send(`p:${path.current}`);
-        if (visible() !== sent.v) ws.send(`v:${visible()}`);
+        report(); // pages and visibility that changed while connecting
       };
       ws.onclose = (event) => {
         if (socket.current === ws) socket.current = null;
@@ -119,29 +150,42 @@ export function LivePresence() {
         if (event.code === 1000 && visible() !== "1") return;
         failures += 1;
         if (failures > MAX_FAILURES) return;
-        const wait = Math.min(60_000, 2_000 * 2 ** failures);
-        retry = setTimeout(open, wait * (0.5 + Math.random()));
+        retry = setTimeout(open, reconnectDelay(failures));
       };
     };
 
+    /** Closes the socket on purpose: not a failure, and nothing to retry. */
+    const close = () => {
+      clearTimeout(retry);
+      retry = undefined;
+      const ws = socket.current;
+      socket.current = null;
+      if (!ws) return;
+      ws.onclose = null;
+      ws.close(1000);
+    };
+
+    // Someone is using the tab again. Start over if retries ran out; if one
+    // is already waiting, let it run rather than reconnect at once (during
+    // an outage every page change would otherwise be another attempt).
+    const revive = () => {
+      if (socket.current) return;
+      if (failures > MAX_FAILURES) failures = 0;
+      else if (retry !== undefined) return;
+      open();
+    };
+
     control.current = {
-      open,
-      // Someone is using the tab again: start over if retries ran out.
-      revive() {
-        if (socket.current) return;
-        failures = 0;
-        open();
+      navigated() {
+        if (!socket.current) revive();
+        else if (skipped(path.current)) close();
+        else report(); // still connecting: it reports once it opens
       },
     };
 
-    const close = () => {
-      clearTimeout(retry);
-      socket.current?.close(1000);
-      socket.current = null;
-    };
     const onVisibility = () => {
-      if (socket.current) send(`v:${visible()}`);
-      else if (visible() === "1") control.current?.revive();
+      if (socket.current) report();
+      else if (visible() === "1") revive();
     };
     const onPageHide = () => {
       stopped = true;
@@ -177,18 +221,7 @@ export function LivePresence() {
 
   useEffect(() => {
     path.current = pathname;
-    const ws = socket.current;
-    if (!ws) {
-      control.current?.revive();
-      return;
-    }
-    if (skipped(pathname)) {
-      ws.close(1000);
-      socket.current = null;
-    } else if (ws.readyState === WebSocket.OPEN) {
-      ws.send(`p:${pathname}`);
-    }
-    // Still connecting: the socket sends the new path once it opens.
+    control.current?.navigated();
   }, [pathname]);
 
   return null;

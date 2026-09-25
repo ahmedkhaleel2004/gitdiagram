@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   hasClockMismatch,
@@ -102,6 +102,21 @@ describe("clock/IP mismatch", () => {
     expect(offsetMinutes("Asia/Kolkata", summer)).toBe(330);
     expect(offsetMinutes("Etc/UTC", summer)).toBe(0);
     expect(offsetMinutes("Not/AZone", summer)).toBeNull();
+  });
+
+  it("does not remember every made-up zone name it is sent", () => {
+    const summer = new Date("2026-07-01T12:00:00Z");
+    offsetMinutes("Europe/Paris", summer);
+    const created = vi.spyOn(Intl, "DateTimeFormat");
+    offsetMinutes("Europe/Paris", summer);
+    expect(created).not.toHaveBeenCalled();
+    for (let index = 0; index < 1_000; index++)
+      expect(offsetMinutes(`Fake/Zone${index}`, summer)).toBeNull();
+    // The cache started over along the way, so Paris is looked up afresh.
+    created.mockClear();
+    expect(offsetMinutes("Europe/Paris", summer)).toBe(120);
+    expect(created).toHaveBeenCalledTimes(1);
+    created.mockRestore();
   });
 
   it("flags a browser clock that disagrees with its IP address", () => {

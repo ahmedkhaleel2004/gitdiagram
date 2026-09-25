@@ -1,10 +1,16 @@
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
-// Only the worker's pure parts (src/logic.ts) are tested here; the Durable
-// Object itself needs the Workers runtime.
+// Tests run in the Workers runtime (Miniflare), against the Worker and its
+// Durable Object as wrangler.jsonc defines them, with a test secret.
 export default defineConfig({
+  plugins: [
+    cloudflareTest({
+      wrangler: { configPath: "./wrangler.jsonc" },
+      miniflare: { bindings: { PRESENCE_SECRET: "s".repeat(40) } },
+    }),
+  ],
   test: {
-    environment: "node",
     include: ["src/**/*.test.ts"],
   },
 });
