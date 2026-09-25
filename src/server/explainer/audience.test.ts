@@ -70,6 +70,10 @@ describe("who may make new videos", () => {
     expect(uk("51.7520", "-1.2577")).toBe(false); // Oxford
     expect(uk("53.4808", "-2.2426")).toBe(false); // Manchester
     expect(uk("", "", "London")).toBe(true);
+    expect(uk("", "", "Greater%20London")).toBe(true);
+    // A malformed city (possible off Vercel) is read as it is, not a crash.
+    expect(uk("", "", "London%E0%A4%A")).toBe(true);
+    expect(uk("", "", "%zz")).toBe(false);
   });
 
   it("takes Paris and the area around it", () => {

@@ -61,8 +61,16 @@ export function isInVideoRegion(request: Request): boolean {
   const lon = Number.parseFloat(headers.get("x-vercel-ip-longitude") ?? "");
   if (Number.isFinite(lat) && Number.isFinite(lon))
     return distanceKm({ lat, lon }, metro) <= metro.km;
-  const city = decodeURIComponent(headers.get("x-vercel-ip-city") ?? "");
-  return metro.city.test(city);
+  return metro.city.test(safeDecode(headers.get("x-vercel-ip-city") ?? ""));
+}
+
+/** Vercel percent-encodes the city; off Vercel the header may be anything. */
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 /**
