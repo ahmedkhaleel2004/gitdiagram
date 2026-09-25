@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { writeControls } from "~/server/admin/controls";
+import {
+  ControlsUnconfirmedError,
+  writeControls,
+} from "~/server/admin/controls";
 import { emitLiveEvent } from "~/server/admin/live-events";
 import { isAdminRequest } from "~/server/admin/operator";
 import {
@@ -41,12 +44,22 @@ export async function POST(request: Request): Promise<Response> {
       { headers: NO_STORE_RESPONSE_HEADERS },
     );
   } catch (error) {
+    const unconfirmed = error instanceof ControlsUnconfirmedError;
     console.error(
       JSON.stringify({
-        event: "admin.controls.write_failed",
+        event: unconfirmed
+          ? "admin.controls.confirm_failed"
+          : "admin.controls.write_failed",
         error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
       }),
     );
+    if (unconfirmed) {
+      void emitLiveEvent({ kind: "control.changed", changes: parsed.data });
+      return jsonErrorResponse(
+        "The change saved, but the settings could not be read back. Reload to check them.",
+        503,
+      );
+    }
     return jsonErrorResponse("The change did not save. Try again.", 503);
   }
 }
