@@ -12,6 +12,10 @@ export const sponsorFits = [
   "Observability, logging, and API monitoring",
   "Cloud hosting, databases, CI, and developer infrastructure",
 ];
+// Every scheduled campaign has a creative, so each one is a real advertiser.
+export const advertisers = Object.values(sponsorCreatives).map(
+  ({ name, logo }) => ({ name, logo }),
+);
 export type SponsorMetric = { label: string; value: string; detail: string };
 export type SponsorSurface = {
   name: string;

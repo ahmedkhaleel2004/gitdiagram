@@ -3,6 +3,7 @@ import Image from "next/image";
 import { SponsorEmailActions } from "./sponsor-email-actions";
 import { SponsorPlacementPreview } from "./sponsor-placement-preview";
 import {
+  advertisers,
   SPONSOR_EMAIL,
   SPONSOR_EMAIL_ADDRESS,
   SPONSOR_PRICE,
@@ -69,6 +70,43 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
             See the placements
             <ArrowDown aria-hidden="true" />
           </a>
+        </div>
+        <div className={styles.advertisers}>
+          <p id="advertisers-label">Advertisers include</p>
+          <ul aria-labelledby="advertisers-label">
+            {advertisers.map(({ name, logo }) => {
+              // Same area for every logo, so wide wordmarks don't dominate.
+              const width = Math.round(
+                Math.sqrt((1700 * logo.width) / logo.height),
+              );
+              const size = {
+                width,
+                height: Math.round((width * logo.height) / logo.width),
+              };
+              return (
+                <li key={name}>
+                  <Image
+                    src={logo.src}
+                    alt={name}
+                    {...size}
+                    className={
+                      logo.darkSrc ? styles.advertiserLogoLight : undefined
+                    }
+                    unoptimized
+                  />
+                  {logo.darkSrc && (
+                    <Image
+                      src={logo.darkSrc}
+                      alt={name}
+                      {...size}
+                      className={styles.advertiserLogoDark}
+                      unoptimized
+                    />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       </section>
 

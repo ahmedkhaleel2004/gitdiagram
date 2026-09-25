@@ -56,7 +56,8 @@ describe("advertise availability", () => {
       />,
     );
     expect(screen.getByText("October 20 campaign booked by")).toBeTruthy();
-    expect(screen.getAllByAltText("CodeRabbit")).toHaveLength(2);
+    // Light and dark logos, in the booking note and the advertiser row.
+    expect(screen.getAllByAltText("CodeRabbit")).toHaveLength(4);
     view.rerender(
       <SponsorPageContent
         content={createSponsorContent(
@@ -67,5 +68,8 @@ describe("advertise availability", () => {
     );
     expect(screen.queryByText(/campaign booked by/)).toBeNull();
     expect(screen.getByText("Available now.")).toBeTruthy();
+    // Past advertisers stay listed after their runs end.
+    expect(screen.getAllByAltText("CodeRabbit")).toHaveLength(2);
+    expect(screen.getAllByAltText("Sent")).toHaveLength(2);
   });
 });

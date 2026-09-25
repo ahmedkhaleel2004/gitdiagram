@@ -114,6 +114,37 @@
     }
   }
 }
+.advertisers {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  margin-top: 44px;
+}
+.advertisers > p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.advertisers > ul {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+.advertisers img {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.advertiserLogoDark {
+  display: none;
+}
+:global(.dark) .advertiserLogoLight {
+  display: none;
+}
+:global(.dark) .advertiserLogoDark {
+  display: block;
+}
 .textLink {
   display: inline-flex;
   align-items: center;
@@ -476,6 +507,10 @@
   }
   .heroActions > .contactActions {
     justify-content: flex-start;
+  }
+  .advertisers {
+    justify-content: flex-start;
+    margin-top: 32px;
   }
   .contactPrimary,
   .contactCopy {
