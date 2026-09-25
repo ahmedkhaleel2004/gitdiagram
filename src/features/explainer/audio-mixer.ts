@@ -1,4 +1,4 @@
-import { MASTER_GAIN, SFX_PEAK_DB, sfxGain } from "./engine";
+import { ENGINE_VERSION, MASTER_GAIN, SFX_PEAK_DB, sfxGain } from "./engine";
 import { stretchChannels } from "./time-stretch";
 import type { StretchResponse } from "./time-stretch.worker";
 import type { VideoArtifact } from "./types";
@@ -191,7 +191,12 @@ export class ExplainerAudio {
       Promise.all(
         names.map(
           async (name) =>
-            [name, await decode(`${ENGINE}/assets/sfx/${name}.mp3`)] as const,
+            [
+              name,
+              await decode(
+                `${ENGINE}/assets/sfx/${name}.mp3?v=${ENGINE_VERSION}`,
+              ),
+            ] as const,
         ),
       ),
     ]);

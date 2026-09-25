@@ -4,7 +4,12 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SfxCue } from "~/features/explainer/audio-mixer";
-import { MASTER_GAIN, SFX_PEAK_DB, sfxGain } from "~/features/explainer/engine";
+import {
+  ENGINE_VERSION,
+  MASTER_GAIN,
+  SFX_PEAK_DB,
+  sfxGain,
+} from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
 import { runProcess } from "~/server/child-process";
 import { deploymentHeaders } from "./render-origin";
@@ -160,7 +165,7 @@ async function mixSoundtrackInto(
   for (const name of new Set(sfx.map((cue) => cue.name))) {
     if (!isKnownEffect(name)) continue;
     const response = await fetch(
-      `${origin}/video-engine/assets/sfx/${name}.mp3`,
+      `${origin}/video-engine/assets/sfx/${name}.mp3?v=${ENGINE_VERSION}`,
       { headers: deploymentHeaders(), signal },
     );
     if (!response.ok) continue;

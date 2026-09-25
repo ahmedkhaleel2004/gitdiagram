@@ -8,6 +8,7 @@ vi.mock("./store", () => ({ readVoiceClip: mocks.readVoiceClip }));
 
 import ffmpegStatic from "ffmpeg-static";
 import type { SfxCue } from "~/features/explainer/audio-mixer";
+import { ENGINE_VERSION } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
 import { mixSoundtrack, soundtrackGraph, untilAborted } from "./ffmpeg";
 
@@ -107,8 +108,8 @@ describe("mixing the soundtrack", () => {
     });
     expect(out.byteLength).toBeGreaterThan(1000);
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
-      "https://example.com/video-engine/assets/sfx/pop.mp3",
-      "https://example.com/video-engine/assets/sfx/tick.mp3",
+      `https://example.com/video-engine/assets/sfx/pop.mp3?v=${ENGINE_VERSION}`,
+      `https://example.com/video-engine/assets/sfx/tick.mp3?v=${ENGINE_VERSION}`,
     ]);
   });
 
