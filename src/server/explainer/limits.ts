@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { readAdmissionControls, readControls } from "~/server/admin/controls";
-import { isAdminRequest, isOperatorToken } from "~/server/admin/operator";
+import { isOperatorToken, verifyAdminRequest } from "~/server/admin/operator";
 import { toRateLimitBucket } from "~/server/generate/rate-limit";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
@@ -62,16 +62,16 @@ const renderLimits = (): Limits => ({
  * The operator skips limits and may regenerate: by the token
  * (VIDEO_ADMIN_TOKEN) as a Bearer, or signed in to /admin in this browser.
  */
-export function isVideoAdmin(request: Request): boolean {
+export async function isVideoAdmin(request: Request): Promise<boolean> {
   const header = request.headers.get("authorization") ?? "";
   if (header.startsWith("Bearer "))
     return isOperatorToken(header.slice("Bearer ".length));
-  return isAdminRequest(request);
+  return verifyAdminRequest(request);
 }
 
 /** Limits guard the production budget; locally every caller is trusted. */
-export function isTrustedVideoCaller(request: Request): boolean {
-  return process.env.NODE_ENV !== "production" || isVideoAdmin(request);
+export async function isTrustedVideoCaller(request: Request): Promise<boolean> {
+  return process.env.NODE_ENV !== "production" || (await isVideoAdmin(request));
 }
 
 const today = () => Math.floor(Date.now() / 1000 / DAY_SECONDS);

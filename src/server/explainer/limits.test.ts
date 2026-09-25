@@ -78,21 +78,21 @@ afterEach(() => {
 });
 
 describe("explainer video limits", () => {
-  it("recognizes the operator token and nothing else", () => {
-    expect(isVideoAdmin(request(`Bearer ${TOKEN}`))).toBe(true);
-    expect(isVideoAdmin(request(`Bearer ${TOKEN}x`))).toBe(false);
-    expect(isVideoAdmin(request(TOKEN))).toBe(false);
-    expect(isVideoAdmin(request())).toBe(false);
+  it("recognizes the operator token and nothing else", async () => {
+    expect(await isVideoAdmin(request(`Bearer ${TOKEN}`))).toBe(true);
+    expect(await isVideoAdmin(request(`Bearer ${TOKEN}x`))).toBe(false);
+    expect(await isVideoAdmin(request(TOKEN))).toBe(false);
+    expect(await isVideoAdmin(request())).toBe(false);
     process.env.VIDEO_ADMIN_TOKEN = "short";
-    expect(isVideoAdmin(request("Bearer short"))).toBe(false);
+    expect(await isVideoAdmin(request("Bearer short"))).toBe(false);
   });
 
-  it("only trusts the public in local development", () => {
+  it("only trusts the public in local development", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    expect(isTrustedVideoCaller(request())).toBe(false);
-    expect(isTrustedVideoCaller(request(`Bearer ${TOKEN}`))).toBe(true);
+    expect(await isTrustedVideoCaller(request())).toBe(false);
+    expect(await isTrustedVideoCaller(request(`Bearer ${TOKEN}`))).toBe(true);
     vi.stubEnv("NODE_ENV", "development");
-    expect(isTrustedVideoCaller(request())).toBe(true);
+    expect(await isTrustedVideoCaller(request())).toBe(true);
     vi.unstubAllEnvs();
   });
 

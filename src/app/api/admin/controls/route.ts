@@ -5,7 +5,7 @@ import {
   writeControls,
 } from "~/server/admin/controls";
 import { emitLiveEvent } from "~/server/admin/live-events";
-import { isAdminRequest } from "~/server/admin/operator";
+import { verifyAdminRequest } from "~/server/admin/operator";
 import {
   jsonErrorResponse,
   NO_STORE_RESPONSE_HEADERS,
@@ -29,7 +29,8 @@ const requestSchema = z
 
 /** Flip a live switch. Every server instance picks it up within a second. */
 export async function POST(request: Request): Promise<Response> {
-  if (!isAdminRequest(request)) return jsonErrorResponse("Sign in first.", 401);
+  if (!(await verifyAdminRequest(request)))
+    return jsonErrorResponse("Sign in first.", 401);
   const parsed = await parseSameOriginJsonRequest(request, {
     schema: requestSchema,
     maxBytes: 1024,

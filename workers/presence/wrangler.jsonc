@@ -15,8 +15,8 @@
     {
       "name": "CONNECTS",
       "namespace_id": "4711",
-      "simple": { "limit": 60, "period": 60 }
-    }
+      "simple": { "limit": 60, "period": 60 },
+    },
   ],
   "durable_objects": {
     "bindings": [{ "name": "PRESENCE", "class_name": "Presence" }],

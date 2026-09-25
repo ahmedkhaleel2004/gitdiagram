@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { emitLiveEvent } from "~/server/admin/live-events";
-import { isAdminRequest } from "~/server/admin/operator";
+import { verifyAdminRequest } from "~/server/admin/operator";
 import { resetUsageToday } from "~/server/explainer/limits";
 import {
   jsonErrorResponse,
@@ -16,7 +16,8 @@ const requestSchema = z.strictObject({ target: z.enum(["videos", "renders"]) });
 
 /** Start today's video or MP4 counts over, for everyone. */
 export async function POST(request: Request): Promise<Response> {
-  if (!isAdminRequest(request)) return jsonErrorResponse("Sign in first.", 401);
+  if (!(await verifyAdminRequest(request)))
+    return jsonErrorResponse("Sign in first.", 401);
   const parsed = await parseSameOriginJsonRequest(request, {
     schema: requestSchema,
     maxBytes: 256,

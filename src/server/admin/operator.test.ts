@@ -24,7 +24,6 @@ vi.mock("~/server/storage/upstash", () => ({
 import {
   ADMIN_SESSION_COOKIE,
   createAdminSession,
-  isAdminRequest,
   isAdminSession,
   isOperatorConfigured,
   isOperatorToken,
@@ -110,13 +109,10 @@ describe("operator sign-in", () => {
         request(`theme=dark; ${ADMIN_SESSION_COOKIE}=${session.value}`),
       ),
     ).toBe(true);
-    expect(
-      isAdminRequest(request(`${ADMIN_SESSION_COOKIE}=${session.value}`)),
-    ).toBe(true);
     expect(await verifyAdminRequest(request(`other=${session.value}`))).toBe(
       false,
     );
-    expect(isAdminRequest(request(""))).toBe(false);
+    expect(await verifyAdminRequest(request(""))).toBe(false);
   });
 });
 
@@ -126,9 +122,10 @@ describe("signing out everywhere", () => {
     expect(await verifyAdminSession(before.value)).toBe(true);
     await revokeAdminSessions();
     expect(await verifyAdminSession(before.value)).toBe(false);
-    // The synchronous check follows on this instance straight away.
     expect(
-      isAdminRequest(request(`${ADMIN_SESSION_COOKIE}=${before.value}`)),
+      await verifyAdminRequest(
+        request(`${ADMIN_SESSION_COOKIE}=${before.value}`),
+      ),
     ).toBe(false);
     const after = (await createAdminSession())!;
     expect(await verifyAdminSession(after.value)).toBe(true);

@@ -104,10 +104,10 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     return jsonErrorResponse("Explainer videos are not available.", 503);
   const { username, repo } = parsed.data;
   const repository = `${username}/${repo}`;
-  const trusted = isTrustedVideoCaller(request);
+  const trusted = await isTrustedVideoCaller(request);
   const production = process.env.NODE_ENV === "production";
   // A video, once made, is everyone's: only the operator may replace it.
-  const mayReplace = isVideoAdmin(request) || !production;
+  const mayReplace = !production || (await isVideoAdmin(request));
   const gated = (reason: string) =>
     reportHeldBack(request, { username, repo, reason, step: "start" });
   if (!trusted) {

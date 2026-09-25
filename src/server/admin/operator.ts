@@ -167,19 +167,6 @@ export function verifyAdminRequest(request: Request): Promise<boolean> {
   return verifyAdminSession(readCookie(request, ADMIN_SESSION_COOKIE));
 }
 
-/**
- * The same check for callers that cannot wait: it compares against the
- * generation this instance read last and refreshes that in the background,
- * so a sign-out everywhere reaches it within seconds. Prefer
- * verifyAdminRequest where an await is possible.
- */
-export function isAdminRequest(request: Request): boolean {
-  const value = readCookie(request, ADMIN_SESSION_COOKIE);
-  if (!value) return false;
-  if (generationOf(value, Date.now()) !== null) void sessionGeneration();
-  return isAdminSession(value);
-}
-
 /** Signs every browser out of /admin. Throws when Redis is unavailable. */
 export async function revokeAdminSessions(): Promise<number> {
   const value = Number(await upstashCommand<number>(["INCR", GENERATION_KEY]));

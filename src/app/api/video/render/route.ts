@@ -89,7 +89,7 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
   if (format === "poster") {
-    if (!isTrustedVideoCaller(request))
+    if (!(await isTrustedVideoCaller(request)))
       return jsonErrorResponse("Forbidden.", 403);
     // Rendered on a render instance, so this route never ships Chromium.
     const stored = await remakePosterRemotely(
@@ -126,7 +126,7 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
         return events([{ status: "complete" }]);
       }
     }
-    if (!isTrustedVideoCaller(request)) {
+    if (!(await isTrustedVideoCaller(request))) {
       reservation = await reserveRenderSlot({
         visitorId: visitor.id,
         clientIp: getClientIp(request),

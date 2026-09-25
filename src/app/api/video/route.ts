@@ -59,7 +59,7 @@ async function videoAvailability(
       : { canGenerate: true, paused: null };
   }
   // The operator, signed in to /admin, may always make videos.
-  if (isVideoAdmin(request))
+  if (await isVideoAdmin(request))
     return { canGenerate: true, paused: null, anyDevice: true };
   // Someone wanted a video and was held back: demand the operator sees, with
   // the reason, on the /admin feed.
