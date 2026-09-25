@@ -382,6 +382,21 @@ export async function tryVideoLock(
   };
 }
 
+/** The lock a repository's video generation holds while it runs. */
+export const generationLockName = (username: string, repo: string) =>
+  `generate:${username}/${repo}`.toLowerCase();
+
+/** Whether someone holds the lock right now. False when Redis cannot say. */
+export async function isVideoLockHeld(name: string): Promise<boolean> {
+  try {
+    return (
+      (await upstashCommand<number>(["EXISTS", `video:v1:lock:${name}`])) === 1
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** "about 7 hours" until the budgets reset at midnight UTC. */
 function timeUntilReset(now = Date.now()): string {
   const hours = Math.ceil(

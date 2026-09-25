@@ -14,8 +14,7 @@ vi.mock("./repository", () => ({
   readRepositoryForVideo: mocks.readRepositoryForVideo,
 }));
 vi.mock("./director", async (importOriginal) => ({
-  designGroups: (await importOriginal<typeof import("./director")>())
-    .designGroups,
+  ...(await importOriginal<object>()),
   createFilmWriters: () => ({
     model: "claude-opus-5-5",
     usage: { calls: 1, inputTokens: 1, outputTokens: 1, costUsd: 0.1 },

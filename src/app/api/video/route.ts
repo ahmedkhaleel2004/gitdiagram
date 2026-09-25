@@ -12,13 +12,19 @@ import {
   canGenerateVideos,
   isVideoExplainerEnabled,
 } from "~/server/explainer/config";
-import { readControls } from "~/server/admin/controls";
+import { readAdmissionControls } from "~/server/admin/controls";
 import { videoResponseTag } from "~/server/explainer/cache";
-import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
 import { anyDeviceHere, audienceBlock } from "~/server/explainer/audience";
-import { isVideoAdmin, videosLeftToday } from "~/server/explainer/limits";
+import { reportHeldBack } from "~/server/explainer/gate-notice";
+import {
+  generationLockName,
+  isVideoAdmin,
+  isVideoLockHeld,
+  videosLeftToday,
+} from "~/server/explainer/limits";
 import { hasNarrationCredits } from "~/server/explainer/narration";
 import { readVideoArtifact } from "~/server/explainer/store";
+import { readVisitor, withVisitorCookie } from "~/server/explainer/visitor";
 import type { VideoPausedReason } from "~/features/explainer/api";
 
 export const runtime = "nodejs";
@@ -37,7 +43,8 @@ const querySchema = z.object({
  */
 async function videoAvailability(
   request: Request,
-  repository: string,
+  username: string,
+  repo: string,
 ): Promise<{
   canGenerate: boolean;
   paused: VideoPausedReason | null;
@@ -57,30 +64,24 @@ async function videoAvailability(
   // Someone wanted a video and was held back: demand the operator sees, with
   // the reason, on the /admin feed.
   const heldBack = (reason: string) =>
-    void emitLiveEvent({
-      kind: "video.gated",
-      repo: repository,
-      reason,
-      step: "page",
-      ...requestOrigin(request),
-    });
-  const controls = await readControls();
-  // Tablets pass as desktops here, so the page holds them back itself unless
-  // this visitor may use any device.
-  const anyDevice = anyDeviceHere(request, controls.videoAudience);
-  if (controls.videosPaused) {
-    heldBack("paused");
-    return { canGenerate: false, paused: "limit" };
-  }
-  const blocked = audienceBlock(request, controls.videoAudience);
-  if (blocked) {
-    heldBack(blocked);
-    return {
-      canGenerate: false,
-      paused: blocked === "mobile" ? "device" : "audience",
-    };
-  }
+    reportHeldBack(request, { username, repo, reason, step: "page" });
   try {
+    const controls = await readAdmissionControls();
+    // Tablets pass as desktops here, so the page holds them back itself unless
+    // this visitor may use any device.
+    const anyDevice = anyDeviceHere(request, controls.videoAudience);
+    if (controls.videosPaused) {
+      heldBack("paused");
+      return { canGenerate: false, paused: "limit" };
+    }
+    const blocked = audienceBlock(request, controls.videoAudience);
+    if (blocked) {
+      heldBack(blocked);
+      return {
+        canGenerate: false,
+        paused: blocked === "mobile" ? "device" : "audience",
+      };
+    }
     const [left, credits] = await Promise.all([
       videosLeftToday(),
       hasNarrationCredits(),
@@ -90,6 +91,7 @@ async function videoAvailability(
     heldBack(left > 0 ? "credits" : "daily");
     return { canGenerate: false, paused: "limit" };
   } catch {
+    // Without Redis nothing new can start (see the generate route).
     return { canGenerate: false, paused: "limit" };
   }
 }
@@ -103,7 +105,8 @@ export async function GET(request: Request): Promise<Response> {
     repo: url.searchParams.get("repo"),
   });
   if (!parsed.success) return jsonErrorResponse("Invalid repository.", 400);
-  const video = await readVideoArtifact(parsed.data.username, parsed.data.repo);
+  const { username, repo } = parsed.data;
+  const video = await readVideoArtifact(username, repo);
   if (video)
     return Response.json(
       { ok: true, video, canGenerate: false, paused: null },
@@ -113,22 +116,26 @@ export async function GET(request: Request): Promise<Response> {
           // which drops this copy by its tag (see purgeVideoResponse).
           "Cache-Control":
             "public, max-age=0, s-maxage=60, stale-while-revalidate=600",
-          "Vercel-Cache-Tag": videoResponseTag(
-            parsed.data.username,
-            parsed.data.repo,
-          ),
+          "Vercel-Cache-Tag": videoResponseTag(username, repo),
         },
       },
     );
-  return Response.json(
-    {
-      ok: true,
-      video: null,
-      ...(await videoAvailability(
-        request,
-        `${parsed.data.username}/${parsed.data.repo}`,
-      )),
-    },
-    { headers: NO_STORE_RESPONSE_HEADERS },
+  const [availability, generating] = await Promise.all([
+    videoAvailability(request, username, repo),
+    // A run in progress, which the page can wait for instead of offering a
+    // new one. Only production takes the lock.
+    process.env.NODE_ENV === "production"
+      ? isVideoLockHeld(generationLockName(username, repo))
+      : false,
+  ]);
+  // Never cached, so a waiting page sees the video once it lands. This is
+  // also where a browser gets the visitor id that starting a video needs; the
+  // cached answer above never carries one.
+  return withVisitorCookie(
+    Response.json(
+      { ok: true, video: null, generating, ...availability },
+      { headers: NO_STORE_RESPONSE_HEADERS },
+    ),
+    readVisitor(request),
   );
 }

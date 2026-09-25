@@ -26,8 +26,10 @@ vi.mock("~/server/admin/controls", () => ({
 
 import {
   firstGateNotice,
+  generationLockName,
   isTrustedVideoCaller,
   isVideoAdmin,
+  isVideoLockHeld,
   limitMessage,
   reserveVideoSlot,
   resetUsageToday,
@@ -223,6 +225,20 @@ describe("explainer video limits", () => {
       keys: ["video:v1:lock:generate:a/b"],
       args: [token],
     });
+  });
+
+  it("tells whether a repository's generation lock is held", async () => {
+    upstashCommand.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    const name = generationLockName("Acme", "Demo");
+    expect(name).toBe("generate:acme/demo");
+    expect(await isVideoLockHeld(name)).toBe(true);
+    expect(await isVideoLockHeld(name)).toBe(false);
+    expect(upstashCommand).toHaveBeenCalledWith([
+      "EXISTS",
+      "video:v1:lock:generate:acme/demo",
+    ]);
+    upstashCommand.mockRejectedValueOnce(new Error("down"));
+    expect(await isVideoLockHeld(name)).toBe(false);
   });
 
   it("caps paid runs at once, but never refuses the operator", async () => {
