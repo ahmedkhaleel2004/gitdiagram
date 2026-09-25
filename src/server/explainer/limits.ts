@@ -314,9 +314,10 @@ export async function resetUsageToday(kind: Kind): Promise<number> {
   return used!;
 }
 
-// Paid runs at once across every instance. ElevenLabs Starter voices four
-// requests at a time; one is left for the operator's own runs.
-const MAX_PAID_RUNS = 3;
+// Paid runs at once across every instance (VIDEO_MAX_PAID_RUNS, default 10).
+// Each run makes one short voice call, and narration retries when ElevenLabs
+// is at its own concurrency limit, so the voice plan does not cap this.
+const maxPaidRuns = () => readLimit("VIDEO_MAX_PAID_RUNS", 10);
 const PAID_RUNS_KEY = "video:v1:generate:running";
 
 // KEYS: the running set. ARGV: now, the cap, whether to skip the cap, this
@@ -349,7 +350,7 @@ export async function tryPaidVideoRun(params: {
     keys: [PAID_RUNS_KEY],
     args: [
       now,
-      MAX_PAID_RUNS,
+      maxPaidRuns(),
       params.operator ? "1" : "0",
       now + params.ttlMs,
       token,

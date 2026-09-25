@@ -312,6 +312,7 @@ describe("explainer video limits", () => {
     const release = await tryPaidVideoRun({ operator: true, ttlMs: 1000 });
     expect(release).toBeTypeOf("function");
     const args = (upstashEval.mock.calls[1]![0] as { args: unknown[] }).args;
+    expect(args[1]).toBe(10);
     expect(args[2]).toBe("1");
     await release?.();
     expect(upstashCommand).toHaveBeenCalledWith([
