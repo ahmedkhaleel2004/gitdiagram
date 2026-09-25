@@ -36,10 +36,29 @@ const formatTime = (seconds: number) => {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 };
 
+// Preferences are best effort: storage can be blocked (private modes, strict
+// cookie settings), and the player works the same without it.
+function readCaptionsPreference(): boolean {
+  try {
+    return window.localStorage.getItem(CAPTIONS_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function saveCaptionsPreference(on: boolean) {
+  try {
+    window.localStorage.setItem(CAPTIONS_KEY, on ? "1" : "0");
+  } catch {
+    // Not remembered; this visit still uses the choice.
+  }
+}
+
 /**
- * Plays an explainer live: the scene engine runs in a sandboxed same-origin
- * frame, the audio mixes in this page, and every frame seeks the scene
- * timeline to the audio clock so picture and sound cannot drift.
+ * Plays an explainer live: the scene engine runs in a same-origin frame (not
+ * sandboxed; its own strict CSP is the boundary for model-written text), the
+ * audio mixes in this page, and every frame seeks the scene timeline to the
+ * audio clock so picture and sound cannot drift.
  */
 export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   const shell = useRef<HTMLDivElement>(null);
@@ -47,15 +66,14 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   const audio = useRef<ExplainerAudio | null>(null);
   const scrubber = useRef<HTMLInputElement>(null);
   const clock = useRef<HTMLSpanElement>(null);
+  const shownTime = useRef("0:00");
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [ended, setEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   // Captions start on; only a visitor's own "off" choice is remembered.
-  const [captions, setCaptions] = useState(
-    () => window.localStorage.getItem(CAPTIONS_KEY) !== "0",
-  );
+  const [captions, setCaptions] = useState(readCaptionsPreference);
   // iPhone Safari cannot put an element in fullscreen; fill the window instead.
   const [expanded, setExpanded] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -73,7 +91,12 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
       window.location.origin,
     );
     if (scrubber.current) scrubber.current.value = String(time);
-    if (clock.current) clock.current.textContent = formatTime(time);
+    // Runs every frame; the clock text only changes once a second.
+    const shown = formatTime(time);
+    if (clock.current && shown !== shownTime.current) {
+      shownTime.current = shown;
+      clock.current.textContent = shown;
+    }
   }, []);
 
   // Full window: the page behind must not scroll, and Escape leaves.
@@ -117,10 +140,17 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   // Hand the plan to the stage, then load the audio the stage says it needs.
   useEffect(() => {
     let cancelled = false;
-    // Never spin forever: a stage that neither loads nor reports an error fails.
-    const timeout = window.setTimeout(() => {
-      if (!cancelled) setError("The video took too long to load.");
-    }, STAGE_TIMEOUT_MS);
+    // Never spin forever: a stage that neither loads nor reports an error
+    // fails. The narration download gets its own allowance once the stage is
+    // ready, and a load that finishes late still clears the message.
+    let timeout = 0;
+    const wait = (message: string) => {
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => {
+        if (!cancelled) setError(message);
+      }, STAGE_TIMEOUT_MS);
+    };
+    wait("The video took too long to load.");
     const onMessage = (event: MessageEvent<StageMessage>) => {
       if (
         event.origin !== window.location.origin ||
@@ -140,6 +170,11 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
           window.location.origin,
         );
       } else if (message.type === "ready") {
+        // A captions toggle pressed while the stage was building.
+        frame.current?.contentWindow?.postMessage(
+          { type: "captions", on: captionsRef.current },
+          window.location.origin,
+        );
         // Poster: show the finished opening scene until the viewer presses play.
         frame.current?.contentWindow?.postMessage(
           {
@@ -148,13 +183,20 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
           },
           window.location.origin,
         );
-        const mixer = new ExplainerAudio(artifact, message.sfx);
+        const mixer = new ExplainerAudio(artifact, message.sfx, HOLD_SPEED);
+        // A call or an app switch stopped the sound: show the video paused.
+        mixer.onInterrupted = () => {
+          if (!cancelled) setPlaying(false);
+        };
         audio.current = mixer;
+        wait("The narration took too long to load.");
         mixer
           .load()
           .then(() => {
             window.clearTimeout(timeout);
-            if (!cancelled) setReady(true);
+            if (cancelled) return;
+            setError(null);
+            setReady(true);
           })
           .catch(() => {
             window.clearTimeout(timeout);
@@ -184,10 +226,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
   // Stretch the narration for a held press ahead of time, so it starts at once.
   useEffect(() => {
     if (!ready) return;
-    const id = window.setTimeout(
-      () => void audio.current?.prepare(HOLD_SPEED),
-      500,
-    );
+    const id = window.setTimeout(() => audio.current?.prewarm(HOLD_SPEED), 500);
     return () => window.clearTimeout(id);
   }, [ready]);
 
@@ -260,7 +299,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
     const next = !captions;
     captionsRef.current = next;
     setCaptions(next);
-    window.localStorage.setItem(CAPTIONS_KEY, next ? "1" : "0");
+    saveCaptionsPreference(next);
     frame.current?.contentWindow?.postMessage(
       { type: "captions", on: next },
       window.location.origin,
