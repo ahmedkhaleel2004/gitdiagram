@@ -85,6 +85,12 @@ const config = {
         destination: "/advertise",
         permanent: true,
       },
+      // The video gallery lives at /watch; send the obvious guesses there.
+      {
+        source: "/:path(videos|video)",
+        destination: "/watch",
+        permanent: false,
+      },
       // Support replacing github.com in a file, branch, issue or pull-request URL.
       {
         source: "/:username/:repo/twitter-image",
