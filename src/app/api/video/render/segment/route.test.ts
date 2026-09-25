@@ -14,9 +14,6 @@ vi.mock("~/server/explainer/config", () => ({
 vi.mock("~/server/explainer/render", () => ({
   renderVideoSegment: mocks.renderVideoSegment,
   renderHostStats: async () => ({}),
-  segmentRanges: () => [],
-  mixSoundtrack: vi.fn(),
-  assembleMp4: vi.fn(),
 }));
 vi.mock("~/server/explainer/store", () => ({
   readVideoArtifact: mocks.readVideoArtifact,
@@ -42,9 +39,20 @@ function request(overrides: Partial<SegmentJob> = {}, signal?: AbortSignal) {
     exp: Date.now() + 60_000,
     ...overrides,
   };
-  const signature = createHmac("sha256", "secret")
+  const key = createHmac("sha256", "secret")
+    .update("video-segment-key/v1")
+    .digest();
+  const signature = createHmac("sha256", key)
     .update(
-      `video-segment:${[job.username, job.repo, job.v, job.format, job.from, job.to, job.exp].join("|")}`,
+      JSON.stringify([
+        job.username,
+        job.repo,
+        job.v,
+        job.format,
+        job.from,
+        job.to,
+        job.exp,
+      ]),
     )
     .digest("hex");
   return new Request("https://gitdiagram.com/api/video/render/segment", {
@@ -86,7 +94,7 @@ describe("POST /api/video/render/segment", () => {
     mocks.renderVideoSegment.mockImplementation(
       async (params: { onFrame: (done: number) => void }) => {
         for (let done = 1; done <= 25; done++) params.onFrame(done);
-        return { mp4: Buffer.from("mp4"), sfx: [] };
+        return Buffer.from("mp4");
       },
     );
     const events = await lines(await POST(request()));
@@ -101,7 +109,7 @@ describe("POST /api/video/render/segment", () => {
     mocks.renderVideoSegment.mockImplementation(
       () =>
         new Promise((resolve) => {
-          finish = () => resolve({ mp4: Buffer.from("mp4"), sfx: [] });
+          finish = () => resolve(Buffer.from("mp4"));
         }),
     );
     const first = await POST(request());
@@ -111,10 +119,7 @@ describe("POST /api/video/render/segment", () => {
     finish();
     await first.text();
     // The slot is free again once the first render ends.
-    mocks.renderVideoSegment.mockResolvedValue({
-      mp4: Buffer.from("mp4"),
-      sfx: [],
-    });
+    mocks.renderVideoSegment.mockResolvedValue(Buffer.from("mp4"));
     const third = await POST(request({ from: 25, to: 50 }));
     expect(third.status).toBe(200);
     await third.text();
@@ -126,10 +131,7 @@ describe("POST /api/video/render/segment", () => {
     });
     expect((await POST(request())).status).toBe(409);
     mocks.readVideoArtifact.mockResolvedValue({ createdAt });
-    mocks.renderVideoSegment.mockResolvedValue({
-      mp4: Buffer.from("mp4"),
-      sfx: [],
-    });
+    mocks.renderVideoSegment.mockResolvedValue(Buffer.from("mp4"));
     const next = await POST(request());
     expect(next.status).toBe(200);
     await next.text();
@@ -151,6 +153,21 @@ describe("POST /api/video/render/segment", () => {
     caller.abort();
     await response.text().catch(() => "");
     expect(seen?.aborted).toBe(true);
+  });
+
+  it("loads the stage over loopback in a container, not the 0.0.0.0 it listens on", async () => {
+    Object.assign(process.env, { NODE_ENV: "production", PORT: "3000" });
+    delete process.env.VERCEL;
+    delete process.env.VIDEO_INTERNAL_ORIGIN;
+    mocks.renderVideoSegment.mockResolvedValue(Buffer.from("mp4"));
+    const job = request();
+    const response = await POST(
+      new Request("http://0.0.0.0:3000/api/video/render/segment", job),
+    );
+    await response.text();
+    expect(mocks.renderVideoSegment).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: "http://127.0.0.1:3000" }),
+    );
   });
 
   it("remakes a poster as a signed job", async () => {

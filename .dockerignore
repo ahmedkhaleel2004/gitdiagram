@@ -6,6 +6,11 @@
 .playwright-mcp
 .env*
 node_modules
+**/node_modules
+.video-cache
+experiments/*/out
+.wrangler
+**/.wrangler
 coverage
 tmp
 docs

@@ -7,9 +7,9 @@ import { narrateBeats } from "~/server/explainer/narration";
 import {
   assembleMp4,
   mixSoundtrack,
-  renderVideoSegment,
   segmentRanges,
-} from "~/server/explainer/render";
+} from "~/server/explainer/ffmpeg";
+import { renderVideoSegment } from "~/server/explainer/render";
 import { videoVersion } from "~/server/explainer/store";
 
 const [owner, repo] = (process.argv[2] ?? "fastapi/fastapi").split("/") as [
@@ -65,14 +65,18 @@ const origin = "http://127.0.0.1:4599";
 let sfx: Parameters<typeof mixSoundtrack>[0]["sfx"] = [];
 const segments: Buffer[] = [];
 for (const range of segmentRanges(film)) {
-  const result = await renderVideoSegment({
-    artifact: film,
-    format: "landscape",
-    origin,
-    ...range,
-  });
-  if (!segments.length) sfx = result.sfx;
-  segments.push(result.mp4);
+  const first = !segments.length;
+  segments.push(
+    await renderVideoSegment({
+      artifact: film,
+      format: "landscape",
+      origin,
+      ...range,
+      onReady: (cues) => {
+        if (first) sfx = cues;
+      },
+    }),
+  );
 }
 const soundtrack = await mixSoundtrack({ artifact: film, sfx, origin });
 await writeFile(

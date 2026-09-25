@@ -7,6 +7,12 @@
 .ruff_cache/
 coverage/
 tmp/
+.wrangler/
+workers/**/node_modules/
+
+# Local explainer video renders and experiment output.
+.video-cache/
+experiments/*/out/
 
 # Alternate Railway deployment assets are not part of a Vercel bundle.
 .dockerignore

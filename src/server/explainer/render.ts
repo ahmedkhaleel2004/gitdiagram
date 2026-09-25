@@ -7,18 +7,10 @@ import { freemem, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
 import type { SfxCue } from "~/features/explainer/audio-mixer";
-import {
-  MASTER_GAIN,
-  SFX_PEAK_DB,
-  STAGE_PATH,
-  sfxGain,
-} from "~/features/explainer/engine";
+import { STAGE_PATH } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
-import { readVoiceClip } from "./store";
-
-export type RenderFormat = "landscape" | "vertical";
-
-const RENDER_FPS = 30;
+import { ffmpegPath, RENDER_FPS, type RenderFormat } from "./ffmpeg";
+import { deploymentHeaders, pinToDeployment } from "./render-origin";
 
 // The stage lays out in CSS pixels at its native size; the device scale factor
 // turns that into the output resolution.
@@ -137,23 +129,6 @@ export async function renderHostStats() {
   };
 }
 
-async function ffmpegPath(): Promise<string> {
-  const path = (await import("ffmpeg-static")).default as unknown as
-    string | null;
-  if (!path) throw new Error("No ffmpeg binary for this platform.");
-  return path;
-}
-
-async function run(binary: string, args: string[]) {
-  const child = spawn(binary, args, { stdio: ["ignore", "ignore", "pipe"] });
-  let stderr = "";
-  child.stderr.on("data", (chunk: Buffer) => {
-    stderr = (stderr + chunk.toString()).slice(-2000);
-  });
-  const [code] = (await once(child, "close")) as [number];
-  if (code !== 0) throw new Error(`ffmpeg failed (${code}): ${stderr}`);
-}
-
 export interface Encoder {
   readonly pid: number | undefined;
   /** Feed one chunk, waiting while ffmpeg catches up; rejects once it has exited. */
@@ -237,7 +212,10 @@ async function openStage(
     height: frame.cssHeight,
     deviceScaleFactor: scale,
   });
-  await page.goto(`${origin}${STAGE_PATH}`, {
+  // The stage and everything it loads come from the release that started the
+  // render, even if a deploy lands while it runs.
+  await page.setExtraHTTPHeaders(deploymentHeaders());
+  await page.goto(pinToDeployment(`${origin}${STAGE_PATH}`), {
     waitUntil: "load",
     timeout: 30_000,
   });
@@ -278,129 +256,6 @@ async function openStage(
 }
 
 /**
- * Narration clips and effect hits, placed and balanced the way the live player
- * mixes them, then normalized to -16 LUFS: social feeds play loud, and a quiet
- * file sounds broken next to everything else. The pad before loudnorm keeps it
- * from clipping the tail.
- */
-async function mixSoundtrackInto(
-  dir: string,
-  artifact: VideoArtifact,
-  sfx: SfxCue[],
-  origin: string,
-  ffmpeg: string,
-): Promise<string> {
-  const inputs: string[] = [];
-  const chains: string[] = [];
-  const add = (path: string, chain: string) => {
-    const index = inputs.length / 2;
-    inputs.push("-i", path);
-    chains.push(`[${index}:a]${chain}[a${index}]`);
-  };
-  const clips = await Promise.all(
-    artifact.voices.map((_, index) =>
-      readVoiceClip(
-        artifact.meta.owner,
-        artifact.meta.repo,
-        artifact.createdAt,
-        index,
-      ),
-    ),
-  );
-  for (const [index, clip] of clips.entries()) {
-    if (!clip) throw new Error(`Narration clip ${index} is missing.`);
-    const path = join(dir, `voice-${index}.mp3`);
-    await writeFile(path, clip);
-    const ms = Math.round(artifact.voices[index]!.start * 1000);
-    add(
-      path,
-      `aresample=48000,aformat=channel_layouts=stereo,adelay=${ms}|${ms},volume=${MASTER_GAIN}`,
-    );
-  }
-  const effects = new Map<string, string>();
-  for (const name of new Set(sfx.map((cue) => cue.name))) {
-    if (!(name in SFX_PEAK_DB)) continue;
-    const response = await fetch(
-      `${origin}/video-engine/assets/sfx/${name}.mp3`,
-    );
-    if (!response.ok) continue;
-    const path = join(dir, `sfx-${name}.mp3`);
-    await writeFile(path, Buffer.from(await response.arrayBuffer()));
-    effects.set(name, path);
-  }
-  for (const cue of sfx) {
-    const path = effects.get(cue.name);
-    if (!path) continue;
-    const ms = Math.round(cue.t * 1000);
-    // A playback-rate change is a resample, which shifts pitch and length together.
-    const rate = Math.round(44100 * (cue.rate ?? 1));
-    add(
-      path,
-      `aresample=44100,asetrate=${rate},aresample=48000,aformat=channel_layouts=stereo,adelay=${ms}|${ms},volume=${(MASTER_GAIN * sfxGain(cue.name, cue.gain)).toFixed(4)}`,
-    );
-  }
-  const duration = artifact.timing.DURATION.toFixed(3);
-  const labels = chains.map((_, index) => `[a${index}]`).join("");
-  const graph = `${chains.join(";")};${labels}amix=inputs=${chains.length}:normalize=0:duration=longest,apad=whole_dur=${Number(duration) + 2},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,atrim=0:${duration}[mix]`;
-  const out = join(dir, "soundtrack.m4a");
-  await run(ffmpeg, [
-    "-y",
-    "-loglevel",
-    "error",
-    ...inputs,
-    "-filter_complex",
-    graph,
-    "-map",
-    "[mix]",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "160k",
-    out,
-  ]);
-  return out;
-}
-
-/**
- * The finished soundtrack as AAC. It needs only the effect cues, which the
- * first segment reports as soon as its stage is built, so it is mixed while
- * the frames are still rendering.
- */
-export async function mixSoundtrack(params: {
-  artifact: VideoArtifact;
-  sfx: SfxCue[];
-  origin: string;
-}): Promise<Buffer> {
-  const dir = await mkdtemp(join(tmpdir(), "explainer-"));
-  try {
-    const out = await mixSoundtrackInto(
-      dir,
-      params.artifact,
-      params.sfx,
-      params.origin,
-      await ffmpegPath(),
-    );
-    return await readFile(out);
-  } finally {
-    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
-  }
-}
-
-/** Frames per segment. Segments render in parallel, each well inside a function's time limit. */
-const SEGMENT_FRAMES = RENDER_FPS * 5;
-
-/** The frame ranges [from, to) a film is cut into for parallel rendering. */
-export function segmentRanges(
-  artifact: VideoArtifact,
-): Array<{ from: number; to: number }> {
-  const frames = Math.ceil(artifact.timing.DURATION * RENDER_FPS);
-  const ranges: Array<{ from: number; to: number }> = [];
-  for (let from = 0; from < frames; from += SEGMENT_FRAMES)
-    ranges.push({ from, to: Math.min(frames, from + SEGMENT_FRAMES) });
-  return ranges;
-}
-
-/**
  * Render frames [from, to) of a film to a silent H.264 segment. The stage is
  * seeked frame by frame in headless Chromium and each screenshot is piped
  * straight into ffmpeg. Captions are burned in, since feeds autoplay muted.
@@ -418,7 +273,7 @@ export async function renderVideoSegment(params: {
   onReady?: (sfx: SfxCue[]) => void;
   /** Frames captured so far in this segment. */
   onFrame?: (done: number) => void;
-}): Promise<{ mp4: Buffer; sfx: SfxCue[] }> {
+}): Promise<Buffer> {
   const { artifact, format, origin, signal } = params;
   signal?.throwIfAborted();
   const frame = FRAMES[format];
@@ -481,60 +336,10 @@ export async function renderVideoSegment(params: {
     }
     await encoder.finish();
     signal?.throwIfAborted();
-    return { mp4: await readFile(out), sfx };
+    return await readFile(out);
   } finally {
     signal?.removeEventListener("abort", stop);
     await stop();
-    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
-  }
-}
-
-/** Join rendered segments (in order) with the mixed soundtrack into the final MP4. */
-export async function assembleMp4(params: {
-  segments: Buffer[];
-  soundtrack: Buffer;
-}): Promise<Buffer> {
-  const dir = await mkdtemp(join(tmpdir(), "explainer-"));
-  try {
-    const ffmpeg = await ffmpegPath();
-    const soundtrack = join(dir, "soundtrack.m4a");
-    await writeFile(soundtrack, params.soundtrack);
-    const list = await Promise.all(
-      params.segments.map(async (segment, index) => {
-        const path = join(dir, `segment-${index}.mp4`);
-        await writeFile(path, segment);
-        return `file '${path}'`;
-      }),
-    );
-    const listPath = join(dir, "segments.txt");
-    await writeFile(listPath, list.join("\n"));
-    const out = join(dir, "film.mp4");
-    // No -shortest: with stream copy it cuts at a packet boundary and dropped
-    // the last few frames. The soundtrack is already trimmed to the film.
-    await run(ffmpeg, [
-      "-y",
-      "-loglevel",
-      "error",
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      listPath,
-      "-i",
-      soundtrack,
-      "-map",
-      "0:v",
-      "-map",
-      "1:a",
-      "-c",
-      "copy",
-      "-movflags",
-      "+faststart",
-      out,
-    ]);
-    return await readFile(out);
-  } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
 }

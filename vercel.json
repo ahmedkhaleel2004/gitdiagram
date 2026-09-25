@@ -9,7 +9,8 @@
   ],
   "functions": {
     "src/app/api/video/render/segment/route.ts": {
-      "memory": 4096
+      "memory": 4096,
+      "supportsCancellation": true
     }
   }
 }

@@ -1,7 +1,10 @@
+import { readIntEnv } from "~/server/env";
 import { jsonErrorResponse } from "~/server/http/same-origin-json";
+import { errorText, logEvent } from "~/server/log";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import { storePoster } from "~/server/explainer/posters";
 import { renderHostStats, renderVideoSegment } from "~/server/explainer/render";
+import { internalOrigin } from "~/server/explainer/render-origin";
 import {
   encodeSegmentEvent,
   SEGMENT_BUSY_HEADER,
@@ -25,12 +28,11 @@ export const maxDuration = 300;
 let running = 0;
 
 function renderLimit(): number {
-  const configured = Number.parseInt(
-    process.env.VIDEO_SEGMENT_CONCURRENCY?.trim() ?? "",
-    10,
+  return readIntEnv(
+    "VIDEO_SEGMENT_CONCURRENCY",
+    process.env.NODE_ENV === "production" ? 2 : Infinity,
+    { min: 1 },
   );
-  if (Number.isFinite(configured) && configured > 0) return configured;
-  return process.env.NODE_ENV === "production" ? 2 : Infinity;
 }
 
 function busyResponse(): Response {
@@ -84,7 +86,7 @@ export async function POST(request: Request): Promise<Response> {
       release();
       return jsonErrorResponse("This video version no longer exists.", 409);
     }
-    const origin = new URL(request.url).origin;
+    const origin = internalOrigin(request);
     if (job.format === "poster") {
       try {
         return Response.json(
@@ -114,7 +116,7 @@ export async function POST(request: Request): Promise<Response> {
         };
         let reported = 0;
         try {
-          const { mp4 } = await renderVideoSegment({
+          const mp4 = await renderVideoSegment({
             artifact,
             format,
             origin,
@@ -133,18 +135,12 @@ export async function POST(request: Request): Promise<Response> {
           send({ type: "done", mp4: mp4.toString("base64") });
         } catch (error) {
           if (!signal.aborted)
-            console.error(
-              JSON.stringify({
-                event: "video.segment.failed",
-                from: job.from,
-                to: job.to,
-                error:
-                  error instanceof Error
-                    ? error.message.slice(0, 300)
-                    : "unknown",
-                host: await renderHostStats(),
-              }),
-            );
+            logEvent("error", "video.segment.failed", {
+              from: job.from,
+              to: job.to,
+              error: errorText(error, 300),
+              host: await renderHostStats(),
+            });
           send({ type: "error" });
         } finally {
           release();

@@ -25,9 +25,12 @@ updates:
       - dependency-name: "typescript"
         update-types:
           - "version-update:semver-major"
-      # puppeteer-core must target the same Chrome as @sparticuz/chromium;
-      # bump them together by hand.
+      # puppeteer-core must target the same Chrome as @sparticuz/chromium,
+      # and Dependabot would move each to its own latest (the Chromium build
+      # usually lags puppeteer's), so neither is updated here: bump them
+      # together by hand to a matching pair.
       - dependency-name: "puppeteer-core"
+      - dependency-name: "@sparticuz/chromium"
 
   - package-ecosystem: "bun"
     directory: "/workers/presence"
