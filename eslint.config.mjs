@@ -5,6 +5,11 @@ const config = [
   ...nextCoreVitals,
   ...nextTypescript,
   {
+    // eslint-plugin-react's version auto-detection calls context.getFilename,
+    // which ESLint 10 removed.
+    settings: { react: { version: "19.3" } },
+  },
+  {
     ignores: [
       ".next/**",
       ".claude/**",
