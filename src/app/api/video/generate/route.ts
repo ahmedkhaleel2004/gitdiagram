@@ -15,6 +15,10 @@ import { readControls } from "~/server/admin/controls";
 import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
 import { audienceBlock, audienceMessage } from "~/server/explainer/audience";
 import {
+  purgeVideoResponse,
+  refreshVideoPages,
+} from "~/server/explainer/cache";
+import {
   canGenerateVideos,
   isVideoExplainerEnabled,
 } from "~/server/explainer/config";
@@ -195,6 +199,8 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
           send({ status: "complete", artifact });
           clearInterval(heartbeat);
           close();
+          // A replaced video's files are already gone: stop the CDN sending it.
+          await purgeVideoResponse(username, repo);
           // The link-preview still, made once the viewer already has the video.
           await storePoster(artifact, siteOrigin);
         })
@@ -233,8 +239,12 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       closed = true;
     },
   });
-  // Keep the function alive until the video and its poster are stored.
-  after(() => job);
+  // Keep the function alive until the video and its poster are stored, then
+  // point the pages that name it at the new one.
+  after(async () => {
+    await job;
+    if (outcome === "complete") refreshVideoPages(username, repo);
+  });
 
   return new Response(stream, {
     headers: {

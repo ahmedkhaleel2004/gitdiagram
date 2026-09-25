@@ -4,6 +4,7 @@ import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
 import {
   ADMIN_SESSION_COOKIE,
   createAdminSession,
+  isAdminRequest,
   isOperatorToken,
 } from "~/server/admin/operator";
 import { isSameOriginRequest } from "~/server/http/same-origin";
@@ -27,6 +28,17 @@ function cookie(value: string, maxAgeSeconds: number): string {
     `Max-Age=${maxAgeSeconds}`,
     ...(process.env.NODE_ENV === "production" ? ["Secure"] : []),
   ].join("; ");
+}
+
+/**
+ * Whether this browser is signed in to /admin. Only browsers that turned on
+ * operator tools ask, so a visitor's page never calls this.
+ */
+export function GET(request: Request): Response {
+  return Response.json(
+    { ok: true, admin: isAdminRequest(request) },
+    { headers: NO_STORE_RESPONSE_HEADERS },
+  );
 }
 
 /** Sign in to /admin with the operator token. */

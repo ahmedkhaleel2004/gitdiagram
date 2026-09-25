@@ -219,6 +219,11 @@
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+.metaConfirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
 .metaButton {
   border: 0;
   background: none;
@@ -504,6 +509,9 @@
 }
 
 .cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   margin: 16px 0 0 27px;
   /* The fold clips overflow; leave room for the button's shadow and focus ring. */
   padding-bottom: 8px;

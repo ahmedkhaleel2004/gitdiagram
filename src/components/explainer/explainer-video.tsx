@@ -13,6 +13,7 @@ import type {
   VideoGenerationProgress,
   VideoGenerationStage,
 } from "~/features/explainer/types";
+import { useAdminTools } from "~/features/admin/tools";
 import { ActivityMark } from "~/components/generation/activity-mark";
 import { useGenerationClock } from "~/components/generation/generation-status";
 import controls from "~/components/generation/workspace.module.css";
@@ -41,8 +42,29 @@ const PAUSED: Record<VideoPausedReason, string> = {
     "Today's free videos have all been made. Check back tomorrow; every video already made is free to watch.",
 };
 
-// A stored video belongs to everyone; only local development can replace one.
-const CAN_REGENERATE = process.env.NODE_ENV === "development";
+// A stored video belongs to everyone: only the operator, with admin controls
+// turned on in /admin, can replace one (or anyone in local development).
+const DEVELOPMENT = process.env.NODE_ENV === "development";
+
+/** Whether this browser should offer "Regenerate video". */
+function useCanRegenerate(): boolean {
+  const adminTools = useAdminTools();
+  const [admin, setAdmin] = useState(false);
+  useEffect(() => {
+    if (DEVELOPMENT || !adminTools) return;
+    const controller = new AbortController();
+    // The switch is only this browser's preference; the session decides.
+    fetch("/api/admin/session", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) => response.json() as Promise<{ admin?: boolean }>)
+      .then((body) => setAdmin(body.admin === true))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [adminTools]);
+  return DEVELOPMENT || (adminTools && admin);
+}
 
 type PanelState =
   | { kind: "loading" }
@@ -58,7 +80,13 @@ type PanelState =
       progress: VideoGenerationProgress;
     }
   | { kind: "ready"; video: VideoArtifact }
-  | { kind: "error"; message: string; canGenerate: boolean };
+  | {
+      kind: "error";
+      message: string;
+      canGenerate: boolean;
+      /** The stored video a failed regeneration left in place. */
+      previous?: VideoArtifact;
+    };
 
 function Elapsed({ startedAt }: { startedAt: number }) {
   const { seconds } = useGenerationClock({
@@ -99,6 +127,8 @@ export function ExplainerVideo({
 }) {
   const [state, setState] = useState<PanelState>({ kind: "loading" });
   const running = useRef<AbortController | null>(null);
+  const canRegenerate = useCanRegenerate();
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -132,6 +162,14 @@ export function ExplainerVideo({
   }, [username, repo]);
 
   const generate = () => {
+    // A failed regeneration keeps the stored video, so it stays one click away.
+    const previous =
+      state.kind === "ready"
+        ? state.video
+        : state.kind === "error"
+          ? state.previous
+          : undefined;
+    setConfirming(false);
     const controller = new AbortController();
     running.current = controller;
     const startedAt = Date.now();
@@ -148,6 +186,7 @@ export function ExplainerVideo({
             kind: "error",
             message: event.error,
             canGenerate: event.retryable !== false,
+            previous,
           });
         else {
           progress = { ...progress, ...event.progress };
@@ -167,6 +206,7 @@ export function ExplainerVideo({
         message:
           error instanceof Error ? error.message : "Video generation failed.",
         canGenerate: true,
+        previous,
       });
     });
   };
@@ -188,15 +228,34 @@ export function ExplainerVideo({
             Made in {(video.stats.totalMs / 1000).toFixed(0)}s
             {cost !== null ? ` · $${cost.toFixed(2)} model` : ""}
           </span>
-          {CAN_REGENERATE && (
-            <button
-              type="button"
-              className={styles.metaButton}
-              onClick={generate}
-            >
-              Regenerate video
-            </button>
-          )}
+          {canRegenerate &&
+            (confirming ? (
+              <span className={styles.metaConfirm}>
+                Replace this video for everyone?
+                <button
+                  type="button"
+                  className={styles.metaButton}
+                  onClick={generate}
+                >
+                  Regenerate
+                </button>
+                <button
+                  type="button"
+                  className={styles.metaButton}
+                  onClick={() => setConfirming(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className={styles.metaButton}
+                onClick={() => setConfirming(true)}
+              >
+                Regenerate video
+              </button>
+            ))}
         </div>
         <ExplainerShare video={video} />
       </div>
@@ -274,6 +333,15 @@ export function ExplainerVideo({
               {failed ? "Try again" : "Make the video"}
             </button>
           )
+        )}
+        {failed && state.previous && (
+          <button
+            type="button"
+            className={controls.actionButton}
+            onClick={() => setState({ kind: "ready", video: state.previous! })}
+          >
+            Keep the current video
+          </button>
         )}
       </div>
     </div>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import { notFound, permanentRedirect } from "next/navigation";
 import { SITE_URL } from "~/lib/site";
+import { videoSummaryTag } from "~/server/explainer/cache";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import { hasRender, readVideoArtifact } from "~/server/explainer/store";
 import WatchPageClient from "./watch-page-client";
@@ -10,7 +11,8 @@ type WatchPageProps = {
   params: Promise<{ username: string; repo: string }>;
 };
 
-// A stored video changes only when the operator regenerates it.
+// A stored video changes only when the operator regenerates it, and that
+// refreshes this page at once (see refreshVideoPages).
 export const revalidate = 300;
 export const dynamicParams = true;
 
@@ -42,7 +44,7 @@ function getVideoSummary(username: string, repo: string) {
       };
     },
     ["explainer-video-summary", username.toLowerCase(), repo.toLowerCase()],
-    { revalidate },
+    { revalidate, tags: [videoSummaryTag(username, repo)] },
   )();
 }
 

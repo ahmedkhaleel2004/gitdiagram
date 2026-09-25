@@ -18,6 +18,7 @@ import type {
   VideoAudience,
 } from "~/features/admin/types";
 import { isLikelyVpn, peopleHere } from "~/features/admin/presence";
+import { setAdminTools, useAdminTools } from "~/features/admin/tools";
 import { useLiveSite, type LinkStatus } from "./use-live-site";
 
 // Counters (budgets, balances) are polled; everything about people and jobs is
@@ -817,6 +818,7 @@ export function AdminDashboard() {
   );
 
   const live = useLiveSite(state?.presence ?? null, onEvent);
+  const adminTools = useAdminTools();
 
   useEffect(() => {
     void refresh();
@@ -887,6 +889,7 @@ export function AdminDashboard() {
   }
 
   async function signOut() {
+    setAdminTools(false);
     await fetch("/api/admin/session", { method: "DELETE" }).catch(() => null);
     window.location.reload();
   }
@@ -1162,6 +1165,22 @@ export function AdminDashboard() {
                     void change({ videosPaused: checked })
                   }
                   aria-label="Pause all new videos"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-4 rounded-md border-2 border-black bg-white/70 p-3 dark:bg-black/20">
+                <span>
+                  <span className="block font-semibold">
+                    Show admin controls on video pages
+                  </span>
+                  <span className="block text-xs text-[hsl(var(--neo-soft-text))]">
+                    Adds a Regenerate video button, in this browser only. Turn
+                    it off to see pages the way visitors do.
+                  </span>
+                </span>
+                <Switch
+                  checked={adminTools}
+                  onCheckedChange={setAdminTools}
+                  aria-label="Show admin controls on video pages"
                 />
               </label>
               <div className="grid gap-4 sm:grid-cols-2">

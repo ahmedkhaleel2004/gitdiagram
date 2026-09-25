@@ -1,6 +1,7 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
+import { VIDEO_CATALOG_TAG } from "./cache";
 import { listStoredVideos, readVideoArtifact } from "./store";
 
 /** What a video card on /videos shows. */
@@ -50,6 +51,6 @@ async function loadCatalog(): Promise<VideoCard[]> {
 
 export const getVideoCatalog = unstable_cache(
   loadCatalog,
-  ["explainer-video-catalog"],
-  { revalidate: 300 },
+  [VIDEO_CATALOG_TAG],
+  { revalidate: 300, tags: [VIDEO_CATALOG_TAG] },
 );
