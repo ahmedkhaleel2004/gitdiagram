@@ -40,14 +40,25 @@ const MIN_CREDITS = Math.max(
   0,
   Number.parseInt(process.env.VIDEO_MIN_TTS_CREDITS ?? "", 10) || 2_000,
 );
+const CREDITS_CACHE_MS = 5 * 60_000;
+// A failed read is tried again soon rather than held for the full five minutes.
+const FAILED_READ_CACHE_MS = 30_000;
+// How long a balance read earlier may stand in when a fresh read fails.
+const LAST_KNOWN_MS = 30 * 60_000;
+// One take of a minute's script comes back in well under this.
+const TTS_TIMEOUT_MS = 90_000;
 let creditsCache: { at: number; remaining: number | null } | null = null;
+let lastKnownCredits: { at: number; remaining: number } | null = null;
 
 /**
  * The voice account's remaining credits, read live and cached five minutes
  * per instance; null when the balance cannot be read.
  */
 export async function narrationCreditsRemaining(): Promise<number | null> {
-  if (!creditsCache || Date.now() - creditsCache.at > 5 * 60_000) {
+  const age = creditsCache ? Date.now() - creditsCache.at : Infinity;
+  const maxAge =
+    creditsCache?.remaining === null ? FAILED_READ_CACHE_MS : CREDITS_CACHE_MS;
+  if (age > maxAge) {
     let remaining: number | null = null;
     try {
       const response = await fetch(`${ELEVENLABS_API}/v1/user/subscription`, {
@@ -69,18 +80,48 @@ export async function narrationCreditsRemaining(): Promise<number | null> {
       remaining = null;
     }
     creditsCache = { at: Date.now(), remaining };
+    if (remaining !== null) lastKnownCredits = { at: Date.now(), remaining };
   }
-  return creditsCache.remaining;
+  return creditsCache!.remaining;
 }
 
 /**
  * Whether the voice account can narrate another video, so new videos stop
- * cleanly instead of failing halfway once the credits run out. An unreadable
- * balance counts as enough: narration itself will then report the real error.
+ * cleanly instead of failing halfway once the credits run out. When the
+ * balance cannot be read, a recent reading stands in; with none, the answer
+ * is no, since a public video would otherwise be paid for blind.
  */
 export async function hasNarrationCredits(): Promise<boolean> {
-  const remaining = await narrationCreditsRemaining();
-  return remaining === null || remaining >= MIN_CREDITS;
+  let remaining = await narrationCreditsRemaining();
+  if (
+    remaining === null &&
+    lastKnownCredits &&
+    Date.now() - lastKnownCredits.at <= LAST_KNOWN_MS
+  )
+    remaining = lastKnownCredits.remaining;
+  return remaining !== null && remaining >= MIN_CREDITS;
+}
+
+/** Forget cached balances; for tests. */
+export function resetNarrationCreditsCache(): void {
+  creditsCache = null;
+  lastKnownCredits = null;
+}
+
+/** Wait, or stop waiting the moment the signal aborts. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason as Error);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal!.reason as Error);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 const ttsModel = () => process.env.VIDEO_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
@@ -93,6 +134,8 @@ async function speak(
   const model = ttsModel();
   const v3 = model === "eleven_v3";
   for (let attempt = 0; ; attempt++) {
+    // Each attempt has its own time limit as well as the run's deadline.
+    const timeout = AbortSignal.timeout(TTS_TIMEOUT_MS);
     const response = await fetch(
       `${ELEVENLABS_API}/v1/text-to-speech/${voice}/with-timestamps?output_format=mp3_44100_128`,
       {
@@ -117,11 +160,11 @@ async function speak(
                 speed: Number(process.env.VIDEO_TTS_SPEED) || DEFAULT_SPEED,
               },
         }),
-        signal,
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       },
     );
     if ((response.status === 429 || response.status >= 500) && attempt < 5) {
-      await new Promise((resolve) => setTimeout(resolve, 1200 * 2 ** attempt));
+      await sleep(1200 * 2 ** attempt, signal);
       continue;
     }
     if (!response.ok)
@@ -140,9 +183,12 @@ async function speak(
 }
 
 /**
- * Words with clock times and their character offset in the spoken text. Delivery
- * tags come back in the alignment as characters too; they are skipped, so the
- * words line up one to one with the caption's.
+ * Words with clock times and their offset in the spoken text, counted in the
+ * same UTF-16 units as the text itself: an alignment entry may be a whole
+ * emoji, which is two units of the string, so offsets are summed from the
+ * entries' own lengths rather than taken from their index. Delivery tags come
+ * back in the alignment as characters too; they are skipped, so the words
+ * line up one to one with the caption's.
  */
 function spokenWords(
   alignment: Alignment,
@@ -154,6 +200,7 @@ function spokenWords(
   let e = 0;
   let from = -1;
   let inTag = false;
+  let position = 0;
   const flush = () => {
     if (from >= 0)
       words.push({
@@ -167,6 +214,8 @@ function spokenWords(
   };
   for (let index = 0; index < alignment.characters.length; index++) {
     const character = alignment.characters[index]!;
+    const at = position;
+    position += character.length;
     if (character === "[" || inTag) {
       inTag = character !== "]";
       flush();
@@ -177,7 +226,7 @@ function spokenWords(
       continue;
     }
     if (from < 0) {
-      from = index;
+      from = at;
       s = alignment.character_start_times_seconds[index] ?? 0;
     }
     text += character;
@@ -220,16 +269,20 @@ export async function narrateBeats(
 
   const { audio, alignment } = await speak(text, signal);
   const words = spokenWords(alignment, LEAD_IN_SECONDS);
-  const timing: VideoTiming["beats"] = spans.map((span) => {
+  const timing: VideoTiming["beats"] = [];
+  for (const span of spans) {
     const own = words.filter(
       (word) => word.offset >= span.from && word.offset < span.to,
     );
-    return {
-      start: own[0]?.s ?? LEAD_IN_SECONDS,
-      end: own.at(-1)?.e ?? LEAD_IN_SECONDS,
+    // A beat with no aligned words holds where the one before it ended,
+    // rather than jumping back to the start of the film.
+    const previousEnd = timing.at(-1)?.end ?? LEAD_IN_SECONDS;
+    timing.push({
+      start: own[0]?.s ?? previousEnd,
+      end: own.at(-1)?.e ?? previousEnd,
       words: own.map(({ w, s, e }) => ({ w, s, e })),
-    };
-  });
+    });
+  }
   const speechEnd = timing.at(-1)?.end ?? 0;
   return {
     clips: [audio],
