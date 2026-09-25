@@ -27,8 +27,8 @@ vi.mock("~/lib/sitemaps", async (importOriginal) => ({
   ...(await importOriginal<typeof Sitemaps>()),
   // Small pages make the shard arithmetic visible.
   SITEMAP_PAGE_SIZE: 10,
-  getSitemapCount: (routeCount: number) =>
-    Math.max(1, Math.ceil((routeCount + 4) / 10)),
+  getSitemapCount: (routeCount: number, fixedRouteCount: number) =>
+    Math.max(1, Math.ceil((routeCount + fixedRouteCount) / 10)),
 }));
 
 import robots from "./robots";
@@ -68,6 +68,15 @@ describe("robots.txt", () => {
       "https://gitdiagram.com/sitemap/0.xml",
       "https://gitdiagram.com/sitemap/1.xml",
     ]);
+  });
+
+  it("does not list an empty shard when videos are off", async () => {
+    // Three fixed pages and seven repositories fill exactly one page of ten.
+    store.videosOn = false;
+    store.browse = Array.from({ length: 7 }, (_, index) => entry(index));
+    expect(await generateSitemaps()).toHaveLength(1);
+    store.videosOn = true;
+    expect(await generateSitemaps()).toHaveLength(2);
   });
 });
 

@@ -10,6 +10,7 @@ const {
   markQuotaReservationStartedInUpstash: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("~/server/storage/quota-store", () => ({
   checkQuotaInUpstash,
   commitQuotaUsageInUpstash,
@@ -21,6 +22,7 @@ import {
   buildComplimentaryAdmissionTokens,
   buildComplimentaryStageTokenEstimate,
   finalizeComplimentaryQuota,
+  getComplimentaryDailyLimitTokens,
   markComplimentaryQuotaStarted,
   modelMatchesComplimentaryFamily,
   shouldApplyComplimentaryGate,
@@ -32,6 +34,16 @@ describe("complimentary gate", () => {
     delete process.env.OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS;
     delete process.env.OPENAI_COMPLIMENTARY_MODEL_FAMILY;
     vi.clearAllMocks();
+  });
+
+  it("reads a positive daily token limit, else the default", () => {
+    expect(getComplimentaryDailyLimitTokens()).toBe(10_000_000);
+    for (const value of ["0", "-5", "abc", " "]) {
+      process.env.OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS = value;
+      expect(getComplimentaryDailyLimitTokens()).toBe(10_000_000);
+    }
+    process.env.OPENAI_COMPLIMENTARY_DAILY_LIMIT_TOKENS = " 500 ";
+    expect(getComplimentaryDailyLimitTokens()).toBe(500);
   });
 
   it("applies only to the default OpenAI key when enabled", () => {

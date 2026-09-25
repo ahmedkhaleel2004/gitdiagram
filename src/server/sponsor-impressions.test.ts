@@ -1,18 +1,20 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type * as NextServer from "next/server";
-const { callbacks, upstashEval } = vi.hoisted(() => ({
+const { callbacks, upstashEval, upstashCommand } = vi.hoisted(() => ({
   callbacks: [] as Array<() => Promise<void>>,
   upstashEval: vi.fn(),
+  upstashCommand: vi.fn(async () => null),
 }));
 vi.mock("server-only", () => ({}));
-vi.mock("~/server/storage/upstash", () => ({ upstashEval }));
+vi.mock("~/server/storage/upstash", () => ({ upstashEval, upstashCommand }));
 vi.mock("next/server", async (original) => ({
   ...(await original<typeof NextServer>()),
   after: (cb: () => Promise<void>) => callbacks.push(cb),
 }));
 import { POST } from "~/app/out/[campaign]/impression/route";
 import { GET } from "~/app/out/[campaign]/route";
+import { createAdminSession } from "~/server/admin/operator";
 import { sponsorDestination } from "./sponsor-clicks";
 import { coderabbitCampaign } from "~/lib/sponsor-campaign";
 
@@ -51,6 +53,7 @@ beforeEach(() => {
   capture.mockReset().mockResolvedValue(new Response("1"));
   vi.stubGlobal("fetch", capture);
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "public-test-token");
+  vi.stubEnv("VIDEO_ADMIN_TOKEN", "operator-token-for-sponsor-tests-000000");
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -147,13 +150,19 @@ it.each<Record<string, string>>([
   expect(callbacks).toHaveLength(0);
 });
 
-it("excludes prelaunch and expired impressions, but allows explicitly marked verification events", async () => {
+it("excludes prelaunch and expired impressions, but allows the operator's marked verification events", async () => {
   for (const date of ["2026-09-24T00:00:00Z", coderabbitCampaign.endsAt]) {
     vi.setSystemTime(new Date(date));
     await POST(request(), context);
+    // Anyone else's `?test=1` is an ordinary (here: inactive) impression.
+    await POST(request(undefined, {}, "?test=1"), context);
     expect(callbacks).toHaveLength(0);
   }
-  await POST(request(undefined, {}, "?test=1"), context);
+  const session = await createAdminSession();
+  await POST(
+    request(undefined, { cookie: `gd_admin=${session!.value}` }, "?test=1"),
+    context,
+  );
   await callbacks[0]!();
   expect(
     JSON.parse(capture.mock.calls[0]![1]!.body as string).properties.is_test,
@@ -174,21 +183,22 @@ it("records one impression per page view and caps each network per hour", async 
     `sponsor:v1:impression:${coderabbitCampaign.id}:home:${pageViewId}`,
   );
   expect(keys[1]).toMatch(
+    /^sponsor:v1:impression-campaign:coderabbit-2026-10:\d+$/,
+  );
+  expect(keys[2]).toMatch(
     /^sponsor:v1:impression-cap:coderabbit-2026-10:[0-9a-f]{32}:\d+$/,
   );
-  expect(args.slice(0, 2)).toEqual([86400, 120]);
+  expect([args[0], args[1], args[3]]).toEqual([86400, 100_000, 120]);
   expect(JSON.stringify(upstashEval.mock.calls)).not.toContain("2001:db8");
 });
 
-it("accepts the random event IDs sent by tabs opened before page-view IDs", async () => {
+it("rejects the legacy random event IDs", async () => {
   const response = await POST(
     request({ placement: "browse", eventId: pageViewId }),
     context,
   );
-  expect(response.status).toBe(204);
-  await callbacks[0]!();
-  expect(claimed(0).keys[0]).toContain(`:browse:${pageViewId}`);
-  expect(capture).toHaveBeenCalledOnce();
+  expect(response.status).toBe(400);
+  expect(callbacks).toHaveLength(0);
 });
 
 it("records impressions when Redis is down", async () => {

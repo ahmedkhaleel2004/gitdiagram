@@ -931,31 +931,61 @@ export async function POST(request: Request) {
             );
           };
 
-          audit = await finalizeGenerationStream({
-            abortCause,
-            accounting,
-            apiKey,
-            audit,
-            githubPat,
-            postResponseTasks,
-            quotaReservation,
-            rateLimitedClientIp,
-            rateLimitedWindowStartSeconds,
-            recordTiming,
-            repo,
-            repositoryVerified,
-            sendTerminal,
-            storageVisibility,
-            streamState,
-            successfulDiagramState,
-            username,
-          });
-
-          clearInterval(heartbeat);
-          stopCancellationPolling();
-          request.signal.removeEventListener("abort", handleRequestAbort);
-          deadlineSignal.removeEventListener("abort", handleDeadline);
-          await closeStream();
+          try {
+            audit = await finalizeGenerationStream({
+              abortCause,
+              accounting,
+              apiKey,
+              audit,
+              githubPat,
+              postResponseTasks,
+              quotaReservation,
+              rateLimitedClientIp,
+              rateLimitedWindowStartSeconds,
+              recordTiming,
+              repo,
+              repositoryVerified,
+              sendTerminal,
+              storageVisibility,
+              streamState,
+              successfulDiagramState,
+              username,
+            });
+          } finally {
+            clearInterval(heartbeat);
+            stopCancellationPolling();
+            request.signal.removeEventListener("abort", handleRequestAbort);
+            deadlineSignal.removeEventListener("abort", handleDeadline);
+            // Queued even when finalizing throws, so /admin never shows the
+            // job running forever. Sent after the response closes, while the
+            // function stays up for its post-response work.
+            const finishedAudit = audit;
+            postResponseTasks.push(() => {
+              const finishedCost =
+                finishedAudit.finalCost ?? finishedAudit.estimatedCost;
+              return emitLiveEvent({
+                kind: "diagram.finished",
+                repo: liveLabel,
+                outcome: streamState.wasCancelled
+                  ? "cancelled"
+                  : finishedAudit.status === "succeeded"
+                    ? "complete"
+                    : "error",
+                errorCode: terminalErrorCode,
+                ms: Math.round(performance.now() - invocationStartedAt),
+                costUsd: finishedCost?.amountUsd ?? null,
+                ...(liveStarted
+                  ? {
+                      job: {
+                        id: finishedAudit.sessionId,
+                        state: "end" as const,
+                      },
+                    }
+                  : {}),
+              });
+            });
+            await closeStream();
+          }
 
           logGenerationFinished({
             accounting,
@@ -967,26 +997,6 @@ export async function POST(request: Request) {
             streamState,
             terminalErrorCode,
           });
-          // Sent after the response closes, while the function stays up for
-          // its post-response work.
-          const finishedCost = audit.finalCost ?? audit.estimatedCost;
-          postResponseTasks.push(() =>
-            emitLiveEvent({
-              kind: "diagram.finished",
-              repo: liveLabel,
-              outcome: streamState.wasCancelled
-                ? "cancelled"
-                : audit.status === "succeeded"
-                  ? "complete"
-                  : "error",
-              errorCode: terminalErrorCode,
-              ms: Math.round(performance.now() - invocationStartedAt),
-              costUsd: finishedCost?.amountUsd ?? null,
-              ...(liveStarted
-                ? { job: { id: audit.sessionId, state: "end" as const } }
-                : {}),
-            }),
-          );
         }
       };
 

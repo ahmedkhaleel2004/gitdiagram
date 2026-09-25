@@ -1,5 +1,5 @@
 import { migrateLegacyCredentialStorage } from "~/features/credentials/api";
-import { parseSSEStreamBuffer } from "~/features/diagram/sse";
+import { readSSEStream } from "~/features/diagram/sse";
 import type {
   DiagramStateResponse,
   DiagramStreamMessage,
@@ -145,57 +145,29 @@ export async function streamDiagramGeneration(
       );
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) {
+    if (!response.body) {
       throw new Error("No reader available");
     }
 
-    try {
-      let streamBuffer = "";
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value.byteLength > 0) handlers.onActivity?.();
-        streamBuffer += decoder.decode(value, { stream: true });
-        const { messages, remainder } = parseSSEStreamBuffer(streamBuffer);
-        streamBuffer = remainder;
-        for (const message of messages) {
-          receivedTerminalEvent =
-            receivedTerminalEvent || isTerminalMessage(message);
-          const shouldContinue = await handlers.onMessage(message);
-          if (shouldContinue === false) {
-            if (!receivedTerminalEvent) {
-              notifyCancellation();
-            }
-            await reader.cancel();
-            return;
-          }
-        }
-      }
-
-      streamBuffer += decoder.decode();
-      const { messages } = parseSSEStreamBuffer(`${streamBuffer}\n\n`);
-      for (const message of messages) {
+    const outcome = await readSSEStream<DiagramStreamMessage>(
+      response.body,
+      async (message) => {
         receivedTerminalEvent =
           receivedTerminalEvent || isTerminalMessage(message);
         const shouldContinue = await handlers.onMessage(message);
-        if (shouldContinue === false) {
-          if (!receivedTerminalEvent) {
-            notifyCancellation();
-          }
-          await reader.cancel();
-          return;
+        // Stopping before the end: tell the server before the read is cut.
+        if (shouldContinue === false && !receivedTerminalEvent) {
+          notifyCancellation();
         }
-      }
+        return shouldContinue;
+      },
+      handlers.onActivity,
+    );
 
-      if (!receivedTerminalEvent) {
-        throw new Error(
-          "Generation stream ended before completion. Please retry.",
-        );
-      }
-    } finally {
-      reader.releaseLock();
+    if (outcome === "ended" && !receivedTerminalEvent) {
+      throw new Error(
+        "Generation stream ended before completion. Please retry.",
+      );
     }
   } finally {
     if (!receivedTerminalEvent) {

@@ -2,24 +2,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type * as NextServer from "next/server";
 
-const { callbacks, upstashEval } = vi.hoisted(() => ({
+const { callbacks, upstashEval, upstashCommand } = vi.hoisted(() => ({
   callbacks: [] as Array<() => Promise<void>>,
   upstashEval: vi.fn(),
+  upstashCommand: vi.fn(async () => null),
 }));
 vi.mock("server-only", () => ({}));
-vi.mock("~/server/storage/upstash", () => ({ upstashEval }));
+vi.mock("~/server/storage/upstash", () => ({ upstashEval, upstashCommand }));
 vi.mock("next/server", async (importOriginal) => ({
   ...(await importOriginal<typeof NextServer>()),
   after: (callback: () => Promise<void>) => callbacks.push(callback),
 }));
 
 import { GET, HEAD } from "~/app/out/[campaign]/route";
+import { createAdminSession } from "~/server/admin/operator";
 import {
   coderabbitCampaign,
   sentCampaign,
   sponsorClickHref,
   sponsorPlacements,
 } from "~/lib/sponsor-campaign";
+
+const operatorToken = "operator-token-for-sponsor-tests-000000";
+async function adminCookie() {
+  const session = await createAdminSession();
+  return `gd_admin=${session!.value}`;
+}
 
 const browser =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36";
@@ -43,6 +51,7 @@ beforeEach(() => {
   fetchMock.mockReset().mockResolvedValue(new Response("1"));
   vi.stubGlobal("fetch", fetchMock);
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "public-test-token");
+  vi.stubEnv("VIDEO_ADMIN_TOKEN", operatorToken);
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 afterEach(() => {
@@ -192,12 +201,36 @@ describe("sponsor click redirects", () => {
     );
   });
 
-  it("marks controlled verification clicks so campaign reports can exclude them", async () => {
-    await GET(request("readme&test=1"), context);
+  it("marks the operator's verification clicks so campaign reports can exclude them", async () => {
+    await GET(
+      request("readme&test=1", { cookie: await adminCookie() }),
+      context,
+    );
     await callbacks[0]!();
     const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
     expect(body.properties.is_test).toBe(true);
   });
+
+  it.each([
+    ["no session", {}],
+    ["a forged session", { cookie: "gd_admin=v2.9999999999999.0.forged" }],
+  ])(
+    "ignores ?test=1 without the operator's session: %s",
+    async (_, headers: Record<string, string>) => {
+      await GET(
+        request("readme&test=1", {
+          "x-forwarded-for": "192.0.2.7",
+          ...headers,
+        }),
+        context,
+      );
+      await callbacks[0]!();
+      // A normal click: deduplicated, and not marked as a test.
+      expect(upstashEval).toHaveBeenCalledOnce();
+      const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+      expect(body.properties.is_test).toBe(false);
+    },
+  );
 
   it.each(["network", "http"])(
     "keeps the sponsor link working when capture fails: %s",
@@ -232,16 +265,22 @@ describe("sponsor click redirects", () => {
       expect(response.headers.get("cache-control")).toContain("no-store");
     }
     expect(callbacks).toHaveLength(0);
-    // Controlled checks and preview deployments still reach the sponsor.
-    const test = await GET(
-      new NextRequest(
-        `https://gitdiagram.com/out/${coderabbitCampaign.id}?placement=home&test=1`,
-        { headers: { "user-agent": browser } },
-      ),
-      { params: Promise.resolve({ campaign: coderabbitCampaign.id }) },
-    );
+    // The operator's controlled checks and preview deployments still reach
+    // the sponsor; anyone else's `?test=1` does not.
+    const testClick = async (headers: Record<string, string>) =>
+      GET(
+        new NextRequest(
+          `https://gitdiagram.com/out/${coderabbitCampaign.id}?placement=home&test=1`,
+          { headers: { "user-agent": browser, ...headers } },
+        ),
+        { params: Promise.resolve({ campaign: coderabbitCampaign.id }) },
+      );
+    const test = await testClick({ cookie: await adminCookie() });
     expect(new URL(test.headers.get("location")!).hostname).toBe(
       "www.coderabbit.ai",
+    );
+    expect((await testClick({})).headers.get("location")).toBe(
+      "https://gitdiagram.com/advertise",
     );
     const preview = await GET(
       new NextRequest(
@@ -269,7 +308,42 @@ describe("sponsor click redirects", () => {
     expect(first![0]).toMatch(
       /^sponsor:v1:click:sent-2026-09:home:[0-9a-f]{32}:\d+$/,
     );
+    expect(first![1]).toMatch(/^sponsor:v1:click-campaign:sent-2026-09:\d+$/);
     expect(JSON.stringify(upstashEval.mock.calls)).not.toContain("192.0.2.7");
+  });
+
+  it("dedupes IPv6 clicks per /48, so one allocation cannot mint networks", async () => {
+    for (const ip of ["2001:db8:1:ff::1", "2001:db8:1:2:3:4:5:6"])
+      await GET(request("home", { "x-forwarded-for": ip }), context);
+    await GET(request("home", { "x-forwarded-for": "2001:db8:2::1" }), context);
+    await Promise.all(callbacks.map((callback) => callback()));
+    const [a, b, c] = upstashEval.mock.calls.map(
+      ([call]) => (call as { keys: string[] }).keys[0],
+    );
+    expect(a).toBe(b);
+    expect(c).not.toBe(a);
+  });
+
+  it("drops events past the campaign's hourly ceiling and logs it once", async () => {
+    upstashEval
+      .mockResolvedValueOnce(-1)
+      .mockResolvedValueOnce(-2)
+      .mockResolvedValueOnce(1);
+    vi.stubEnv("SPONSOR_CLICKS_PER_CAMPAIGN_HOUR", "250");
+    for (const ip of ["192.0.2.1", "192.0.2.2", "192.0.2.3"])
+      await GET(request("home", { "x-forwarded-for": ip }), context);
+    await Promise.all(callbacks.map((callback) => callback()));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect((upstashEval.mock.calls[0]![0] as { args: number[] }).args[1]).toBe(
+      250,
+    );
+    expect(console.warn).toHaveBeenCalledOnce();
+    expect(JSON.parse(vi.mocked(console.warn).mock.calls[0]![0])).toEqual({
+      event: "sponsor.campaign_ceiling.exceeded",
+      sponsorEvent: "sponsor_click",
+      campaign: "sent-2026-09",
+      ceiling: 250,
+    });
   });
 
   it("still records clicks when Redis is down, and skips dedupe for test clicks", async () => {
@@ -279,7 +353,10 @@ describe("sponsor click redirects", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     upstashEval.mockClear();
     await GET(
-      request("home&test=1", { "x-forwarded-for": "192.0.2.7" }),
+      request("home&test=1", {
+        "x-forwarded-for": "192.0.2.7",
+        cookie: await adminCookie(),
+      }),
       context,
     );
     await callbacks[1]!();

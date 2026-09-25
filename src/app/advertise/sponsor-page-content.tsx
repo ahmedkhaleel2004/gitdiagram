@@ -88,7 +88,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
                   <a
                     href={href}
                     target="_blank"
-                    rel="noopener"
+                    rel="sponsored noopener"
                     aria-label={name}
                   >
                     <Image

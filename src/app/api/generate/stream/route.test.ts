@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as StreamFinalization from "~/server/generate/stream-finalization";
 
 const mocks = vi.hoisted(() => ({
   after: vi.fn(),
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   clearFailureSummary: vi.fn(),
   estimateCost: vi.fn(),
   finalizeQuota: vi.fn(),
+  finalizeStream: vi.fn(),
   generateStructuredOutput: vi.fn(),
   getGithubData: vi.fn(),
   getModel: vi.fn(),
@@ -65,6 +67,11 @@ vi.mock("~/server/generate/complimentary-gate", () => ({
   modelMatchesComplimentaryFamily: vi.fn(() => true),
   shouldApplyComplimentaryGate: mocks.shouldApplyComplimentaryGate,
 }));
+vi.mock("~/server/generate/stream-finalization", async (importOriginal) => {
+  const actual = await importOriginal<typeof StreamFinalization>();
+  mocks.finalizeStream.mockImplementation(actual.finalizeGenerationStream);
+  return { ...actual, finalizeGenerationStream: mocks.finalizeStream };
+});
 vi.mock("~/server/generate/cost-estimate", () => ({
   estimateGenerationCost: mocks.estimateCost,
 }));
@@ -304,6 +311,25 @@ describe("POST /api/generate/stream", () => {
     expect(live()).toEqual([
       ["diagram.started", "a private repository", "start"],
       ["diagram.finished", "a private repository", "end"],
+    ]);
+  });
+
+  it("ends the live job and closes the stream even when finalizing throws", async () => {
+    mockEstimate(1_000);
+    mocks.streamCompletion.mockRejectedValue(new Error("upstream exploded"));
+    mocks.finalizeStream.mockRejectedValueOnce(new Error("storage exploded"));
+
+    // The response ends (no hang until the platform timeout).
+    await (await POST(request())).text();
+    await mocks.afterCallback?.();
+
+    expect(
+      vi
+        .mocked(emitLiveEvent)
+        .mock.calls.map(([event]) => [event.kind, event.job?.state ?? null]),
+    ).toEqual([
+      ["diagram.started", "start"],
+      ["diagram.finished", "end"],
     ]);
   });
 

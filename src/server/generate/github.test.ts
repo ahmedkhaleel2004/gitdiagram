@@ -71,8 +71,100 @@ describe("getGithubData repository input bounds", () => {
 
     const data = await getGithubData("acme", "demo");
 
+    // Reading the missing top level failed (this mock knows no such URL), so
+    // the listing stays as GitHub returned it, still marked partial.
     expect(data.fileTree).toBe("src/main.ts");
     expect(data.pathTypes.get("src/main.ts")).toBe("blob");
+    expect(data.treeTruncated).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("fills in top-level folders a truncated listing left out, one level deep", async () => {
+    const sha = (char: string) => char.repeat(40);
+    const base = createGitHubFetch({
+      truncated: true,
+      tree: [
+        { path: "src", type: "tree", sha: sha("1") },
+        {
+          path: "src/main.ts",
+          type: "blob",
+          sha: sha("2"),
+          size: 10,
+          mode: "100644",
+        },
+      ],
+    });
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/git/trees/main"))
+        return jsonResponse({
+          truncated: false,
+          tree: [
+            { path: "src", type: "tree", sha: sha("1") },
+            { path: "web", type: "tree", sha: sha("3") },
+            { path: "worker", type: "tree", sha: sha("4") },
+            {
+              path: "package.json",
+              type: "blob",
+              sha: sha("5"),
+              size: 20,
+              mode: "100644",
+            },
+          ],
+        });
+      if (url.endsWith(`/git/trees/${sha("3")}`))
+        return jsonResponse({
+          truncated: false,
+          tree: [
+            {
+              path: "server.ts",
+              type: "blob",
+              sha: sha("6"),
+              size: 30,
+              mode: "100644",
+            },
+            { path: "components", type: "tree", sha: sha("7") },
+          ],
+        });
+      if (url.endsWith(`/git/trees/${sha("4")}`))
+        return jsonResponse({ message: "boom" }, 500);
+      return base(input);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const data = await getGithubData("acme", "demo");
+
+    expect(data.treeTruncated).toBe(true);
+    expect(data.fileTree.split("\n")).toEqual([
+      "src",
+      "src/main.ts",
+      "web",
+      "worker",
+      "package.json",
+      "web/server.ts",
+      "web/components",
+    ]);
+    expect(data.pathTypes.get("web/components")).toBe("tree");
+    expect(data.sourceBlobs?.get("web/server.ts")).toEqual({
+      sha: sha("6"),
+      size: 30,
+    });
+    // The folder already listed is not read again.
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes(sha("1"))),
+    ).toEqual([]);
+  });
+
+  it("does not read more of a complete listing", async () => {
+    const fetchMock = createGitHubFetch({
+      truncated: false,
+      tree: [{ path: "src/main.ts", type: "blob" }],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const data = await getGithubData("acme", "demo");
+
+    expect(data.treeTruncated).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -167,6 +259,7 @@ describe("getGithubData repository input bounds", () => {
         ["src/user.login.ts", "blob"],
         ["src/main.ts", "blob"],
       ]),
+      treeTruncated: false,
     });
     expect(timeoutSpy).toHaveBeenCalledTimes(3);
     expect(timeoutSpy).toHaveBeenCalledWith(GITHUB_REQUEST_TIMEOUT_MS);

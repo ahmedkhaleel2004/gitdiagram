@@ -9,6 +9,7 @@ import {
 import { getClientIp } from "~/server/http/client-ip";
 import {
   claimSponsorEvent,
+  isSponsorTestRequest,
   recordSponsorEvent,
   shouldRecordSponsorClick,
   sponsorDestination,
@@ -36,11 +37,12 @@ export async function GET(request: NextRequest, context: Context) {
     });
   }
 
-  const isTest = request.nextUrl.searchParams.get("test") === "1";
+  const isTest = await isSponsorTestRequest(request);
   // Old README revisions and stale cached pages still link to campaigns that
   // have ended or not started. Those clicks go to /advertise and are not
   // recorded: an unpaid sponsor gets no traffic and the paying one no
-  // misattributed clicks. Previews and `?test=1` checks keep the real target.
+  // misattributed clicks. Previews and the operator's `?test=1` checks keep
+  // the real target.
   if (
     activeSponsorCampaign()?.id !== config.id &&
     !isTest &&

@@ -61,7 +61,8 @@ function limiter(size: number) {
   };
 }
 
-// ElevenLabs Starter allows four concurrent requests.
+// ElevenLabs Starter (the narrator when this ran; production now voices
+// through OpenRouter) allowed four concurrent requests.
 const voiceSlot = limiter(3);
 
 async function readRepo(slug: string): Promise<VideoRepository> {

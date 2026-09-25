@@ -74,5 +74,9 @@ describe("advertise availability", () => {
     expect(
       screen.getByRole("link", { name: "CodeRabbit" }).getAttribute("href"),
     ).toBe("https://www.coderabbit.ai/");
+    // Paid links are marked for search engines.
+    expect(screen.getByRole("link", { name: "Sent" }).getAttribute("rel")).toBe(
+      "sponsored noopener",
+    );
   });
 });
