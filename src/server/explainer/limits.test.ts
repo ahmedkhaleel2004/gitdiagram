@@ -2,19 +2,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { upstashEval, upstashCommand } = vi.hoisted(() => ({
-  upstashEval: vi.fn(),
-  upstashCommand: vi.fn(),
-}));
+const { upstashEval, upstashCommand, readAdmissionControls } = vi.hoisted(
+  () => ({
+    upstashEval: vi.fn(),
+    upstashCommand: vi.fn(),
+    readAdmissionControls: vi.fn(),
+  }),
+);
+
+const CONTROLS = {
+  videoAudience: "priority",
+  videosPaused: false,
+  videoDailyLimit: null,
+  videoPersonDailyLimit: null,
+  videoNetworkDailyLimit: null,
+};
 
 vi.mock("~/server/storage/upstash", () => ({ upstashEval, upstashCommand }));
+vi.mock("~/server/admin/controls", () => ({
+  readAdmissionControls,
+  readControls: vi.fn(async () => CONTROLS),
+}));
 
 import {
+  firstGateNotice,
   isTrustedVideoCaller,
   isVideoAdmin,
   limitMessage,
   reserveVideoSlot,
   resetUsageToday,
+  tryPaidVideoRun,
   tryVideoLock,
   videosLeftToday,
 } from "./limits";
@@ -28,9 +45,30 @@ const request = (authorization?: string) =>
     headers: authorization ? { authorization } : {},
   });
 
+/** A Redis holding the given epochs (by key) and counters. */
+function redis(values: Record<string, string> = {}) {
+  upstashCommand.mockImplementation(async (command: unknown[]) => {
+    if (command[0] === "MGET")
+      return command.slice(1).map((key) => values[String(key)] ?? null);
+    if (command[0] === "GET") return values[String(command[1])] ?? null;
+    if (command[0] === "INCR") {
+      const key = String(command[1]);
+      values[key] = String(Number(values[key] ?? "0") + 1);
+      return Number(values[key]);
+    }
+    return null;
+  });
+  return values;
+}
+
+const evalKeys = (call: number) =>
+  (upstashEval.mock.calls[call]![0] as { keys: string[] }).keys;
+
 beforeEach(() => {
   vi.clearAllMocks();
   process.env = { ...originalEnv, VIDEO_ADMIN_TOKEN: TOKEN };
+  readAdmissionControls.mockResolvedValue(CONTROLS);
+  redis();
 });
 
 afterEach(() => {
@@ -66,12 +104,15 @@ describe("explainer video limits", () => {
     expect(granted.ok).toBe(true);
     const call = upstashEval.mock.calls[0]![0] as {
       keys: string[];
-      args: number[];
+      args: Array<number | string>;
     };
+    // Before any reset (epoch 0) the counters keep their old names.
     expect(call.keys[0]).toMatch(/^video:v1:generate:all:\d+$/);
     expect(call.keys[1]).toMatch(/^video:v1:generate:who:alice:\d+$/);
     expect(call.keys[2]).toMatch(/^video:v1:generate:net:203\.0\.113\.9:\d+$/);
+    expect(call.keys[3]).toBe("video:v1:generate:epoch");
     expect(call.args.slice(0, 3)).toEqual([25, 1, 10]);
+    expect(call.args[4]).toBe("0");
 
     upstashEval.mockResolvedValueOnce(1);
     expect(await reserveVideoSlot(alice)).toEqual({
@@ -93,20 +134,24 @@ describe("explainer video limits", () => {
       reason: "network",
       limit: 10,
     });
-    expect(
-      (upstashEval.mock.calls[3]![0] as { keys: string[] }).keys[2],
-    ).toContain(":net:unknown:");
+    expect(evalKeys(3)[2]).toContain(":net:unknown:");
+  });
+
+  it("refuses to reserve when the live limits cannot be read", async () => {
+    readAdmissionControls.mockRejectedValueOnce(new Error("redis down"));
+    await expect(
+      reserveVideoSlot({ visitorId: "alice", clientIp: null }),
+    ).rejects.toThrow("redis down");
+    expect(upstashEval).not.toHaveBeenCalled();
   });
 
   it("counts people who share a connection separately", async () => {
     upstashEval.mockResolvedValue(0);
     await reserveVideoSlot({ visitorId: "alice", clientIp: "203.0.113.9" });
     await reserveVideoSlot({ visitorId: "bob", clientIp: "203.0.113.9" });
-    const [alice, bob] = upstashEval.mock.calls.map(
-      (args) => (args[0] as { keys: string[] }).keys,
-    );
-    expect(alice![1]).not.toBe(bob![1]);
-    expect(alice![2]).toBe(bob![2]);
+    const [alice, bob] = [evalKeys(0), evalKeys(1)];
+    expect(alice[1]).not.toBe(bob[1]);
+    expect(alice[2]).toBe(bob[2]);
   });
 
   it("refunds a slot against the same keys it took", async () => {
@@ -117,17 +162,51 @@ describe("explainer video limits", () => {
     });
     if (!granted.ok) throw new Error("expected a slot");
     await granted.refund();
-    const [taken, refunded] = upstashEval.mock.calls.map(
-      (args) => (args[0] as { keys: string[] }).keys,
-    );
-    expect(refunded).toEqual(taken);
+    expect(evalKeys(1)).toEqual(evalKeys(0).slice(0, 3));
+  });
+
+  it("counts again when a reset lands mid-reservation", async () => {
+    upstashEval.mockResolvedValueOnce(-1).mockResolvedValueOnce(0);
+    const granted = await reserveVideoSlot({ visitorId: "d", clientIp: null });
+    expect(granted.ok).toBe(true);
+    expect(upstashEval).toHaveBeenCalledTimes(2);
   });
 
   it("reports what is left today", async () => {
     process.env.VIDEO_DAILY_LIMIT = "25";
-    upstashCommand.mockResolvedValueOnce("24");
+    const day = Math.floor(Date.now() / 86_400_000);
+    redis({ [`video:v1:generate:all:${day}`]: "24" });
     expect(await videosLeftToday()).toBe(1);
-    upstashCommand.mockResolvedValueOnce(null);
+    redis();
+    expect(await videosLeftToday()).toBe(25);
+  });
+
+  it("resets by moving to a new epoch, so old refunds cannot free new slots", async () => {
+    const day = Math.floor(Date.now() / 86_400_000);
+    const values = redis({ [`video:v1:generate:all:${day}`]: "7" });
+    upstashEval.mockResolvedValue(0);
+    const before = await reserveVideoSlot({ visitorId: "e", clientIp: null });
+    if (!before.ok) throw new Error("expected a slot");
+
+    await expect(resetUsageToday("generate")).resolves.toBe(7);
+    expect(values["video:v1:generate:epoch"]).toBe("1");
+    // Nothing is deleted: counters that runs in flight hold stay put.
+    expect(
+      upstashCommand.mock.calls.some(([command]) =>
+        ["DEL", "SCAN"].includes(String((command as unknown[])[0])),
+      ),
+    ).toBe(false);
+
+    const after = await reserveVideoSlot({ visitorId: "e", clientIp: null });
+    if (!after.ok) throw new Error("expected a slot");
+    const oldKeys = evalKeys(0).slice(0, 3);
+    const newKeys = evalKeys(1).slice(0, 3);
+    expect(newKeys[0]).toBe(`video:v1:generate:all:${day}:e1`);
+    for (const key of newKeys) expect(oldKeys).not.toContain(key);
+
+    // The old run's refund touches only the old epoch's counters.
+    await before.refund();
+    expect(evalKeys(2)).toEqual(oldKeys);
     expect(await videosLeftToday()).toBe(25);
   });
 
@@ -144,6 +223,39 @@ describe("explainer video limits", () => {
       keys: ["video:v1:lock:generate:a/b"],
       args: [token],
     });
+  });
+
+  it("caps paid runs at once, but never refuses the operator", async () => {
+    upstashEval.mockResolvedValueOnce(0);
+    expect(await tryPaidVideoRun({ operator: false, ttlMs: 1000 })).toBeNull();
+    upstashEval.mockResolvedValueOnce(1);
+    const release = await tryPaidVideoRun({ operator: true, ttlMs: 1000 });
+    expect(release).toBeTypeOf("function");
+    const args = (upstashEval.mock.calls[1]![0] as { args: unknown[] }).args;
+    expect(args[2]).toBe("1");
+    await release?.();
+    expect(upstashCommand).toHaveBeenCalledWith([
+      "ZREM",
+      "video:v1:generate:running",
+      args[4],
+    ]);
+  });
+
+  it("reports a held-back visitor once per connection and repository", async () => {
+    upstashCommand.mockResolvedValueOnce("OK").mockResolvedValueOnce(null);
+    const notice = { clientIp: "203.0.113.9", repository: "A/B", step: "page" };
+    expect(await firstGateNotice(notice)).toBe(true);
+    expect(await firstGateNotice(notice)).toBe(false);
+    expect(upstashCommand.mock.calls[0]![0]).toEqual([
+      "SET",
+      "video:v1:gated:page:203.0.113.9:a/b",
+      "1",
+      "NX",
+      "EX",
+      600,
+    ]);
+    upstashCommand.mockRejectedValueOnce(new Error("down"));
+    expect(await firstGateNotice(notice)).toBe(false);
   });
 
   it("tells people their own limit and when it resets", () => {
@@ -163,30 +275,5 @@ describe("explainer video limits", () => {
     );
     expect(limitMessage("person", 1, at)).not.toMatch(/network/i);
     expect(limitMessage("network", 10, at)).not.toMatch(/network/i);
-  });
-
-  it("clears today's total and every person's and network's count", async () => {
-    const day = Math.floor(Date.now() / 86_400_000);
-    upstashCommand.mockImplementation(async (command: unknown[]) => {
-      if (command[0] === "SCAN") {
-        const pattern = String(command[3]);
-        if (pattern.includes(":who:"))
-          return command[1] === "0"
-            ? ["7", [`video:v1:generate:who:a:${day}`]]
-            : ["0", [`video:v1:generate:who:b:${day}`]];
-        return ["0", [`video:v1:generate:net:n:${day}`]];
-      }
-      if (command[0] === "DEL") return command.length - 1;
-      return null;
-    });
-    await expect(resetUsageToday("generate")).resolves.toBe(4);
-    const del = upstashCommand.mock.calls.find(([c]) => c[0] === "DEL")![0];
-    expect(del).toEqual([
-      "DEL",
-      `video:v1:generate:all:${day}`,
-      `video:v1:generate:who:a:${day}`,
-      `video:v1:generate:who:b:${day}`,
-      `video:v1:generate:net:n:${day}`,
-    ]);
   });
 });
