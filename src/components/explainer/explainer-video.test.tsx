@@ -266,3 +266,28 @@ describe("ExplainerVideo lookup", () => {
     expect(api.streamExplainerVideo).not.toHaveBeenCalled();
   });
 });
+
+describe("ExplainerVideo cost", () => {
+  const withStats = (stats: Record<string, unknown>) =>
+    api.fetchExplainerVideo.mockResolvedValue({
+      video: {
+        ...video("2026-09-24T00:00:00.000Z"),
+        stats: { totalMs: 50_000, model: "claude-opus-5-5", ...stats },
+      },
+      canGenerate: false,
+      paused: null,
+      anyDevice: false,
+    });
+
+  it("counts the narration in what a video cost", async () => {
+    withStats({ plannerCostUsd: 0.4, voiceCostUsd: 0.03 });
+    await showVideo();
+    expect(screen.getByText(/for \$0\.43$/)).toBeTruthy();
+  });
+
+  it("says an older video's cost is the script and design only", async () => {
+    withStats({ plannerCostUsd: 0.4 });
+    await showVideo();
+    expect(screen.getByText(/for \$0\.40 \(script and design\)$/)).toBeTruthy();
+  });
+});

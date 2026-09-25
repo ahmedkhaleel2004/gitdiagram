@@ -8,10 +8,7 @@ import {
   presenceSocketUrl,
 } from "~/server/admin/live-events";
 import { videoUsageToday } from "~/server/explainer/limits";
-import {
-  narrationCreditUsd,
-  narrationPausedUntil,
-} from "~/server/explainer/narration";
+import * as voice from "~/server/explainer/voice";
 import { readComplimentaryUsageToday } from "~/server/generate/complimentary-gate";
 
 async function orNull<T>(promise: Promise<T>): Promise<T | null> {
@@ -34,8 +31,8 @@ export async function readAdminState(): Promise<AdminState> {
   ] = await Promise.all([
     readControls({ fresh: true }),
     orNull(videoUsageToday()),
-    orNull(narrationPausedUntil()),
-    orNull(narrationCreditUsd()),
+    orNull(voice.voicePausedUntil()),
+    orNull(voice.voiceCreditUsd()),
     orNull(readClaudeCredit()),
     orNull(readComplimentaryUsageToday()),
   ]);
