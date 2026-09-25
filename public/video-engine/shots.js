@@ -1049,7 +1049,10 @@ function build() {
 
   // ---------- chrome: repo label, progress hairline, end card ----------
   var label = document.getElementById("brand");
-  label.innerHTML = GLYPH + '<span class="mono" style="font:600 22px/1 \'Geist Mono\';color:var(--ink)">' + esc(M.owner + "/" + M.repo) + "</span>";
+  label.innerHTML = GLYPH +
+    '<span style="font:600 23px/1 Geist;letter-spacing:-0.01em;color:var(--ink)">Git<span style="font-weight:600;color:#9333ea">Diagram</span></span>' +
+    '<i style="width:2px;height:22px;border-radius:1px;background:rgba(23,17,31,0.16)"></i>' +
+    '<span class="mono" style="font:600 22px/1 \'Geist Mono\';color:var(--ink)">' + esc(M.owner + "/" + M.repo) + "</span>";
   label.style.cssText += ";gap:12px;padding:8px 16px 8px 10px;border-radius:999px;background:rgba(242,232,255,0.92);border:2px solid rgba(23,17,31,0.12);z-index:20";
   riseIn(label, 0.2, { y: -14, d: 0.5 });
   tl.to(label, { opacity: 0, duration: 0.3 }, endAt - 0.1);
