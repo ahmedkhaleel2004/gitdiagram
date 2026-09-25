@@ -6,7 +6,15 @@ import { assertLiveStorageAllowedForTests, readRequiredEnv } from "./config";
 
 let client: S3Sdk.S3Client | null = null;
 let s3ModulePromise: Promise<typeof S3Sdk> | null = null;
+/** The most one small R2 call may take, its retries included. */
 export const R2_REQUEST_TIMEOUT_MS = 10_000;
+/**
+ * The most one attempt at a small request may take. The SDK makes up to three
+ * attempts, and each gets its own timeout: a single stalled attempt used to
+ * spend the whole budget, so a slow R2 answer failed the page outright.
+ */
+export const R2_ATTEMPT_TIMEOUT_MS = 3_000;
+const R2_MAX_ATTEMPTS = 3;
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
@@ -18,8 +26,18 @@ export interface ObjectReadResult<T> {
 
 export type ObjectWriteCondition = { ifMatch: string } | { ifNoneMatch: true };
 
-function requestOptions() {
-  return { abortSignal: AbortSignal.timeout(R2_REQUEST_TIMEOUT_MS) };
+/**
+ * Per-call timeouts: one per attempt (a request body of `bytes`, such as an
+ * MP4 upload, gets a second more per MB) and one over every attempt.
+ */
+export function requestOptions(bytes = 0) {
+  const attempt = R2_ATTEMPT_TIMEOUT_MS + Math.ceil(bytes / 2 ** 20) * 1_000;
+  return {
+    requestTimeout: attempt,
+    abortSignal: AbortSignal.timeout(
+      Math.max(R2_REQUEST_TIMEOUT_MS, attempt * R2_MAX_ATTEMPTS + 1_000),
+    ),
+  };
 }
 
 async function getClient() {
@@ -34,6 +52,13 @@ async function getClient() {
     credentials: {
       accessKeyId: readRequiredEnv("R2_ACCESS_KEY_ID"),
       secretAccessKey: readRequiredEnv("R2_SECRET_ACCESS_KEY"),
+    },
+    maxAttempts: R2_MAX_ATTEMPTS,
+    requestHandler: {
+      connectionTimeout: 2_000,
+      requestTimeout: R2_ATTEMPT_TIMEOUT_MS,
+      // Without this an attempt past its timeout only logs a warning.
+      throwOnRequestTimeout: true,
     },
   });
 
@@ -132,7 +157,7 @@ export async function putBinaryObject(
       Body: body,
       ContentType: contentType,
     }),
-    requestOptions(),
+    requestOptions(body.byteLength),
   );
 }
 
@@ -164,20 +189,28 @@ export async function listObjects(
   return objects;
 }
 
-export async function hasObject(bucket: string, key: string): Promise<boolean> {
+/** An object's last-modified time, or null if it does not exist. */
+export async function getObjectInfo(
+  bucket: string,
+  key: string,
+): Promise<{ lastModified: Date | null } | null> {
   try {
     const { client: storageClient, s3 } = await getClient();
-    await storageClient.send(
+    const response = await storageClient.send(
       new s3.HeadObjectCommand({ Bucket: bucket, Key: key }),
       requestOptions(),
     );
-    return true;
+    return { lastModified: response.LastModified ?? null };
   } catch (error) {
     if (isNotFoundError(error)) {
-      return false;
+      return null;
     }
     throw error;
   }
+}
+
+export async function hasObject(bucket: string, key: string): Promise<boolean> {
+  return (await getObjectInfo(bucket, key)) !== null;
 }
 
 /** A short-lived signed GET URL that downloads the object under `filename`. */

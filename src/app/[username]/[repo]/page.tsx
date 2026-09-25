@@ -82,7 +82,22 @@ export default async function Repo({ params }: RepoPageProps) {
   if (username !== username.toLowerCase() || repo !== repo.toLowerCase()) {
     permanentRedirect(getRepoPagePath(username, repo));
   }
-  const initialState = await getCachedPublicDiagramState(username, repo);
+  // A slow or failing R2 must not turn the page into a 500: without a stored
+  // state the client loads the diagram itself, as it does for a new repo.
+  // Caught outside the cache, so a failed read is never cached as "none".
+  const initialState = await getCachedPublicDiagramState(username, repo).catch(
+    (error: unknown) => {
+      console.error(
+        JSON.stringify({
+          event: "repo_page.stored_state_failed",
+          repository: `${username}/${repo}`,
+          error:
+            error instanceof Error ? error.message.slice(0, 200) : "unknown",
+        }),
+      );
+      return null;
+    },
+  );
 
   return (
     <RepoPageClient

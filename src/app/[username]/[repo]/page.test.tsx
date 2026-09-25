@@ -59,4 +59,15 @@ describe("repository cache URLs", () => {
     expect(page.props.initialState).toBe(state);
     expect(page.props.initialStateIsAuthoritative).toBe(true);
   });
+
+  it("falls back to loading on the client when storage fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    getStoredDiagramState.mockRejectedValue(new Error("R2 timed out"));
+    const page = await Repo({
+      params: Promise.resolve({ username: "acme", repo: "demo" }),
+    });
+
+    expect(page.props.initialState).toBeNull();
+    expect(page.props.initialStateIsAuthoritative).toBe(false);
+  });
 });
