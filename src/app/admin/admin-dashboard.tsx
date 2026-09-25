@@ -928,39 +928,45 @@ export function AdminDashboard() {
 
       <Panel title="Live feed" aside="Newest first">
         {live.events.length ? (
-          <ol className="flex max-h-[32rem] flex-col divide-y-2 divide-black/10 overflow-y-auto dark:divide-white/10">
+          <ol className="flex flex-col divide-y-2 divide-black/10 sm:max-h-[32rem] sm:overflow-y-auto dark:divide-white/10">
             {live.events.map((event) => {
               const { title, tone, detail } = describe(event);
               const repo = typeof event.repo === "string" ? event.repo : "";
+              // Phones stack each event (what and when, then the details,
+              // wrapped); wider screens keep one line per event.
               return (
                 <li
                   key={event.id}
-                  className="grid grid-cols-[4.5rem_1fr] gap-x-3 py-2 text-sm sm:grid-cols-[4.5rem_10rem_1fr]"
+                  className="flex flex-col gap-1 py-2.5 text-sm sm:grid sm:grid-cols-[4.5rem_10rem_1fr] sm:gap-x-3 sm:gap-y-0 sm:py-2"
                 >
-                  <time className="font-mono text-xs leading-5 text-[hsl(var(--neo-soft-text))] tabular-nums">
-                    {clock(event.at)}
-                  </time>
-                  <span className={`font-semibold ${tone}`}>{title}</span>
-                  <span className="col-start-2 min-w-0 truncate sm:col-start-3">
-                    {repo && repo.includes("/") ? (
-                      <a
-                        href={`/${repo}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="neo-link font-mono"
-                      >
-                        {repo}
-                      </a>
-                    ) : (
-                      <span className="font-mono">{repo}</span>
-                    )}
-                    {detail ? (
-                      <span className="text-[hsl(var(--neo-soft-text))]">
-                        {repo ? " · " : ""}
-                        {detail}
-                      </span>
-                    ) : null}
-                  </span>
+                  <div className="flex items-baseline justify-between gap-3 sm:contents">
+                    <time className="order-2 shrink-0 font-mono text-xs leading-5 text-[hsl(var(--neo-soft-text))] tabular-nums sm:order-none">
+                      {clock(event.at)}
+                    </time>
+                    <span className={`font-semibold ${tone}`}>{title}</span>
+                  </div>
+                  {repo || detail ? (
+                    <span className="min-w-0 [overflow-wrap:anywhere] sm:col-start-3 sm:truncate">
+                      {repo && repo.includes("/") ? (
+                        <a
+                          href={`/${repo}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="neo-link font-mono"
+                        >
+                          {repo}
+                        </a>
+                      ) : (
+                        <span className="font-mono">{repo}</span>
+                      )}
+                      {detail ? (
+                        <span className="text-[hsl(var(--neo-soft-text))]">
+                          {repo ? " · " : ""}
+                          {detail}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : null}
                 </li>
               );
             })}
