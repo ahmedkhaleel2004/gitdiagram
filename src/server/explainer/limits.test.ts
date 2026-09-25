@@ -14,6 +14,7 @@ import {
   isVideoAdmin,
   limitMessage,
   reserveVideoSlot,
+  resetUsageToday,
   tryVideoLock,
   videosLeftToday,
 } from "./limits";
@@ -162,5 +163,30 @@ describe("explainer video limits", () => {
     );
     expect(limitMessage("person", 1, at)).not.toMatch(/network/i);
     expect(limitMessage("network", 10, at)).not.toMatch(/network/i);
+  });
+
+  it("clears today's total and every person's and network's count", async () => {
+    const day = Math.floor(Date.now() / 86_400_000);
+    upstashCommand.mockImplementation(async (command: unknown[]) => {
+      if (command[0] === "SCAN") {
+        const pattern = String(command[3]);
+        if (pattern.includes(":who:"))
+          return command[1] === "0"
+            ? ["7", [`video:v1:generate:who:a:${day}`]]
+            : ["0", [`video:v1:generate:who:b:${day}`]];
+        return ["0", [`video:v1:generate:net:n:${day}`]];
+      }
+      if (command[0] === "DEL") return command.length - 1;
+      return null;
+    });
+    await expect(resetUsageToday("generate")).resolves.toBe(4);
+    const del = upstashCommand.mock.calls.find(([c]) => c[0] === "DEL")![0];
+    expect(del).toEqual([
+      "DEL",
+      `video:v1:generate:all:${day}`,
+      `video:v1:generate:who:a:${day}`,
+      `video:v1:generate:who:b:${day}`,
+      `video:v1:generate:net:n:${day}`,
+    ]);
   });
 });

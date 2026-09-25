@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 import { Switch } from "~/components/ui/switch";
 import type {
   AdminState,
@@ -92,11 +99,13 @@ function Tile({
   value,
   sub,
   meter,
+  action,
 }: {
   label: string;
   value: string;
   sub?: string;
   meter?: number | null;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="rounded-md border-2 border-black bg-white/70 p-3 dark:bg-black/20">
@@ -117,7 +126,106 @@ function Tile({
           {sub}
         </div>
       ) : null}
+      {action ? <div className="mt-2">{action}</div> : null}
     </div>
+  );
+}
+
+/**
+ * Starts today's count over for everyone, after the operator confirms in a
+ * dialog. Nothing changes until "Yes, reset" is pressed.
+ */
+function ResetUsage({
+  target,
+  used,
+  onDone,
+}: {
+  target: "videos" | "renders";
+  used: number;
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const noun = target === "videos" ? "videos" : "MP4 downloads";
+  const counted =
+    used === 1 ? (target === "videos" ? "video" : "MP4 download") : noun;
+
+  async function reset() {
+    setBusy(true);
+    setError(null);
+    const response = await fetch("/api/admin/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+    }).catch(() => null);
+    const body = (await response?.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    setBusy(false);
+    if (response?.ok) {
+      setOpen(false);
+      onDone();
+    } else {
+      setError(body?.error ?? "The reset did not go through. Try again.");
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return;
+        setOpen(next);
+        setError(null);
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="neo-button-muted h-8 rounded-md px-3 text-xs font-semibold"
+      >
+        Reset today&apos;s count
+      </button>
+      <DialogContent className="neo-panel max-w-[calc(100%-2rem)] rounded-lg sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold">
+            Reset today&apos;s {noun}?
+          </DialogTitle>
+          <DialogDescription className="text-[hsl(var(--neo-soft-text))]">
+            This sets today&apos;s {used} {counted} back to 0 and clears every
+            person&apos;s and connection&apos;s count for today, so everyone can
+            make {noun} again right away. It cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        {error ? (
+          <p
+            role="alert"
+            className="text-sm font-medium text-red-700 dark:text-red-400"
+          >
+            {error}
+          </p>
+        ) : null}
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setOpen(false)}
+            className="neo-button-muted h-11 rounded-md px-4 font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void reset()}
+            className="neo-button h-11 rounded-md px-4 font-semibold disabled:opacity-60"
+          >
+            {busy ? "Resetting…" : "Yes, reset"}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -507,6 +615,12 @@ function describe(event: LiveFeedEvent): {
           .filter(Boolean)
           .join(" · "),
       };
+    case "limits.reset":
+      return {
+        title: "Count reset",
+        tone: "text-[hsl(var(--foreground))]",
+        detail: `Today's ${event.target === "renders" ? "MP4s" : "videos"} started over (${String(event.cleared ?? 0)} counters cleared)`,
+      };
     case "control.changed":
       return {
         title: "Setting changed",
@@ -528,7 +642,7 @@ function describe(event: LiveFeedEvent): {
   }
 }
 
-const COUNTER_KINDS = /^(video|render|diagram\.finished|control)/;
+const COUNTER_KINDS = /^(video|render|diagram\.finished|control|limits)/;
 
 export function AdminDashboard() {
   const [state, setState] = useState<AdminState | null>(null);
@@ -723,6 +837,15 @@ export function AdminDashboard() {
                 ? `${video.videos.personLimit} per person · ${video.videos.networkLimit} per connection`
                 : undefined
             }
+            action={
+              video ? (
+                <ResetUsage
+                  target="videos"
+                  used={video.videos.used}
+                  onDone={() => void refresh()}
+                />
+              ) : null
+            }
           />
           <Tile
             label="Voice credits"
@@ -746,6 +869,15 @@ export function AdminDashboard() {
               video
                 ? video.renders.used / Math.max(1, video.renders.limit)
                 : null
+            }
+            action={
+              video ? (
+                <ResetUsage
+                  target="renders"
+                  used={video.renders.used}
+                  onDone={() => void refresh()}
+                />
+              ) : null
             }
           />
           <div className="col-span-2">

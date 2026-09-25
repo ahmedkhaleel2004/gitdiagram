@@ -189,6 +189,40 @@ export async function videoUsageToday() {
   };
 }
 
+/**
+ * Start today's count over for new videos or MP4s: the overall total and
+ * every person's and network's own count. Returns how many counters were
+ * cleared. The operator does this from /admin.
+ */
+export async function resetUsageToday(
+  kind: "generate" | "render",
+): Promise<number> {
+  const day = today();
+  const keys = [`video:v1:${kind}:all:${day}`];
+  for (const scope of ["who", "net"]) {
+    let cursor = "0";
+    do {
+      const [next, found] = await upstashCommand<[string, string[]]>([
+        "SCAN",
+        cursor,
+        "MATCH",
+        `video:v1:${kind}:${scope}:*:${day}`,
+        "COUNT",
+        1000,
+      ]);
+      keys.push(...found);
+      cursor = next;
+    } while (cursor !== "0");
+  }
+  let cleared = 0;
+  for (let index = 0; index < keys.length; index += 500)
+    cleared += await upstashCommand<number>([
+      "DEL",
+      ...keys.slice(index, index + 500),
+    ]);
+  return cleared;
+}
+
 const RELEASE_SCRIPT = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   return redis.call("DEL", KEYS[1])
