@@ -6,9 +6,11 @@ import {
   readFile,
   rename,
   rm,
+  rmdir,
   stat,
   writeFile,
 } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname, join, sep } from "node:path";
 import { ENGINE_VERSION } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
@@ -17,19 +19,24 @@ import {
   deleteObject,
   getBinaryObject,
   getJsonObject,
+  getObjectInfo,
   hasObject,
   listObjects,
   presignObjectDownload,
   putBinaryObject,
   putJsonObject,
 } from "~/server/storage/r2";
+import { purgeVideoResponse } from "./cache";
+import { indexVideo } from "./video-index";
 
 // Explainer videos live beside diagrams but under their own prefix, so they can
 // never collide with or overwrite a diagram artifact. Everything a video
 // references (narration clips, renders) sits under its own version folder, so a
 // regenerated video never mixes with the files of the one it replaced and every
-// file can be cached forever. Once a newer version or engine replaces them, the
-// old files are deleted (see pruneVideoFiles).
+// file can be cached forever. The version a regeneration replaced keeps its
+// files until the next one, so a tab that still has it open plays and
+// downloads on; older versions and renders drawn by an older engine are
+// deleted (see pruneVideoFiles).
 const segment = (value: string) =>
   encodeURIComponent(value.trim().toLowerCase());
 const prefix = (username: string, repo: string) =>
@@ -66,7 +73,7 @@ function versionedKey(
 }
 
 /** Local disk in development so testing never writes production storage. */
-function videoStoreBackend(): "local" | "r2" {
+export function videoStoreBackend(): "local" | "r2" {
   const configured = process.env.VIDEO_STORE?.trim();
   if (configured === "local" || configured === "r2") return configured;
   return process.env.NODE_ENV === "production" ? "r2" : "local";
@@ -87,9 +94,16 @@ async function readLocal(key: string): Promise<Buffer | null> {
 async function writeLocal(key: string, body: Buffer | string) {
   const path = localPath(key);
   await mkdir(dirname(path), { recursive: true });
-  // Write then rename so a reader never sees a half-written file.
-  await writeFile(`${path}.tmp`, body);
-  await rename(`${path}.tmp`, path);
+  // Write then rename so a reader never sees a half-written file; the temp
+  // name is unique, so two writes of one file never share it.
+  const temp = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temp, body);
+    await rename(temp, path);
+  } catch (error) {
+    await rm(temp, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function readObject(key: string): Promise<Buffer | null> {
@@ -119,7 +133,11 @@ export async function readVoiceClip(
   return readObject(versionedKey(username, repo, createdAt, clipName(index)));
 }
 
-/** Clips first, artifact last: the artifact is what makes a video visible. */
+/**
+ * Clips first, artifact last: the artifact is what makes a video visible.
+ * Then the CDN's copy of the old answer is dropped, and only after that are
+ * files pruned, so nothing cached points at a deleted file.
+ */
 export async function writeVideo(artifact: VideoArtifact, clips: Buffer[]) {
   const { owner, repo } = artifact.meta;
   const clipKey = (index: number) =>
@@ -130,14 +148,16 @@ export async function writeVideo(artifact: VideoArtifact, clips: Buffer[]) {
       clips.map((clip, index) => writeLocal(clipKey(index), clip)),
     );
     await writeLocal(artifactKey, JSON.stringify(artifact));
-    return;
+  } else {
+    await Promise.all(
+      clips.map((clip, index) =>
+        putBinaryObject(bucket(), clipKey(index), clip, "audio/mpeg"),
+      ),
+    );
+    await putJsonObject(bucket(), artifactKey, artifact);
+    await indexVideo(artifact);
+    await purgeVideoResponse(owner, repo);
   }
-  await Promise.all(
-    clips.map((clip, index) =>
-      putBinaryObject(bucket(), clipKey(index), clip, "audio/mpeg"),
-    ),
-  );
-  await putJsonObject(bucket(), artifactKey, artifact);
   await pruneVideoFiles(artifact);
 }
 
@@ -168,6 +188,26 @@ export async function hasRender(
   return hasObject(bucket(), key);
 }
 
+/**
+ * When a stored render was last written (ms), or null if it does not exist.
+ * A poster can be remade under the same name, so its URLs carry this stamp:
+ * each remake gets a fresh URL past every cache that kept the old one.
+ */
+export async function renderStamp(
+  artifact: VideoArtifact,
+  name: RenderName,
+): Promise<number | null> {
+  const { owner, repo } = artifact.meta;
+  const key = versionedKey(owner, repo, artifact.createdAt, renderFile(name));
+  if (videoStoreBackend() === "local") {
+    const info = await stat(localPath(key)).catch(() => null);
+    return info ? Math.round(info.mtimeMs) : null;
+  }
+  const info = await getObjectInfo(bucket(), key);
+  if (!info) return null;
+  return info.lastModified?.getTime() ?? Date.parse(artifact.createdAt);
+}
+
 export async function writeRender(
   artifact: VideoArtifact,
   name: RenderName,
@@ -188,10 +228,11 @@ export async function writeRender(
 }
 
 /**
- * Files a video's current version can no longer reach: the folders of the
- * versions it replaced (their narration and renders) and renders drawn by an
- * older engine. Only older files are named, so a server still running an older
- * release during a deploy never deletes a newer one's files.
+ * Files a video no longer needs: the folders of versions older than the one
+ * it replaced (that one stays, so tabs still showing it keep working until
+ * the next regeneration) and current renders drawn by an older engine. Only
+ * older files are named, so a server still running an older release during a
+ * deploy never deletes a newer one's files.
  */
 export function staleVideoKeys(
   keys: string[],
@@ -201,18 +242,31 @@ export function staleVideoKeys(
   if (!version) return [];
   const root = `${prefix(artifact.meta.owner, artifact.meta.repo)}/`;
   const engine = Number(ENGINE_VERSION);
-  return keys.filter((key) => {
-    if (!key.startsWith(root)) return false;
+  const files = keys.flatMap((key) => {
+    if (!key.startsWith(root)) return [];
     const [folder, name, ...rest] = key.slice(root.length).split("/");
-    if (!name || rest.length > 0 || !/^\d+$/.test(folder!)) return false;
-    if (folder !== version) return Number(folder) < Number(version);
-    const drawn = /\.e(\d+)\.(mp4|jpg)$/.exec(name);
-    if (!drawn) return false;
-    // Posters no longer carry an engine version, so any that does is left over.
-    return drawn[2] === "jpg"
-      ? Number(drawn[1]) <= engine
-      : Number(drawn[1]) < engine;
+    if (!name || rest.length > 0 || !/^\d+$/.test(folder!)) return [];
+    return [{ key, folder: folder!, name }];
   });
+  // The newest version older than this one: the one it replaced.
+  const previous = Math.max(
+    -1,
+    ...files
+      .map((file) => Number(file.folder))
+      .filter((folder) => folder < Number(version)),
+  );
+  return files
+    .filter(({ folder, name }) => {
+      if (folder !== version)
+        return Number(folder) < Number(version) && Number(folder) !== previous;
+      const drawn = /\.e(\d+)\.(mp4|jpg)$/.exec(name);
+      if (!drawn) return false;
+      // Posters no longer carry an engine version, so any that does is left over.
+      return drawn[2] === "jpg"
+        ? Number(drawn[1]) <= engine
+        : Number(drawn[1]) < engine;
+    })
+    .map(({ key }) => key);
 }
 
 async function listVideoKeys(root: string): Promise<string[]> {
@@ -242,6 +296,10 @@ async function pruneVideoFiles(artifact: VideoArtifact): Promise<number> {
               : rm(localPath(key), { force: true }),
           ),
       );
+    // Locally, folders emptied by the prune go too (rmdir leaves any in use).
+    if (videoStoreBackend() === "local")
+      for (const folder of new Set(stale.map((key) => dirname(key))))
+        await rmdir(localPath(folder)).catch(() => undefined);
     if (stale.length > 0)
       console.info(
         JSON.stringify({

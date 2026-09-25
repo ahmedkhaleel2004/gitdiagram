@@ -2,7 +2,8 @@ import "server-only";
 
 import type { VideoArtifact } from "~/features/explainer/types";
 import { renderExplainerPoster, renderHostStats } from "./render";
-import { writeRender } from "./store";
+import { videoStoreBackend, writeRender } from "./store";
+import { indexVideo } from "./video-index";
 
 /**
  * Render and store a video's link-preview still; resolves whether it worked.
@@ -22,6 +23,10 @@ export async function storePoster(
       writeRender(artifact, "poster.jpg", poster),
       writeRender(artifact, "still.jpg", still),
     ]);
+    // The gallery card names the still by when it was made, so a remake is
+    // fetched fresh rather than from a cache that kept the old one.
+    if (videoStoreBackend() === "r2")
+      await indexVideo(artifact, { posterAt: Date.now() });
     console.info(
       JSON.stringify({
         event: "video.poster.stored",

@@ -13,7 +13,7 @@ import {
   prepareBrowseIndex,
 } from "~/features/browse/catalog";
 import type { BrowseSort } from "~/features/browse/catalog";
-import type { VideoCard } from "~/server/explainer/catalog";
+import type { VideoCard } from "~/features/explainer/catalog-types";
 
 // Divides evenly into the grid's two, three and four columns.
 export const VIDEO_PAGE_SIZE = 24;

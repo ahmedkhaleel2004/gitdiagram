@@ -5,7 +5,7 @@ import type { BrowseIndexEntry } from "~/features/browse/catalog";
 import { SITE_URL } from "~/lib/site";
 import { getSitemapCount, SITEMAP_PAGE_SIZE } from "~/lib/sitemaps";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
-import { listStoredVideos } from "~/server/explainer/store";
+import { listVideoCards } from "~/server/explainer/catalog";
 
 // Watch pages render their video client-side, so the sitemap is how search
 // engines find them. The list is small and changes slowly.
@@ -13,10 +13,10 @@ const MAX_VIDEO_ROUTES = 5_000;
 const getVideoRoutes = unstable_cache(
   async (): Promise<MetadataRoute.Sitemap> => {
     if (!isVideoExplainerEnabled()) return [];
-    const videos = await listStoredVideos();
+    const videos = await listVideoCards();
     return videos.slice(0, MAX_VIDEO_ROUTES).map((video) => ({
-      url: `${SITE_URL}/${video.owner}/${video.repo}/video`,
-      lastModified: video.updatedAt ?? new Date(),
+      url: `${SITE_URL}/${video.owner.toLowerCase()}/${video.repo.toLowerCase()}/video`,
+      lastModified: video.createdAt,
       changeFrequency: "monthly" as const,
       priority: 0.6,
     }));

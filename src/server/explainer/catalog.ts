@@ -1,26 +1,20 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
+import type { VideoCard } from "~/features/explainer/catalog-types";
 import { VIDEO_CATALOG_TAG } from "./cache";
-import { listStoredVideos, readVideoArtifact } from "./store";
+import {
+  listStoredVideos,
+  readVideoArtifact,
+  videoStoreBackend,
+} from "./store";
+import { fillVideoIndex, readVideoIndex, videoCard } from "./video-index";
 
-/** What a video card on /videos shows. */
-export interface VideoCard {
-  owner: string;
-  repo: string;
-  title: string;
-  /** The first line of narration: what the project is. */
-  opening: string;
-  durationSeconds: number;
-  stars: number;
-  language: string;
-  createdAt: string;
-}
+export type { VideoCard };
 
-const MAX_VIDEOS = 300;
-
-async function loadCatalog(): Promise<VideoCard[]> {
-  const stored = (await listStoredVideos()).slice(0, MAX_VIDEOS);
+/** Every stored video's card, read from storage itself: slow, but complete. */
+async function cardsFromStorage(): Promise<VideoCard[]> {
+  const stored = await listStoredVideos();
   const cards: VideoCard[] = [];
   // Read artifacts a batch at a time rather than all at once.
   for (let start = 0; start < stored.length; start += 16) {
@@ -31,26 +25,47 @@ async function loadCatalog(): Promise<VideoCard[]> {
           readVideoArtifact(video.owner, video.repo).catch(() => null),
         ),
     );
-    for (const video of batch) {
-      if (!video) continue;
-      cards.push({
-        owner: video.meta.owner,
-        repo: video.meta.repo,
-        title: video.plan.title,
-        opening: video.plan.beats[0]?.narration ?? "",
-        durationSeconds: Math.round(video.timing.DURATION),
-        stars: video.meta.stars,
-        language: video.meta.language,
-        createdAt: video.createdAt,
-      });
-    }
+    for (const video of batch) if (video) cards.push(videoCard(video));
   }
-  // Newest first, as listed; /videos sorts and filters on the client.
   return cards;
 }
 
+const newestFirst = (cards: VideoCard[]) =>
+  cards.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+const logIndexFailure = (event: string, error: unknown) =>
+  console.error(
+    JSON.stringify({
+      event,
+      error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+    }),
+  );
+
+/**
+ * Every stored video, newest first (/videos sorts and filters on the client).
+ * Production reads the Redis index; the first read builds it from R2, and if
+ * Redis is down the gallery still lists everything from R2.
+ */
+export async function listVideoCards(): Promise<VideoCard[]> {
+  if (videoStoreBackend() !== "r2")
+    return newestFirst(await cardsFromStorage());
+  let indexed: VideoCard[] | null;
+  try {
+    indexed = await readVideoIndex();
+  } catch (error) {
+    logIndexFailure("video.index_read_failed", error);
+    return newestFirst(await cardsFromStorage());
+  }
+  if (indexed) return newestFirst(indexed);
+  const cards = await cardsFromStorage();
+  await fillVideoIndex(cards).catch((error: unknown) =>
+    logIndexFailure("video.index_fill_failed", error),
+  );
+  return newestFirst(cards);
+}
+
 export const getVideoCatalog = unstable_cache(
-  loadCatalog,
+  listVideoCards,
   [VIDEO_CATALOG_TAG],
   { revalidate: 300, tags: [VIDEO_CATALOG_TAG] },
 );

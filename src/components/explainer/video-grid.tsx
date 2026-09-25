@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Play, Star } from "lucide-react";
-import type { VideoCard } from "~/server/explainer/catalog";
+import type { VideoCard } from "~/features/explainer/catalog-types";
 import styles from "./video-grid.module.css";
 
 const compact = new Intl.NumberFormat("en", {
@@ -18,6 +18,7 @@ function Poster({ card }: { card: VideoCard }) {
     repo: card.repo,
     format: "still",
     v: card.createdAt,
+    ...(card.posterAt ? { p: String(card.posterAt) } : {}),
   }).toString()}`;
   return (
     <div className={styles.poster}>
