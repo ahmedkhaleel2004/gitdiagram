@@ -161,6 +161,13 @@ export async function writeVideo(
   const pictureKey = (id: string) =>
     versionedKey(owner, repo, artifact.createdAt, pictureName(id));
   const artifactKey = `${prefix(owner, repo)}/artifact.json`;
+  // The version this one replaces, read before it is overwritten: its files
+  // stay, so tabs still showing it keep working. Null when there is none;
+  // undefined when it cannot be read, and then no older folder is pruned.
+  const replaced = await readVideoArtifact(owner, repo).then(
+    (published) => (published ? videoVersion(published.createdAt) : null),
+    () => undefined,
+  );
   if (videoStoreBackend() === "local") {
     await Promise.all([
       ...clips.map((clip, index) => writeLocal(clipKey(index), clip)),
@@ -180,7 +187,7 @@ export async function writeVideo(
     await indexVideo(artifact);
     await purgeVideoResponse(owner, repo);
   }
-  await pruneVideoFiles(artifact);
+  await pruneVideoFiles(artifact, replaced);
 }
 
 export async function readRender(
@@ -250,15 +257,18 @@ export async function writeRender(
 }
 
 /**
- * Files a video no longer needs: the folders of versions older than the one
- * it replaced (that one stays, so tabs still showing it keep working until
- * the next regeneration) and current renders drawn by an older engine. Only
- * older files are named, so a server still running an older release during a
+ * Files a video no longer needs: current renders drawn by an older engine,
+ * and, given `replaced` (the published version this one replaced, or null if
+ * none), every older version's folder but that one's. The replaced version
+ * stays so tabs still showing it keep working until the next regeneration;
+ * folders of uploads that failed before being published go. Only older
+ * files are named, so a server still running an older release during a
  * deploy never deletes a newer one's files.
  */
 export function staleVideoKeys(
   keys: string[],
   artifact: VideoArtifact,
+  replaced?: string | null,
 ): string[] {
   const version = videoVersion(artifact.createdAt);
   if (!version) return [];
@@ -270,17 +280,14 @@ export function staleVideoKeys(
     if (!name || rest.length > 0 || !/^\d+$/.test(folder!)) return [];
     return [{ key, folder: folder!, name }];
   });
-  // The newest version older than this one: the one it replaced.
-  const previous = Math.max(
-    -1,
-    ...files
-      .map((file) => Number(file.folder))
-      .filter((folder) => folder < Number(version)),
-  );
   return files
     .filter(({ folder, name }) => {
       if (folder !== version)
-        return Number(folder) < Number(version) && Number(folder) !== previous;
+        return (
+          replaced !== undefined &&
+          Number(folder) < Number(version) &&
+          folder !== replaced
+        );
       const drawn = /\.e(\d+)\.(mp4|jpg)$/.exec(name);
       if (!drawn) return false;
       // Posters no longer carry an engine version, so any that does is left over.
@@ -301,13 +308,16 @@ async function listVideoKeys(root: string): Promise<string[]> {
 }
 
 /**
- * Delete the files a video no longer uses; resolves how many went. Never
- * throws: a leftover file only costs storage.
+ * Delete the files a video no longer uses (see staleVideoKeys); resolves how
+ * many went. Never throws: a leftover file only costs storage.
  */
-async function pruneVideoFiles(artifact: VideoArtifact): Promise<number> {
+async function pruneVideoFiles(
+  artifact: VideoArtifact,
+  replaced?: string | null,
+): Promise<number> {
   try {
     const root = `${prefix(artifact.meta.owner, artifact.meta.repo)}/`;
-    const stale = staleVideoKeys(await listVideoKeys(root), artifact);
+    const stale = staleVideoKeys(await listVideoKeys(root), artifact, replaced);
     for (let index = 0; index < stale.length; index += 20)
       await Promise.all(
         stale
