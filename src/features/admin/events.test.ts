@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeEvent, movesCounters } from "./events";
+import { describeEvent, eventTopic, movesCounters } from "./events";
 import { since, tally } from "./format";
 
 const event = (kind: string, details: Record<string, unknown> = {}) => ({
@@ -69,6 +69,16 @@ describe("the live feed's words", () => {
     expect(movesCounters("limits.reset")).toBe(true);
     expect(movesCounters("diagram.started")).toBe(false);
     expect(movesCounters("admin.signed_in")).toBe(false);
+  });
+
+  it("sorts events into the diagram and video filters", () => {
+    expect(eventTopic("diagram.started")).toBe("diagrams");
+    expect(eventTopic("diagram.finished")).toBe("diagrams");
+    expect(eventTopic("video.gated")).toBe("videos");
+    expect(eventTopic("render.finished")).toBe("videos");
+    expect(eventTopic("limits.reset")).toBe("videos");
+    expect(eventTopic("control.changed")).toBeNull();
+    expect(eventTopic("admin.signed_in")).toBeNull();
   });
 });
 

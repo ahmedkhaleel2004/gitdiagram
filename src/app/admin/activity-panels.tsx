@@ -1,11 +1,21 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 
-import { describeEvent } from "~/features/admin/events";
+import {
+  describeEvent,
+  eventTopic,
+  type FeedTopic,
+} from "~/features/admin/events";
 import { clock } from "~/features/admin/format";
 import type { LiveFeedEvent, LiveJob } from "~/features/admin/types";
-import { Panel, Since } from "./ui";
+import { Panel, Since, TOUCH } from "./ui";
+
+const FILTERS: Array<{ value: FeedTopic | "all"; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "diagrams", label: "Diagrams" },
+  { value: "videos", label: "Videos" },
+];
 
 /** Diagrams, videos and MP4s being made right now, and for how long. */
 export const RunningPanel = memo(function RunningPanel({
@@ -54,11 +64,41 @@ export const LiveFeed = memo(function LiveFeed({
 }: {
   events: LiveFeedEvent[];
 }) {
+  const [filter, setFilter] = useState<FeedTopic | "all">("all");
+  const shown =
+    filter === "all"
+      ? events
+      : events.filter((event) => eventTopic(event.kind) === filter);
   return (
-    <Panel title="Live feed" aside="Newest first">
-      {events.length ? (
+    <Panel
+      title="Live feed"
+      aside={
+        <div
+          role="group"
+          aria-label="Show events about"
+          className="flex items-center gap-1.5"
+        >
+          {FILTERS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={filter === option.value}
+              onClick={() => setFilter(option.value)}
+              className={`h-7 rounded-md border-2 border-black px-2.5 text-xs font-semibold text-[hsl(var(--foreground))] ${TOUCH} ${
+                filter === option.value
+                  ? "bg-purple-400 dark:bg-[hsl(var(--neo-button))] dark:text-black"
+                  : "bg-white hover:bg-purple-100 dark:bg-black/20 dark:hover:bg-black/30"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {shown.length ? (
         <ol className="flex flex-col divide-y-2 divide-black/10 sm:max-h-[32rem] sm:overflow-y-auto dark:divide-white/10">
-          {events.map((event) => {
+          {shown.map((event) => {
             const { title, tone, detail } = describeEvent(event);
             const repo = typeof event.repo === "string" ? event.repo : "";
             // Phones stack each event (what and when, then the details,
@@ -102,7 +142,9 @@ export const LiveFeed = memo(function LiveFeed({
         </ol>
       ) : (
         <p className="text-sm text-[hsl(var(--neo-soft-text))]">
-          Waiting for something to happen.
+          {filter === "all"
+            ? "Waiting for something to happen."
+            : `No ${filter === "diagrams" ? "diagram" : "video"} events yet.`}
         </p>
       )}
     </Panel>

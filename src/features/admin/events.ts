@@ -126,3 +126,16 @@ export function describeEvent(event: LiveFeedEvent): EventLine {
 export function movesCounters(kind: string): boolean {
   return /^(video|render|diagram\.finished|control|limits)/.test(kind);
 }
+
+/** The live feed's filters beyond "All". */
+export type FeedTopic = "diagrams" | "videos";
+
+/**
+ * Which filter shows an event: diagrams, or videos with their MP4s and
+ * count resets. Sign-ins and setting changes only show under "All".
+ */
+export function eventTopic(kind: string): FeedTopic | null {
+  if (kind.startsWith("diagram.")) return "diagrams";
+  if (/^(video|render|limits)\./.test(kind)) return "videos";
+  return null;
+}
