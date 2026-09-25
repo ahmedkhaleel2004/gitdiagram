@@ -6,8 +6,8 @@ import { useEffect, useRef } from "react";
 // Each open tab holds one small WebSocket to the presence worker
 // (workers/presence), so the operator's dashboard counts exactly who is on the
 // site right now. It sends only the path, whether the tab is in view, desktop
-// or mobile, the referring site, and a random id this browser keeps so several
-// tabs count as one person. It opens once the page is idle, never retries
+// or mobile, the referring site, the browser's time zone setting, and a random
+// id this browser keeps so several tabs count as one person. It opens once the page is idle, never retries
 // hard, and closes on pagehide so the back/forward cache still works.
 
 const PRESENCE_URL = process.env.NEXT_PUBLIC_PRESENCE_URL?.replace(/\/$/, "");
@@ -70,6 +70,7 @@ export function LivePresence() {
         d: isMobile() ? "m" : "d",
         r: document.referrer,
         b: browserId(),
+        z: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "",
       });
       const ws = new WebSocket(`${PRESENCE_URL}/v?${params.toString()}`);
       socket.current = ws;

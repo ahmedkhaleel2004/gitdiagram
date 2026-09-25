@@ -30,8 +30,14 @@ interface Visitor {
   p: string;
   /** Tab visible (1) or in the background (0). */
   v: 0 | 1;
-  /** When the tab went to the background (ms), or 0 while it is in view. */
+  /**
+   * When the tab went to the background (ms); 0 while in view, and for a tab
+   * that opened in the background (nobody has looked at it yet).
+   */
   h: number;
+  /** Time zones: the browser's own setting, and where its IP address is. */
+  z: string;
+  iz: string;
   /** Device: desktop or mobile. */
   d: "d" | "m";
   /** Country, region and city from Cloudflare's IP geolocation. */
@@ -125,7 +131,9 @@ export class Presence extends DurableObject<Env> {
       b: /^[a-z0-9]{8,24}$/.test(browser) ? browser : id,
       p: clip(url.searchParams.get("p"), MAX_PATH) || "/",
       v: visible ? 1 : 0,
-      h: visible ? 0 : Date.now(),
+      h: 0,
+      z: clip(url.searchParams.get("z"), 40),
+      iz: clip(url.searchParams.get("gz"), 40),
       d: url.searchParams.get("d") === "m" ? "m" : "d",
       c: clip(url.searchParams.get("gc"), 2),
       r: clip(url.searchParams.get("gr"), 8),
@@ -269,7 +277,13 @@ export class Presence extends DurableObject<Env> {
       if (state?.k !== "visitor") continue;
       const { k: _, ...visitor } = state;
       // Tabs that connected before browser ids and hidden times existed.
-      list.push({ ...visitor, b: visitor.b || visitor.id, h: visitor.h ?? 0 });
+      list.push({
+        ...visitor,
+        b: visitor.b || visitor.id,
+        h: visitor.h ?? 0,
+        z: visitor.z ?? "",
+        iz: visitor.iz ?? "",
+      });
     }
     return list;
   }
@@ -283,7 +297,7 @@ export class Presence extends DurableObject<Env> {
 
   private peak(): { day: string; count: number; at: number } {
     const row = this.ctx.storage.sql
-      .exec<{ v: string }>("SELECT v FROM kv WHERE k = 'peak-people'")
+      .exec<{ v: string }>("SELECT v FROM kv WHERE k = 'peak-here'")
       .toArray()[0];
     const today = utcDay(Date.now());
     const peak = row
@@ -307,7 +321,7 @@ export class Presence extends DurableObject<Env> {
     if (count <= peak.count) return;
     const next = { day: peak.day, count, at: Date.now() };
     this.ctx.storage.sql.exec(
-      "INSERT OR REPLACE INTO kv (k, v) VALUES ('peak-people', ?)",
+      "INSERT OR REPLACE INTO kv (k, v) VALUES ('peak-here', ?)",
       JSON.stringify(next),
     );
     this.broadcast({ type: "peak", peak: next });
@@ -401,12 +415,19 @@ export default {
       // Keep only the referrer's host, and pass on the visitor's coarse
       // location (the object's own request loses Cloudflare's geolocation).
       const cf = request.cf as
-        { country?: string; regionCode?: string; city?: string } | undefined;
+        | {
+            country?: string;
+            regionCode?: string;
+            city?: string;
+            timezone?: string;
+          }
+        | undefined;
       const forwarded = new URL(request.url);
       forwarded.searchParams.set("r", hostOf(url.searchParams.get("r")));
       forwarded.searchParams.set("gc", cf?.country ?? "");
       forwarded.searchParams.set("gr", cf?.regionCode ?? "");
       forwarded.searchParams.set("gt", cf?.city ?? "");
+      forwarded.searchParams.set("gz", cf?.timezone ?? "");
       return stub().fetch(new Request(forwarded, request));
     }
 

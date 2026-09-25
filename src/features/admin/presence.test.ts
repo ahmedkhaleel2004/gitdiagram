@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { peopleHere, RECENT_MS } from "./presence";
+import { isLikelyVpn, offsetMinutes, peopleHere, RECENT_MS } from "./presence";
 import type { LiveVisitor } from "./types";
 
 const NOW = 1_800_000_000_000;
@@ -40,5 +40,28 @@ describe("people here now", () => {
       NOW,
     );
     expect(person?.p).toBe("/now");
+  });
+});
+
+describe("likely VPN", () => {
+  it("reads time zone offsets", () => {
+    const summer = new Date("2026-07-01T12:00:00Z");
+    expect(offsetMinutes("America/New_York", summer)).toBe(-240);
+    expect(offsetMinutes("Asia/Kolkata", summer)).toBe(330);
+    expect(offsetMinutes("Etc/UTC", summer)).toBe(0);
+    expect(offsetMinutes("Not/AZone", summer)).toBeNull();
+  });
+
+  it("flags a browser clock that disagrees with its IP address", () => {
+    expect(
+      isLikelyVpn(tab({ z: "Asia/Calcutta", iz: "America/New_York" }), NOW),
+    ).toBe(true);
+    // Different names, same offset: not a mismatch.
+    expect(
+      isLikelyVpn(tab({ z: "America/Toronto", iz: "America/New_York" }), NOW),
+    ).toBe(false);
+    expect(isLikelyVpn(tab({ z: "", iz: "America/New_York" }), NOW)).toBe(
+      false,
+    );
   });
 });

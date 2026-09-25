@@ -17,7 +17,7 @@ import type {
   LiveVisitor,
   VideoAudience,
 } from "~/features/admin/types";
-import { peopleHere } from "~/features/admin/presence";
+import { isLikelyVpn, peopleHere } from "~/features/admin/presence";
 import { useLiveSite, type LinkStatus } from "./use-live-site";
 
 // Counters (budgets, balances) are polled; everything about people and jobs is
@@ -337,7 +337,13 @@ function countryName(code: string): string {
 }
 
 /** Every country on the site now; open one to see its cities. */
-function CountryList({ visitors }: { visitors: LiveVisitor[] }) {
+function CountryList({
+  visitors,
+  now,
+}: {
+  visitors: LiveVisitor[];
+  now: number;
+}) {
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const countries = useMemo(() => {
     const byCountry = new Map<string, LiveVisitor[]>();
@@ -350,6 +356,7 @@ function CountryList({ visitors }: { visitors: LiveVisitor[] }) {
       .map(([code, people]) => ({
         code,
         count: people.length,
+        vpn: people.filter((person) => isLikelyVpn(person, now)).length,
         cities: tally(
           people,
           (v) => [v.ct, v.r].filter(Boolean).join(", ") || "Unknown",
@@ -357,7 +364,7 @@ function CountryList({ visitors }: { visitors: LiveVisitor[] }) {
         ),
       }))
       .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
-  }, [visitors]);
+  }, [visitors, now]);
   if (!countries.length)
     return (
       <p className="text-sm text-[hsl(var(--neo-soft-text))]">Nobody yet.</p>
@@ -372,7 +379,7 @@ function CountryList({ visitors }: { visitors: LiveVisitor[] }) {
     });
   return (
     <ul className="flex max-h-[26rem] flex-col gap-1.5 overflow-y-auto">
-      {countries.map(({ code, count, cities }) => {
+      {countries.map(({ code, count, vpn, cities }) => {
         const expanded = open.has(code);
         return (
           <li key={code || "unknown"}>
@@ -389,6 +396,14 @@ function CountryList({ visitors }: { visitors: LiveVisitor[] }) {
               <span className="relative min-w-0 flex-1 truncate px-1.5 py-0.5">
                 <span className="mr-1.5">{flag(code)}</span>
                 <span className="font-medium">{countryName(code)}</span>
+                {vpn ? (
+                  <span
+                    className="ml-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300"
+                    title="Browser clock set to a different time zone from this location"
+                  >
+                    {vpn} likely VPN
+                  </span>
+                ) : null}
                 <span className="ml-1.5 text-xs text-[hsl(var(--neo-soft-text))]">
                   {expanded ? "▾" : "▸"}
                 </span>
@@ -702,6 +717,8 @@ export function AdminDashboard() {
   const withTabOpen = new Set(tabs.map((tab) => tab.b)).size;
   const mobile = visitors.filter((visitor) => visitor.d === "m").length;
   const priority = visitors.filter(isPriorityPlace).length;
+  // Browser clock in a different time zone from the IP address's location.
+  const vpnCount = visitors.filter((v) => isLikelyVpn(v, now)).length;
   const pages = useMemo(() => tally(visitors, (v) => v.p, 8), [visitors]);
   const countryCount = new Set(visitors.map((v) => v.c)).size;
   const sources = useMemo(
@@ -804,12 +821,13 @@ export function AdminDashboard() {
             <div className="text-6xl leading-none font-bold tabular-nums">
               {number.format(visitors.length)}
             </div>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+            <dl className="grid grid-cols-3 gap-x-6 gap-y-2 text-sm sm:grid-cols-5">
               {[
                 ["Looking now", inView],
                 ["Mobile", mobile],
                 ["Priority places", priority],
                 ["Tabs open", tabs.length],
+                ["Likely VPN", vpnCount],
               ].map(([label, value]) => (
                 <div key={label}>
                   <dt className="text-[hsl(var(--neo-soft-text))]">{label}</dt>
@@ -1061,7 +1079,7 @@ export function AdminDashboard() {
           title="Countries"
           aside={`${countryCount} ${countryCount === 1 ? "country" : "countries"}`}
         >
-          <CountryList visitors={visitors} />
+          <CountryList visitors={visitors} now={now} />
         </Panel>
         <Panel title="Came from">
           <BarList rows={sources} />

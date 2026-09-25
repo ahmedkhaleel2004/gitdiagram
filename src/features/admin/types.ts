@@ -45,6 +45,9 @@ export interface LiveVisitor {
   v: 0 | 1;
   /** When the tab went to the background (ms), or 0 while in view. */
   h: number;
+  /** Time zones: the browser's own setting, and where its IP address is. */
+  z?: string;
+  iz?: string;
   d: "d" | "m";
   c: string;
   r: string;
