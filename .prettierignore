@@ -1,3 +1,6 @@
 # The video engine runs as plain browser scripts with its own conventions
 # (linted, but not type-checked or formatted); gsap.min.js is vendored.
 public/video-engine/
+
+# Local output of experiments (videos, reports); ignored by git too.
+experiments/*/out/

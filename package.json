@@ -93,6 +93,7 @@
   },
   "knip": {
     "ignore": [
+      "experiments/**",
       "public/video-engine/**",
       "workers/**"
     ],
