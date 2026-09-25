@@ -4,14 +4,21 @@ import { unstable_cache } from "next/cache";
 import { z } from "zod";
 import { getGitHubApiHeaders } from "~/server/github-auth";
 
-const CACHE_SECONDS = 5 * 60;
+// PostHog stops API queries after 10 seconds of execution. The 30-day query
+// scans a bounded window and refreshes hourly; the lifetime query scans all
+// history, so it refreshes daily. Both windows end on a rounded cutoff, so
+// repeated refreshes send identical queries that PostHog can answer from its
+// own cache. A failed refresh keeps serving the last success.
+const RECENT_CACHE_SECONDS = 60 * 60;
+const LIFETIME_CACHE_SECONDS = 24 * 60 * 60;
 const count = z.number().int().nonnegative();
-const posthogResponse = z.object({
+const recentResponse = z.object({
   results: z
-    .array(
-      z.tuple([count, count, count, count, count, count, count, count, count]),
-    )
+    .array(z.tuple([count, count, count, count, count, count]))
     .length(1),
+});
+const lifetimeResponse = z.object({
+  results: z.array(z.tuple([count, count, count])).length(1),
 });
 const githubResponse = z.object({ stargazers_count: count });
 
@@ -45,35 +52,23 @@ const VERIFIED_SNAPSHOT: SponsorStats = {
   githubStars: 16178,
 };
 
-async function refreshSponsorStats(): Promise<SponsorStats> {
+const pageviews = `event = '$pageview'
+      AND properties.$host IN ('gitdiagram.com', 'www.gitdiagram.com')`;
+
+function posthogCredentials() {
   const apiKey = process.env.POSTHOG_PERSONAL_API_KEY?.trim();
   const projectId = process.env.POSTHOG_PROJECT_ID?.trim() || "113380";
   if (!apiKey || !/^\d+$/.test(projectId)) {
     throw new Error("Sponsor analytics credentials are not configured.");
   }
+  return { apiKey, projectId };
+}
 
-  const cutoff = Math.floor(Date.now() / 1000);
-  const end = `toDateTime(${cutoff}, 'UTC')`;
-  const monthly = `timestamp >= ${end} - INTERVAL 30 DAY`;
-  const repo =
-    "match(properties.$pathname, '^/[^/]+/[^/]+/?$') AND NOT match(properties.$pathname, '^/(api|dev|auth|browse)/')";
-  const query = `SELECT
-    count(),
-    uniqExact(distinct_id),
-    countIf(${monthly}),
-    uniqExactIf(distinct_id, ${monthly}),
-    uniqExactIf(distinct_id, (${monthly}) AND (${repo})),
-    countIf((${monthly}) AND (${repo})),
-    countIf((${monthly}) AND properties.$pathname = '/'),
-    countIf((${monthly}) AND properties.$pathname = '/browse'),
-    toUnixTimestamp(min(timestamp))
-    FROM events
-    WHERE event = '$pageview'
-      AND properties.$host IN ('gitdiagram.com', 'www.gitdiagram.com')
-      AND timestamp < ${end}`;
-
-  const [posthog, github] = await Promise.all([
-    fetch(`https://us.posthog.com/api/projects/${projectId}/query/`, {
+async function queryPostHog(name: string, query: string) {
+  const { apiKey, projectId } = posthogCredentials();
+  const response = await fetch(
+    `https://us.posthog.com/api/projects/${projectId}/query/`,
+    {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -81,61 +76,80 @@ async function refreshSponsorStats(): Promise<SponsorStats> {
       },
       body: JSON.stringify({
         query: { kind: "HogQLQuery", query },
-        refresh: "force_blocking",
+        // Reuses PostHog's cached result for an identical query.
+        refresh: "blocking",
+        name,
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(25_000),
-    }),
-    getGitHubApiHeaders().then((headers) =>
-      fetch("https://api.github.com/repos/ahmedkhaleel2004/gitdiagram", {
-        headers,
-        cache: "no-store",
-        signal: AbortSignal.timeout(10_000),
-      }),
-    ),
-  ]);
-  if (!posthog.ok || !github.ok) {
-    throw new Error(
-      `Sponsor analytics refresh failed (${posthog.status}, ${github.status}).`,
-    );
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Sponsor analytics refresh failed (${response.status}).`);
   }
+  return (await response.json()) as unknown;
+}
 
-  const [posthogJson, githubJson] = await Promise.all([
-    posthog.json() as Promise<unknown>,
-    github.json() as Promise<unknown>,
+// Floors the current time to a whole number of seconds `step`.
+const cutoffAt = (step: number) => Math.floor(Date.now() / 1000 / step) * step;
+
+async function refreshRecentStats() {
+  posthogCredentials(); // Fail before any request when misconfigured.
+  const cutoff = cutoffAt(60 * 60);
+  const end = `toDateTime(${cutoff}, 'UTC')`;
+  const repo =
+    "match(properties.$pathname, '^/[^/]+/[^/]+/?$') AND NOT match(properties.$pathname, '^/(api|dev|auth|browse)/')";
+  const query = `SELECT
+    count(),
+    uniqExact(distinct_id),
+    uniqExactIf(distinct_id, ${repo}),
+    countIf(${repo}),
+    countIf(properties.$pathname = '/'),
+    countIf(properties.$pathname = '/browse')
+    FROM events
+    WHERE ${pageviews}
+      AND timestamp >= ${end} - INTERVAL 30 DAY
+      AND timestamp < ${end}`;
+
+  const [posthog, github] = await Promise.all([
+    queryPostHog("sponsor-stats-30-days", query),
+    getGitHubApiHeaders()
+      .then((headers) =>
+        fetch("https://api.github.com/repos/ahmedkhaleel2004/gitdiagram", {
+          headers,
+          cache: "no-store",
+          signal: AbortSignal.timeout(10_000),
+        }),
+      )
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Sponsor GitHub refresh failed (${response.status}).`,
+          );
+        }
+        return (await response.json()) as unknown;
+      }),
   ]);
-  const { results } = posthogResponse.parse(posthogJson);
-  const { stargazers_count: githubStars } = githubResponse.parse(githubJson);
-  const row = results[0]!;
   const [
-    lifetimePageviews,
-    lifetimeVisitors,
     monthlyPageviews,
     monthlyVisitors,
     repoVisitors,
     repoPageviews,
     homePageviews,
     browsePageviews,
-    firstEvent,
-  ] = row;
+  ] = recentResponse.parse(posthog).results[0]!;
+  const { stargazers_count: githubStars } = githubResponse.parse(github);
 
   if (
     monthlyVisitors > monthlyPageviews ||
     repoVisitors > monthlyVisitors ||
-    monthlyVisitors > lifetimeVisitors ||
-    monthlyPageviews > lifetimePageviews ||
-    repoPageviews + homePageviews + browsePageviews > monthlyPageviews ||
-    firstEvent <= 0 ||
-    firstEvent > cutoff
+    repoPageviews + homePageviews + browsePageviews > monthlyPageviews
   ) {
     throw new Error("Sponsor analytics returned inconsistent totals.");
   }
 
   return {
     asOf: new Date(cutoff * 1000).toISOString(),
-    trackedSince: new Date(firstEvent * 1000).toISOString(),
-    lifetimeVisitors,
-    lifetimePageviews,
     monthlyVisitors,
     monthlyPageviews,
     repoVisitors,
@@ -146,10 +160,45 @@ async function refreshSponsorStats(): Promise<SponsorStats> {
   };
 }
 
-const readCachedSponsorStats = unstable_cache(
-  refreshSponsorStats,
-  ["sponsor-stats-v1"],
-  { revalidate: CACHE_SECONDS },
+async function refreshLifetimeStats() {
+  posthogCredentials();
+  const cutoff = cutoffAt(24 * 60 * 60);
+  const query = `SELECT
+    count(),
+    uniqExact(distinct_id),
+    toUnixTimestamp(min(timestamp))
+    FROM events
+    WHERE ${pageviews}
+      AND timestamp < toDateTime(${cutoff}, 'UTC')`;
+  const [lifetimePageviews, lifetimeVisitors, firstEvent] =
+    lifetimeResponse.parse(await queryPostHog("sponsor-stats-lifetime", query))
+      .results[0]!;
+
+  if (
+    lifetimeVisitors > lifetimePageviews ||
+    firstEvent <= 0 ||
+    firstEvent > cutoff
+  ) {
+    throw new Error("Sponsor analytics returned inconsistent totals.");
+  }
+
+  return {
+    trackedSince: new Date(firstEvent * 1000).toISOString(),
+    lifetimeVisitors,
+    lifetimePageviews,
+  };
+}
+
+// Throw inside the cache callbacks on failure so Next keeps the last success.
+const readRecentStats = unstable_cache(
+  refreshRecentStats,
+  ["sponsor-stats-recent-v2"],
+  { revalidate: RECENT_CACHE_SECONDS },
+);
+const readLifetimeStats = unstable_cache(
+  refreshLifetimeStats,
+  ["sponsor-stats-lifetime-v2"],
+  { revalidate: LIFETIME_CACHE_SECONDS },
 );
 
 export async function getSponsorStats(): Promise<SponsorStats> {
@@ -158,8 +207,19 @@ export async function getSponsorStats(): Promise<SponsorStats> {
   }
 
   try {
-    // Throw inside the cache callback on failure so Next keeps its last success.
-    return await readCachedSponsorStats();
+    const [recent, lifetime] = await Promise.all([
+      readRecentStats(),
+      readLifetimeStats(),
+    ]);
+    // Lifetime totals end at the start of the UTC day, up to a day before the
+    // 30-day window ends, but still far exceed it; a smaller one is bad data.
+    if (
+      recent.monthlyVisitors > lifetime.lifetimeVisitors ||
+      recent.monthlyPageviews > lifetime.lifetimePageviews
+    ) {
+      throw new Error("Sponsor analytics returned inconsistent totals.");
+    }
+    return { ...recent, ...lifetime };
   } catch {
     console.warn(
       "Sponsor analytics unavailable; serving the dated fallback snapshot.",

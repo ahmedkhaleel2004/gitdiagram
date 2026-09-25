@@ -84,6 +84,22 @@ quota for later sessions. This is fixed sampling, not adaptive sampling. The
 earlier 0.5% rate was raised to 25%, then replaced by priority groups, which were
 reduced to the current rates on September 20 to preserve the remaining allowance.
 
+## Sponsor events and /advertise figures
+
+Sponsor clicks and impressions are server-side analytics events (see
+[sponsor-clicks.md](./sponsor-clicks.md)). Impressions count once per ad
+placement per page view, so their volume tracks pageviews of the home, diagram
+and browse pages: about 77,000 in the 30 days to September 17, 2026 (an estimate
+from the /advertise snapshot, during the traffic surge). Clicks add a few
+hundred. That is well under the analytics allowance, so sponsor events are not
+sampled; sampling them would also change the paid campaign reports.
+
+The /advertise page reads its figures through the query API, not ingestion. The
+30-day query is bounded to its window and refreshes hourly; the lifetime query
+scans all history and refreshes daily. Both use `refresh: "blocking"` on rounded
+cutoffs so PostHog can reuse cached results, and a failed refresh keeps serving
+the last success (or the dated snapshot in `src/server/sponsor-stats.ts`).
+
 ## Recording boundaries
 
 - Analytics starts only after legacy credentials have been migrated out of browser
