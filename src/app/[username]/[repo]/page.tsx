@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import { permanentRedirect } from "next/navigation";
 import { SITE_URL } from "~/lib/site";
+import { errorText, logEvent } from "~/server/log";
 import { getStoredDiagramState } from "~/server/storage/artifact-store";
 import {
   getPublicDiagramStateCacheTag,
@@ -38,6 +39,23 @@ async function getCachedPublicDiagramState(username: string, repo: string) {
 
   return getCachedState();
 }
+
+// How long a page rendered after a failed storage read stays cached.
+const STORAGE_FAILURE_REVALIDATE_SECONDS = 60;
+
+// A route's ISR lifetime is the shortest revalidate used while rendering it,
+// so reading this short-lived entry caches the page for a minute, not 6 h.
+// Rethrowing instead would keep the last good page on a revalidation, but on
+// a first render (nothing cached yet) Next answers 500, error.tsx or not; and
+// connection()/unstable_noStore() fail an ISR render the same way ("Page
+// changed from static to dynamic at runtime"). A failed read during a
+// time-based revalidation never gets here: unstable_cache then serves its
+// stale entry. It does after an on-demand revalidation, which expires it.
+const shortenPageLifetime = unstable_cache(
+  async () => true,
+  ["repo-page-storage-failure"],
+  { revalidate: STORAGE_FAILURE_REVALIDATE_SECONDS },
+);
 
 export async function generateMetadata({
   params,
@@ -84,17 +102,15 @@ export default async function Repo({ params }: RepoPageProps) {
   }
   // A slow or failing R2 must not turn the page into a 500: without a stored
   // state the client loads the diagram itself, as it does for a new repo.
-  // Caught outside the cache, so a failed read is never cached as "none".
+  // Caught outside the cache, so a failed read is never cached as "none",
+  // and the page without it is only cached briefly.
   const initialState = await getCachedPublicDiagramState(username, repo).catch(
-    (error: unknown) => {
-      console.error(
-        JSON.stringify({
-          event: "repo_page.stored_state_failed",
-          repository: `${username}/${repo}`,
-          error:
-            error instanceof Error ? error.message.slice(0, 200) : "unknown",
-        }),
-      );
+    async (error: unknown) => {
+      logEvent("error", "repo_page.stored_state_failed", {
+        repository: `${username}/${repo}`,
+        error: errorText(error),
+      });
+      await shortenPageLifetime().catch(() => undefined);
       return null;
     },
   );
