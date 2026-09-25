@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CircleAlert, Clapperboard, RotateCcw } from "lucide-react";
-import {
-  fetchExplainerVideo,
-  type ExplainerVideoState,
-  type VideoPausedReason,
+import type {
+  ExplainerVideoState,
+  VideoPausedReason,
 } from "~/features/explainer/api";
+import { lookUpStoredVideo } from "~/features/explainer/stored-video";
 import {
   clearVideoRun,
   releaseVideoRun,
@@ -117,7 +117,6 @@ function Elapsed({ startedAt }: { startedAt: number }) {
   );
 }
 
-/** A player-shaped placeholder while the stored video is looked up. */
 /** Who is making the film, and roughly how long it takes. */
 function MakingLine({ model, repo }: { model?: string; repo: string }) {
   const [director, designer] = model ? modelLabels(model) : [];
@@ -139,6 +138,7 @@ function MakingLine({ model, repo }: { model?: string; repo: string }) {
   );
 }
 
+/** A player-shaped placeholder while the stored video is looked up. */
 function PlayerSkeleton() {
   return (
     <div className={styles.panel} aria-busy="true">
@@ -170,7 +170,7 @@ export function ExplainerVideo({
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchExplainerVideo(username, repo, controller.signal)
+    lookUpStoredVideo(username, repo, controller.signal)
       .then((result) => setState(lookedUp(result)))
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
@@ -198,7 +198,7 @@ export function ExplainerVideo({
     const timer = window.setInterval(() => {
       if (busy) return;
       busy = true;
-      fetchExplainerVideo(username, repo, controller.signal)
+      lookUpStoredVideo(username, repo, controller.signal)
         .then((result) => {
           if (result.generating) return;
           clearVideoRun(username, repo);

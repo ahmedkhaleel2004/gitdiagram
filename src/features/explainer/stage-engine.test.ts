@@ -21,11 +21,19 @@ import {
 const ENGINE = "public/video-engine/";
 const read = (name: string) => readFileSync(`${ENGINE}${name}`, "utf8");
 const SOURCES = {
-  gsap: read("assets/vendor/gsap.min.js"),
-  stage: read("stage.js"),
-  shots: read("shots.js"),
   html: read("stage.html"),
+  css: read("engine.css"),
 };
+const STAGE_SCRIPTS = [
+  ...SOURCES.html.matchAll(/<script src="([^"]+)"><\/script>/g),
+].map((match) => match[1]!);
+const scripts = new Map<string, string>();
+/** An engine script by its URL in the stage (the version query dropped). */
+function script(src: string): string {
+  const name = src.replace(/\?.*$/, "");
+  if (!scripts.has(name)) scripts.set(name, read(name));
+  return scripts.get(name)!;
+}
 
 interface Gsap {
   getProperty(target: Element, property: string): number | string;
@@ -52,7 +60,20 @@ const META = {
   language: "TypeScript",
 };
 
-async function openStage(spec: ShotPlan, timing: VideoTiming): Promise<Stage> {
+interface StageOptions {
+  /** Runs in the stage window before any engine code (stubs, spies). */
+  setup?: (window: StageWindow) => void;
+  /** Called with each message the stage posts, before it resolves. */
+  onMessage?: (data: { type?: string }) => void;
+  /** Runs once the stage listens, before the player's own "load". */
+  beforeLoad?: (window: StageWindow) => void;
+}
+
+async function openStage(
+  spec: ShotPlan,
+  timing: VideoTiming,
+  options: StageOptions = {},
+): Promise<Stage> {
   const dom = new JSDOM(SOURCES.html, {
     url: `https://gitdiagram.test/video-engine/stage.html?v=${ENGINE_VERSION}`,
     runScripts: "outside-only",
@@ -71,13 +92,14 @@ async function openStage(spec: ShotPlan, timing: VideoTiming): Promise<Stage> {
   const append = document.body.appendChild.bind(document.body);
   document.body.appendChild = (<T extends Node>(node: T): T => {
     if (node instanceof window.HTMLScriptElement) {
-      window.eval(SOURCES.shots);
+      window.eval(script(node.getAttribute("src") ?? ""));
       return node;
     }
     return append(node);
   }) as typeof document.body.appendChild;
-  window.eval(SOURCES.gsap);
-  window.eval(SOURCES.stage);
+  options.setup?.(window);
+  // stage.html's own scripts, in its order (gsap, the kit, then stage.js).
+  for (const src of STAGE_SCRIPTS) window.eval(script(src));
 
   const ready = new Promise<number>((resolve, reject) => {
     const timer = setTimeout(
@@ -86,6 +108,7 @@ async function openStage(spec: ShotPlan, timing: VideoTiming): Promise<Stage> {
     );
     window.addEventListener("message", (event: MessageEvent) => {
       const data = event.data as { type?: string; duration?: number };
+      options.onMessage?.(data);
       if (data?.type === "ready") {
         clearTimeout(timer);
         resolve(Number(data.duration));
@@ -103,6 +126,7 @@ async function openStage(spec: ShotPlan, timing: VideoTiming): Promise<Stage> {
         source: window as never,
       }),
     );
+  options.beforeLoad?.(window);
   send({ type: "load", spec, meta: META, timing, captions: true });
   const duration = await ready;
   const stage: Stage = {
@@ -202,11 +226,27 @@ function plan(beats: Array<Partial<ShotBeat> & { narration: string }>) {
 
 describe("video engine", () => {
   it("keeps the stage and engine.ts on one engine version", () => {
-    const versions = [...SOURCES.html.matchAll(/\?v=(\d+)/g)].map(
-      (match) => match[1],
-    );
+    const versions = [
+      ...`${SOURCES.html}${SOURCES.css}`.matchAll(/\?v=(\d+)/g),
+    ].map((match) => match[1]);
     expect(versions.length).toBeGreaterThan(0);
     for (const version of versions) expect(version).toBe(ENGINE_VERSION);
+  });
+
+  it("versions every file the stage and its styles load", () => {
+    // Assets are cached for a day: a new engine must not meet an old font,
+    // texture or GSAP build.
+    const references = [
+      ...[...SOURCES.html.matchAll(/(?:src|href)="([^"]+)"/g)].map(
+        (match) => match[1]!,
+      ),
+      ...[...SOURCES.css.matchAll(/url\("?([^")]+)"?\)/g)].map(
+        (match) => match[1]!,
+      ),
+    ];
+    expect(references.length).toBeGreaterThan(5);
+    for (const reference of references)
+      expect(reference).toMatch(new RegExp(`\\?v=${ENGINE_VERSION}$`));
   });
 
   it("builds and plays a real production plan", async () => {
@@ -517,5 +557,373 @@ describe("video engine", () => {
     // The first beat ended under 0.35 s ago, but the new one has started.
     expect(timing.beats[0]!.end + 0.35).toBeGreaterThan(next.start + 0.05);
     expect(stage.captions()).toBe("second line now");
+  });
+
+  it("keeps arrows and their packets on the elements they join as those move", async () => {
+    const first = "the api calls the worker";
+    const second = "now the worker moves down and calls come here";
+    const timing = timingFor([first, second]);
+    const stage = await openStage(
+      plan([
+        {
+          narration: first,
+          elements: [
+            box("api", 1, 3),
+            box("worker", 9, 3),
+            arrow("wire", "api", "worker", { label: "jobs" }),
+          ],
+        },
+        {
+          narration: second,
+          actions: [
+            { do: "move", at: "moves", target: ["worker"], x: 9, y: 6 },
+            { do: "flow", at: "come", target: ["wire"] },
+          ],
+        },
+      ]),
+      timing,
+    );
+    const wire = stage.node("wire");
+    const [path, head] = wire.querySelectorAll("path");
+    const end = () => {
+      const points = path!.getAttribute("d")!.match(/-?[\d.]+,-?[\d.]+/g)!;
+      return points.at(-1)!.split(",").map(Number);
+    };
+    const label = [...stage.window.document.querySelectorAll("div")].find(
+      (node) => node.textContent === "jobs",
+    )!;
+    const moves = timing.beats[1]!.words.find((word) => word.w === "moves")!.s;
+
+    // Before the move: a straight wire into the worker's left side (y 420).
+    stage.seek(moves - 0.3);
+    expect(end()).toEqual([1070, 420]);
+    const labelTop = label.style.top;
+    // Mid-move the wire's end travels with the box.
+    stage.seek(moves + 0.25);
+    const [, midY] = end();
+    expect(midY).toBeGreaterThan(420);
+    expect(midY).toBeLessThan(780);
+    // After it, the wire ends at the box's new place, head and label with it.
+    stage.seek(moves + 1);
+    expect(end()).toEqual([1070, 780]);
+    expect(head!.getAttribute("transform")).toBe(
+      "translate(1070,780) rotate(0)",
+    );
+    expect(label.style.top).not.toBe(labelTop);
+    // Seeking back puts everything where it was.
+    stage.seek(moves - 0.3);
+    expect(end()).toEqual([1070, 420]);
+    expect(label.style.top).toBe(labelTop);
+
+    // Packets sent after the move ride the new route down to y 780.
+    const packet = wire.parentElement!.querySelector<HTMLElement>(
+      "div > div[style*='border-radius: 50%']",
+    )!;
+    let lowest = 0;
+    for (let t = moves + 0.6; t < stage.duration; t += 0.05) {
+      stage.seek(t);
+      if (stage.opacity(packet) > 0)
+        lowest = Math.max(
+          lowest,
+          Number(stage.window.gsap.getProperty(packet, "y")),
+        );
+    }
+    expect(lowest).toBeCloseTo(780 - 420, 0);
+  });
+
+  it("sends packets already planned for a flowing arrow along its new route", async () => {
+    const first = "api calls worker";
+    const second = "then worker moves down while packets keep flowing along";
+    const timing = timingFor([first, second]);
+    const stage = await openStage(
+      plan([
+        {
+          narration: first,
+          elements: [
+            box("api", 1, 3),
+            box("worker", 9, 3),
+            arrow("wire", "api", "worker", { flow: true }),
+          ],
+        },
+        {
+          narration: second,
+          actions: [
+            { do: "move", at: "moves", target: ["worker"], x: 9, y: 6 },
+          ],
+        },
+      ]),
+      timing,
+    );
+    const packet = stage
+      .node("wire")
+      .parentElement!.querySelector<HTMLElement>(
+        "div > div[style*='border-radius: 50%']",
+      )!;
+    const moves = timing.beats[1]!.words.find((word) => word.w === "moves")!.s;
+    const y = () => Number(stage.window.gsap.getProperty(packet, "y"));
+    let before = 0;
+    let during = 0;
+    let after = 0;
+    for (let t = 0; t < stage.duration; t += 0.05) {
+      stage.seek(t);
+      if (stage.opacity(packet) === 0) continue;
+      if (t < moves - 0.1) before = Math.max(before, y());
+      else if (t < moves + 0.1) continue;
+      else if (t < moves + 0.5) during = Math.max(during, 1);
+      else after = Math.max(after, y());
+    }
+    // Along the straight wire first, none while the box moves, then down
+    // the new route to the box's new place.
+    expect(before).toBe(0);
+    expect(during).toBe(0);
+    expect(after).toBeCloseTo(780 - 420, 0);
+  });
+
+  it("waits for every picture to decode before it is ready", async () => {
+    const narration = "here is the logo and a broken one";
+    const events: string[] = [];
+    await openStage(
+      {
+        ...plan([
+          {
+            narration,
+            elements: [
+              { ...box("logo", 1, 2), kind: "image", src: "a", fit: "contain" },
+              { ...box("gone", 8, 2), kind: "image", src: "b", fit: "cover" },
+            ],
+          },
+        ]),
+        images: { a: "/pictures/a.png", b: "/pictures/b.png" },
+      },
+      timingFor([narration]),
+      {
+        setup: (window) => {
+          window.HTMLImageElement.prototype.decode = function (
+            this: HTMLImageElement,
+          ) {
+            const src = this.getAttribute("src");
+            return new Promise<void>((resolve, reject) =>
+              setTimeout(() => {
+                events.push(`decoded ${src}`);
+                if (src?.endsWith("b.png")) reject(new Error("broken"));
+                else resolve();
+              }, 50),
+            );
+          };
+        },
+        onMessage: (data) => {
+          if (data.type === "ready") events.push("ready");
+        },
+      },
+    );
+    // A picture that fails to decode does not hold the stage back forever.
+    expect(events).toEqual([
+      "decoded /pictures/a.png",
+      "decoded /pictures/b.png",
+      "ready",
+    ]);
+  });
+
+  it("only draws pictures from this site", async () => {
+    const narration = "three pictures and one of them is ours";
+    const picture = (id: string, x: number): ShotElement => ({
+      ...box(id, x, 2),
+      kind: "image",
+      src: id,
+      fit: "contain",
+    });
+    const stage = await openStage(
+      {
+        ...plan([
+          {
+            narration,
+            elements: [
+              picture("ours", 1),
+              picture("slashes", 5),
+              picture("backslash", 9),
+            ],
+          },
+        ]),
+        images: {
+          ours: "/api/video/file?format=picture&id=ours",
+          slashes: "//evil.test/a.png",
+          backslash: "/\\evil.test/a.png",
+        },
+      },
+      timingFor([narration]),
+    );
+    const sources = [
+      ...stage.window.document.querySelectorAll("#scenes img"),
+    ].map((img) => img.getAttribute("src"));
+    expect(sources).toEqual(["/api/video/file?format=picture&id=ours"]);
+  });
+
+  it("draws only plain shapes in an svg element", async () => {
+    const narration = "a shape and some that are not";
+    const stage = await openStage(
+      plan([
+        {
+          narration,
+          elements: [
+            {
+              ...box("art", 1, 2),
+              kind: "svg",
+              viewBox: "0 0 10 10",
+              shapes: [
+                { shape: "script" },
+                { shape: "foreignObject", width: 10, height: 10 },
+                { shape: "a" },
+                { shape: "constructor" },
+                { shape: "circle", cx: 5, cy: 5, r: 4, fill: "soft" },
+              ],
+            },
+          ],
+        },
+      ]),
+      timingFor([narration]),
+    );
+    const svg = stage.node("art").querySelector("svg")!;
+    expect([...svg.children].map((node) => node.tagName)).toEqual(["circle"]);
+  });
+
+  it("shows model text as text in every element that carries it", async () => {
+    const evil = "<img src=x onerror=alert(1)>";
+    const first = "every kind carries the text";
+    const second = "then it changes again";
+    const elements: ShotElement[] = [
+      { ...box("h", 1, 0), kind: "heading", text: `*${evil}* ${evil}` },
+      { ...box("t", 5, 0), kind: "text", text: evil, size: "m" },
+      {
+        ...box("c", 1, 1),
+        kind: "code",
+        w: 6,
+        h: 3,
+        title: evil,
+        lines: [evil],
+      },
+      {
+        ...box("term", 8, 1),
+        kind: "terminal",
+        w: 5,
+        h: 2,
+        title: evil,
+        lines: [`$ ${evil}`, evil],
+      },
+      box("b", 1, 5, { label: evil, sub: evil }),
+      { ...box("chip", 5, 5), kind: "chip", text: evil, h: 0.6 },
+      { ...box("f", 9, 5), kind: "file", path: `src/${evil}` },
+      {
+        ...box("tree", 13, 0),
+        kind: "tree",
+        w: 2,
+        h: 2,
+        paths: [evil],
+      },
+      {
+        ...box("tab", 1, 6),
+        kind: "table",
+        columns: [evil],
+        rows: [[evil]],
+      },
+      {
+        ...box("bars", 5, 6),
+        kind: "bars",
+        items: [{ label: evil, value: 3 }],
+        unit: evil,
+      },
+      {
+        ...box("n", 9, 6),
+        kind: "number",
+        value: 12,
+        label: evil,
+        prefix: evil,
+        suffix: evil,
+      },
+      { ...box("stamp", 13, 6), kind: "stamp", text: evil, tone: "ok" },
+      { ...box("br", 13, 3), kind: "browser", url: evil },
+      {
+        ...box("req", 13, 4),
+        kind: "request",
+        method: evil,
+        url: evil,
+        status: evil,
+        lines: [evil],
+      },
+      { ...box("l", 9, 3), kind: "list", items: [evil] },
+      arrow("wire", "b", "chip", { label: evil }),
+    ];
+    const stage = await openStage(
+      {
+        ...plan([
+          { narration: first, elements },
+          {
+            narration: second,
+            actions: [
+              { do: "replace", at: "changes", target: ["chip"], text: evil },
+              { do: "replace", at: "changes", target: ["h"], text: evil },
+              { do: "type", at: "again", target: ["term"], line: evil },
+            ],
+          },
+        ]),
+        title: evil,
+        outro: evil,
+      },
+      timingFor([first, second]),
+    );
+    for (let t = 0; t <= stage.duration; t += 0.5) stage.seek(t);
+    const { document } = stage.window;
+    expect(document.querySelectorAll("img")).toHaveLength(0);
+    expect(document.querySelectorAll("[onerror]")).toHaveLength(0);
+    const shown = document.getElementById("scenes")!.textContent!;
+    // Each element keeps the markup as visible characters.
+    expect(shown.split(evil.slice(0, 8)).length - 1).toBeGreaterThan(20);
+  });
+
+  it("ignores messages from other origins and other windows", async () => {
+    const narration = "only the player may drive the stage";
+    const timing = timingFor([narration]);
+    const foreign = plan([{ narration, elements: [box("evil", 1, 2)] }]);
+    const stage = await openStage(
+      plan([{ narration, elements: [box("real", 1, 2)] }]),
+      timing,
+      {
+        beforeLoad: (window) => {
+          const load = { type: "load", spec: foreign, meta: META, timing };
+          window.dispatchEvent(
+            new window.MessageEvent("message", {
+              data: load,
+              origin: "https://evil.test",
+              source: window as never,
+            }),
+          );
+          window.dispatchEvent(
+            new window.MessageEvent("message", {
+              data: load,
+              origin: window.location.origin,
+              source: null,
+            }),
+          );
+        },
+      },
+    );
+    const { document } = stage.window;
+    expect(document.querySelector('[data-id="evil"]')).toBeNull();
+    expect(stage.node("real")).toBeTruthy();
+
+    stage.seek(1);
+    const hair = document.querySelector<HTMLElement>("#rail > div")!;
+    const at = Number(stage.window.gsap.getProperty(hair, "scaleX"));
+    for (const [origin, source] of [
+      ["https://evil.test", stage.window],
+      [stage.window.location.origin, null],
+    ] as const)
+      stage.window.dispatchEvent(
+        new stage.window.MessageEvent("message", {
+          data: { type: "seek", time: 3 },
+          origin,
+          source: source as never,
+        }),
+      );
+    expect(Number(stage.window.gsap.getProperty(hair, "scaleX"))).toBe(at);
   });
 });

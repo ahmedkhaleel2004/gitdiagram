@@ -1,28 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { fetchExplainerVideo } from "~/features/explainer/api";
 import { modelLabel } from "~/features/explainer/model-label";
 import { useVideoRun } from "~/features/explainer/runs";
+import { useStoredVideoModel } from "~/features/explainer/stored-video";
 import styles from "~/components/generation/workspace.module.css";
-
-// The model each repository's video was made with, looked up once per page.
-const looked = new Map<string, Promise<string | null>>();
-
-function storedModel(username: string, repo: string) {
-  const key = `${username}/${repo}`.toLowerCase();
-  let model = looked.get(key);
-  if (!model) {
-    model = fetchExplainerVideo(username, repo)
-      .then((state) => state.video?.stats.model ?? null)
-      .catch(() => {
-        looked.delete(key);
-        return null;
-      });
-    looked.set(key, model);
-  }
-  return model;
-}
 
 /** A line in the Info panel naming the model that made this repository's video. */
 export function VideoInfo({
@@ -33,16 +14,8 @@ export function VideoInfo({
   repo: string;
 }) {
   const run = useVideoRun(username, repo);
-  const [stored, setStored] = useState<string | null>(null);
-  useEffect(() => {
-    let current = true;
-    void storedModel(username, repo).then((model) => {
-      if (current) setStored(model);
-    });
-    return () => {
-      current = false;
-    };
-  }, [username, repo]);
+  // Shared with the Video panel's lookups, and updated when a run finishes.
+  const stored = useStoredVideoModel(username, repo);
   const making = run?.kind === "generating" ? run.progress.model : undefined;
   const model =
     making ?? (run?.kind === "ready" ? run.video.stats.model : stored);

@@ -111,3 +111,27 @@ describe("ExplainerShare MP4 downloads", () => {
     expect(clicked).toEqual([]);
   });
 });
+
+describe("ExplainerShare links", () => {
+  it("copies links to the live site, wherever the page is open", async () => {
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    try {
+      render(<ExplainerShare video={video} />);
+      await act(async () =>
+        fireEvent.click(screen.getByRole("button", { name: "Copy link" })),
+      );
+      await act(async () =>
+        fireEvent.click(screen.getByRole("button", { name: "README badge" })),
+      );
+      expect(writeText.mock.calls).toEqual([
+        ["https://gitdiagram.com/acme/tiny/video"],
+        [
+          "[![Watch a one-minute video tour of tiny](https://gitdiagram.com/video-badge.svg)](https://gitdiagram.com/acme/tiny/video)",
+        ],
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

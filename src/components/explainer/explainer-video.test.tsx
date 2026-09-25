@@ -17,6 +17,16 @@ const api = vi.hoisted(() => ({
   fetchExplainerVideo: vi.fn(),
   streamExplainerVideo: vi.fn(),
   VideoStreamEndedError: class VideoStreamEndedError extends Error {},
+  VideoRequestError: class VideoRequestError extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+      readonly stale = false,
+      readonly reason: string | null = null,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 vi.mock("~/features/explainer/api", () => api);
@@ -244,6 +254,42 @@ describe("ExplainerVideo generation", () => {
     // The alert wraps the heading instead of replacing its role.
     expect(screen.getByRole("heading", { name: message })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+});
+
+describe("ExplainerVideo refusals", () => {
+  it("offers no retry once today's videos are made", async () => {
+    api.fetchExplainerVideo.mockResolvedValue(empty);
+    api.streamExplainerVideo.mockRejectedValue(
+      new api.VideoRequestError("Today's free videos have all been made.", 429),
+    );
+    render(<ExplainerVideo username="acme" repo="budget" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Make the video" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Today's free videos have all been made.",
+    );
+    expect(screen.queryByRole("button", { name: "Try again" })).toBe(null);
+  });
+
+  it("waits for a video someone else is making", async () => {
+    api.fetchExplainerVideo.mockResolvedValue(empty);
+    api.streamExplainerVideo.mockRejectedValue(
+      new api.VideoRequestError(
+        "This video is being made right now.",
+        409,
+        false,
+        "generating",
+      ),
+    );
+    render(<ExplainerVideo username="acme" repo="locked" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Make the video" }),
+    );
+    expect(
+      await screen.findByText("This video is being made right now"),
+    ).toBeTruthy();
   });
 });
 

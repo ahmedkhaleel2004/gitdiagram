@@ -1,21 +1,21 @@
 @font-face {
   font-family: "Geist";
-  src: url("assets/fonts/Geist-Variable.woff2") format("woff2");
+  src: url("assets/fonts/Geist-Variable.woff2?v=19") format("woff2");
   font-weight: 100 900;
 }
 @font-face {
   font-family: "Geist Mono";
-  src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2");
+  src: url("assets/fonts/GeistMono-Variable.woff2?v=19") format("woff2");
   font-weight: 100 900;
 }
 @font-face {
   font-family: "Instrument Serif";
-  src: url("assets/fonts/InstrumentSerif-Regular.woff2") format("woff2");
+  src: url("assets/fonts/InstrumentSerif-Regular.woff2?v=19") format("woff2");
   font-style: normal;
 }
 @font-face {
   font-family: "Instrument Serif";
-  src: url("assets/fonts/InstrumentSerif-Italic.woff2") format("woff2");
+  src: url("assets/fonts/InstrumentSerif-Italic.woff2?v=19") format("woff2");
   font-style: italic;
 }
 
@@ -124,7 +124,7 @@ svg.wires {
   inset: 0;
   opacity: 0.1;
   mix-blend-mode: multiply;
-  background: url("assets/grain.png") 0 0 / 128px 128px;
+  background: url("assets/grain.png?v=19") 0 0 / 128px 128px;
 }
 
 /* components */
