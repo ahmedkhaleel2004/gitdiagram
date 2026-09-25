@@ -322,14 +322,6 @@
     animation: dialog-content-out 160ms var(--ease-out) both;
   }
 
-  .export-panel {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    transition:
-      opacity 180ms var(--ease-out),
-      transform 180ms var(--ease-out);
-  }
-
   .status-message {
     opacity: 1;
     transform: translateY(0);
@@ -427,11 +419,6 @@
     transform: scale(0.97);
   }
 
-  .export-panel {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.99);
-  }
-
   .status-message {
     opacity: 0;
     transform: translateY(-4px);
@@ -493,7 +480,6 @@
   .tooltip-content,
   .tooltip-content[data-state="delayed-open"],
   .tooltip-content[data-state="instant-open"],
-  .export-panel,
   .status-message,
   .copy-button-state,
   .copy-button-state[data-active="false"] {
@@ -502,9 +488,14 @@
   }
 }
 
-/* "NEW" badge for explainer videos: a small ink-bordered pill with a slow shine. */
+/* "NEW" badge for explainer videos: a small ink-bordered pill with a slow shine.
+   The shine is a wide gradient layer that slides across behind the text; only
+   its transform animates, so it runs on the compositor without repainting. */
 @layer components {
   .new-badge {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     display: inline-flex;
     flex-shrink: 0;
     align-items: center;
@@ -513,6 +504,22 @@
     border: 2px solid #000;
     border-radius: 999px;
     --new-badge-fill: hsl(var(--neo-button));
+    background-color: var(--new-badge-fill);
+    box-shadow: 2px 2px 0 #000;
+    color: #000;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    line-height: 1;
+  }
+  .new-badge::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: -1;
+    width: 260%;
+    height: 100%;
     background: linear-gradient(
       110deg,
       var(--new-badge-fill) 0%,
@@ -522,13 +529,7 @@
       var(--new-badge-fill) 62%,
       var(--new-badge-fill) 100%
     );
-    background-size: 260% 100%;
-    box-shadow: 2px 2px 0 #000;
-    color: #000;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    line-height: 1;
+    pointer-events: none;
     animation: new-badge-shine 3.2s ease-in-out infinite;
   }
   /* Inside a purple button, a lighter purple so the badge never matches it. */
@@ -538,18 +539,21 @@
   }
 }
 
+/* The same sweep as the old background-position 100% → -60% on a 260% wide
+   background: the layer's left edge travels from -160% to +96% of the badge,
+   which is -61.54% to +36.92% of the layer's own width. */
 @keyframes new-badge-shine {
   0% {
-    background-position: 100% 0;
+    transform: translateX(-61.54%);
   }
   60%,
   100% {
-    background-position: -60% 0;
+    transform: translateX(36.92%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .new-badge {
+  .new-badge::before {
     animation: none;
   }
 }

@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
 import { GitHubIcon } from "~/components/icons/github-icon";
+import { formatCompact } from "~/lib/format";
 import { GITHUB_REPO_URL } from "~/lib/site";
 import { VIDEOS_ENABLED } from "~/lib/video-flag";
 
@@ -25,13 +26,8 @@ interface HeaderClientProps {
   starCount: Promise<number | null>;
 }
 
-const compactNumberFormatter = new Intl.NumberFormat("en", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
 function formatStarCount(count: number) {
-  return compactNumberFormatter.format(count).toLowerCase();
+  return formatCompact(count).toLowerCase();
 }
 
 function MobileStarCount({ starCount }: HeaderClientProps) {

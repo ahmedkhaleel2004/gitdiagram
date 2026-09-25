@@ -21,7 +21,7 @@ describe("MainCard", () => {
   });
 
   it("accepts owner/repo shorthand input", () => {
-    render(<MainCard isHome={false} />);
+    render(<MainCard />);
 
     const input = screen.getByRole("textbox", {
       name: "GitHub repository",
@@ -40,7 +40,7 @@ describe("MainCard", () => {
   });
 
   it("associates invalid input feedback with the repository field", () => {
-    render(<MainCard isHome={false} />);
+    render(<MainCard />);
 
     const input = screen.getByRole("textbox", {
       name: "GitHub repository",

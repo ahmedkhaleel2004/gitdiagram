@@ -79,6 +79,7 @@ export async function generateSitemaps() {
   const videoRoutes = await getVideoRoutes().catch(() => []);
   const sitemapCount = getSitemapCount(
     (browseEntries?.length ?? 0) + videoRoutes.length,
+    getStaticRoutes(new Date()).length,
   );
 
   return Array.from({ length: sitemapCount }, (_, id) => ({ id }));
