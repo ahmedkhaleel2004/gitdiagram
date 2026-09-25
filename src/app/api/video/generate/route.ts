@@ -14,7 +14,7 @@ import {
 import { readControls } from "~/server/admin/controls";
 import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
 import {
-  canMakeVideosHere,
+  audienceBlock,
   EARLY_ACCESS_MESSAGE,
 } from "~/server/explainer/audience";
 import {
@@ -73,6 +73,7 @@ export async function POST(request: Request): Promise<Response> {
       kind: "video.gated",
       repo: repository,
       reason,
+      step: "start",
       ...origin,
     });
   if (!trusted) {
@@ -83,8 +84,9 @@ export async function POST(request: Request): Promise<Response> {
       gated("paused");
       return jsonErrorResponse(limitMessage("daily"), 503);
     }
-    if (!canMakeVideosHere(request, controls.videoAudience)) {
-      gated("audience");
+    const blocked = audienceBlock(request, controls.videoAudience);
+    if (blocked) {
+      gated(blocked);
       return jsonErrorResponse(EARLY_ACCESS_MESSAGE, 403);
     }
   }

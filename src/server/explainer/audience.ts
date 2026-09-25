@@ -67,9 +67,21 @@ export function canMakeVideosHere(
   request: Request,
   audience: VideoAudience = "priority",
 ): boolean {
-  if (audience === "everyone") return true;
-  if (!isDesktopRequest(request)) return false;
-  return audience === "desktop" || isInVideoRegion(request);
+  return audienceBlock(request, audience) === null;
+}
+
+/**
+ * Why the audience rule holds this visitor back: not on a desktop, or outside
+ * the early-access places. Null when it lets them in.
+ */
+export function audienceBlock(
+  request: Request,
+  audience: VideoAudience = "priority",
+): "mobile" | "place" | null {
+  if (audience === "everyone") return null;
+  if (!isDesktopRequest(request)) return "mobile";
+  if (audience === "desktop" || isInVideoRegion(request)) return null;
+  return "place";
 }
 
 export const EARLY_ACCESS_MESSAGE =

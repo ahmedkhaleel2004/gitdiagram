@@ -14,7 +14,7 @@ import {
 } from "~/server/explainer/config";
 import { readControls } from "~/server/admin/controls";
 import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
-import { canMakeVideosHere } from "~/server/explainer/audience";
+import { audienceBlock } from "~/server/explainer/audience";
 import { isVideoAdmin, videosLeftToday } from "~/server/explainer/limits";
 import { hasNarrationCredits } from "~/server/explainer/narration";
 import { readVideoArtifact } from "~/server/explainer/store";
@@ -52,18 +52,26 @@ async function videoAvailability(
   // The operator, signed in to /admin, may always make videos.
   if (isVideoAdmin(request))
     return { canGenerate: true, paused: null, openToAll: true };
-  const controls = await readControls();
-  // "Everyone" includes tablets, which the page otherwise holds back.
-  const openToAll = controls.videoAudience === "everyone";
-  if (controls.videosPaused) return { canGenerate: false, paused: "limit" };
-  if (!canMakeVideosHere(request, controls.videoAudience)) {
-    // Someone wanted a video the gate held back: demand the operator can see.
+  // Someone wanted a video and was held back: demand the operator sees, with
+  // the reason, on the /admin feed.
+  const heldBack = (reason: string) =>
     void emitLiveEvent({
       kind: "video.gated",
       repo: repository,
-      reason: "audience",
+      reason,
+      step: "page",
       ...requestOrigin(request),
     });
+  const controls = await readControls();
+  // "Everyone" includes tablets, which the page otherwise holds back.
+  const openToAll = controls.videoAudience === "everyone";
+  if (controls.videosPaused) {
+    heldBack("paused");
+    return { canGenerate: false, paused: "limit" };
+  }
+  const blocked = audienceBlock(request, controls.videoAudience);
+  if (blocked) {
+    heldBack(blocked);
     return { canGenerate: false, paused: "audience" };
   }
   try {
@@ -71,9 +79,10 @@ async function videoAvailability(
       videosLeftToday(),
       hasNarrationCredits(),
     ]);
-    return left > 0 && credits
-      ? { canGenerate: true, paused: null, openToAll }
-      : { canGenerate: false, paused: "limit" };
+    if (left > 0 && credits)
+      return { canGenerate: true, paused: null, openToAll };
+    heldBack(left > 0 ? "credits" : "daily");
+    return { canGenerate: false, paused: "limit" };
   } catch {
     return { canGenerate: false, paused: "limit" };
   }

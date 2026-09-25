@@ -411,6 +411,17 @@ function LimitField({
   );
 }
 
+/** Why a visitor could not make a video, in plain words. */
+const HELD_BACK: Record<string, string> = {
+  mobile: "On a phone or tablet",
+  place: "Outside the priority places",
+  audience: "Not in early access",
+  paused: "Videos are paused",
+  daily: "Today's video limit is used up",
+  network: "Their network already made today's video",
+  credits: "Voice credits are low",
+};
+
 function describe(event: LiveFeedEvent): {
   title: string;
   tone: string;
@@ -470,7 +481,12 @@ function describe(event: LiveFeedEvent): {
       return {
         title: "Video held back",
         tone: "text-amber-700 dark:text-amber-300",
-        detail: [String(event.reason ?? ""), place, String(event.device ?? "")]
+        detail: [
+          HELD_BACK[String(event.reason)] ?? String(event.reason ?? ""),
+          event.step === "start" ? "after pressing Make the video" : "",
+          place,
+          String(event.device ?? ""),
+        ]
           .filter(Boolean)
           .join(" · "),
       };
