@@ -67,8 +67,20 @@ describe("the live feed's words", () => {
     expect(movesCounters("video.finished")).toBe(true);
     expect(movesCounters("diagram.finished")).toBe(true);
     expect(movesCounters("limits.reset")).toBe(true);
+    expect(movesCounters("video.started")).toBe(true);
+    expect(movesCounters("render.started")).toBe(true);
     expect(movesCounters("diagram.started")).toBe(false);
     expect(movesCounters("admin.signed_in")).toBe(false);
+    // Nothing counted, or already re-read by the change itself.
+    expect(movesCounters("video.gated")).toBe(false);
+    expect(movesCounters("control.changed")).toBe(false);
+  });
+
+  it("marks a wrong API token apart from a wrong sign-in", () => {
+    expect(
+      describeEvent(event("admin.sign_in_failed", { via: "bearer" })).detail,
+    ).toBe("API token");
+    expect(describeEvent(event("admin.sign_in_failed")).detail).toBe("");
   });
 
   it("sorts events into the diagram and video filters", () => {

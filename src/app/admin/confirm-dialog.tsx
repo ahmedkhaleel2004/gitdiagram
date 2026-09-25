@@ -97,7 +97,10 @@ export function ConfirmDialog({
             <button
               type="button"
               disabled={busy}
-              onClick={() => onOpenChange(false)}
+              onClick={() => {
+                onOpenChange(false);
+                setError(null);
+              }}
               className="neo-button-muted h-11 rounded-md px-4 font-semibold"
             >
               Cancel

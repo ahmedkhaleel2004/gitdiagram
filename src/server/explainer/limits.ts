@@ -2,7 +2,8 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { readAdmissionControls, readControls } from "~/server/admin/controls";
-import { isOperatorToken, verifyAdminRequest } from "~/server/admin/operator";
+import { verifyAdminRequest } from "~/server/admin/operator";
+import { verifyOperatorBearer } from "~/server/admin/sign-in-guard";
 import { toRateLimitBucket } from "~/server/generate/rate-limit";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
@@ -71,11 +72,12 @@ const renderLimits = (): Limits => ({
 /**
  * The operator skips limits and may regenerate: by the token
  * (VIDEO_ADMIN_TOKEN) as a Bearer, or signed in to /admin in this browser.
+ * Wrong Bearer tokens count as failed sign-ins (sign-in-guard.ts).
  */
 export async function isVideoAdmin(request: Request): Promise<boolean> {
   const header = request.headers.get("authorization") ?? "";
   if (header.startsWith("Bearer "))
-    return isOperatorToken(header.slice("Bearer ".length));
+    return verifyOperatorBearer(request, header.slice("Bearer ".length));
   return verifyAdminRequest(request);
 }
 
@@ -309,9 +311,14 @@ export async function videoUsageToday() {
  * The operator does this from /admin.
  */
 export async function resetUsageToday(kind: Kind): Promise<number> {
-  const [used] = await usedToday([kind]);
-  await upstashCommand<number>(["INCR", epochKey(kind)]);
-  return used!;
+  const day = today();
+  const epoch = await upstashCommand<number>(["INCR", epochKey(kind)]);
+  // Read the old epoch's total after moving on, so no run counts after it.
+  const used = await upstashCommand<string | null>([
+    "GET",
+    `video:v1:${kind}:all:${period(day, String(Number(epoch) - 1))}`,
+  ]);
+  return Number(used) || 0;
 }
 
 // Paid runs at once across every instance (VIDEO_MAX_PAID_RUNS, default 10).

@@ -37,6 +37,11 @@ export interface ClaudeCredit {
 export interface AdminState {
   now: number;
   controls: LiveControls;
+  /**
+   * Redis could not be read just now: `controls` are the last ones this
+   * server read, or the defaults if it never read any.
+   */
+  controlsUnreadable: boolean;
   video: {
     videos: VideoBudget;
     renders: DailyBudget;
@@ -45,8 +50,11 @@ export interface AdminState {
   voicePausedUntil: number | null;
   /** The voice's prepaid OpenRouter balance in USD; null when unreadable. */
   voiceCreditUsd: number | null;
-  /** Null when ANTHROPIC_ADMIN_KEY is missing or a report failed. */
-  claudeCredit: ClaudeCredit | null;
+  /**
+   * "no-key" without ANTHROPIC_ADMIN_KEY; "unreadable" when the balance or a
+   * spend report failed or was too slow this time.
+   */
+  claudeCredit: ClaudeCredit | "no-key" | "unreadable";
   diagramQuota: {
     enabled: boolean;
     usedTokens: number;

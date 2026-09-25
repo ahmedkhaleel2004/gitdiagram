@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+
+const { upstashCommand } = vi.hoisted(() => ({ upstashCommand: vi.fn() }));
+vi.mock("~/server/storage/upstash", () => ({ upstashCommand }));
 
 import { costWindows, priceUsage, type CostWindow } from "./claude-credit";
 
@@ -75,5 +78,78 @@ describe("Claude usage pricing", () => {
     };
     expect(priceUsage({ ...row, model: "claude-new" })).toBe(10);
     expect(priceUsage({ ...row, model: null })).toBe(10);
+  });
+});
+
+describe("reading the Claude credit", () => {
+  // A fresh module per test: nothing cached from another test.
+  const load = () => import("./claude-credit");
+  const originalEnv = process.env;
+  let anchor: string[] | null;
+  let fetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env = { ...originalEnv, ANTHROPIC_ADMIN_KEY: "sk-ant-admin-test" };
+    // Entered five minutes ago, so reading spend takes one report.
+    anchor = ["usd", "50", "at", String(Date.now() - 5 * 60_000)];
+    upstashCommand.mockReset();
+    upstashCommand.mockImplementation(async (command: unknown[]) => {
+      if (command[0] === "HGETALL") return anchor;
+      if (command[0] === "HSET") return 2;
+      throw new Error(`Unexpected ${String(command[0])}`);
+    });
+    fetch = vi.fn(async () => new Response("rate limited", { status: 429 }));
+    vi.stubGlobal("fetch", fetch);
+  });
+  afterEach(() => {
+    process.env = originalEnv;
+    vi.unstubAllGlobals();
+  });
+
+  it("is null without an admin key, and asks nobody", async () => {
+    delete process.env.ANTHROPIC_ADMIN_KEY;
+    const { readClaudeCredit } = await load();
+    await expect(readClaudeCredit()).resolves.toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed read for the minute, so a 429 is not asked again each poll", async () => {
+    const { readClaudeCredit } = await load();
+    await expect(readClaudeCredit()).rejects.toThrow("429");
+    await expect(readClaudeCredit()).rejects.toThrow("429");
+    await expect(readClaudeCredit()).rejects.toThrow("429");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("works it out again when a balance was entered through another instance", async () => {
+    fetch.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({ data: [], has_more: false, next_page: null }),
+        ),
+    );
+    const { readClaudeCredit } = await load();
+    expect(await readClaudeCredit()).toMatchObject({ setUsd: 50 });
+    const at = Date.now();
+    anchor = ["usd", "80", "at", String(at)];
+    expect(await readClaudeCredit()).toEqual({
+      setUsd: 80,
+      setAt: at,
+      spentUsd: 0,
+    });
+  });
+
+  it("answers a new balance with the credit as it now stands", async () => {
+    const { readClaudeCredit, setClaudeCredit } = await load();
+    const credit = await setClaudeCredit(25);
+    expect(credit).toEqual({
+      setUsd: 25,
+      setAt: expect.any(Number) as number,
+      spentUsd: 0,
+    });
+    anchor = ["usd", "25", "at", String(credit.setAt)];
+    await expect(readClaudeCredit()).resolves.toEqual(credit);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

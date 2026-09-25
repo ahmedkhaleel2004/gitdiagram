@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as RouteModule from "./route";
+
 vi.mock("server-only", () => ({}));
 
 const redis = vi.hoisted(() => ({
@@ -16,16 +18,20 @@ vi.mock("~/server/storage/upstash", () => ({
     if (command[0] === "INCR") return ++redis.generation;
     throw new Error("Unexpected command");
   }),
-  // The sign-in guard's two scripts, played out in memory.
+  // The sign-in guard's script, played out in memory for speed (the real
+  // script runs against Redis in sign-in-guard.redis.test.ts).
   upstashEval: vi.fn(
-    async ({ keys }: { script: string; keys: string[]; args?: unknown[] }) => {
+    async ({ keys, args }: { keys: string[]; args: unknown[] }) => {
       if (redis.down) throw new Error("Upstash request timed out.");
-      const [failures, announced] = keys as [string, string | undefined];
-      if (!announced) return [redis.failures.get(failures) ?? 0, 900];
-      redis.failures.set(failures, (redis.failures.get(failures) ?? 0) + 1);
-      if (redis.announced.has(announced)) return 0;
+      const [failures, announced] = keys as [string, string];
+      const max = Number(args[0]);
+      const wrong = args[3] === "1";
+      const count = (redis.failures.get(failures) ?? 0) + (wrong ? 1 : 0);
+      redis.failures.set(failures, count);
+      if (wrong ? count > max : count >= max) return [1, 900, 0];
+      if (!wrong || redis.announced.has(announced)) return [0, 0, 0];
       redis.announced.add(announced);
-      return 1;
+      return [0, 0, 1];
     },
   ),
 }));
@@ -38,8 +44,10 @@ vi.mock("~/server/admin/live-events", () => ({
   requestOrigin: () => ({}),
 }));
 
-import { resetOperatorSessionsForTests } from "~/server/admin/operator";
-import { DELETE, GET, POST } from "./route";
+type Route = typeof RouteModule;
+let DELETE: Route["DELETE"];
+let GET: Route["GET"];
+let POST: Route["POST"];
 
 const TOKEN = "a".repeat(40);
 const originalEnv = process.env;
@@ -67,14 +75,16 @@ async function settle(response: Promise<Response>): Promise<Response> {
 const sessionCookie = (response: Response) =>
   response.headers.get("set-cookie")!.split(";")[0]!;
 
-beforeEach(() => {
+beforeEach(async () => {
+  // A fresh server instance: no session generation cached from before.
+  vi.resetModules();
+  ({ DELETE, GET, POST } = await import("./route"));
   process.env = { ...originalEnv, VIDEO_ADMIN_TOKEN: TOKEN };
   redis.down = false;
   redis.generation = 0;
   redis.failures.clear();
   redis.announced.clear();
   emitted.length = 0;
-  resetOperatorSessionsForTests();
   vi.useFakeTimers({ toFake: ["setTimeout"] });
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);

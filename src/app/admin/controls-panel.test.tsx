@@ -30,6 +30,7 @@ const state: AdminState = {
     videoPriorityPersonDailyLimit: null,
     videoNetworkDailyLimit: null,
   },
+  controlsUnreadable: false,
   video: { videos: budget, renders: budget },
   voicePausedUntil: null,
   voiceCreditUsd: null,
@@ -41,7 +42,9 @@ const state: AdminState = {
 
 afterEach(cleanup);
 
-function renderControls(change = vi.fn(async () => null)) {
+function renderControls(
+  change = vi.fn(async (): Promise<string | null> => null),
+) {
   render(
     <ControlsPanel
       state={state}
@@ -128,6 +131,95 @@ describe("video making controls", () => {
       }),
     ).toBeDisabled();
   });
+
+  it("caps a limit where the server does, and shows why a save failed", async () => {
+    const change = vi.fn(async () => "The change did not save. Try again.");
+    renderControls(change);
+    const input = screen.getByRole("textbox", { name: "Per person per day" });
+    const set = screen.getByRole("button", { name: "Set per person per day" });
+    fireEvent.change(input, { target: { value: "1001" } });
+    expect(set).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("At most 1,000");
+    fireEvent.change(input, { target: { value: "1000" } });
+    await act(async () => fireEvent.click(set));
+    expect(change).toHaveBeenCalledWith({ videoPersonDailyLimit: 1000 });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The change did not save. Try again.",
+    );
+  });
+
+  it("describes who gets which model the way videos are made", () => {
+    renderControls();
+    expect(
+      screen.getByText(
+        /Opus writes the script and GPT-6 Sol designs the scenes/,
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("the Claude balance tile", () => {
+  const tiles = (claudeCredit: AdminState["claudeCredit"]) =>
+    render(
+      <BudgetTiles
+        state={{ ...state, claudeCredit }}
+        onChanged={() => undefined}
+        onCredit={() => undefined}
+      />,
+    );
+  const update = () =>
+    screen.queryByRole("button", { name: "Update the Claude balance" });
+
+  it("says a key is missing, and offers nothing to update", () => {
+    tiles("no-key");
+    expect(screen.getByText("Needs ANTHROPIC_ADMIN_KEY.")).toBeInTheDocument();
+    expect(update()).toBeNull();
+  });
+
+  it("tells a failed read apart, and still lets the balance be entered", () => {
+    tiles("unreadable");
+    expect(screen.getByText(/could not be read just now/)).toBeInTheDocument();
+    expect(update()).not.toBeNull();
+  });
+
+  it("shows a saved balance at once", async () => {
+    const onCredit = vi.fn();
+    const credit = { setUsd: 30, setAt: 7, spentUsd: 0 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ ok: true, credit }))),
+    );
+    render(
+      <BudgetTiles
+        state={state}
+        onChanged={() => undefined}
+        onCredit={onCredit}
+      />,
+    );
+    fireEvent.click(update()!);
+    fireEvent.change(screen.getByLabelText(/Balance in the Console/), {
+      target: { value: "30" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Save balance" })),
+    );
+    expect(onCredit).toHaveBeenCalledWith(credit);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("the voice balance tile", () => {
+  it("makes no per-video estimate it cannot back up", () => {
+    render(
+      <BudgetTiles
+        state={{ ...state, voiceCreditUsd: 4 }}
+        onChanged={() => undefined}
+        onCredit={() => undefined}
+      />,
+    );
+    expect(screen.getByText("$4.00")).toBeInTheDocument();
+    expect(screen.queryByText(/videos at/)).toBeNull();
+  });
 });
 
 describe("accessible names", () => {
@@ -140,7 +232,11 @@ describe("accessible names", () => {
           saveError={null}
           change={vi.fn(async () => null)}
         />
-        <BudgetTiles state={state} onChanged={() => undefined} />
+        <BudgetTiles
+          state={state}
+          onChanged={() => undefined}
+          onCredit={() => undefined}
+        />
       </>,
     );
     const names = screen

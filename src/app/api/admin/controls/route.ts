@@ -27,7 +27,9 @@ const requestSchema = z
     videoPriorityPersonDailyLimit: limit(1_000),
     videoNetworkDailyLimit: limit(1_000),
   })
-  .partial();
+  .partial()
+  // An empty change would save nothing but still show in the feed.
+  .refine((patch) => Object.keys(patch).length > 0);
 
 /** Flip a live switch. Every server instance picks it up within a second. */
 export async function POST(request: Request): Promise<Response> {

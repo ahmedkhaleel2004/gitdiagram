@@ -8,10 +8,6 @@ import type { LinkStatus } from "./use-live-site";
 // Building blocks the dashboard's panels share.
 
 export const number = new Intl.NumberFormat("en-US");
-export const compact = new Intl.NumberFormat("en-US", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
 
 /** Small buttons grow to a finger-sized target on touch screens. */
 export const TOUCH = "pointer-coarse:h-11";

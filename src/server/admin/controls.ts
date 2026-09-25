@@ -5,7 +5,8 @@ import type {
   PriorityPlaces,
   VideoAudience,
 } from "~/features/admin/types";
-import { upstashCommand } from "~/server/storage/upstash";
+import { errorText, logEvent } from "~/server/log";
+import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
 // Switches the operator flips from /admin while the site is running. They live
 // in Redis so every server instance sees a change within a second, with no
@@ -89,14 +90,29 @@ function cached(fresh: boolean): Promise<LiveControls> {
   // A failed read is not cached, so the next request tries Redis again.
   controls.catch((error: unknown) => {
     if (cache?.controls === controls) cache = null;
-    console.error(
-      JSON.stringify({
-        event: "admin.controls.read_failed",
-        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
-      }),
-    );
+    logEvent("error", "admin.controls.read_failed", {
+      error: errorText(error),
+    });
   });
   return controls;
+}
+
+/**
+ * The current controls for showing them, and whether Redis could not be read
+ * just now (`unreadable`), in which case they are the last controls this
+ * instance read, or the defaults on an instance that never read any.
+ */
+export async function readControlsForDisplay(options?: {
+  fresh?: boolean;
+}): Promise<{ controls: LiveControls; unreadable: boolean }> {
+  try {
+    return {
+      controls: await cached(Boolean(options?.fresh)),
+      unreadable: false,
+    };
+  } catch {
+    return { controls: lastRead ?? DEFAULT_CONTROLS, unreadable: true };
+  }
 }
 
 /**
@@ -105,12 +121,10 @@ function cached(fresh: boolean): Promise<LiveControls> {
  * or the defaults. Deciding whether to start paid work uses
  * readAdmissionControls instead.
  */
-export function readControls(options?: {
+export async function readControls(options?: {
   fresh?: boolean;
 }): Promise<LiveControls> {
-  return cached(Boolean(options?.fresh)).catch(
-    () => lastRead ?? DEFAULT_CONTROLS,
-  );
+  return (await readControlsForDisplay(options)).controls;
 }
 
 /**
@@ -125,6 +139,20 @@ export function readAdmissionControls(): Promise<LiveControls> {
 /** The change was saved but the controls could not be read back. */
 export class ControlsUnconfirmedError extends Error {}
 
+// Sets and clears fields in one step, so a change is saved whole or not at
+// all. KEYS: the controls hash. ARGV: how many of the rest are field/value
+// pairs to set (counted in items), those pairs, then the fields to clear.
+export const WRITE_CONTROLS_SCRIPT = `
+local set = tonumber(ARGV[1])
+if set > 0 then
+  redis.call("HSET", KEYS[1], unpack(ARGV, 2, 1 + set))
+end
+if #ARGV > 1 + set then
+  redis.call("HDEL", KEYS[1], unpack(ARGV, 2 + set))
+end
+return 1
+`;
+
 export async function writeControls(
   patch: Partial<LiveControls>,
 ): Promise<LiveControls> {
@@ -138,8 +166,12 @@ export async function writeControls(
     else if (typeof value === "boolean") set.push(field, value ? "1" : "0");
     else set.push(field, value);
   }
-  if (set.length) await upstashCommand(["HSET", KEY, ...set]);
-  if (unset.length) await upstashCommand(["HDEL", KEY, ...unset]);
+  if (set.length || unset.length)
+    await upstashEval<number>({
+      script: WRITE_CONTROLS_SCRIPT,
+      keys: [KEY],
+      args: [set.length, ...set, ...unset],
+    });
   cache = null;
   try {
     return await cached(true);

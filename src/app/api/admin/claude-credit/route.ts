@@ -26,8 +26,13 @@ export async function POST(request: Request): Promise<Response> {
   });
   if (!parsed.success) return parsed.response;
   try {
-    await setClaudeCredit(parsed.data.usd);
-    return Response.json({ ok: true }, { headers: NO_STORE_RESPONSE_HEADERS });
+    // The new credit goes back with the answer, so the dashboard shows it
+    // without waiting for its next read.
+    const credit = await setClaudeCredit(parsed.data.usd);
+    return Response.json(
+      { ok: true, credit },
+      { headers: NO_STORE_RESPONSE_HEADERS },
+    );
   } catch (error) {
     console.error(
       JSON.stringify({

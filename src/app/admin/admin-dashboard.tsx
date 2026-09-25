@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { movesCounters } from "~/features/admin/events";
 import { hasClockMismatch, peopleHere } from "~/features/admin/presence";
@@ -18,24 +18,25 @@ import { useLiveSite } from "./use-live-site";
 
 // Counters (budgets, balances) are polled (use-admin-state.ts); everything
 // about people and jobs is pushed over the live socket (use-live-site.ts).
-// Any event that moves a counter also triggers an immediate re-read, so the
-// numbers change the moment something happens. Each panel owns the clock it
-// needs, so a ticking duration re-renders that line, not the page.
+// Any event that moves a counter also triggers a re-read (at most one every
+// couple of seconds), so the numbers change the moment something happens.
+// Each panel owns the clock it needs, so a ticking duration re-renders that
+// line, not the page.
 
 export function AdminDashboard() {
-  const { state, saving, saveError, refresh, change } = useAdminState();
+  const { state, saving, saveError, refresh, refreshSoon, apply, change } =
+    useAdminState();
   const [signingOut, setSigningOut] = useState(false);
-  const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
+  const [signOutError, setSignOutError] = useState<{
+    message: string;
+    everywhere: boolean;
+  } | null>(null);
 
   const onEvent = useCallback(
     (event: LiveFeedEvent) => {
-      if (!movesCounters(event.kind)) return;
-      clearTimeout(refreshTimer.current);
-      refreshTimer.current = setTimeout(() => void refresh(), 250);
+      if (movesCounters(event.kind)) refreshSoon();
     },
-    [refresh],
+    [refreshSoon],
   );
   const onTokenNeeded = useCallback(() => void refresh(), [refresh]);
 
@@ -70,13 +71,36 @@ export function AdminDashboard() {
     [people, now, places],
   );
 
+  /**
+   * Signs out, then shows the sign-in form. If the server did not sign out
+   * (Redis down for "everywhere", or no connection), this stays signed in
+   * and says so, with a way to try again.
+   */
   async function signOut(everywhere: boolean) {
     setSigningOut(true);
-    setAdminTools(false);
-    await fetch(`/api/admin/session${everywhere ? "?everywhere=1" : ""}`, {
-      method: "DELETE",
-    }).catch(() => null);
-    window.location.reload();
+    setSignOutError(null);
+    const response = await fetch(
+      `/api/admin/session${everywhere ? "?everywhere=1" : ""}`,
+      { method: "DELETE" },
+    ).catch(() => null);
+    // 401: this session had already ended, so it is signed out anyway.
+    if (response?.ok || response?.status === 401) {
+      setAdminTools(false);
+      window.location.reload();
+      return;
+    }
+    const body = (await response?.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    setSignOutError({
+      message:
+        body?.error ??
+        (response
+          ? "Could not sign out. Try again."
+          : "Could not reach GitDiagram to sign out. Check the connection and try again."),
+      everywhere,
+    });
+    setSigningOut(false);
   }
 
   return (
@@ -116,6 +140,34 @@ export function AdminDashboard() {
         </div>
       </header>
 
+      {signOutError ? (
+        <p
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-md border-2 border-black bg-red-100 p-3 text-sm text-black"
+        >
+          {signOutError.message}
+          <button
+            type="button"
+            disabled={signingOut}
+            onClick={() => void signOut(signOutError.everywhere)}
+            className={`neo-button-muted h-8 rounded-md px-3 text-xs font-semibold ${TOUCH}`}
+          >
+            Try again
+          </button>
+        </p>
+      ) : null}
+
+      {state?.controlsUnreadable ? (
+        <p
+          role="alert"
+          className="rounded-md border-2 border-black bg-amber-100 p-3 text-sm text-black"
+        >
+          The live switches could not be read from Redis just now, so the ones
+          below may be out of date, or the defaults. New videos cannot start
+          while Redis stays unreachable.
+        </p>
+      ) : null}
+
       {state && !state.presence ? (
         <p className="rounded-md border-2 border-black bg-amber-100 p-3 text-sm text-black">
           Live presence is not set up here (NEXT_PUBLIC_PRESENCE_URL and
@@ -129,8 +181,13 @@ export function AdminDashboard() {
           tabs={tabs}
           peak={live.peak}
           stats={{ priority, mismatched: mismatched.size }}
+          audience={state?.controls.videoAudience}
         />
-        <BudgetTiles state={state} onChanged={() => void refresh()} />
+        <BudgetTiles
+          state={state}
+          onChanged={() => void refresh()}
+          onCredit={(claudeCredit) => apply({ claudeCredit })}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
