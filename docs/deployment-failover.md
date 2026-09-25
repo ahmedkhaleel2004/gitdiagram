@@ -48,6 +48,15 @@ Do not run these commands during normal operation. In a real recovery:
 6. Add a temporary Railway domain, then verify health, cost estimation, a small streamed generation, cancellation, and persisted diagram state.
 7. Only after those checks pass, make an explicit routing decision. Keep Vercel intact until the incident is resolved.
 
+### Trust boundaries outside Vercel
+
+Several controls read request headers that Vercel's edge sets on every request: `x-vercel-ip-*` (country, region, city, latitude and longitude) and `x-forwarded-for` / `x-real-ip`. Behind Railway's proxy, or any other host, a client can set or prefix them. On such a host:
+
+- the video early-access gate (`audience.ts`) can be passed by sending a matching `x-vercel-ip-*` location;
+- per-network (per-IP) video and MP4 limits and the diagram generation rate limit can be dodged by changing `x-forwarded-for` on each request.
+
+The overall daily caps, the per-browser limits and the complimentary token quota still bound total spend. Before sending real traffic to a non-Vercel host, pause new videos or open the gate to everyone from `/admin` so the location rule is not relied on, and consider lowering the overall daily limits.
+
 Because the whole Next.js application moves together, recovery does not need a browser CORS toggle, a public backend selector, or a data migration. R2 owns diagram artifacts and Upstash owns shared quota, cancellation, lock, and failure state.
 
 ## Return to Vercel

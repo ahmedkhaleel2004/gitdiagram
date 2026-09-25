@@ -37,7 +37,7 @@ The same Next.js application can also build into a minimal, non-root standalone 
 3. One managed Luna request streams a short architecture overview followed by a strict graph: groups, nodes, edges, shapes, labels, and repository paths. Explicit model overrides and user-supplied keys retain the separate explanation/graph flow.
 4. The server validates identifiers, graph connectivity, limits, and every linked path against the actual repository. Invalid output is retried with focused feedback.
 5. A deterministic compiler converts the validated AST to Mermaid with total text escaping and GitHub-only links.
-6. The browser sanitizes the source, renders Mermaid in strict security mode, sanitizes the resulting SVG, and enforces the link allowlist again.
+6. The browser sanitizes the source, renders Mermaid with `securityLevel: "antiscript"` and `htmlLabels: false`, sanitizes the resulting SVG with DOMPurify, and enforces the GitHub-only link allowlist again. Mermaid's `strict` mode is not usable because it disables the `click` directives that make nodes link to GitHub, so the allowlist enforcement carries that weight.
 7. Successful artifacts and terminal audit state are persisted so later visits can reopen the diagram without another model call.
 
 The full Mermaid parser remains in the test suite as a compiler contract test. It is deliberately not loaded into the production generation function, keeping the server bundle small without weakening diagram validation or browser safety.
