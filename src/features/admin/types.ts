@@ -45,23 +45,41 @@ export interface AdminState {
   deployment: { commit: string | null; region: string | null };
 }
 
-/** One open tab, as the presence worker reports it. */
+/**
+ * One open tab, as the presence worker reports it. The worker
+ * (workers/presence) imports this type too, so both sides agree on it.
+ */
 export interface LiveVisitor {
   id: string;
-  /** The browser, shared by one person's tabs. */
+  /**
+   * The browser: one id shared by all of a person's tabs, so the dashboard
+   * can count people, not tabs.
+   */
   b: string;
+  /** Current path. */
   p: string;
+  /** Tab visible (1) or in the background (0). */
   v: 0 | 1;
-  /** When the tab went to the background (ms), or 0 while in view. */
+  /**
+   * When the tab went to the background (ms); 0 while in view, and for a tab
+   * that opened in the background (nobody has looked at it yet).
+   */
   h: number;
   /** Time zones: the browser's own setting, and where its IP address is. */
-  z?: string;
-  iz?: string;
+  z: string;
+  iz: string;
+  /** Device: desktop or mobile. */
   d: "d" | "m";
+  /** Country, region and city from Cloudflare's IP geolocation. */
   c: string;
   r: string;
   ct: string;
+  /** The IP address's coordinates, when Cloudflare knows them. */
+  la: number | null;
+  lo: number | null;
+  /** Referring site, host only. */
   ref: string;
+  /** Connected at (ms). */
   t: number;
 }
 

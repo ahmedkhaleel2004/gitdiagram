@@ -9,6 +9,15 @@
   "vars": {
     "ALLOWED_ORIGINS": "https://gitdiagram.com,https://www.gitdiagram.com",
   },
+  // New visitor sockets per network per minute, before they reach the object.
+  // Cloudflare counts per location and approximately, which is enough here.
+  "ratelimits": [
+    {
+      "name": "CONNECTS",
+      "namespace_id": "4711",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
   "durable_objects": {
     "bindings": [{ "name": "PRESENCE", "class_name": "Presence" }],
   },
