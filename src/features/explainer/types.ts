@@ -115,7 +115,7 @@ export type VideoArtifact = {
   createdAt: string;
   meta: VideoMeta;
   timing: VideoTiming;
-  /** Narration clips, one per scene, placed at `start` seconds. */
+  /** Narration clips placed at `start` seconds: one take for the whole film (older videos have one per scene). */
   voices: Array<{ start: number }>;
   stats: VideoGenerationStats;
   /** Version 1 (the template engine) is retired; only shot plans remain. */

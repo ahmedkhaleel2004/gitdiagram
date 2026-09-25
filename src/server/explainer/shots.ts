@@ -89,6 +89,11 @@ export const SCRIPT_TOOL = {
     type: "object",
     properties: {
       title: str,
+      story: {
+        type: "string",
+        description:
+          "The whole narration as one flowing paragraph, written before the beats; the beats split it word for word.",
+      },
       outro: str,
       beats: arr({
         type: "object",
@@ -96,7 +101,7 @@ export const SCRIPT_TOOL = {
         required: ["scene", "narration", "brief"],
       }),
     },
-    required: ["title", "outro", "beats"],
+    required: ["title", "story", "outro", "beats"],
   },
 };
 

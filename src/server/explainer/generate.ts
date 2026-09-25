@@ -59,7 +59,8 @@ async function run({
   const script = await writers.direct(signal);
   const planMs = elapsedMs() - readMs;
 
-  // Scenes are designed and voiced in parallel; each finished one is reported.
+  // Scenes are designed in parallel while the whole script is voiced in one
+  // take; each finished scene, and the take, is reported.
   const narrationLines = script.beats.map((beat) => beat.narration);
   const scenes = new Set(script.beats.map((beat) => beat.scene)).size;
   const progress = {
@@ -79,9 +80,10 @@ async function run({
       progress.designed++;
       report();
     }),
-    narrateBeats(script.beats, signal, () => {
-      progress.voiced++;
+    narrateBeats(script.beats, signal).then((narration) => {
+      progress.voiced = scenes;
       report();
+      return narration;
     }),
   ]);
   const { plan, warnings } = normalizeShots(script, designed, repository.facts);

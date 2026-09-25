@@ -7,23 +7,16 @@ const ELEVENLABS_API = "https://api.elevenlabs.io";
 const DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"; // "Chris": warm, conversational
 // eleven_v3 acts: it varies pace and pitch with the sense of a line, runs
 // through lists and holds on an ellipsis, and performs the script's delivery
-// tags. It ignores `speed` and the previous/next-text hints, so those only go
-// to the older models (multilingual_v2 via VIDEO_TTS_MODEL), which read the
-// plain narration because they would speak a tag aloud.
+// tags. It ignores `speed`, so that only goes to the older models
+// (multilingual_v2 via VIDEO_TTS_MODEL), which read the plain narration
+// because they would speak a tag aloud. v3 takes up to 5,000 characters, far
+// more than a sixty-second script.
 const DEFAULT_TTS_MODEL = "eleven_v3";
 // Natural pace for the older models. Sped-up takes (1.18 was tried) clip the
 // pauses between sentences and sound rushed.
 const DEFAULT_SPEED = 1;
-// Parallel scene takes. ElevenLabs caps concurrent requests by plan (Free 2,
-// Starter 3-4, Creator 5); a 429 is retried with backoff, so this only trades speed.
-const CONCURRENCY = Math.max(
-  1,
-  Number.parseInt(process.env.VIDEO_TTS_CONCURRENCY ?? "", 10) || 4,
-);
 const LEAD_IN_SECONDS = 0.4;
 const TAIL_SECONDS = 3.6;
-// A breath between scenes, where the picture changes.
-const SCENE_GAP_SECONDS = 0.5;
 
 interface Alignment {
   characters: string[];
@@ -88,7 +81,6 @@ const ttsModel = () => process.env.VIDEO_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
 
 async function speak(
   text: string,
-  context: { previous?: string; next?: string },
   signal?: AbortSignal,
 ): Promise<{ audio: Buffer; alignment: Alignment }> {
   const voice = process.env.VIDEO_TTS_VOICE_ID?.trim() || DEFAULT_VOICE_ID;
@@ -107,10 +99,6 @@ async function speak(
           text,
           model_id: model,
           seed: 7,
-          ...(!v3 && context.previous
-            ? { previous_text: context.previous }
-            : {}),
-          ...(!v3 && context.next ? { next_text: context.next } : {}),
           // v3 stability is Creative (0), Natural (0.5) or Robust (1). Creative
           // is livelier but can drift off script, which an unattended run can't catch.
           voice_settings: v3
@@ -194,86 +182,57 @@ function spokenWords(
 }
 
 /**
- * Voice each scene as one continuous take (natural flow, no stitched silences),
- * in parallel, then split the take back into beats with the character timestamps.
+ * Voice the whole script as one continuous take, so the delivery carries from
+ * scene to scene the way a storyteller's does (separate takes per scene each
+ * restarted the voice's tone and joined with a gap), then split the take back
+ * into beats with the character timestamps. A scene starts on a new paragraph,
+ * which the voice reads as a slightly longer breath.
  */
 export async function narrateBeats(
   beats: Array<{ narration: string; spoken: string; scene: string }>,
   signal?: AbortSignal,
-  onTake?: () => void,
 ): Promise<Narration> {
   const tagged = ttsModel() === "eleven_v3";
-  const scenes: Array<{
-    text: string;
-    beats: Array<{ index: number; from: number; to: number }>;
-  }> = [];
-  beats.forEach((beat, index) => {
-    let scene = scenes.at(-1);
-    if (!scene || beats[index - 1]?.scene !== beat.scene) {
-      scene = { text: "", beats: [] };
-      scenes.push(scene);
-    }
+  let text = "";
+  const spans = beats.map((beat, index) => {
     const said = tagged ? beat.spoken : beat.narration;
-    const line = /[.!?…]$/.test(said) ? said : `${said}.`;
-    if (scene.text) scene.text += " ";
-    scene.beats.push({
-      index,
-      from: scene.text.length,
-      to: scene.text.length + line.length,
-    });
-    scene.text += line;
+    const last = index === beats.length - 1;
+    // A beat may end mid-sentence now that the take runs on, but a scene or
+    // the film always ends on a full stop.
+    const sceneEnds = last || beats[index + 1]?.scene !== beat.scene;
+    const line =
+      sceneEnds && !/[.!?…]$/.test(said)
+        ? `${said.replace(/[,;:]$/, "")}.`
+        : said;
+    if (text)
+      text +=
+        index > 0 && beats[index - 1]!.scene !== beat.scene ? "\n\n" : " ";
+    const from = text.length;
+    text += line;
+    return { from, to: text.length };
   });
 
-  const takes: Array<{ audio: Buffer; alignment: Alignment }> = new Array(
-    scenes.length,
-  );
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, scenes.length) }, async () => {
-      while (next < scenes.length) {
-        const index = next++;
-        takes[index] = await speak(
-          scenes[index]!.text,
-          { previous: scenes[index - 1]?.text, next: scenes[index + 1]?.text },
-          signal,
-        );
-        onTake?.();
-      }
-    }),
-  );
-
-  let cursor = LEAD_IN_SECONDS;
-  const timing: VideoTiming["beats"] = new Array(beats.length);
-  const voices: Narration["voices"] = [];
-  scenes.forEach((scene, k) => {
-    const { alignment } = takes[k]!;
-    const start = cursor;
-    voices.push({ start: Number(start.toFixed(3)) });
-    const words = spokenWords(alignment, start);
-    for (const beat of scene.beats) {
-      const own = words.filter(
-        (word) => word.offset >= beat.from && word.offset < beat.to,
-      );
-      timing[beat.index] = {
-        start: own[0]?.s ?? start,
-        end: own.at(-1)?.e ?? start,
-        words: own.map(({ w, s, e }) => ({ w, s, e })),
-      };
-    }
-    cursor =
-      start +
-      (alignment.character_end_times_seconds.at(-1) ?? 0) +
-      SCENE_GAP_SECONDS;
+  const { audio, alignment } = await speak(text, signal);
+  const words = spokenWords(alignment, LEAD_IN_SECONDS);
+  const timing: VideoTiming["beats"] = spans.map((span) => {
+    const own = words.filter(
+      (word) => word.offset >= span.from && word.offset < span.to,
+    );
+    return {
+      start: own[0]?.s ?? LEAD_IN_SECONDS,
+      end: own.at(-1)?.e ?? LEAD_IN_SECONDS,
+      words: own.map(({ w, s, e }) => ({ w, s, e })),
+    };
   });
   const speechEnd = timing.at(-1)?.end ?? 0;
   return {
-    clips: takes.map((take) => take.audio),
+    clips: [audio],
     timing: {
       DURATION: Math.ceil((speechEnd + TAIL_SECONDS) * 10) / 10,
       SPEECH_END: Number(speechEnd.toFixed(3)),
       beats: timing,
     },
-    voices,
-    characters: scenes.reduce((sum, scene) => sum + scene.text.length, 0),
+    voices: [{ start: LEAD_IN_SECONDS }],
+    characters: text.length,
   };
 }
