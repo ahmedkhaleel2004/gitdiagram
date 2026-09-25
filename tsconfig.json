@@ -27,7 +27,6 @@
     "incremental": true,
     "types": ["node"],
     /* Path Aliases */
-    "baseUrl": ".",
     "paths": {
       "~/*": ["./src/*"]
     }
