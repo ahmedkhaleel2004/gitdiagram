@@ -199,7 +199,7 @@ export function createFilmWriters(input: RepositoryContextInput) {
             signal,
           });
           try {
-            return normalizeScript(raw, input.repo);
+            return normalizeScript(raw, input.repo, context);
           } catch (error) {
             throw new UnusableReplyError(
               error instanceof Error ? error.message : "Unusable script.",

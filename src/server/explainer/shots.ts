@@ -183,21 +183,71 @@ export interface Script {
   beats: ScriptBeat[];
 }
 
-export function normalizeScript(raw: unknown, name: string): Script {
+// A web address in the narration: a scheme or "www.", or a bare host on a
+// common web domain ("example.com", but not "Next.js").
+const WEB_ADDRESS =
+  /\b(?:https?:\/\/|www\.)[^\s]+|\b(?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|app|ai|co|xyz|me|sh|gg|ly|so|info|biz|site|online|link|top|click|us|uk|de|ru|cn|tk|tv|fm)\b(?:\/[^\s]*)?/gi;
+
+function hostOf(address: string): string {
+  return address
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split(/[/?#:]/)[0]!
+    .replace(/[.,;!?)\]'"…]+$/, "");
+}
+
+/**
+ * Repository text is untrusted, so a script may carry an address the README
+ * planted. Sentences naming an address the repository never mentions are cut
+ * (the rest of the line is kept, so the paid run still makes its film).
+ */
+function withoutStrangeAddresses(value: string, repository: string): string {
+  const known = repository.toLowerCase();
+  const strange = (sentence: string) =>
+    (sentence.match(WEB_ADDRESS) ?? []).some((address) => {
+      const host = hostOf(address);
+      return !host || !known.includes(host);
+    });
+  if (!strange(value)) return value;
+  const kept = value
+    .split(/(?<=[.!?…])\s+/)
+    .filter((sentence) => !strange(sentence))
+    .join(" ");
+  console.warn(
+    JSON.stringify({ event: "video.script.address_removed", kept: !!kept }),
+  );
+  return kept;
+}
+
+/**
+ * The director's script, cleaned. `repository` is the material the director
+ * read; web addresses it does not contain never reach the voice or the screen.
+ */
+export function normalizeScript(
+  raw: unknown,
+  name: string,
+  repository = "",
+): Script {
   const input = rec(raw);
+  const clean = (value: unknown) =>
+    withoutStrangeAddresses(text(value), repository);
   const beats = list(input.beats)
     .slice(0, 22)
-    .map((beat) => ({
-      scene: clip(beat.scene, 24) || "s",
-      narration: writtenLine(text(beat.narration)),
-      spoken: spokenLine(text(beat.narration)),
-      brief: clip(beat.brief, 900),
-    }))
+    .map((beat) => {
+      const narration = clean(beat.narration);
+      return {
+        scene: clip(beat.scene, 24) || "s",
+        narration: writtenLine(narration),
+        spoken: spokenLine(narration),
+        brief: clip(beat.brief, 900),
+      };
+    })
     .filter((beat) => beat.narration);
   if (beats.length < 4) throw new Error("The script has too few beats.");
   return {
-    title: clip(input.title || name, 28),
-    outro: clip(input.outro, 60),
+    title: clip(clean(input.title) || name, 28),
+    outro: clip(clean(input.outro), 60),
     beats,
   };
 }
