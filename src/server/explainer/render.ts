@@ -2,15 +2,7 @@ import "server-only";
 
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import {
-  lstat,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  statfs,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readFile, rm, statfs, writeFile } from "node:fs/promises";
 import { freemem, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
@@ -88,60 +80,52 @@ async function launchBrowser(dir: string): Promise<Browser> {
   return puppeteer.launch({ executablePath, headless: "shell", userDataDir });
 }
 
-async function closeBrowser(browser: Browser | null) {
-  await browser?.close().catch(() => undefined);
-  browser?.process()?.kill("SIGKILL");
+const closings = new WeakMap<Browser, Promise<void>>();
+
+/**
+ * Close Chromium and everything it started, once however often it is asked.
+ * close() kills the browser's process group once it exits; a crashed or hung
+ * Chromium can stall that, so the group is killed outright if it has not gone
+ * within a few seconds.
+ */
+function closeBrowser(browser: Browser | null): Promise<void> {
+  if (!browser) return Promise.resolve();
+  let closing = closings.get(browser);
+  if (!closing) closings.set(browser, (closing = shutDown(browser)));
+  return closing;
 }
 
-/** The largest /tmp entries with their sizes in MB. */
-async function tmpUsage(): Promise<string[]> {
-  const size = async (path: string, depth: number): Promise<number> => {
-    const info = await lstat(path).catch(() => null);
-    if (!info?.isDirectory() || depth > 4) return info?.size ?? 0;
-    const names = await readdir(path).catch(() => [] as string[]);
-    const sizes = await Promise.all(
-      names.map((name) => size(join(path, name), depth + 1)),
-    );
-    return sizes.reduce((sum, value) => sum + value, 0);
-  };
-  const names = await readdir(tmpdir()).catch(() => [] as string[]);
-  const entries = await Promise.all(
-    names.map(async (name) => ({
-      name,
-      mb: (await size(join(tmpdir(), name), 0)) / 2 ** 20,
-    })),
-  );
-  return entries
-    .sort((a, b) => b.mb - a.mb)
-    .slice(0, 4)
-    .map((entry) => `${entry.name}:${entry.mb.toFixed(1)}`);
+async function shutDown(browser: Browser) {
+  const child = browser.process();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    browser.close().catch(() => undefined),
+    new Promise((resolve) => (timer = setTimeout(resolve, 5_000))),
+  ]);
+  clearTimeout(timer);
+  if (child?.pid && child.exitCode === null && child.signalCode === null) {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch {
+      child.kill("SIGKILL");
+    }
+  }
 }
 
 /**
- * What a render host has left, for render logs: an instance that runs short
- * of memory, disk or processes makes Chromium fail in unhelpful ways
- * ("Target closed", network errors) on every later render.
+ * What a render host has left, for failure logs: an instance that runs short
+ * of memory or disk makes Chromium fail in unhelpful ways ("Target closed",
+ * network errors) on every later render.
  */
 export async function renderHostStats() {
   const freeMb = async (path: string) => {
     const stats = await statfs(path).catch(() => null);
     return stats ? Math.round((stats.bavail * stats.bsize) / 2 ** 20) : null;
   };
-  const pids = (await readdir("/proc").catch(() => [] as string[])).filter(
-    (name) => /^\d+$/.test(name),
-  );
-  const states = await Promise.all(
-    pids.map((pid) => readFile(`/proc/${pid}/stat`, "utf8").catch(() => "")),
-  );
-  const chromium = states.filter((stat) => /\((chrom|headless)/i.test(stat));
   return {
     memFreeMb: Math.round(freemem() / 2 ** 20),
     tmpFreeMb: await freeMb(tmpdir()),
     shmFreeMb: await freeMb("/dev/shm"),
-    tmp: await tmpUsage(),
-    processes: pids.length,
-    chromium: chromium.length,
-    zombies: chromium.filter((stat) => /\) Z /.test(stat)).length,
   };
 }
 
@@ -160,6 +144,74 @@ async function run(binary: string, args: string[]) {
   });
   const [code] = (await once(child, "close")) as [number];
   if (code !== 0) throw new Error(`ffmpeg failed (${code}): ${stderr}`);
+}
+
+export interface Encoder {
+  readonly pid: number | undefined;
+  /** Feed one chunk, waiting while ffmpeg catches up; rejects once it has exited. */
+  write(chunk: Uint8Array): Promise<void>;
+  /** Close stdin and wait for ffmpeg to finish; rejects unless it exited cleanly. */
+  finish(): Promise<void>;
+  /** Kill ffmpeg if it is still running and wait for it to be reaped. Never throws. */
+  kill(): Promise<void>;
+}
+
+/**
+ * An ffmpeg fed through stdin. However it ends (it fails to start, crashes, or
+ * the render around it fails) nothing waits on it forever: a write races the
+ * pipe draining against ffmpeg exiting, and kill() ends a still-running one,
+ * which would otherwise sit on stdin holding its memory and output file.
+ */
+export function startEncoder(binary: string, args: string[]): Encoder {
+  const child = spawn(binary, args, { stdio: ["pipe", "ignore", "pipe"] });
+  let stderr = "";
+  child.stderr.on("data", (chunk: Buffer) => {
+    stderr = (stderr + chunk.toString()).slice(-2000);
+  });
+  // Writing to an ffmpeg that has exited raises EPIPE here; `exited` reports it.
+  child.stdin.on("error", () => undefined);
+  const exited = new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code: number | null) => resolve(code));
+  });
+  // Awaited by write(), finish() and kill(); this keeps a failed spawn from
+  // going unhandled before any of them runs.
+  exited.catch(() => undefined);
+  const stopped = () =>
+    exited.then(
+      (code) => new Error(`ffmpeg exited early (${code}): ${stderr}`),
+      (error: unknown) => error,
+    );
+
+  return {
+    pid: child.pid,
+    async write(chunk) {
+      if (child.exitCode !== null || child.signalCode !== null)
+        throw await stopped();
+      if (child.stdin.write(chunk)) return;
+      const waiting = new AbortController();
+      try {
+        await Promise.race([
+          once(child.stdin, "drain", { signal: waiting.signal }),
+          stopped().then((error) => Promise.reject(error)),
+        ]);
+      } finally {
+        waiting.abort();
+      }
+    },
+    async finish() {
+      child.stdin.end();
+      const code = await exited;
+      if (code !== 0) throw new Error(`ffmpeg failed (${code}): ${stderr}`);
+    },
+    async kill() {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.stdin.destroy();
+        child.kill("SIGKILL");
+      }
+      await exited.catch(() => undefined);
+    },
+  };
 }
 
 /** Open the stage with a plan, as the player does, and wait for it to build. */
@@ -345,6 +397,7 @@ export function segmentRanges(
  * seeked frame by frame in headless Chromium and each screenshot is piped
  * straight into ffmpeg. Captions are burned in, since feeds autoplay muted.
  * Every segment uses identical settings, so they join without re-encoding.
+ * Aborting `signal` stops the render at once and kills Chromium and ffmpeg.
  */
 export async function renderVideoSegment(params: {
   artifact: VideoArtifact;
@@ -352,17 +405,24 @@ export async function renderVideoSegment(params: {
   origin: string;
   from: number;
   to: number;
+  signal?: AbortSignal;
   /** The stage is built; its effect cues are known. */
   onReady?: (sfx: SfxCue[]) => void;
   /** Frames captured so far in this segment. */
   onFrame?: (done: number) => void;
 }): Promise<{ mp4: Buffer; sfx: SfxCue[] }> {
-  const { artifact, format, origin } = params;
+  const { artifact, format, origin, signal } = params;
+  signal?.throwIfAborted();
   const frame = FRAMES[format];
   const dir = await mkdtemp(join(tmpdir(), "explainer-"));
   let browser: Browser | null = null;
+  let encoder: Encoder | null = null;
+  // Killing the children makes whatever the render is waiting on fail at once.
+  const stop = () => Promise.all([encoder?.kill(), closeBrowser(browser)]);
+  signal?.addEventListener("abort", stop);
   try {
     browser = await launchBrowser(dir);
+    signal?.throwIfAborted();
     const ffmpeg = await ffmpegPath();
     const { page, sfx } = await openStage(
       browser,
@@ -373,77 +433,50 @@ export async function renderVideoSegment(params: {
     );
     params.onReady?.(sfx);
     const out = join(dir, "segment.mp4");
-    const encoder = spawn(
-      ffmpeg,
-      [
-        "-y",
-        "-loglevel",
-        "error",
-        "-f",
-        "image2pipe",
-        "-framerate",
-        String(RENDER_FPS),
-        "-c:v",
-        "mjpeg",
-        "-i",
-        "pipe:0",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "20",
-        "-pix_fmt",
-        "yuv420p",
-        "-r",
-        String(RENDER_FPS),
-        out,
-      ],
-      { stdio: ["pipe", "ignore", "pipe"] },
-    );
-    let stderr = "";
-    encoder.stderr.on("data", (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-2000);
-    });
-    const finished = once(encoder, "close");
-    const timings = { seek: 0, capture: 0, write: 0 };
-    const opened = Date.now();
+    encoder = startEncoder(ffmpeg, [
+      "-y",
+      "-loglevel",
+      "error",
+      "-f",
+      "image2pipe",
+      "-framerate",
+      String(RENDER_FPS),
+      "-c:v",
+      "mjpeg",
+      "-i",
+      "pipe:0",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      String(RENDER_FPS),
+      out,
+    ]);
     for (let index = params.from; index < params.to; index++) {
-      const a = Date.now();
+      signal?.throwIfAborted();
       await page.evaluate(
         (time) => (window as unknown as StageWindow).__renderSeek(time),
         index / RENDER_FPS,
       );
-      const b = Date.now();
       const jpeg = await page.screenshot({
         type: "jpeg",
         quality: 90,
         optimizeForSpeed: true,
       });
-      const c = Date.now();
-      if (!encoder.stdin.write(jpeg)) await once(encoder.stdin, "drain");
-      timings.seek += b - a;
-      timings.capture += c - b;
-      timings.write += Date.now() - c;
+      await encoder.write(jpeg);
       params.onFrame?.(index + 1 - params.from);
     }
-    encoder.stdin.end();
-    const [code] = (await finished) as [number];
-    if (code !== 0) throw new Error(`ffmpeg failed (${code}): ${stderr}`);
-    const frames = Math.max(1, params.to - params.from);
-    console.info(
-      JSON.stringify({
-        event: "video.segment.rendered",
-        frames,
-        ms: Date.now() - opened,
-        seekMs: Math.round(timings.seek / frames),
-        captureMs: Math.round(timings.capture / frames),
-        writeMs: Math.round(timings.write / frames),
-      }),
-    );
+    await encoder.finish();
+    signal?.throwIfAborted();
     return { mp4: await readFile(out), sfx };
   } finally {
-    await closeBrowser(browser);
+    signal?.removeEventListener("abort", stop);
+    await stop();
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
@@ -468,6 +501,8 @@ export async function assembleMp4(params: {
     const listPath = join(dir, "segments.txt");
     await writeFile(listPath, list.join("\n"));
     const out = join(dir, "film.mp4");
+    // No -shortest: with stream copy it cuts at a packet boundary and dropped
+    // the last few frames. The soundtrack is already trimmed to the film.
     await run(ffmpeg, [
       "-y",
       "-loglevel",
@@ -488,7 +523,6 @@ export async function assembleMp4(params: {
       "copy",
       "-movflags",
       "+faststart",
-      "-shortest",
       out,
     ]);
     return await readFile(out);

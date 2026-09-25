@@ -27,7 +27,6 @@ export async function storePoster(
         event: "video.poster.stored",
         repository: artifact.repository,
         ms: Date.now() - started,
-        host: await renderHostStats(),
       }),
     );
     return true;
