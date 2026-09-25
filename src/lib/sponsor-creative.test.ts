@@ -19,6 +19,8 @@ const pinnedLogoHashes: Record<string, string> = {
     "1cec8864aa9c10a6f3c5852057a29787191fd8382b2d83cdc4b99761713e31ec",
   "/sponsors/coderabbit-wordmark-white.svg":
     "a05d72ea8ff2db89017e6e064d71609be51a3216a4f09eb73293e6b95b1757ec",
+  "/sponsors/coderabbit-wordmark-dark.svg":
+    "882058991a16d4729057e113f5b21317365a9ec89d38c6fb7d7b5d12d96d6e55",
 };
 
 it("has a creative for every scheduled campaign", () => {
@@ -29,7 +31,9 @@ it("has a creative for every scheduled campaign", () => {
 
 it("never changes a cached sponsor logo in place", () => {
   const logos = Object.values(sponsorCreatives).flatMap(({ logo }) =>
-    logo.darkSrc ? [logo.src, logo.darkSrc] : [logo.src],
+    [logo.src, logo.darkSrc, logo.colorDarkSrc].filter(
+      (path) => path !== undefined,
+    ),
   );
   for (const path of logos) {
     const hash = createHash("sha256")

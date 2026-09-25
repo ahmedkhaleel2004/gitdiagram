@@ -1,4 +1,7 @@
-import { lastBookedSponsorCampaign } from "~/lib/sponsor-campaign";
+import {
+  lastBookedSponsorCampaign,
+  scheduledSponsorCampaigns,
+} from "~/lib/sponsor-campaign";
 import { sponsorCreatives } from "~/lib/sponsor-creative";
 import type { SponsorStats } from "~/server/sponsor-stats";
 
@@ -12,10 +15,15 @@ export const sponsorFits = [
   "Observability, logging, and API monitoring",
   "Cloud hosting, databases, CI, and developer infrastructure",
 ];
-// Every scheduled campaign has a creative, so each one is a real advertiser.
-export const advertisers = Object.values(sponsorCreatives).map(
-  ({ name, logo }) => ({ name, logo }),
-);
+// Every scheduled campaign is a booked advertiser; list each sponsor once.
+export const advertisers = [
+  ...new Map(
+    scheduledSponsorCampaigns.map(({ id, sponsor, destination }) => [
+      sponsor,
+      { name: sponsor, href: destination, logo: sponsorCreatives[id].logo },
+    ]),
+  ).values(),
+];
 export type SponsorMetric = { label: string; value: string; detail: string };
 export type SponsorSurface = {
   name: string;

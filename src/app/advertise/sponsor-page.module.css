@@ -132,9 +132,21 @@
   align-items: center;
   gap: 28px;
 }
+.advertisers a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
 .advertisers img {
   filter: grayscale(1);
   opacity: 0.55;
+  transition:
+    filter 160ms ease,
+    opacity 160ms ease;
+}
+.advertisers a:focus-visible img {
+  filter: none;
+  opacity: 1;
 }
 .advertiserLogoDark {
   display: none;
@@ -422,6 +434,10 @@
   text-align: right;
 }
 @media (hover: hover) and (pointer: fine) {
+  .advertisers a:hover img {
+    filter: none;
+    opacity: 1;
+  }
   .textLink:hover {
     color: var(--purple);
     text-decoration: underline;
@@ -588,7 +604,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .page :is(.contactPrimary, .contactCopy) {
+  .page :is(.contactPrimary, .contactCopy, .advertisers img) {
     transition: none;
     transform: none;
   }

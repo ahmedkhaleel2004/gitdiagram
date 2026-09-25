@@ -10,6 +10,9 @@ export type SponsorCreative = {
   logo: {
     src: string;
     darkSrc?: string;
+    // Full-colour logo for dark backgrounds, when `darkSrc` is monochrome.
+    // The /advertise logo row shows it on hover.
+    colorDarkSrc?: string;
     width: number;
     height: number;
     kind: "wordmark" | "mark";
@@ -40,6 +43,7 @@ export const sponsorCreatives: Record<SponsorCampaignId, SponsorCreative> = {
     logo: {
       src: "/sponsors/coderabbit-wordmark.svg",
       darkSrc: "/sponsors/coderabbit-wordmark-white.svg",
+      colorDarkSrc: "/sponsors/coderabbit-wordmark-dark.svg",
       width: 2152,
       height: 314,
       kind: "wordmark",

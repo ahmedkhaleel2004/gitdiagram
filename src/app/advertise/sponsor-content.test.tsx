@@ -56,8 +56,7 @@ describe("advertise availability", () => {
       />,
     );
     expect(screen.getByText("October 20 campaign booked by")).toBeTruthy();
-    // Light and dark logos, in the booking note and the advertiser row.
-    expect(screen.getAllByAltText("CodeRabbit")).toHaveLength(4);
+    expect(screen.getAllByAltText("CodeRabbit")).toHaveLength(2);
     view.rerender(
       <SponsorPageContent
         content={createSponsorContent(
@@ -68,8 +67,12 @@ describe("advertise availability", () => {
     );
     expect(screen.queryByText(/campaign booked by/)).toBeNull();
     expect(screen.getByText("Available now.")).toBeTruthy();
-    // Past advertisers stay listed after their runs end.
-    expect(screen.getAllByAltText("CodeRabbit")).toHaveLength(2);
-    expect(screen.getAllByAltText("Sent")).toHaveLength(2);
+    // Past advertisers stay listed, and linked, after their runs end.
+    expect(
+      screen.getByRole("link", { name: "Sent" }).getAttribute("href"),
+    ).toBe("https://www.sent.dm/en");
+    expect(
+      screen.getByRole("link", { name: "CodeRabbit" }).getAttribute("href"),
+    ).toBe("https://www.coderabbit.ai/");
   });
 });

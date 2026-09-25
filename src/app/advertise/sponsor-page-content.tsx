@@ -74,7 +74,7 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
         <div className={styles.advertisers}>
           <p id="advertisers-label">Advertisers include</p>
           <ul aria-labelledby="advertisers-label">
-            {advertisers.map(({ name, logo }) => {
+            {advertisers.map(({ name, href, logo }) => {
               // Same area for every logo, so wide wordmarks don't dominate.
               const width = Math.round(
                 Math.sqrt((1700 * logo.width) / logo.height),
@@ -85,24 +85,31 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
               };
               return (
                 <li key={name}>
-                  <Image
-                    src={logo.src}
-                    alt={name}
-                    {...size}
-                    className={
-                      logo.darkSrc ? styles.advertiserLogoLight : undefined
-                    }
-                    unoptimized
-                  />
-                  {logo.darkSrc && (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener"
+                    aria-label={name}
+                  >
                     <Image
-                      src={logo.darkSrc}
-                      alt={name}
+                      src={logo.src}
+                      alt=""
                       {...size}
-                      className={styles.advertiserLogoDark}
+                      className={
+                        logo.darkSrc ? styles.advertiserLogoLight : undefined
+                      }
                       unoptimized
                     />
-                  )}
+                    {logo.darkSrc && (
+                      <Image
+                        src={logo.colorDarkSrc ?? logo.darkSrc}
+                        alt=""
+                        {...size}
+                        className={styles.advertiserLogoDark}
+                        unoptimized
+                      />
+                    )}
+                  </a>
                 </li>
               );
             })}
