@@ -9,10 +9,7 @@ import {
   revokeAdminSessions,
   verifyAdminRequest,
 } from "~/server/admin/operator";
-import {
-  recordFailedSignIn,
-  signInBlocked,
-} from "~/server/admin/sign-in-guard";
+import { checkSignIn } from "~/server/admin/sign-in-guard";
 import { isSameOriginRequest } from "~/server/http/same-origin";
 import {
   jsonErrorResponse,
@@ -71,19 +68,19 @@ export async function POST(request: Request): Promise<Response> {
       503,
     );
   }
-  const limit = await signInBlocked(request);
-  if (limit.blocked) {
-    const minutes = Math.max(1, Math.ceil(limit.retryAfterSeconds / 60));
+  const correct = isOperatorToken(parsed.data.token);
+  const check = await checkSignIn(request, correct);
+  if (check.blocked) {
+    const minutes = Math.max(1, Math.ceil(check.retryAfterSeconds / 60));
     const response = jsonErrorResponse(
       `Too many tries. Wait ${minutes} minute${minutes === 1 ? "" : "s"} and try again.`,
       429,
     );
-    response.headers.set("Retry-After", String(limit.retryAfterSeconds));
+    response.headers.set("Retry-After", String(check.retryAfterSeconds));
     return response;
   }
-  if (!isOperatorToken(parsed.data.token)) {
-    const { announce } = await recordFailedSignIn(request);
-    if (announce)
+  if (!correct) {
+    if (check.announce)
       void emitLiveEvent({
         kind: "admin.sign_in_failed",
         ...requestOrigin(request),

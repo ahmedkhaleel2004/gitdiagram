@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 
-import type { AdminState } from "~/features/admin/types";
+import { formatCompact } from "~/lib/format";
+import type { AdminState, ClaudeCredit } from "~/features/admin/types";
 import { ConfirmButton } from "./confirm-dialog";
-import { compact, Since, Tile } from "./ui";
+import { Since, Tile } from "./ui";
 
 // Today's budgets and the balances behind them, with the two actions they
 // offer: starting a count over and recording the Claude balance.
@@ -14,21 +15,28 @@ const dollars = new Intl.NumberFormat("en-US", {
   currency: "USD",
 });
 
-async function post(
+/**
+ * Posts an action. Resolves to the error to show, or null and the answer.
+ * Signed out meanwhile: back to the sign-in form.
+ */
+async function post<T = unknown>(
   path: string,
   body: unknown,
   fallback: string,
-): Promise<string | null> {
+): Promise<{ error: string; answer?: undefined } | { error: null; answer: T }> {
   const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   }).catch(() => null);
-  if (response?.ok) return null;
-  const parsed = (await response?.json().catch(() => null)) as {
-    error?: string;
-  } | null;
-  return parsed?.error ?? fallback;
+  if (response?.status === 401) {
+    window.location.reload();
+    return { error: "Signed out. Sign in again." };
+  }
+  const parsed = (await response?.json().catch(() => null)) as
+    (T & { error?: string }) | null;
+  if (response?.ok) return { error: null, answer: parsed as T };
+  return { error: parsed?.error ?? fallback };
 }
 
 /**
@@ -61,12 +69,14 @@ function ResetUsage({
       }
       confirmLabel="Yes, reset"
       busyLabel="Resetting…"
-      onConfirm={() =>
-        post(
-          "/api/admin/reset",
-          { target },
-          "The reset did not go through. Try again.",
-        )
+      onConfirm={async () =>
+        (
+          await post(
+            "/api/admin/reset",
+            { target },
+            "The reset did not go through. Try again.",
+          )
+        ).error
       }
       onDone={onDone}
     />
@@ -77,7 +87,11 @@ function ResetUsage({
  * Records the Claude credit balance the Console shows, after a top-up. The
  * dashboard then counts down from it using the organization's spend since.
  */
-function SetClaudeCredit({ onDone }: { onDone: () => void }) {
+function SetClaudeCredit({
+  onSaved,
+}: {
+  onSaved: (credit: ClaudeCredit) => void;
+}) {
   const [value, setValue] = useState("");
   const usd = Number(value.replace(/[$,\s]/g, ""));
   const valid = value.trim() !== "" && Number.isFinite(usd) && usd >= 0;
@@ -104,17 +118,16 @@ function SetClaudeCredit({ onDone }: { onDone: () => void }) {
       confirmLabel="Save balance"
       busyLabel="Saving…"
       canConfirm={valid}
-      onConfirm={() =>
-        post(
+      onConfirm={async () => {
+        const { error, answer } = await post<{ credit?: ClaudeCredit }>(
           "/api/admin/claude-credit",
           { usd },
           "The balance was not saved. Try again.",
-        )
-      }
-      onDone={() => {
-        setValue("");
-        onDone();
+        );
+        if (answer?.credit) onSaved(answer.credit);
+        return error;
       }}
+      onDone={() => setValue("")}
     >
       <label className="flex flex-col gap-1 text-sm font-semibold">
         Balance in the Console (USD)
@@ -134,13 +147,17 @@ function SetClaudeCredit({ onDone }: { onDone: () => void }) {
 export function BudgetTiles({
   state,
   onChanged,
+  onCredit,
 }: {
   state: AdminState | null;
   onChanged: () => void;
+  /** A Claude balance was just saved: show it without waiting for a read. */
+  onCredit: (credit: ClaudeCredit) => void;
 }) {
   const video = state?.video;
   const quota = state?.diagramQuota;
-  const credit = state?.claudeCredit;
+  const credit =
+    typeof state?.claudeCredit === "object" ? state.claudeCredit : null;
   const creditSet = credit?.setUsd != null && credit.setAt != null;
   return (
     <div className="grid grid-cols-2 gap-3 lg:col-span-2">
@@ -194,7 +211,7 @@ export function BudgetTiles({
               ? `Ran out: new videos paused until ${new Date(state.voicePausedUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
               : state?.voiceCreditUsd == null
                 ? "Balance unreadable"
-                : `≈ ${Math.floor(state.voiceCreditUsd / 0.002).toLocaleString()} videos at ~$0.002 each`
+                : "Prepaid. New videos pause if it runs out."
           }
         />
       </div>
@@ -207,7 +224,7 @@ export function BudgetTiles({
           }
           value={
             quota
-              ? `${compact.format(quota.usedTokens)} / ${compact.format(quota.limitTokens)}`
+              ? `${formatCompact(quota.usedTokens)} / ${formatCompact(quota.limitTokens)}`
               : "–"
           }
           meter={
@@ -217,7 +234,7 @@ export function BudgetTiles({
           }
           sub={
             quota
-              ? `${compact.format(quota.reservedTokens)} held by runs in progress`
+              ? `${formatCompact(quota.reservedTokens)} held by runs in progress`
               : undefined
           }
         />
@@ -236,8 +253,10 @@ export function BudgetTiles({
               : null
           }
           sub={
-            !state ? undefined : !credit ? (
-              "Unreadable. Needs ANTHROPIC_ADMIN_KEY."
+            !state ? undefined : state.claudeCredit === "no-key" ? (
+              "Needs ANTHROPIC_ADMIN_KEY."
+            ) : !credit ? (
+              "Anthropic's spend reports could not be read just now. Trying again each minute."
             ) : creditSet ? (
               <>
                 {dollars.format(credit.spentUsd)} spent since{" "}
@@ -248,7 +267,11 @@ export function BudgetTiles({
               "Enter the balance from the Console to start counting."
             )
           }
-          action={credit ? <SetClaudeCredit onDone={onChanged} /> : null}
+          action={
+            state && state.claudeCredit !== "no-key" ? (
+              <SetClaudeCredit onSaved={onCredit} />
+            ) : null
+          }
         />
       </div>
     </div>

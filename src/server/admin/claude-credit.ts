@@ -158,11 +158,20 @@ async function readAnchor(): Promise<{ usd: number; at: number } | null> {
     : null;
 }
 
-let cache: { at: number; credit: Promise<ClaudeCredit | null> } | null = null;
+// The credit last worked out, from which entered balance (its `setAt`, so an
+// instance notices a balance entered through another one), and when.
+// Failures are kept for the minute too: an invalid key or a 429 must not turn
+// into a report request on every poll.
+let cache: {
+  at: number;
+  setAt: number | null;
+  credit: Promise<ClaudeCredit>;
+} | null = null;
 
-async function computeCredit(now: number): Promise<ClaudeCredit | null> {
-  if (!process.env.ANTHROPIC_ADMIN_KEY?.trim()) return null;
-  const anchor = await readAnchor();
+async function computeCredit(
+  anchor: { usd: number; at: number } | null,
+  now: number,
+): Promise<ClaudeCredit> {
   if (!anchor) return { setUsd: null, setAt: null, spentUsd: 0 };
   const costs = await Promise.all(
     costWindows(Math.min(anchor.at, now), now).map(windowCost),
@@ -175,21 +184,29 @@ async function computeCredit(now: number): Promise<ClaudeCredit | null> {
  * The Claude API credit left, as the last entered Console balance minus the
  * spend since. Null when there is no admin key; throws when a report fails.
  */
-export function readClaudeCredit(): Promise<ClaudeCredit | null> {
+export async function readClaudeCredit(): Promise<ClaudeCredit | null> {
+  if (!process.env.ANTHROPIC_ADMIN_KEY?.trim()) return null;
   const now = Date.now();
-  if (!cache || now - cache.at > CACHE_MS) {
-    const credit = computeCredit(now);
-    cache = { at: now, credit };
-    // A failed read is not cached, so the next poll tries again.
-    credit.catch(() => {
-      if (cache?.credit === credit) cache = null;
-    });
+  // One small Redis read per poll, so a balance entered through any instance
+  // shows on every instance at once, not when each one's minute runs out.
+  const anchor = await readAnchor();
+  const setAt = anchor?.at ?? null;
+  if (!cache || now - cache.at > CACHE_MS || cache.setAt !== setAt) {
+    const credit = computeCredit(anchor, now);
+    credit.catch(() => undefined); // Each caller still sees the failure.
+    cache = { at: now, setAt, credit };
   }
   return cache.credit;
 }
 
-/** Record the balance the Console shows right now, e.g. after a top-up. */
-export async function setClaudeCredit(usd: number): Promise<void> {
-  await upstashCommand(["HSET", KEY, "usd", String(usd), "at", Date.now()]);
-  cache = null;
+/**
+ * Record the balance the Console shows right now, e.g. after a top-up.
+ * Returns the credit as it now stands: nothing spent since.
+ */
+export async function setClaudeCredit(usd: number): Promise<ClaudeCredit> {
+  const at = Date.now();
+  await upstashCommand(["HSET", KEY, "usd", String(usd), "at", at]);
+  const credit: ClaudeCredit = { setUsd: usd, setAt: at, spentUsd: 0 };
+  cache = { at, setAt: at, credit: Promise.resolve(credit) };
+  return credit;
 }

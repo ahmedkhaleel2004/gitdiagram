@@ -116,15 +116,25 @@ export function describeEvent(event: LiveFeedEvent): EventLine {
     case "admin.signed_out_everywhere":
       return { title: "Signed out everywhere", tone: "", detail: place };
     case "admin.sign_in_failed":
-      return { title: "Failed sign-in", tone: FAILED, detail: place };
+      return {
+        title: "Failed sign-in",
+        tone: FAILED,
+        detail: joined([place, event.via === "bearer" ? "API token" : ""]),
+      };
     default:
       return { title: event.kind, tone: "", detail: String(event.note ?? "") };
   }
 }
 
-/** Events that move a counter the dashboard polls, so it re-reads at once. */
+/**
+ * Events that move a counter the dashboard polls, so it re-reads soon. Not a
+ * visitor held back (nothing was counted), nor a switch flipped (only the
+ * operator does that, and the dashboard re-reads after each change).
+ */
 export function movesCounters(kind: string): boolean {
-  return /^(video|render|diagram\.finished|control|limits)/.test(kind);
+  return /^(video\.(started|finished)|render\.|diagram\.finished|limits\.)/.test(
+    kind,
+  );
 }
 
 /** The live feed's filters beyond "All". */

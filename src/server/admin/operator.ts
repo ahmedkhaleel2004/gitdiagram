@@ -1,7 +1,8 @@
 import "server-only";
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
+import { errorText, logEvent } from "~/server/log";
 import { upstashCommand } from "~/server/storage/upstash";
 
 // The operator (the site's owner) signs in to /admin with the operator token,
@@ -32,10 +33,11 @@ export function isOperatorConfigured(): boolean {
   return operatorToken() !== null;
 }
 
+const digest = (text: string) => createHash("sha256").update(text).digest();
+
+/** Compares digests, so neither the content nor the length leaks in timing. */
 function sameText(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  return left.length === right.length && timingSafeEqual(left, right);
+  return timingSafeEqual(digest(a), digest(b));
 }
 
 export function isOperatorToken(presented: string): boolean {
@@ -58,12 +60,9 @@ async function readGeneration(): Promise<number | null> {
     generationCache = { at: Date.now(), value };
     return value;
   } catch (error) {
-    console.warn(
-      JSON.stringify({
-        event: "admin.session_generation.unavailable",
-        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
-      }),
-    );
+    logEvent("warn", "admin.session_generation.unavailable", {
+      error: errorText(error),
+    });
     // Remember the failure briefly too, so an outage does not add a Redis
     // timeout to every admin request.
     generationCache = { at: Date.now(), value: known };
@@ -91,7 +90,9 @@ export async function createAdminSession(now = Date.now()): Promise<{
 } | null> {
   const token = operatorToken();
   if (!token) return null;
-  const generation = (await sessionGeneration(now)) ?? 0;
+  // Read fresh, not cached: right after "sign out everywhere" on another
+  // instance, a cached generation would issue a cookie already revoked.
+  const generation = (await readGeneration()) ?? 0;
   const maxAgeSeconds = SESSION_DAYS * 86_400;
   const expires = now + maxAgeSeconds * 1000;
   const signature = sign(token, `admin-session:v2:${expires}:${generation}`);
@@ -132,26 +133,18 @@ function generationOf(
 }
 
 /**
- * Whether a session cookie is valid against `generation`, the current
- * session generation. Null means unknown (Redis unreadable), which accepts
- * any correctly signed, unexpired cookie.
+ * Checks a session cookie against the current generation in Redis. While
+ * the generation is unknown (Redis unreadable and never read), any correctly
+ * signed, unexpired cookie is accepted.
  */
-export function isAdminSession(
-  value: string | undefined | null,
-  now = Date.now(),
-  generation: number | null = generationCache?.value ?? null,
-): boolean {
-  const own = generationOf(value, now);
-  return own !== null && (generation === null || own === generation);
-}
-
-/** Checks a session cookie against the current generation in Redis. */
 export async function verifyAdminSession(
   value: string | undefined | null,
   now = Date.now(),
 ): Promise<boolean> {
-  if (generationOf(value, now) === null) return false;
-  return isAdminSession(value, now, await sessionGeneration(now));
+  const own = generationOf(value, now);
+  if (own === null) return false;
+  const generation = await sessionGeneration(now);
+  return generation === null || own === generation;
 }
 
 function readCookie(request: Request, name: string): string | null {
@@ -172,9 +165,4 @@ export async function revokeAdminSessions(): Promise<number> {
   const value = Number(await upstashCommand<number>(["INCR", GENERATION_KEY]));
   generationCache = { at: Date.now(), value };
   return value;
-}
-
-export function resetOperatorSessionsForTests(): void {
-  generationCache = null;
-  generationRead = null;
 }

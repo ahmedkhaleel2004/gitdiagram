@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { clock } from "~/features/admin/format";
 import { nextExpiry } from "~/features/admin/presence";
-import type { LiveVisitor } from "~/features/admin/types";
+import type { LiveVisitor, VideoAudience } from "~/features/admin/types";
 import { number, Panel } from "./ui";
 
 const HISTORY_POINTS = 600; // ten minutes, one point a second
@@ -115,16 +115,35 @@ function History({ here }: { here: number }) {
   return <Sparkline points={points} />;
 }
 
+/** What being in a priority place means, under the current audience switch. */
+export function priorityHint(audience: VideoAudience | undefined): string {
+  const perks =
+    "People here get more videos a day, the first with Claude Opus.";
+  switch (audience) {
+    case "priority":
+      return `The only places new videos can be made right now, on any device. ${perks}`;
+    case "desktop":
+      return `Any device here can make new videos; elsewhere only desktops can. ${perks}`;
+    case "everyone":
+      return `Anyone anywhere can make new videos right now. ${perks}`;
+    default:
+      return perks;
+  }
+}
+
 export function PeoplePanel({
   people,
   tabs,
   peak,
   stats,
+  audience,
 }: {
   people: LiveVisitor[];
   tabs: LiveVisitor[];
   peak: { count: number; at: number } | null;
   stats: { priority: number; mismatched: number };
+  /** Who may make new videos now (the live switch); unknown until read. */
+  audience: VideoAudience | undefined;
 }) {
   const inView = people.filter((person) => person.v === 1).length;
   const mobile = people.filter((person) => person.d === "m").length;
@@ -148,11 +167,7 @@ export function PeoplePanel({
             [
               ["Looking now", inView, undefined],
               ["Mobile", mobile, undefined],
-              [
-                "Priority places",
-                stats.priority,
-                "Where new videos can be made during early access",
-              ],
+              ["Priority places", stats.priority, priorityHint(audience)],
               ["Tabs open", tabs.length, undefined],
               [
                 "Clock/IP mismatch",

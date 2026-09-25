@@ -76,3 +76,28 @@ describe("job ids", () => {
     expect(sent[1]?.job.id).toBe(sent[0]?.job.id);
   });
 });
+
+describe("sending events", () => {
+  it("lets go of the answer's body, and logs a refusal", async () => {
+    const response = new Response("nope", { status: 401 });
+    const cancel = vi.spyOn(response.body!, "cancel");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await expect(
+      emitLiveEvent({ kind: "video.started" }),
+    ).resolves.toBeUndefined();
+    expect(cancel).toHaveBeenCalled();
+    expect(JSON.parse(String(warn.mock.calls[0]?.[0]))).toEqual({
+      event: "admin.live_event.rejected",
+      kind: "video.started",
+      status: 401,
+    });
+  });
+
+  it("never fails the request it describes", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+    await expect(
+      emitLiveEvent({ kind: "video.started" }),
+    ).resolves.toBeUndefined();
+  });
+});

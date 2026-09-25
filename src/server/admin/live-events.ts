@@ -5,6 +5,8 @@ import { after } from "next/server";
 
 import { DASHBOARD_TOKEN_MS } from "~/features/admin/presence-protocol";
 import { isDesktopRequest } from "~/server/explainer/audience";
+import { requestGeo } from "~/server/http/vercel-geo";
+import { logEvent } from "~/server/log";
 
 // Sends what the site is doing (generations starting and finishing, visitors
 // held back by the video gate, switches flipped) to the presence worker
@@ -62,7 +64,7 @@ async function send(event: LiveEvent): Promise<void> {
     ? { ...event, job: { ...event.job, id: liveJobId(event.job.id) } }
     : event;
   try {
-    await fetch(`${url.replace(/^ws/, "http")}/event`, {
+    const response = await fetch(`${url.replace(/^ws/, "http")}/event`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${secret}`,
@@ -71,6 +73,13 @@ async function send(event: LiveEvent): Promise<void> {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     });
+    // Nothing in the body is needed; letting it go frees the connection.
+    await response.body?.cancel().catch(() => undefined);
+    if (!response.ok)
+      logEvent("warn", "admin.live_event.rejected", {
+        kind: event.kind,
+        status: response.status,
+      });
   } catch {
     // The feed is a convenience; the logs remain the record.
   }
@@ -90,21 +99,13 @@ export function emitLiveEvent(event: LiveEvent): Promise<void> {
   return task;
 }
 
-function safeDecode(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
 /** Where a request came from, coarsely, for the dashboard feed. */
 export function requestOrigin(request: Request) {
-  const headers = request.headers;
+  const { country, region, city } = requestGeo(request);
   return {
-    country: headers.get("x-vercel-ip-country") ?? "",
-    region: headers.get("x-vercel-ip-country-region") ?? "",
-    city: safeDecode(headers.get("x-vercel-ip-city") ?? "").slice(0, 60),
+    country,
+    region,
+    city: city.slice(0, 60),
     device: isDesktopRequest(request) ? "desktop" : "mobile",
   };
 }

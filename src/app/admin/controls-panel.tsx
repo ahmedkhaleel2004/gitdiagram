@@ -176,28 +176,43 @@ function AudiencePicker({
   );
 }
 
+// The highest overrides the server accepts (api/admin/controls).
+const MAX_DAILY = 10_000;
+const MAX_PER_PERSON = 1_000;
+
 function LimitField({
   label,
   override,
   effective,
+  max,
   disabled,
   onSave,
 }: {
   label: string;
   override: number | null;
   effective: number | undefined;
+  max: number;
   disabled: boolean;
   onSave: (value: number | null) => Promise<string | null>;
 }) {
   const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const parsed = Number.parseInt(draft, 10);
-  const valid = draft !== "" && Number.isSafeInteger(parsed) && parsed >= 0;
+  const tooHigh = Number.isSafeInteger(parsed) && parsed > max;
+  const valid = draft !== "" && Number.isSafeInteger(parsed) && !tooHigh;
+  const save = async (value: number | null) => {
+    setError(null);
+    const failure = await onSave(value);
+    setError(failure);
+    return failure;
+  };
   return (
     <div className="flex flex-col gap-1.5">
       <div className="text-sm font-semibold">{label}</div>
       <div className="flex items-center gap-2">
         <input
           inputMode="numeric"
+          aria-invalid={tooHigh}
           value={draft}
           placeholder={effective === undefined ? "" : String(effective)}
           onChange={(event) => setDraft(event.target.value.replace(/\D/g, ""))}
@@ -209,7 +224,7 @@ function LimitField({
           disabled={!valid || disabled}
           aria-label={`Set ${label.toLowerCase()}`}
           onClick={() => {
-            void onSave(parsed);
+            void save(parsed);
             setDraft("");
           }}
           className={`neo-button h-10 rounded-md px-3 text-sm font-semibold disabled:opacity-50 ${TOUCH}`}
@@ -221,15 +236,21 @@ function LimitField({
             label={label}
             override={override}
             disabled={disabled}
-            onReset={() => onSave(null)}
+            onReset={() => save(null)}
           />
         ) : null}
       </div>
-      <div className="text-xs text-[hsl(var(--neo-soft-text))]">
-        {override !== null
-          ? "Set here, overriding the default"
-          : "Default from the deployment"}
-      </div>
+      {tooHigh || error ? (
+        <div role="alert" className="text-xs text-red-700 dark:text-red-400">
+          {tooHigh ? `At most ${max.toLocaleString("en-US")}` : error}
+        </div>
+      ) : (
+        <div className="text-xs text-[hsl(var(--neo-soft-text))]">
+          {override !== null
+            ? "Set here, overriding the default"
+            : "Default from the deployment"}
+        </div>
+      )}
     </div>
   );
 }
@@ -312,8 +333,9 @@ export function ControlsPanel({
             <div className="text-sm font-semibold">Priority places</div>
             <p className="text-xs text-[hsl(var(--neo-soft-text))]">
               People here get more videos a day, and their first one each day is
-              made with Claude Opus. Everyone else gets GPT-6 Sol, except on
-              repositories with 10,000+ stars.
+              made wholly with Claude Opus. For everyone else, Opus writes the
+              script and GPT-6 Sol designs the scenes, except on repositories
+              with 10,000+ stars, which are all Opus.
             </p>
             <ChoicePicker
               label="Priority places"
@@ -361,6 +383,7 @@ export function ControlsPanel({
               label="New videos per day"
               override={controls.videoDailyLimit}
               effective={video?.videos.limit}
+              max={MAX_DAILY}
               disabled={saving}
               onSave={(value) => change({ videoDailyLimit: value })}
             />
@@ -368,6 +391,7 @@ export function ControlsPanel({
               label="Per person per day"
               override={controls.videoPersonDailyLimit}
               effective={video?.videos.personLimit}
+              max={MAX_PER_PERSON}
               disabled={saving}
               onSave={(value) => change({ videoPersonDailyLimit: value })}
             />
@@ -375,6 +399,7 @@ export function ControlsPanel({
               label="Per priority person per day"
               override={controls.videoPriorityPersonDailyLimit}
               effective={video?.videos.priorityPersonLimit}
+              max={MAX_PER_PERSON}
               disabled={saving}
               onSave={(value) =>
                 change({ videoPriorityPersonDailyLimit: value })
@@ -384,6 +409,7 @@ export function ControlsPanel({
               label="Per connection per day (backstop)"
               override={controls.videoNetworkDailyLimit}
               effective={video?.videos.networkLimit}
+              max={MAX_PER_PERSON}
               disabled={saving}
               onSave={(value) => change({ videoNetworkDailyLimit: value })}
             />

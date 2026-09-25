@@ -1,6 +1,8 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as OperatorModule from "./operator";
+
 vi.mock("server-only", () => ({}));
 
 const redis = vi.hoisted(() => ({
@@ -21,26 +23,38 @@ vi.mock("~/server/storage/upstash", () => ({
   }),
 }));
 
-import {
-  ADMIN_SESSION_COOKIE,
-  createAdminSession,
-  isAdminSession,
-  isOperatorConfigured,
-  isOperatorToken,
-  resetOperatorSessionsForTests,
-  revokeAdminSessions,
-  verifyAdminRequest,
-  verifyAdminSession,
-} from "./operator";
+type Operator = typeof OperatorModule;
+
+let ADMIN_SESSION_COOKIE: Operator["ADMIN_SESSION_COOKIE"];
+let createAdminSession: Operator["createAdminSession"];
+let isOperatorConfigured: Operator["isOperatorConfigured"];
+let isOperatorToken: Operator["isOperatorToken"];
+let revokeAdminSessions: Operator["revokeAdminSessions"];
+let verifyAdminRequest: Operator["verifyAdminRequest"];
+let verifyAdminSession: Operator["verifyAdminSession"];
+
+/** A fresh instance: nothing cached from an earlier test (or instance). */
+async function freshInstance(): Promise<Operator> {
+  vi.resetModules();
+  return import("./operator");
+}
 
 const TOKEN = "a".repeat(40);
 const originalEnv = process.env;
 
-beforeEach(() => {
+beforeEach(async () => {
   process.env = { ...originalEnv, VIDEO_ADMIN_TOKEN: TOKEN };
   redis.generation = null;
   redis.down = false;
-  resetOperatorSessionsForTests();
+  ({
+    ADMIN_SESSION_COOKIE,
+    createAdminSession,
+    isOperatorConfigured,
+    isOperatorToken,
+    revokeAdminSessions,
+    verifyAdminRequest,
+    verifyAdminSession,
+  } = await freshInstance());
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
 afterEach(() => {
@@ -54,11 +68,13 @@ const request = (cookie: string) =>
   });
 
 describe("operator sign-in", () => {
-  it("accepts only the operator token", () => {
+  it("accepts only the operator token, whatever length is sent", () => {
     expect(isOperatorToken(TOKEN)).toBe(true);
     expect(isOperatorToken(` ${TOKEN} `)).toBe(true);
     expect(isOperatorToken(`${TOKEN}x`)).toBe(false);
     expect(isOperatorToken("")).toBe(false);
+    expect(isOperatorToken("a")).toBe(false);
+    expect(isOperatorToken("a".repeat(4_000))).toBe(false);
     process.env.VIDEO_ADMIN_TOKEN = "short";
     expect(isOperatorToken("short")).toBe(false);
   });
@@ -74,26 +90,35 @@ describe("operator sign-in", () => {
   it("issues sessions that expire and cannot be forged", async () => {
     const now = Date.now();
     const session = (await createAdminSession(now))!;
-    expect(isAdminSession(session.value, now)).toBe(true);
+    expect(await verifyAdminSession(session.value, now)).toBe(true);
     expect(
-      isAdminSession(session.value, now + session.maxAgeSeconds * 1000),
+      await verifyAdminSession(
+        session.value,
+        now + session.maxAgeSeconds * 1000,
+      ),
     ).toBe(false);
     const [version, expiry, generation, signature] = session.value.split(".");
     expect(version).toBe("v2");
     expect(
-      isAdminSession(
+      await verifyAdminSession(
         `${version}.${Number(expiry) + 1}.${generation}.${signature}`,
         now,
       ),
     ).toBe(false);
     expect(
-      isAdminSession(`${version}.${expiry}.${generation}.${signature}x`, now),
+      await verifyAdminSession(
+        `${version}.${expiry}.${generation}.${signature}x`,
+        now,
+      ),
     ).toBe(false);
-    // The generation is signed too.
+    // The generation is signed too, even while Redis cannot say which is current.
+    redis.down = true;
+    ({ verifyAdminSession } = await freshInstance());
     expect(
-      isAdminSession(`${version}.${expiry}.7.${signature}`, now, null),
+      await verifyAdminSession(`${version}.${expiry}.7.${signature}`, now),
     ).toBe(false);
-    expect(isAdminSession(undefined, now)).toBe(false);
+    expect(await verifyAdminSession(session.value, now)).toBe(true);
+    expect(await verifyAdminSession(undefined, now)).toBe(false);
   });
 
   it("signs every session out when the token rotates", async () => {
@@ -140,6 +165,20 @@ describe("signing out everywhere", () => {
     expect(await verifyAdminSession(session.value, now + 6_000)).toBe(false);
   });
 
+  it("issues the current generation right after another instance signed out everywhere", async () => {
+    const now = Date.now();
+    // This instance read generation 0 a moment ago and still has it cached.
+    const before = (await createAdminSession(now))!;
+    expect(await verifyAdminSession(before.value, now)).toBe(true);
+    redis.generation = 1; // another instance signed out everywhere
+    // Signing in here within the cache's few seconds still gets a cookie
+    // for generation 1, which keeps working once the cache moves on.
+    const after = (await createAdminSession(now + 1_000))!;
+    expect(after.value.split(".")[2]).toBe("1");
+    expect(await verifyAdminSession(after.value, now + 6_000)).toBe(true);
+    expect(await verifyAdminSession(before.value, now + 6_000)).toBe(false);
+  });
+
   it("keeps cookies from before generations working until the first sign-out everywhere", async () => {
     const now = Date.now();
     const expires = now + 86_400_000;
@@ -159,7 +198,7 @@ describe("signing out everywhere", () => {
 
     // Known generation 1, then Redis goes down: generation 0 stays revoked.
     redis.down = false;
-    resetOperatorSessionsForTests();
+    ({ verifyAdminSession } = await freshInstance());
     redis.generation = 1;
     const now = Date.now();
     expect(await verifyAdminSession(session.value, now)).toBe(false);

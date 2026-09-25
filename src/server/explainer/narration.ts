@@ -1,12 +1,7 @@
 import "server-only";
 
 import type { VideoTiming, VideoWord } from "~/features/explainer/types";
-import {
-  isVoiceConfigured,
-  speak,
-  voiceCreditUsd,
-  voicePausedUntil,
-} from "./voice";
+import { isVoiceConfigured, speak, voicePausedUntil } from "./voice";
 import { normalizeWord } from "./text";
 import type { Alignment } from "./voice-alignment";
 
@@ -39,11 +34,6 @@ export async function isNarrationAvailable(): Promise<boolean> {
 /** When new videos can be voiced again, for /admin; null when they can now. */
 export function narrationPausedUntil(): Promise<number | null> {
   return voicePausedUntil();
-}
-
-/** The voice's prepaid balance in USD, for /admin; null when unreadable. */
-export function narrationCreditUsd(): Promise<number | null> {
-  return voiceCreditUsd();
 }
 
 /**
