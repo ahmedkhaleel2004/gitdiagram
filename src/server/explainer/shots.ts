@@ -1,8 +1,11 @@
-import type {
-  ShotAction,
-  ShotBeat,
-  ShotElement,
-  ShotPlan,
+import {
+  SHOT_ACTIONS,
+  SHOT_KINDS,
+  type ShotAction,
+  type ShotBeat,
+  type ShotElement,
+  type ShotKind,
+  type ShotPlan,
 } from "~/features/explainer/types";
 import {
   clip,
@@ -18,44 +21,6 @@ const num: JsonSchema = { type: "number" };
 const bool: JsonSchema = { type: "boolean" };
 const arr = (items: JsonSchema): JsonSchema => ({ type: "array", items });
 
-const SHOT_KINDS = [
-  "heading",
-  "text",
-  "code",
-  "terminal",
-  "box",
-  "chip",
-  "file",
-  "tree",
-  "table",
-  "bars",
-  "number",
-  "stamp",
-  "browser",
-  "request",
-  "list",
-  "svg",
-  "arrow",
-] as const;
-const ACTIONS = [
-  "highlight",
-  "dim",
-  "restore",
-  "exit",
-  "strike",
-  "pulse",
-  "shake",
-  "check",
-  "cross",
-  "replace",
-  "count",
-  "move",
-  "type",
-  "flow",
-  "scan",
-  "focus",
-  "reset",
-] as const;
 const TONES = ["plain", "accent", "soft", "ok", "bad", "ghost"];
 const ICONS = [
   "server",
@@ -162,7 +127,7 @@ export const SHOTS_TOOL = {
             type: "object",
             properties: {
               at: str,
-              do: { type: "string", enum: ACTIONS },
+              do: { type: "string", enum: SHOT_ACTIONS },
               target: {},
               lines: arr({ type: "integer" }),
               rows: arr({ type: "integer" }),
@@ -259,7 +224,7 @@ export function scriptForDesigners(script: Script): string {
     .join("\n");
 }
 
-const MIN_SIZE: Record<string, [number, number]> = {
+const MIN_SIZE: Record<Exclude<ShotKind, "arrow">, [number, number]> = {
   heading: [2, 0.8],
   text: [1.5, 0.4],
   code: [5, 2.2],
@@ -277,6 +242,30 @@ const MIN_SIZE: Record<string, [number, number]> = {
   list: [3, 1.2],
   svg: [1.5, 1.5],
 };
+
+// The canvas an element may occupy: the top band (y < 0.95) belongs to the
+// repository label.
+const CANVAS = { left: 0.6, right: 15.4, top: 0.95, bottom: 8.6 };
+
+/**
+ * The one id rule for element ids, arrow ends and action targets: lowercase
+ * snake_case, at most 32 characters. Names every object inherits (such as
+ * "constructor") get a trailing underscore, so no id can reach a prototype.
+ */
+export function normalizeShotId(value: unknown): string {
+  const id = text(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "_")
+    .slice(0, 32);
+  return id in Object.prototype ? `${id}_` : id;
+}
+
+/** The one cue rule: the first word, normalized, if this beat speaks it. */
+function cueWord(value: unknown, narration: string): string | null {
+  const word = words(text(value))[0];
+  if (!word) return "";
+  return words(narration).includes(word) ? word : null;
+}
 
 // A designer numbers tree rows before unknown paths are dropped; this maps each
 // original row (1-based) to the row it became, so highlights land on the right one.
@@ -296,21 +285,13 @@ function normalizeElement(
   warnings: string[],
   where: string,
 ): ShotElement | null {
-  const kind = text(raw.kind) as ShotElement["kind"];
+  const kind = text(raw.kind) as ShotKind;
   if (!SHOT_KINDS.includes(kind)) return null;
-  const id =
-    text(raw.id)
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, "_")
-      .slice(0, 32) || kind;
-  const cue = (value: unknown) => {
-    const word = words(text(value))[0];
-    if (!word) return "";
-    if (words(narration).includes(word)) return word;
-    warnings.push(`cue "${text(value)}" not in narration (${where})`);
-    return "";
-  };
-  const base = { id, kind, at: cue(raw.at) };
+  const id = normalizeShotId(raw.id) || kind;
+  const at = cueWord(raw.at, narration);
+  if (at === null)
+    warnings.push(`cue "${text(raw.at)}" not in narration (${where})`);
+  const base = { id, kind, at: at ?? "" };
   if (kind === "arrow")
     return {
       ...base,
@@ -318,18 +299,17 @@ function normalizeElement(
       y: 0,
       w: 0,
       h: 0,
-      from: text(raw.from),
-      to: text(raw.to),
+      from: normalizeShotId(raw.from),
+      to: normalizeShotId(raw.to),
       label: clip(raw.label, 18),
       dashed: Boolean(raw.dashed),
       flow: Boolean(raw.flow),
     };
-  const [minW, minH] = MIN_SIZE[kind] ?? [1, 0.5];
-  const w = clamp(number(raw.w, minW), minW, 14.8);
-  const h = clamp(number(raw.h, minH), minH, 7.8);
-  const x = clamp(number(raw.x, 0.8), 0.6, 15.4 - w);
-  // The top band (y < 0.95) belongs to the repository label.
-  const y = clamp(number(raw.y, 1), 0.95, 8.6 - h);
+  const [minW, minH] = MIN_SIZE[kind];
+  const w = clamp(number(raw.w, minW), minW, CANVAS.right - CANVAS.left);
+  const h = clamp(number(raw.h, minH), minH, CANVAS.bottom - CANVAS.top);
+  const x = clamp(number(raw.x, 0.8), CANVAS.left, CANVAS.right - w);
+  const y = clamp(number(raw.y, 1), CANVAS.top, CANVAS.bottom - h);
   const element: ShotElement = { ...base, x, y, w, h };
   const tone = TONES.includes(text(raw.tone)) ? text(raw.tone) : "plain";
   switch (kind) {
@@ -383,22 +363,34 @@ function normalizeElement(
       element.text = clip(raw.text, 28);
       element.tone = tone;
       break;
-    case "file":
-      element.path = clip(raw.path, 60);
-      if (!pathExists(facts, text(raw.path)))
-        warnings.push(`file ${text(raw.path)} not in repo (${where})`);
+    case "file": {
+      const path = resolvePath(facts, text(raw.path));
+      if (!path) {
+        // A file card claims the file exists; one the tree lacks is dropped.
+        warnings.push(`dropped file ${text(raw.path)} not in repo (${where})`);
+        return null;
+      }
+      element.path = displayPath(path);
       break;
+    }
     case "tree": {
       const paths: string[] = [];
       const rowMap = new Map<number, number>();
-      strings(raw.paths, 10, 60).forEach((path, index) => {
-        if (!pathExists(facts, path)) {
-          warnings.push(`dropped unknown path ${path} (${where})`);
-          return;
-        }
-        paths.push(path);
-        rowMap.set(index + 1, paths.length);
-      });
+      (Array.isArray(raw.paths) ? raw.paths : [])
+        .slice(0, 10)
+        .forEach((value, index) => {
+          const path = resolvePath(facts, text(value));
+          if (!path) {
+            warnings.push(`dropped unknown path ${text(value)} (${where})`);
+            return;
+          }
+          paths.push(displayPath(path));
+          rowMap.set(index + 1, paths.length);
+        });
+      if (!paths.length) {
+        warnings.push(`dropped tree ${id} with no known paths (${where})`);
+        return null;
+      }
       element.paths = paths;
       element.focus = remapRows(numbers(raw.focus, 10), rowMap);
       treeRowMaps.set(element, rowMap);
@@ -461,14 +453,52 @@ function numbers(value: unknown, max: number): number[] {
     .slice(0, 8);
 }
 
-function pathExists(facts: PlanRepositoryFacts, path: string) {
-  const clean = path.replace(/^\.?\//, "").replace(/\/$/, "");
+function pathExists(facts: PlanRepositoryFacts, clean: string) {
   return (
     clean === "" ||
     facts.paths.some(
       (known) => known === clean || known.startsWith(`${clean}/`),
     )
   );
+}
+
+/**
+ * The real path a designer meant, checked before anything is clipped. Designers
+ * often shorten a deep path to its tail ("adapters/filters/Foo.java"): a tail
+ * that ends exactly one real file or folder resolves to its full path, and one
+ * that ends several stays as written (it still names real files).
+ */
+function resolvePath(facts: PlanRepositoryFacts, raw: string): string | null {
+  const clean = raw
+    .trim()
+    .replace(/^\.?\//, "")
+    .replace(/\/$/, "");
+  if (!clean || clean.includes("..")) return null;
+  if (pathExists(facts, clean)) return clean;
+  const matches = new Set<string>();
+  for (const known of facts.paths) {
+    const at = `/${known}/`.indexOf(`/${clean}/`);
+    if (at >= 0) matches.add(known.slice(0, at + clean.length));
+    if (matches.size > 1) return clean;
+  }
+  return [...matches][0] ?? null;
+}
+
+const PATH_DISPLAY_LIMIT = 60;
+
+/** Long paths lose their leading folders, never the file name. */
+function displayPath(path: string): string {
+  if (path.length <= PATH_DISPLAY_LIMIT) return path;
+  const parts = path.split("/");
+  let tail = parts.pop()!;
+  while (
+    parts.length &&
+    parts.at(-1)!.length + tail.length + 3 <= PATH_DISPLAY_LIMIT
+  )
+    tail = `${parts.pop()}/${tail}`;
+  return tail.length + 2 <= PATH_DISPLAY_LIMIT
+    ? `…/${tail}`
+    : `…${tail.slice(-(PATH_DISPLAY_LIMIT - 1))}`;
 }
 
 const SHAPES = ["path", "rect", "circle", "line", "polyline", "polygon"];
@@ -516,20 +546,16 @@ function normalizeAction(
   where: string,
 ): ShotAction | null {
   const kind = text(raw.do) as ShotAction["do"];
-  if (!ACTIONS.includes(kind)) return null;
-  const word = words(text(raw.at))[0] ?? "";
-  if (word && !words(narration).includes(word))
+  if (!SHOT_ACTIONS.includes(kind)) return null;
+  const at = cueWord(raw.at, narration);
+  if (at === null)
     warnings.push(`action cue "${text(raw.at)}" not in narration (${where})`);
   const targets = (Array.isArray(raw.target) ? raw.target : [raw.target])
-    .map((target) =>
-      text(target)
-        .toLowerCase()
-        .replace(/[^a-z0-9_]/g, "_"),
-    )
+    .map(normalizeShotId)
     .filter(Boolean);
   const action: ShotAction = {
     do: kind,
-    at: word && words(narration).includes(word) ? word : "",
+    at: at ?? "",
     target: targets,
   };
   if (Array.isArray(raw.lines)) action.lines = numbers(raw.lines, 99);
@@ -555,6 +581,9 @@ export function normalizeShots(
   let sceneIds = new Set<string>();
   let present = new Map<string, ShotElement>();
   let rowMaps = new Map<string, Map<number, number>>();
+  // A designer who reuses an id in a scene means the newest element by it, so
+  // later arrows and actions naming it land there (it is stored as `id_2`).
+  let aliases = new Map<string, string>();
   script.beats.forEach((beat, index) => {
     const where = `beat ${index}`;
     const first = index === 0 || script.beats[index - 1]!.scene !== beat.scene;
@@ -562,6 +591,7 @@ export function normalizeShots(
       sceneIds = new Set();
       present = new Map();
       rowMaps = new Map();
+      aliases = new Map();
     }
     const shot = designed.get(index);
     if (!shot) warnings.push(`no shot designed for ${where}`);
@@ -577,21 +607,27 @@ export function normalizeShots(
       if (!element) continue;
       let id = element.id;
       for (let n = 2; sceneIds.has(id); n++) id = `${element.id}_${n}`;
+      aliases.set(element.id, id);
       element.id = id;
       sceneIds.add(id);
       const rowMap = treeRowMaps.get(element);
       if (rowMap) rowMaps.set(id, rowMap);
       elements.push(element);
     }
-    // Arrows need both ends on screen by now.
+    const resolve = (ref: unknown) => aliases.get(String(ref)) ?? String(ref);
+    // Arrows join two elements (never another arrow) on screen by now; they
+    // may be listed before the elements they join.
+    const isEnd = (id: string) => {
+      const end = present.get(id) ?? elements.find((e) => e.id === id);
+      return Boolean(end) && end!.kind !== "arrow";
+    };
     const kept = elements.filter((element) => {
       if (element.kind !== "arrow") return true;
+      element.from = resolve(element.from);
+      element.to = resolve(element.to);
       const ok =
-        [element.from, element.to].every(
-          (end) =>
-            present.has(String(end)) ||
-            elements.some((e) => e.id === end && e.kind !== "arrow"),
-        ) && element.from !== element.to;
+        [element.from, element.to].every((end) => isEnd(String(end))) &&
+        element.from !== element.to;
       if (!ok)
         warnings.push(
           `dropped arrow ${element.id} with a missing end (${where})`,
@@ -603,8 +639,11 @@ export function normalizeShots(
     for (const raw of list(shot?.actions)) {
       const action = normalizeAction(raw, beat.narration, warnings, where);
       if (!action) continue;
-      const targets = (action.target as string[]).filter((target) =>
-        present.has(target),
+      const targets = (action.target as string[]).map(resolve).filter(
+        (target) =>
+          present.has(target) &&
+          // Arrows are routed between their ends; they cannot be moved.
+          !(action.do === "move" && present.get(target)!.kind === "arrow"),
       );
       if (action.do !== "reset" && !targets.length) {
         warnings.push(`dropped ${action.do} on a missing target (${where})`);
@@ -614,18 +653,20 @@ export function normalizeShots(
       const rowMap = rowMaps.get(targets[0] ?? "");
       if (rowMap && Array.isArray(action.rows))
         action.rows = remapRows(action.rows as number[], rowMap);
+      if (action.do === "move") {
+        const moved = present.get(targets[0]!)!;
+        // The whole element stays on the canvas where it lands.
+        action.x = clamp(Number(action.x), CANVAS.left, CANVAS.right - moved.w);
+        action.y = clamp(Number(action.y), CANVAS.top, CANVAS.bottom - moved.h);
+        present.set(moved.id, {
+          ...moved,
+          x: Number(action.x),
+          y: Number(action.y),
+        });
+      }
       actions.push(action);
       if (action.do === "exit")
         for (const target of targets) present.delete(target);
-      if (action.do === "move") {
-        const moved = present.get(targets[0]!);
-        if (moved)
-          present.set(moved.id, {
-            ...moved,
-            x: Number(action.x),
-            y: Number(action.y),
-          });
-      }
     }
     warnOverlaps([...present.values()], warnings, where);
     beats.push({

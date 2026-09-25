@@ -1,5 +1,14 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { normalizeScript, normalizeShots, scriptWordCount } from "./shots";
+import { SHOT_ACTIONS, SHOT_KINDS } from "~/features/explainer/types";
+import { SHOT_SYSTEM } from "./shot-prompt";
+import {
+  SHOTS_TOOL,
+  normalizeScript,
+  normalizeShotId,
+  normalizeShots,
+  scriptWordCount,
+} from "./shots";
 import { clip, normalizeWord } from "./text";
 
 const facts = {
@@ -284,5 +293,256 @@ describe("explainer shots", () => {
       "Plain line.",
     ]);
     expect(scriptWordCount(tagged)).toBe(16);
+  });
+
+  it("resolves a shortened deep path to the real one before clipping it", () => {
+    const deep =
+      "bigtable-client-core-parent/bigtable-hbase/src/main/java/com/google/cloud/bigtable/hbase/adapters/filters";
+    const { plan, warnings } = normalizeShots(
+      script,
+      new Map([
+        [
+          0,
+          {
+            elements: [
+              {
+                id: "tree",
+                kind: "tree",
+                x: 1,
+                y: 1,
+                w: 7,
+                h: 4,
+                paths: [
+                  "adapters/filters/PrefixFilterAdapter.java",
+                  `${deep}/ValueFilterAdapter.java`,
+                  "adapters/filters/Invented.java",
+                  "index.ts",
+                  "Adapter.java",
+                ],
+              },
+              {
+                id: "only_fake",
+                kind: "tree",
+                x: 9,
+                y: 1,
+                w: 5,
+                h: 3,
+                paths: ["nope/one.ts", "nope/two.ts"],
+              },
+              {
+                id: "card",
+                kind: "file",
+                x: 1,
+                y: 6,
+                w: 5,
+                h: 1,
+                path: "filters/ValueFilterAdapter.java",
+              },
+              {
+                id: "fake_card",
+                kind: "file",
+                x: 8,
+                y: 6,
+                w: 5,
+                h: 1,
+                path: "src/made/up.ts",
+              },
+            ],
+          },
+        ],
+      ]),
+      {
+        ...facts,
+        paths: [
+          ...facts.paths,
+          `${deep}/PrefixFilterAdapter.java`,
+          `${deep}/ValueFilterAdapter.java`,
+          `${deep}/FuzzyRowFilterAdapter.java`,
+          "web/index.ts",
+          "api/index.ts",
+        ],
+      },
+    );
+    const [tree, card] = plan.beats[0]!.elements;
+    expect(plan.beats[0]!.elements.map((e) => e.id)).toEqual(["tree", "card"]);
+    const paths = tree!.paths as string[];
+    // A tail that ends several real paths still names real files; one that
+    // ends a file name only partway ("Adapter.java") names none.
+    expect(paths).toEqual([
+      "…/bigtable/hbase/adapters/filters/PrefixFilterAdapter.java",
+      "…/bigtable/hbase/adapters/filters/ValueFilterAdapter.java",
+      "index.ts",
+    ]);
+    for (const path of paths) expect(path.length).toBeLessThanOrEqual(60);
+    expect(card!.path).toBe(
+      "…/bigtable/hbase/adapters/filters/ValueFilterAdapter.java",
+    );
+    expect(warnings).toEqual(
+      expect.arrayContaining([
+        "dropped unknown path adapters/filters/Invented.java (beat 0)",
+        "dropped unknown path Adapter.java (beat 0)",
+        "dropped tree only_fake with no known paths (beat 0)",
+        "dropped file src/made/up.ts not in repo (beat 0)",
+      ]),
+    );
+  });
+
+  it("normalizes element ids, arrow ends and action targets the same way", () => {
+    const long = "The-Very Long Element Name That Goes On And On";
+    const { plan } = normalizeShots(
+      script,
+      new Map([
+        [
+          0,
+          {
+            elements: [
+              // Listed before the elements it joins.
+              { id: "Link", kind: "arrow", from: long, to: "Router-Box" },
+              { id: long, kind: "box", x: 1, y: 2, w: 3, h: 1, label: "A" },
+              {
+                id: "Router-Box",
+                kind: "box",
+                x: 8,
+                y: 2,
+                w: 3,
+                h: 1,
+                label: "B",
+              },
+              {
+                id: "constructor",
+                kind: "chip",
+                x: 1,
+                y: 5,
+                w: 3,
+                h: 0.6,
+                text: "new",
+              },
+            ],
+            actions: [
+              { do: "pulse", target: long, at: "server" },
+              { do: "check", target: "CONSTRUCTOR", at: "server" },
+              { do: "exit", target: ["router-box"], at: "server" },
+            ],
+          },
+        ],
+      ]),
+      facts,
+    );
+    const [arrow, a, b, reserved] = plan.beats[0]!.elements;
+    const id = normalizeShotId(long);
+    expect(id).toBe("the_very_long_element_name_that_");
+    expect(a!.id).toBe(id);
+    expect(b!.id).toBe("router_box");
+    expect(reserved!.id).toBe("constructor_");
+    expect(normalizeShotId("__proto__")).toBe("__proto___");
+    expect([arrow!.from, arrow!.to]).toEqual([id, "router_box"]);
+    expect(plan.beats[0]!.actions.map((action) => action.target)).toEqual([
+      [id],
+      ["constructor_"],
+      ["router_box"],
+    ]);
+  });
+
+  it("points a reused id at the newest element named by it", () => {
+    const { plan } = normalizeShots(
+      script,
+      new Map([
+        [
+          0,
+          {
+            elements: [
+              { id: "db", kind: "box", x: 1, y: 2, w: 3, h: 1, label: "Old" },
+            ],
+            actions: [{ do: "exit", target: "db", at: "server" }],
+          },
+        ],
+        [
+          1,
+          {
+            elements: [
+              { id: "db", kind: "box", x: 1, y: 2, w: 3, h: 1, label: "New" },
+              { id: "api", kind: "box", x: 8, y: 2, w: 3, h: 1, label: "API" },
+              { id: "wire", kind: "arrow", from: "api", to: "db" },
+            ],
+            actions: [{ do: "pulse", target: "db", at: "router" }],
+          },
+        ],
+      ]),
+      facts,
+    );
+    const second = plan.beats[1]!;
+    expect(second.elements.map((e) => e.id)).toEqual(["db_2", "api", "wire"]);
+    expect(second.elements[2]!.to).toBe("db_2");
+    expect(second.actions[0]!.target).toEqual(["db_2"]);
+  });
+
+  it("keeps tall elements and moves below the repository label", () => {
+    const { plan, warnings } = normalizeShots(
+      script,
+      new Map([
+        [
+          0,
+          {
+            elements: [
+              { id: "tall", kind: "code", x: 1, y: 0, w: 7, h: 9, lines: [] },
+              { id: "box", kind: "box", x: 9, y: 2, w: 3, h: 2, label: "B" },
+              { id: "b2", kind: "box", x: 9, y: 5, w: 3, h: 1, label: "C" },
+              { id: "wire", kind: "arrow", from: "box", to: "b2" },
+            ],
+            actions: [
+              { do: "move", target: "box", x: 14, y: 8, at: "server" },
+              { do: "move", target: "wire", x: 2, y: 2, at: "server" },
+            ],
+          },
+        ],
+      ]),
+      facts,
+    );
+    const tall = plan.beats[0]!.elements[0]!;
+    expect(tall.y).toBeGreaterThanOrEqual(0.95);
+    expect(tall.y + tall.h).toBeLessThanOrEqual(8.6);
+    const [move] = plan.beats[0]!.actions;
+    expect(plan.beats[0]!.actions).toHaveLength(1);
+    expect(move).toMatchObject({ x: 12.4, y: 6.6 });
+    expect(warnings).toContain("dropped move on a missing target (beat 0)");
+  });
+
+  it("defines every element kind and action once, for schema, prompt and engine", () => {
+    const shape = SHOTS_TOOL.input_schema.properties.shots.items as {
+      properties: {
+        elements: { items: { properties: { kind: { enum: unknown } } } };
+        actions: { items: { properties: { do: { enum: unknown } } } };
+      };
+    };
+    expect(shape.properties.elements.items.properties.kind.enum).toBe(
+      SHOT_KINDS,
+    );
+    expect(shape.properties.actions.items.properties.do.enum).toBe(
+      SHOT_ACTIONS,
+    );
+
+    const engine = readFileSync("public/video-engine/shots.js", "utf8");
+    const built = new Set(
+      [...engine.matchAll(/\bB\.(\w+) = function/g)].map((match) => match[1]),
+    );
+    if (/e\.kind === "arrow"\) built = buildArrow/.test(engine))
+      built.add("arrow");
+    expect([...built].sort()).toEqual([...SHOT_KINDS].sort());
+    const handled = new Set(
+      [...engine.matchAll(/case "(\w+)":/g)].map((match) => match[1]),
+    );
+    expect(SHOT_ACTIONS.filter((action) => !handled.has(action))).toEqual([]);
+
+    const kinds = SHOT_SYSTEM.slice(
+      SHOT_SYSTEM.indexOf("Kinds and their extra fields"),
+      SHOT_SYSTEM.indexOf("Actions change the canvas"),
+    );
+    for (const kind of SHOT_KINDS) expect(kinds).toContain(`\n- ${kind}:`);
+    const actions = SHOT_SYSTEM.slice(
+      SHOT_SYSTEM.indexOf("Actions change the canvas"),
+      SHOT_SYSTEM.indexOf("Scene transitions"),
+    );
+    for (const action of SHOT_ACTIONS)
+      expect(actions).toMatch(new RegExp(`\\b${action}\\b`));
   });
 });

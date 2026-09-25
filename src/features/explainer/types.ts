@@ -1,28 +1,59 @@
 // Shared shapes for the explainer video: the model's plan, the narration clock,
 // and the stored artifact the browser player consumes.
 
-/** The free-form shot language the scene engine (shots.js) draws. */
+/**
+ * The free-form shot language the scene engine (public/video-engine/shots.js)
+ * draws. These lists are the single source of truth for the designer's tool
+ * schema, the prompt, the server normalizer and the engine (a test checks
+ * that shots.js and the prompt cover every entry).
+ */
+export const SHOT_KINDS = [
+  "heading",
+  "text",
+  "code",
+  "terminal",
+  "box",
+  "chip",
+  "file",
+  "tree",
+  "table",
+  "bars",
+  "number",
+  "stamp",
+  "browser",
+  "request",
+  "list",
+  "svg",
+  "arrow",
+] as const;
+export type ShotKind = (typeof SHOT_KINDS)[number];
+
+export const SHOT_ACTIONS = [
+  "highlight",
+  "dim",
+  "restore",
+  "exit",
+  "strike",
+  "pulse",
+  "shake",
+  "check",
+  "cross",
+  "replace",
+  "count",
+  "move",
+  "type",
+  "flow",
+  "scan",
+  "focus",
+  "reset",
+] as const;
+export type ShotActionName = (typeof SHOT_ACTIONS)[number];
+
 export interface ShotElement {
+  /** Lowercase snake_case, at most 32 characters, unique within its scene. */
   id: string;
-  kind:
-    | "heading"
-    | "text"
-    | "code"
-    | "terminal"
-    | "box"
-    | "chip"
-    | "file"
-    | "tree"
-    | "table"
-    | "bars"
-    | "number"
-    | "stamp"
-    | "browser"
-    | "request"
-    | "list"
-    | "svg"
-    | "arrow";
-  /** Canvas units: 16 × 9, one unit is 120 px. */
+  kind: ShotKind;
+  /** Canvas units: 16 × 9, one unit is 120 px. Arrows are routed and keep 0s. */
   x: number;
   y: number;
   w: number;
@@ -33,25 +64,9 @@ export interface ShotElement {
 }
 
 export interface ShotAction {
-  do:
-    | "highlight"
-    | "dim"
-    | "restore"
-    | "exit"
-    | "strike"
-    | "pulse"
-    | "shake"
-    | "check"
-    | "cross"
-    | "replace"
-    | "count"
-    | "move"
-    | "type"
-    | "flow"
-    | "scan"
-    | "focus"
-    | "reset";
+  do: ShotActionName;
   at: string;
+  /** Element ids present in the scene, normalized like ShotElement.id. */
   target: string[];
   [field: string]: unknown;
 }
