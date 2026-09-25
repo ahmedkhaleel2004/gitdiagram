@@ -4,12 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { Play, Star } from "lucide-react";
 import type { VideoCard } from "~/features/explainer/catalog-types";
+import { formatCompact } from "~/lib/format";
 import styles from "./video-grid.module.css";
-
-const compact = new Intl.NumberFormat("en", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
 
 function Poster({ card }: { card: VideoCard }) {
   const [failed, setFailed] = useState(false);
@@ -81,7 +77,7 @@ export function VideoGrid({ cards }: { cards: VideoCard[] }) {
                 {card.stars > 0 && (
                   <span>
                     <Star size={12} aria-hidden="true" />
-                    {compact.format(card.stars).toLowerCase()}
+                    {formatCompact(card.stars).toLowerCase()}
                   </span>
                 )}
                 {card.language && <span>{card.language}</span>}

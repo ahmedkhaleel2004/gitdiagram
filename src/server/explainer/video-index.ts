@@ -13,6 +13,7 @@ import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
 const INDEX_KEY = "video:v1:index";
 const READY_KEY = "video:v1:index:ready";
+const BUILD_KEY = "video:v1:index:building";
 
 const field = (owner: string, repo: string) =>
   `${owner.toLowerCase()}/${repo.toLowerCase()}`;
@@ -95,23 +96,57 @@ export async function indexVideo(
   }
 }
 
-/** Every indexed card, or null while the index has not been built. Throws if Redis fails. */
-export async function readVideoIndex(): Promise<VideoCard[] | null> {
-  if ((await upstashCommand<string | null>(["GET", READY_KEY])) !== "1")
-    return null;
+/**
+ * Every indexed card, and whether the index is complete: until it has been
+ * built from storage it may hold only the videos stored since. Throws if
+ * Redis fails.
+ */
+export async function readVideoIndex(): Promise<{
+  ready: boolean;
+  cards: VideoCard[];
+}> {
+  const ready =
+    (await upstashCommand<string | null>(["GET", READY_KEY])) === "1";
   const values = await upstashCommand<string[]>(["HVALS", INDEX_KEY]);
-  return values.flatMap((value) => {
+  const cards = values.flatMap((value) => {
     try {
       return [JSON.parse(value) as VideoCard];
     } catch {
       return [];
     }
   });
+  return { ready, cards };
 }
 
-/** Build the index from cards read out of storage, then mark it ready. */
-export async function fillVideoIndex(cards: VideoCard[]): Promise<void> {
+/**
+ * Whether this caller should build the index from storage now: one at a
+ * time, and at most once every five minutes, so a storage outage that keeps
+ * a build from finishing does not list every object on every request.
+ * Throws if Redis fails.
+ */
+export async function claimVideoIndexBuild(): Promise<boolean> {
+  return (
+    (await upstashCommand<"OK" | null>([
+      "SET",
+      BUILD_KEY,
+      "1",
+      "NX",
+      "EX",
+      300,
+    ])) === "OK"
+  );
+}
+
+/**
+ * Add cards read out of storage to the index, never over ones written
+ * meanwhile. Only a complete read (every stored video's artifact came back)
+ * marks the index ready; until then the next build tries again.
+ */
+export async function fillVideoIndex(
+  cards: VideoCard[],
+  { complete }: { complete: boolean },
+): Promise<void> {
   for (let start = 0; start < cards.length; start += 100)
     await writeCards(cards.slice(start, start + 100), "missing");
-  await upstashCommand(["SET", READY_KEY, "1"]);
+  if (complete) await upstashCommand(["SET", READY_KEY, "1"]);
 }
