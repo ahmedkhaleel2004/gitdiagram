@@ -24,6 +24,8 @@ const state: AdminState = {
   controls: {
     videoAudience: "priority",
     priorityPlaces: "cities",
+    limitedCountryAccess: "some",
+    limitedCountryShare: null,
     videosPaused: false,
     videoDailyLimit: 20,
     videoPersonDailyLimit: 2,
@@ -92,6 +94,23 @@ describe("video making controls", () => {
     const change = renderControls();
     fireEvent.click(screen.getByRole("radio", { name: /US, Canada & UK/ }));
     expect(change).toHaveBeenCalledWith({ priorityPlaces: "countries" });
+  });
+
+  it("blocks the limited countries straight away, and asks before opening them", async () => {
+    const change = renderControls();
+    const group = screen.getByRole("radiogroup", { name: "Limited countries" });
+    expect(
+      within(group).getByRole("radio", { name: /10% a day/ }),
+    ).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(group).getByRole("radio", { name: /Blocked/ }));
+    expect(change).toHaveBeenCalledWith({ limitedCountryAccess: "blocked" });
+    change.mockClear();
+    fireEvent.click(within(group).getByRole("radio", { name: /Open/ }));
+    expect(change).not.toHaveBeenCalled();
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Yes, open them" })),
+    );
+    expect(change).toHaveBeenCalledWith({ limitedCountryAccess: "open" });
   });
 
   it("asks before dropping a limit override", async () => {

@@ -12,7 +12,9 @@ import {
 // - the operator's videos,
 // - popular repositories, whoever asks (VIDEO_PREMIUM_MIN_STARS),
 // - a priority visitor's first video of the day (takePremiumVideo).
-// Every other video is made with GPT-6 Sol, which is close behind.
+// Every other video is made with GPT-6 Sol, which is close behind. A visitor
+// let in from a limited country (features/admin/limited-countries.ts) always
+// gets the standard planner, even for a popular repository.
 
 function minStars(): number {
   const parsed = Number.parseInt(
@@ -32,10 +34,14 @@ export async function choosePlanner(params: {
   operator: boolean;
   stars: number;
   priority: boolean;
+  /** Never the premium planner (a visitor from a limited country). */
+  standardOnly?: boolean;
   takePremium: () => Promise<{ refund: () => Promise<void> } | null>;
 }): Promise<PlannerChoice> {
-  if (params.operator || params.stars >= minStars() || !hasStandardPlanner())
+  if (params.operator || !hasStandardPlanner())
     return { planner: premiumPlanner() };
+  if (params.standardOnly) return { planner: standardPlanner() };
+  if (params.stars >= minStars()) return { planner: premiumPlanner() };
   if (params.priority) {
     // Without Redis the visitor gets the standard model, never a free premium one.
     const taken = await params.takePremium().catch((error: unknown) => {

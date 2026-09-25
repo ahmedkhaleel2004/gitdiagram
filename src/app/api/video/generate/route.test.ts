@@ -69,13 +69,17 @@ import { POST } from "./route";
 
 const VISITOR = "0b6f3a52-6a1f-4a8e-9a3c-2f0d7c1e5b44";
 
-function request(cookie: string | null = `${VISITOR_COOKIE}=${VISITOR}`) {
+function request(
+  cookie: string | null = `${VISITOR_COOKIE}=${VISITOR}`,
+  headers: Record<string, string> = {},
+) {
   return new Request("https://gitdiagram.com/api/video/generate", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Origin: "https://gitdiagram.com",
       ...(cookie ? { cookie } : {}),
+      ...headers,
     },
     body: JSON.stringify({ username: "acme", repo: "demo" }),
   });
@@ -151,6 +155,39 @@ describe("POST /api/video/generate", () => {
     const { response } = await run();
     expect(response.status).toBe(503);
     expect(mocks.reserveVideoSlot).not.toHaveBeenCalled();
+  });
+
+  it("holds back a limited country the operator blocked", async () => {
+    mocks.readAdmissionControls.mockResolvedValue({
+      videoAudience: "everyone",
+      videosPaused: false,
+      limitedCountryAccess: "blocked",
+      limitedCountryShare: null,
+    });
+    const { response } = await run(
+      request(undefined, { "x-vercel-ip-country": "IN" }),
+    );
+    expect(response.status).toBe(403);
+    expect(mocks.reportHeldBack).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: "country" }),
+    );
+    expect(mocks.reserveVideoSlot).not.toHaveBeenCalled();
+  });
+
+  it("gives someone drawn in a limited country one video at most", async () => {
+    mocks.readAdmissionControls.mockResolvedValue({
+      videoAudience: "everyone",
+      videosPaused: false,
+      limitedCountryAccess: "some",
+      limitedCountryShare: 100,
+    });
+    failAfter(new Error("GitHub timed out"), { paid: false });
+    await run(request(undefined, { "x-vercel-ip-country": "BR" }));
+    expect(mocks.reserveVideoSlot).toHaveBeenCalledWith(expect.anything(), {
+      priority: false,
+      limited: true,
+    });
   });
 
   it("refunds a failure that happened before any model was paid", async () => {

@@ -4,6 +4,7 @@ import {
   githubRepoSchema,
   githubUsernameSchema,
 } from "~/server/generate/types";
+import { getClientIp } from "~/server/http/client-ip";
 import {
   jsonErrorResponse,
   NO_STORE_RESPONSE_HEADERS,
@@ -14,7 +15,11 @@ import {
 } from "~/server/explainer/config";
 import { readAdmissionControls } from "~/server/admin/controls";
 import { videoResponseTag } from "~/server/explainer/cache";
-import { anyDeviceHere, audienceBlock } from "~/server/explainer/audience";
+import {
+  anyDeviceHere,
+  audienceBlock,
+  limitedCountryRule,
+} from "~/server/explainer/audience";
 import { reportHeldBack } from "~/server/explainer/gate-notice";
 import {
   generationLockName,
@@ -89,6 +94,12 @@ async function videoAvailability(
         canGenerate: false,
         paused: blocked === "mobile" ? "device" : "audience",
       };
+    }
+    if (
+      limitedCountryRule(request, controls, getClientIp(request)) === "blocked"
+    ) {
+      heldBack("country");
+      return { canGenerate: false, paused: "audience" };
     }
     const [left, credits] = await Promise.all([
       videosLeftToday(),

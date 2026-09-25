@@ -5,9 +5,15 @@ export type VideoAudience = "priority" | "desktop" | "everyone";
 /** Which places count as priority (see features/admin/priority-places.ts). */
 export type PriorityPlaces = "cities" | "countries";
 
+/** How limited making videos is in the limited countries (features/admin/limited-countries.ts). */
+export type LimitedCountryAccess = "blocked" | "some" | "open";
+
 export interface LiveControls {
   videoAudience: VideoAudience;
   priorityPlaces: PriorityPlaces;
+  limitedCountryAccess: LimitedCountryAccess;
+  /** Percent of connections let in each day under "some"; null for the default. */
+  limitedCountryShare: number | null;
   videosPaused: boolean;
   videoDailyLimit: number | null;
   videoPersonDailyLimit: number | null;

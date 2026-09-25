@@ -198,15 +198,19 @@ async function reserve(
   };
 }
 
-/** A place in today's video budget; someone in a priority place gets more. */
+/**
+ * A place in today's video budget; someone in a priority place gets more,
+ * someone let in from a limited country at most one.
+ */
 export async function reserveVideoSlot(
   requester: Requester,
-  options: { priority: boolean },
+  options: { priority: boolean; limited?: boolean },
 ) {
   const limits = await videoLimits(true);
+  const person = options.priority ? limits.priorityPerson : limits.person;
   return reserve("generate", requester, {
     ...limits,
-    person: options.priority ? limits.priorityPerson : limits.person,
+    person: options.limited ? Math.min(person, 1) : person,
   });
 }
 

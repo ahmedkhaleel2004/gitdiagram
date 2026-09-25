@@ -17,6 +17,7 @@ import {
   audienceBlock,
   audienceMessage,
   isInVideoRegion,
+  limitedCountryRule,
 } from "~/server/explainer/audience";
 import {
   purgeVideoResponse,
@@ -119,6 +120,9 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   // Someone in a priority place may make more videos a day, and their first
   // is made with the premium model (see planner.ts).
   let priority = false;
+  // Someone let in from a limited country makes at most one video a day, with
+  // the standard models (see features/admin/limited-countries.ts).
+  let limited = false;
   if (!trusted) {
     // The page's first request (GET /api/video) names the browser. Without
     // that name the per-person budget cannot count this caller.
@@ -146,6 +150,12 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       gated(blocked);
       return jsonErrorResponse(audienceMessage(blocked), 403);
     }
+    const country = limitedCountryRule(request, controls, getClientIp(request));
+    if (country === "blocked") {
+      gated("country");
+      return jsonErrorResponse(audienceMessage("place"), 403);
+    }
+    limited = country === "limited";
     priority = isInVideoRegion(request, controls.priorityPlaces);
   }
 
@@ -175,7 +185,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       }
       reservation = await reserveVideoSlot(
         { visitorId: visitor.id, clientIp: getClientIp(request) },
-        { priority },
+        { priority, limited },
       );
       if (!reservation.ok) {
         gated(reservation.reason);
@@ -290,6 +300,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
             operator: trusted,
             stars,
             priority,
+            standardOnly: limited,
             takePremium: () => takePremiumVideo(visitor.id),
           });
           refundPremium = choice.refund;

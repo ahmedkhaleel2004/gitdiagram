@@ -30,10 +30,16 @@ describe("live controls", () => {
         "countries",
         "videoPriorityPersonDailyLimit",
         "4",
+        "limitedCountryAccess",
+        "blocked",
+        "limitedCountryShare",
+        "25",
       ]),
     ).toEqual({
       videoAudience: "everyone",
       priorityPlaces: "countries",
+      limitedCountryAccess: "blocked",
+      limitedCountryShare: 25,
       videosPaused: true,
       videoDailyLimit: 200,
       videoPersonDailyLimit: 2,
@@ -51,6 +57,10 @@ describe("live controls", () => {
         "moon",
         "videoDailyLimit",
         "-4",
+        "limitedCountryAccess",
+        "everyone",
+        "limitedCountryShare",
+        "101",
       ]),
     ).toEqual(DEFAULT_CONTROLS);
   });

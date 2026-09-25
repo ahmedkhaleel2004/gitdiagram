@@ -18,6 +18,8 @@ const CONTROLS = {
   videoPriorityPersonDailyLimit: null,
   videoNetworkDailyLimit: null,
   priorityPlaces: "cities",
+  limitedCountryAccess: "some",
+  limitedCountryShare: null,
 };
 
 vi.mock("~/server/storage/upstash", () => ({ upstashEval, upstashCommand }));

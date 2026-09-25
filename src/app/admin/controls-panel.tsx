@@ -3,9 +3,14 @@
 import { useRef, useState } from "react";
 
 import { Switch } from "~/components/ui/switch";
+import {
+  DEFAULT_LIMITED_COUNTRY_SHARE,
+  LIMITED_COUNTRY_NAMES,
+} from "~/features/admin/limited-countries";
 import { setAdminTools, useAdminTools } from "~/features/admin/tools";
 import type {
   AdminState,
+  LimitedCountryAccess,
   LiveControls,
   PriorityPlaces,
   VideoAudience,
@@ -50,6 +55,18 @@ const PLACES: Array<Choice<PriorityPlaces>> = [
     label: "US, Canada & UK",
     hint: "All of all three, plus Paris",
   },
+];
+
+const limitedAccessChoices = (
+  share: number,
+): Array<Choice<LimitedCountryAccess>> => [
+  { value: "blocked", label: "Blocked", hint: "No new videos from them" },
+  {
+    value: "some",
+    label: `${share}% a day`,
+    hint: `A daily draw lets ${share}% of connections make one standard video`,
+  },
+  { value: "open", label: "Open", hint: "The same rules as everywhere else" },
 ];
 
 /**
@@ -176,22 +193,66 @@ function AudiencePicker({
   );
 }
 
+/** How limited the limited countries are; opening them fully asks first. */
+function LimitedCountriesPicker({
+  value,
+  share,
+  disabled,
+  change,
+}: {
+  value: LimitedCountryAccess;
+  share: number;
+  disabled: boolean;
+  change: Change;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <ChoicePicker
+        label="Limited countries"
+        options={limitedAccessChoices(share)}
+        value={value}
+        disabled={disabled}
+        onPick={(option) => {
+          if (option === "open") setConfirming(true);
+          else void change({ limitedCountryAccess: option });
+        }}
+      />
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Open videos in the limited countries?"
+        description={`Everyone in ${LIMITED_COUNTRY_NAMES} can start new videos under the usual rules within a second. The daily limits still apply.`}
+        confirmLabel="Yes, open them"
+        busyLabel="Saving…"
+        onConfirm={() => change({ limitedCountryAccess: "open" })}
+      />
+    </>
+  );
+}
+
 function LimitField({
   label,
   override,
   effective,
+  max,
   disabled,
   onSave,
 }: {
   label: string;
   override: number | null;
   effective: number | undefined;
+  max?: number;
   disabled: boolean;
   onSave: (value: number | null) => Promise<string | null>;
 }) {
   const [draft, setDraft] = useState("");
   const parsed = Number.parseInt(draft, 10);
-  const valid = draft !== "" && Number.isSafeInteger(parsed) && parsed >= 0;
+  const valid =
+    draft !== "" &&
+    Number.isSafeInteger(parsed) &&
+    parsed >= 0 &&
+    (max === undefined || parsed <= max);
   return (
     <div className="flex flex-col gap-1.5">
       <div className="text-sm font-semibold">{label}</div>
@@ -321,6 +382,29 @@ export function ControlsPanel({
               value={controls.priorityPlaces}
               disabled={saving}
               onPick={(option) => void change({ priorityPlaces: option })}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="text-sm font-semibold">Limited countries</div>
+            <p className="text-xs text-[hsl(var(--neo-soft-text))]">
+              {LIMITED_COUNTRY_NAMES}. Applies whoever can make videos above.
+              Watching and downloading stay open.
+            </p>
+            <LimitedCountriesPicker
+              value={controls.limitedCountryAccess}
+              share={
+                controls.limitedCountryShare ?? DEFAULT_LIMITED_COUNTRY_SHARE
+              }
+              disabled={saving}
+              change={change}
+            />
+            <LimitField
+              label="Share let in each day (%)"
+              override={controls.limitedCountryShare}
+              effective={DEFAULT_LIMITED_COUNTRY_SHARE}
+              max={100}
+              disabled={saving}
+              onSave={(value) => change({ limitedCountryShare: value })}
             />
           </div>
           <label className="flex items-center justify-between gap-4 rounded-md border-2 border-black bg-white/70 p-3 dark:bg-black/20">
