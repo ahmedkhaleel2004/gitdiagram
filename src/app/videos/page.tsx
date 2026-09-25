@@ -8,13 +8,13 @@ export const metadata: Metadata = {
   title: "Watch Repos Explained in a Minute | GitDiagram",
   description:
     "Narrated one-minute video tours of GitHub repositories: what each project does, how its parts fit together, and a few of the decisions inside.",
-  alternates: { canonical: "/watch" },
+  alternates: { canonical: "/videos" },
 };
 
 // The catalog is cached for five minutes; new videos appear within that.
 export const revalidate = 300;
 
-export default async function WatchIndexPage() {
+export default async function VideosIndexPage() {
   const cards = isVideoExplainerEnabled()
     ? await getVideoCatalog().catch(() => [])
     : [];

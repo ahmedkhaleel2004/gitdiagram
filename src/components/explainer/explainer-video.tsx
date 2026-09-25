@@ -257,7 +257,7 @@ export function ExplainerVideo({
       <div className={styles.cta}>
         {paused ? (
           <Link
-            href="/watch"
+            href="/videos"
             className={`${controls.actionButton} ${controls.primary}`}
           >
             <Clapperboard size={15} aria-hidden="true" />

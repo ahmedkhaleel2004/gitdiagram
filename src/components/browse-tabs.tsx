@@ -18,7 +18,7 @@ export function BrowseTabs({ active }: { active: "diagrams" | "videos" }) {
         Diagrams
       </Link>
       <Link
-        href="/watch"
+        href="/videos"
         aria-current={active === "videos" ? "page" : undefined}
         className={tab(active === "videos")}
       >

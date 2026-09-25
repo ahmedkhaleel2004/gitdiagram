@@ -85,11 +85,11 @@ const config = {
         destination: "/advertise",
         permanent: true,
       },
-      // The video gallery lives at /watch; send the obvious guesses there.
+      // The video gallery moved from /watch to /videos.
       {
-        source: "/:path(videos|video)",
-        destination: "/watch",
-        permanent: false,
+        source: "/:path(watch|video)",
+        destination: "/videos",
+        permanent: true,
       },
       // Support replacing github.com in a file, branch, issue or pull-request URL.
       {

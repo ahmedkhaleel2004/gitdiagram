@@ -75,7 +75,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
   // never rewrites URLs), so these can render at SSR without mismatch risk.
   const isBrowsePage = pathname === "/browse";
   const showMobileGithubButton =
-    pathname === "/" || isBrowsePage || pathname === "/watch";
+    pathname === "/" || isBrowsePage || pathname === "/videos";
 
   return (
     <header className="border-black sm:border-b-[3px] dark:border-black">
@@ -133,7 +133,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
         <nav className="hidden items-center gap-6 sm:flex">
           {VIDEOS_ENABLED && (
             <Link
-              href="/watch"
+              href="/videos"
               className="flex items-center gap-1.5 text-sm font-semibold text-black transition-colors duration-150 hover:text-purple-600 dark:text-neutral-200 dark:hover:text-[hsl(var(--neo-link-hover))]"
             >
               Videos
@@ -198,7 +198,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
               <nav className="flex flex-col gap-2">
                 {VIDEOS_ENABLED && (
                   <Link
-                    href="/watch"
+                    href="/videos"
                     onClick={() => setIsMobileMenuOpen(false)}
                     className="neo-button inline-flex min-h-[48px] items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
                   >

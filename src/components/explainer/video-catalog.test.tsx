@@ -54,7 +54,7 @@ function shownRepos() {
 
 describe("VideoCatalog", () => {
   beforeEach(() => {
-    window.history.replaceState(null, "", "/watch");
+    window.history.replaceState(null, "", "/videos");
   });
 
   afterEach(() => {
@@ -108,7 +108,7 @@ describe("VideoCatalog", () => {
         "2026-09-24T12:00:00.000Z",
       ),
     );
-    window.history.replaceState(null, "", "/watch?sort=name_asc");
+    window.history.replaceState(null, "", "/videos?sort=name_asc");
     render(<VideoCatalog cards={many} />);
 
     expect(shownRepos()).toHaveLength(VIDEO_PAGE_SIZE);

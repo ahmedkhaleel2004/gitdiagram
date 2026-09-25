@@ -3,7 +3,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { listStoredVideos, readVideoArtifact } from "./store";
 
-/** What a video card on /watch shows. */
+/** What a video card on /videos shows. */
 export interface VideoCard {
   owner: string;
   repo: string;
@@ -44,7 +44,7 @@ async function loadCatalog(): Promise<VideoCard[]> {
       });
     }
   }
-  // Newest first, as listed; /watch sorts and filters on the client.
+  // Newest first, as listed; /videos sorts and filters on the client.
   return cards;
 }
 

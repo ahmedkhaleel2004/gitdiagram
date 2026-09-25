@@ -23,7 +23,7 @@ GitDiagram can now turn a repository into a narrated video of about a minute. Th
 
 [![Watch GitDiagram explain itself in a minute](./docs/readme_video.jpg)](https://gitdiagram.com/ahmedkhaleel2004/gitdiagram/video)
 
-- **[Watch the gallery →](https://gitdiagram.com/watch)** or add `/video` to any diagram URL, such as `gitdiagram.com/owner/repo/video`.
+- **[Watch the gallery →](https://gitdiagram.com/videos)** or add `/video` to any diagram URL, such as `gitdiagram.com/owner/repo/video`.
 - **Download an MP4** in landscape or vertical (9:16), with captions burned in.
 - **Making new videos is in early access.** Anyone can watch videos that already exist.
 

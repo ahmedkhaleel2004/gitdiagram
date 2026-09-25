@@ -500,7 +500,7 @@ export async function assembleMp4(params: {
 /**
  * A 1200×675 still of the first scene, finished: with a play button (the
  * poster link previews show on X, Reddit and chat apps) and without (the
- * thumbnail on /watch, which draws its own).
+ * thumbnail on /videos, which draws its own).
  */
 export async function renderExplainerPoster(params: {
   artifact: VideoArtifact;

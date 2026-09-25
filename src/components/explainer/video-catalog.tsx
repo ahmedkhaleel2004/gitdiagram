@@ -27,7 +27,7 @@ function readUrlQuery() {
   );
 }
 
-/** The /watch gallery with the same search, sort and star filter as /browse. */
+/** The /videos gallery with the same search, sort and star filter as /browse. */
 export function VideoCatalog({ cards }: { cards: VideoCard[] }) {
   const [query, setQuery] = useState<VideoQuery>(() =>
     normalizeBrowseQuery({}),
@@ -69,7 +69,7 @@ export function VideoCatalog({ cards }: { cards: VideoCard[] }) {
     setQuery(nextQuery);
     const href = buildBrowseHref(
       { ...nextQuery, q: nextQuery.q.trim() },
-      "/watch",
+      "/videos",
     );
     if (historyMode === "push") window.history.pushState(null, "", href);
     else window.history.replaceState(null, "", href);

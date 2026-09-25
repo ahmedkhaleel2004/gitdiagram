@@ -33,7 +33,7 @@ export default function HomePage() {
             <div className="promo-banner relative isolate">
               <span aria-hidden="true" className="promo-banner-glow" />
               <Link
-                href="/watch"
+                href="/videos"
                 className="browse-muted-button inline-flex min-h-[40px] items-center gap-2.5 rounded-full py-1.5 pr-4 pl-2 text-sm font-semibold whitespace-nowrap max-[389px]:gap-2 max-[389px]:pr-3 max-[389px]:text-[0.8125rem]"
               >
                 <NewBadge />
