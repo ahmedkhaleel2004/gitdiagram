@@ -139,10 +139,11 @@ export async function POST(request: Request) {
     rateLimitedClientIp,
     rateLimitedWindowStartSeconds,
   } = admission.value;
-  // A private repository's name stays off the operator's live feed.
-  const liveLabel = githubPat?.trim()
-    ? "a private repository"
-    : `${username}/${repo}`;
+  // A private repository's name stays off the operator's live feed: a run is
+  // announced once GitHub has confirmed the repository public, and a run
+  // with the visitor's own GitHub token is labelled private throughout.
+  let liveLabel = githubPat?.trim() ? "a private repository" : "a repository";
+  let liveStarted = false;
   const generationAbortController = new AbortController();
   const deadlineSignal = AbortSignal.timeout(GENERATION_DEADLINE_MS);
   const postResponseTasks: Array<() => Promise<void>> = [];
@@ -306,14 +307,17 @@ export async function POST(request: Request) {
               used_private_github_token: Boolean(githubPat),
             }),
           );
-          void emitLiveEvent({
-            kind: "diagram.started",
-            repo: liveLabel,
-            model,
-            ownKey: Boolean(apiKey),
-            job: { id: audit.sessionId, state: "start", label: liveLabel },
-            ...requestOrigin(request),
-          });
+          const announceStarted = () => {
+            liveStarted = true;
+            void emitLiveEvent({
+              kind: "diagram.started",
+              repo: liveLabel,
+              model,
+              ownKey: Boolean(apiKey),
+              job: { id: audit.sessionId, state: "start", label: liveLabel },
+              ...requestOrigin(request),
+            });
+          };
 
           if (isComplimentaryGateEnabled() && !apiKey) {
             if (provider !== "openai") {
@@ -381,6 +385,9 @@ export async function POST(request: Request) {
           repositoryVerified = true;
           recordTiming("github", githubStartedAt);
           storageVisibility = githubData.isPrivate ? "private" : "public";
+          if (!githubPat?.trim() && !githubData.isPrivate)
+            liveLabel = `${username}/${repo}`;
+          announceStarted();
           const context = prepareRepositoryContext(githubData);
           const analysisModel = selectAnalysisModel({
             provider,
@@ -975,7 +982,9 @@ export async function POST(request: Request) {
               errorCode: terminalErrorCode,
               ms: Math.round(performance.now() - invocationStartedAt),
               costUsd: finishedCost?.amountUsd ?? null,
-              job: { id: audit.sessionId, state: "end" },
+              ...(liveStarted
+                ? { job: { id: audit.sessionId, state: "end" as const } }
+                : {}),
             }),
           );
         }

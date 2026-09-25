@@ -101,6 +101,7 @@ vi.mock("~/server/generate/rate-limit", async (importOriginal) => ({
   refundGenerationRateLimit: mocks.refundRateLimit,
 }));
 import { POST } from "~/app/api/generate/stream/route";
+import { emitLiveEvent } from "~/server/admin/live-events";
 
 const estimateCostSummary = {
   kind: "estimate" as const,
@@ -267,6 +268,43 @@ describe("POST /api/generate/stream", () => {
     await mocks.afterCallback?.();
 
     expect(mocks.refundRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("names a repository on the live feed only once it is confirmed public", async () => {
+    mockEstimate(1_000);
+    const live = () =>
+      vi
+        .mocked(emitLiveEvent)
+        .mock.calls.map(([event]) => [
+          event.kind,
+          event.repo,
+          event.job?.state ?? null,
+        ]);
+
+    mocks.getGithubData.mockRejectedValueOnce(
+      new Error("Repository not found."),
+    );
+    await (await POST(request())).text();
+    await mocks.afterCallback?.();
+    expect(live()).toEqual([["diagram.finished", "a repository", null]]);
+
+    vi.mocked(emitLiveEvent).mockClear();
+    mocks.streamCompletion.mockRejectedValue(new Error("upstream exploded"));
+    await (await POST(request())).text();
+    await mocks.afterCallback?.();
+    expect(live()).toEqual([
+      ["diagram.started", "openai/openai-node", "start"],
+      ["diagram.finished", "openai/openai-node", "end"],
+    ]);
+
+    vi.mocked(emitLiveEvent).mockClear();
+    mocks.resolveRequestCredentials.mockResolvedValue({ githubPat: "ghp_x" });
+    await (await POST(request())).text();
+    await mocks.afterCallback?.();
+    expect(live()).toEqual([
+      ["diagram.started", "a private repository", "start"],
+      ["diagram.finished", "a private repository", "end"],
+    ]);
   });
 
   it("does not throttle a caller who brings their own API key", async () => {
