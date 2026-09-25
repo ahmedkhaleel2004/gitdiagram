@@ -2,7 +2,11 @@
 
 Can GPT-6 write and design explainer videos as well as Claude? Each repository
 was read once; the same input then went to five director/designer setups. Every
-film was voiced by the same ElevenLabs voice and rendered by the same engine.
+film was voiced by the same ElevenLabs voice (the narrator at the time) and
+rendered by the same engine. Narration now uses Gemini 3.8 Flash through
+OpenRouter (`src/server/explainer/voice.ts`), so these scripts are a historical
+record: they are not type-checked or linted with the app and may not run
+against the current code.
 
 - `run.ts generate | render | summary`: make the films (run with
   `bun --conditions=react-server`; rendering needs `serve.ts` running and
@@ -17,13 +21,13 @@ OpenAI Responses API) and `VIDEO_PLANNER_EFFORT` (`low` by default).
 
 ## Results: fastapi, ripgrep, zustand, excalidraw
 
-| Setup | Cost / film | Time / film | Validator warnings (sum) | Claude judge: overall, avg rank | GPT judge: overall, avg rank |
-| --- | --- | --- | --- | --- | --- |
-| Claude Opus 5.5, low (production) | $0.37–0.44 | 30–51 s | 23 | 8.5, 1.0 | 8.0, 2.25 |
-| GPT-6 Sol, low | $0.21–0.33 | 36–46 s | 8 | 6.5, 2.75 | 7.5, 2.5 |
-| GPT-6 Sol, medium | $0.29–0.33 | 66–91 s | 1 | 6.8, 2.5 | 8.2, 2.0 |
-| GPT-6 Luna, low | $0.01–0.02 | 29–46 s | 68 | 5.2, 4.75 | 6.0, 4.5 |
-| GPT-6 Luna, medium | $0.02 | 64–93 s | 16 | 6.0, 4.0 | 6.8, 3.75 |
+| Setup                             | Cost / film | Time / film | Validator warnings (sum) | Claude judge: overall, avg rank | GPT judge: overall, avg rank |
+| --------------------------------- | ----------- | ----------- | ------------------------ | ------------------------------- | ---------------------------- |
+| Claude Opus 5.5, low (production) | $0.37–0.44  | 30–51 s     | 23                       | 8.5, 1.0                        | 8.0, 2.25                    |
+| GPT-6 Sol, low                    | $0.21–0.33  | 36–46 s     | 8                        | 6.5, 2.75                       | 7.5, 2.5                     |
+| GPT-6 Sol, medium                 | $0.29–0.33  | 66–91 s     | 1                        | 6.8, 2.5                        | 8.2, 2.0                     |
+| GPT-6 Luna, low                   | $0.01–0.02  | 29–46 s     | 68                       | 5.2, 4.75                       | 6.0, 4.5                     |
+| GPT-6 Luna, medium                | $0.02       | 64–93 s     | 16                       | 6.0, 4.0                        | 6.8, 3.75                    |
 
 - Opus writes the best narration: a real hook, one story, lines that land.
   Its 23 warnings are all on ripgrep: it made up a messy file tree for the

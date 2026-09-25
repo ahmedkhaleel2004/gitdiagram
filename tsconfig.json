@@ -44,6 +44,7 @@
     ".agents",
     ".claude",
     ".playwright-mcp",
+    "experiments",
     "public/video-engine",
     "workers",
     "**/__pycache__"

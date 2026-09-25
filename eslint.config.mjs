@@ -24,6 +24,8 @@ const config = [
       "next-env.d.ts",
       "public/video-engine/assets/**",
       "workers/**",
+      // Historical experiment scripts (see their READMEs), not part of the app.
+      "experiments/**",
     ],
   },
   {
