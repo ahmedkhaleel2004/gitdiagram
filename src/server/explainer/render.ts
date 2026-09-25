@@ -77,7 +77,15 @@ async function launchBrowser(dir: string): Promise<Browser> {
     throw new Error(
       "Set VIDEO_RENDER_CHROME_PATH to a headless Chromium to render locally.",
     );
-  return puppeteer.launch({ executablePath, headless: "shell", userDataDir });
+  // Extra Chromium flags for this host, such as a container's --no-sandbox.
+  const args =
+    process.env.VIDEO_RENDER_CHROME_ARGS?.split(/\s+/).filter(Boolean);
+  return puppeteer.launch({
+    executablePath,
+    headless: "shell",
+    userDataDir,
+    ...(args?.length ? { args } : {}),
+  });
 }
 
 const closings = new WeakMap<Browser, Promise<void>>();
