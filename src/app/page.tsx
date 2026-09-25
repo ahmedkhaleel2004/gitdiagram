@@ -1,11 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import MainCard from "~/components/main-card";
 import Hero from "~/components/hero";
 import { NewBadge } from "~/components/new-badge";
 import { cn } from "~/lib/utils";
+import { VIDEOS_ENABLED } from "~/lib/video-flag";
 
-const VIDEOS_ENABLED = process.env.NEXT_PUBLIC_VIDEO_EXPLAINER === "1";
-import type { Metadata } from "next";
+// The server-rendered parts (the header's star count, which sponsor campaign
+// is scheduled) refresh every five minutes instead of freezing at build time.
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "GitDiagram - Visualize Any GitHub Repository",
@@ -19,7 +22,9 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-[calc(100svh-9.75rem)] flex-col justify-center px-4 pt-6 pb-3 sm:block sm:min-h-0 sm:px-8 sm:py-8 md:p-8">
+    // Clipped sideways at the screen's edge: the banner's glow reaches past it
+    // on narrow phones and would otherwise let the page scroll sideways.
+    <main className="flex min-h-[calc(100svh-9.75rem)] flex-col justify-center overflow-x-clip px-4 pt-6 pb-3 sm:block sm:min-h-0 sm:px-8 sm:py-8 md:p-8">
       {/* The banner borrows its room from the surrounding gaps so the page
           still fits one screen. */}
       <div
@@ -34,10 +39,16 @@ export default function HomePage() {
               <span aria-hidden="true" className="promo-banner-glow" />
               <Link
                 href="/videos"
-                className="browse-muted-button inline-flex min-h-[40px] items-center gap-2.5 rounded-full py-1.5 pr-4 pl-2 text-sm font-semibold whitespace-nowrap max-[389px]:gap-2 max-[389px]:pr-3 max-[389px]:text-[0.8125rem]"
+                className="browse-muted-button inline-flex min-h-[40px] max-w-full items-center gap-2.5 rounded-full py-1.5 pr-4 pl-2 text-sm font-semibold whitespace-nowrap max-[389px]:gap-2 max-[389px]:pr-3 max-[389px]:text-[0.8125rem]"
               >
                 <NewBadge />
-                Watch any repo explained in a minute
+                {/* The full line needs ~330px; the smallest phones get a shorter one. */}
+                <span className="max-[359px]:hidden">
+                  Watch any repo explained in a minute
+                </span>
+                <span className="hidden max-[359px]:inline">
+                  Repos explained in a minute
+                </span>
                 <span aria-hidden="true" className="promo-banner-arrow">
                   →
                 </span>
