@@ -1,7 +1,7 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { MAX_PATH } from "~/features/admin/presence-protocol";
+import { HIDDEN_REPORT_MS, MAX_PATH } from "~/features/admin/presence-protocol";
 import { FakeSocket, setVisibility } from "~/test/fake-socket";
 
 const navigation = vi.hoisted(() => ({ pathname: "/" }));
@@ -21,8 +21,12 @@ async function mount() {
 const params = (socket: FakeSocket | undefined) =>
   new URL(socket!.url).searchParams;
 
-/** Lets the page go idle, which is when the tab first connects. */
-const idle = () => act(() => vi.advanceTimersByTime(1_500));
+/** What a tab told the worker, leaving out its keep-alive pings. */
+const told = (socket: FakeSocket) =>
+  socket.sent.filter((message) => message !== "ping");
+
+/** Keeps the tab in view long enough for it to connect. */
+const idle = () => act(() => vi.advanceTimersByTime(15_000));
 
 beforeEach(() => {
   vi.resetModules();
@@ -44,10 +48,11 @@ afterEach(() => {
 });
 
 describe("live presence", () => {
-  it("connects once the page is idle, as one browser", async () => {
+  it("connects once the tab has been in view a while, as one browser", async () => {
     await mount();
+    act(() => vi.advanceTimersByTime(14_999));
     expect(FakeSocket.instances).toHaveLength(0);
-    idle();
+    act(() => vi.advanceTimersByTime(1));
     const query = params(FakeSocket.last);
     expect(query.get("p")).toBe("/");
     expect(query.get("v")).toBe("1");
@@ -61,6 +66,20 @@ describe("live presence", () => {
     act(() => vi.advanceTimersByTime(60_000));
     expect(FakeSocket.instances).toHaveLength(0);
     act(() => setVisibility("visible"));
+    idle();
+    expect(FakeSocket.instances).toHaveLength(1);
+  });
+
+  it("counts time in view across looks, and never connects for a quick visit", async () => {
+    await mount();
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => setVisibility("hidden"));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(FakeSocket.instances).toHaveLength(0);
+    act(() => setVisibility("visible"));
+    act(() => vi.advanceTimersByTime(4_999));
+    expect(FakeSocket.instances).toHaveLength(0);
+    act(() => vi.advanceTimersByTime(1));
     expect(FakeSocket.instances).toHaveLength(1);
   });
 
@@ -70,9 +89,28 @@ describe("live presence", () => {
     const socket = FakeSocket.last!;
     page.navigate("/acme/app");
     act(() => setVisibility("hidden"));
-    expect(socket.sent).toEqual([]);
+    expect(told(socket)).toEqual([]);
     act(() => socket.open());
-    expect(socket.sent).toEqual(["p:/acme/app", "v:0"]);
+    expect(told(socket)).toEqual(["p:/acme/app"]);
+    act(() => vi.advanceTimersByTime(HIDDEN_REPORT_MS));
+    expect(told(socket)).toEqual(["p:/acme/app", "v:0"]);
+  });
+
+  it("says it went out of view only after a while, so a quick look away sends nothing", async () => {
+    await mount();
+    idle();
+    const socket = FakeSocket.last!;
+    act(() => socket.open());
+    act(() => setVisibility("hidden"));
+    act(() => vi.advanceTimersByTime(HIDDEN_REPORT_MS - 1));
+    act(() => setVisibility("visible"));
+    act(() => vi.advanceTimersByTime(HIDDEN_REPORT_MS * 2));
+    expect(told(socket)).toEqual([]);
+    act(() => setVisibility("hidden"));
+    act(() => vi.advanceTimersByTime(HIDDEN_REPORT_MS));
+    expect(told(socket)).toEqual(["v:0"]);
+    act(() => setVisibility("visible"));
+    expect(told(socket)).toEqual(["v:0", "v:1"]);
   });
 
   it("stays out of automated browsers", async () => {
@@ -179,12 +217,14 @@ describe("live presence", () => {
     // Visibility events that change nothing (as some browsers repeat them).
     act(() => setVisibility("visible"));
     act(() => setVisibility("visible"));
-    expect(socket.sent).toEqual([]);
+    expect(told(socket)).toEqual([]);
     act(() => setVisibility("hidden"));
+    act(() => vi.advanceTimersByTime(HIDDEN_REPORT_MS / 2));
     act(() => setVisibility("hidden"));
-    expect(socket.sent).toEqual(["v:0"]);
+    act(() => vi.advanceTimersByTime(HIDDEN_REPORT_MS / 2));
+    expect(told(socket)).toEqual(["v:0"]);
     const long = `/${"x".repeat(MAX_PATH + 50)}`;
     page.navigate(long);
-    expect(socket.sent).toEqual(["v:0", `p:${long.slice(0, MAX_PATH)}`]);
+    expect(told(socket)).toEqual(["v:0", `p:${long.slice(0, MAX_PATH)}`]);
   });
 });

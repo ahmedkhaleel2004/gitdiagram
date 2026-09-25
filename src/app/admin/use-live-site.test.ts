@@ -103,7 +103,8 @@ describe("the dashboard's live socket", () => {
     // Polls bring new tokens every few seconds: not worth a message yet.
     rerender({ presence: { url: URL, token: token(DASHBOARD_TOKEN_MS) } });
     expect(socket.sent).toEqual([]);
-    for (let second = 5; second < 20; second += 5) {
+    // Three minutes on, two are left: now it is.
+    for (let second = 5; second < 185; second += 5) {
       act(() => vi.advanceTimersByTime(5_000));
       act(() => socket.receive("pong"));
     }
@@ -116,13 +117,12 @@ describe("the dashboard's live socket", () => {
     expect(onTokenNeeded).not.toHaveBeenCalled();
   });
 
-  it("asks for a token itself while hidden, when polls stop bringing them", () => {
+  it("asks for a token itself when polls stop bringing them", () => {
     const first = token(DASHBOARD_TOKEN_MS);
     const { rerender, onTokenNeeded } = setup(first);
     const socket = FakeSocket.last!;
     act(() => socket.open());
-    act(() => setVisibility("hidden"));
-    for (let second = 0; second < 15; second += 5) {
+    for (let second = 0; second < 180; second += 5) {
       act(() => vi.advanceTimersByTime(5_000));
       act(() => socket.receive("pong"));
     }
@@ -133,6 +133,37 @@ describe("the dashboard's live socket", () => {
     const newer = token(DASHBOARD_TOKEN_MS);
     rerender({ presence: { url: URL, token: newer } });
     expect(socket.sent).toEqual([`t:${newer}`]);
+  });
+
+  it("lets its socket go after a minute out of view, and comes back when shown", () => {
+    const { result, rerender, onTokenNeeded } = setup(
+      token(DASHBOARD_TOKEN_MS),
+    );
+    const socket = FakeSocket.last!;
+    act(() => socket.open());
+    const wait = (ms: number) => {
+      for (let waited = 0; waited < ms; waited += 5_000) {
+        act(() => vi.advanceTimersByTime(5_000));
+        act(() => socket.receive("pong"));
+      }
+    };
+    // A quick look elsewhere keeps it.
+    act(() => setVisibility("hidden"));
+    wait(30_000);
+    act(() => setVisibility("visible"));
+    wait(60_000);
+    expect(socket.closedWith).toBeNull();
+    act(() => setVisibility("hidden"));
+    wait(60_000);
+    expect(socket.closedWith).toBe(1000);
+    expect(result.current.status).toBe("offline");
+    act(() => vi.advanceTimersByTime(10 * 60_000));
+    expect(FakeSocket.instances).toHaveLength(1);
+    // Its token ran out meanwhile: it asks for one, then connects.
+    act(() => setVisibility("visible"));
+    expect(onTokenNeeded).toHaveBeenCalled();
+    rerender({ presence: { url: URL, token: token(DASHBOARD_TOKEN_MS) } });
+    expect(FakeSocket.instances).toHaveLength(2);
   });
 
   it("says when the worker speaks another protocol version", () => {

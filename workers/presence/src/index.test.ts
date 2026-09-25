@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ADMIN_PROTOCOL,
   DASHBOARD_TOKEN_PREFIX,
+  HIDDEN_REPORT_MS,
   MAX_PATH,
   PRESENCE_PROTOCOL,
   SIGNED_OUT_EVERYWHERE,
@@ -200,6 +201,29 @@ describe("dashboards", () => {
     );
     const join = admin.messages.find((m) => m.type === "join");
     expect(join?.type === "join" && join.visitor.p).toBe("/acme/app");
+  });
+
+  it("date a tab's going out of view back to when it went", async () => {
+    const tab = await visit({ p: "/long-open" });
+    const connected = Date.now() - 10 * 60_000;
+    await rewrite(global(), (a) =>
+      a.k === "visitor" ? { ...a, t: connected } : a,
+    );
+    const sent = Date.now();
+    tab.send("v:0");
+    // Never before the tab connected.
+    const fresh = await visit({ p: "/just-opened" });
+    fresh.send("v:0");
+    await vi.waitFor(async () => {
+      const tabs = await attachments(global(), "visitor");
+      const old = tabs.find((a) => a.p === "/long-open");
+      const young = tabs.find((a) => a.p === "/just-opened");
+      expect(old?.v).toBe(0);
+      expect(young?.v).toBe(0);
+      expect(old?.h).toBeGreaterThanOrEqual(sent - HIDDEN_REPORT_MS);
+      expect(old?.h).toBeLessThanOrEqual(Date.now() - HIDDEN_REPORT_MS);
+      expect(young?.h).toBe(young?.t);
+    });
   });
 
   it("keep a renewed token, and ignore a forged one", async () => {

@@ -8,7 +8,7 @@
  * sends it in every snapshot; a dashboard that reads another number (or none,
  * from a worker older than this) shows that one of them needs deploying.
  */
-export const PRESENCE_PROTOCOL = 1;
+export const PRESENCE_PROTOCOL = 2;
 
 /**
  * The dashboard offers this WebSocket subprotocol, followed by its token as a
@@ -19,18 +19,16 @@ export const PRESENCE_PROTOCOL = 1;
 export const ADMIN_PROTOCOL = "gd-admin";
 
 /**
- * How long a dashboard token the site mints lasts. Short, because the worker
- * cannot see the admin session: a browser that was signed out (or signed out
- * everywhere) gets no new tokens, so the worker closes its socket when the
- * last one runs out. An open dashboard is handed a new one well before that
- * (every poll brings one).
+ * How long a dashboard token the site mints lasts. Fairly short, because the
+ * worker cannot see the admin session: a browser that was signed out gets no
+ * new tokens, so the worker closes its socket when the last one runs out
+ * ("Sign out everywhere" closes every dashboard at once). Not shorter, because
+ * handing the open socket a new one wakes the worker, and every wake counts
+ * against Cloudflare's free daily requests.
  */
-export const DASHBOARD_TOKEN_MS = 45_000;
+export const DASHBOARD_TOKEN_MS = 5 * 60_000;
 
-/**
- * The longest-lived dashboard token the worker accepts. Sites from before
- * DASHBOARD_TOKEN_MS was shortened minted ten-minute tokens.
- */
+/** The longest-lived dashboard token the worker accepts. */
 export const MAX_DASHBOARD_TOKEN_MS = 15 * 60_000;
 
 /** What a dashboard token's HMAC signs, followed by its expiry. */
@@ -47,6 +45,14 @@ export const SIGNED_OUT_EVERYWHERE = "admin.signed_out_everywhere";
  * the dashboard, so all three show the same history.
  */
 export const FEED_EVENTS = 200;
+
+/**
+ * How long a tab waits, once out of view, before saying so: a quick look at
+ * another tab and back sends nothing (every message is a request Cloudflare
+ * counts). The worker dates "hidden since" back by this much, so who counts
+ * as here (RECENT_MS in presence.ts, which must be longer) is unchanged.
+ */
+export const HIDDEN_REPORT_MS = 60_000;
 
 /** The longest path a tab reports; the worker cuts longer ones. */
 export const MAX_PATH = 300;

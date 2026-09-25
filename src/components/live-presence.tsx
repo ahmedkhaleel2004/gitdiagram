@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { reconnectDelay } from "~/features/admin/live-link";
-import { MAX_PATH } from "~/features/admin/presence-protocol";
+import { HIDDEN_REPORT_MS, MAX_PATH } from "~/features/admin/presence-protocol";
 
 // Each open tab holds one small WebSocket to the presence worker
 // (workers/presence), so the operator's dashboard counts exactly who is on the
@@ -13,13 +13,18 @@ import { MAX_PATH } from "~/features/admin/presence-protocol";
 // from), the browser's time zone setting, and a random id this browser keeps
 // so several tabs count as one person.
 //
-// It opens once the page is idle and has been in view (a tab opened in the
-// background never counts, so it waits until someone looks at it), retries
+// Every connection and message is a request Cloudflare counts against the
+// worker's free daily allowance, so a tab spends as few as it can. It opens
+// once the tab has been in view for 15 seconds in all (a visit that bounces
+// straight off, or a tab opened in the background and never looked at, never
+// connects), retries
 // gently with random spacing (so a worker deploy does not bring every tab
 // back at once) and stops after a few failures until the tab is used again,
 // skips automated browsers, and closes on pagehide so the back/forward cache
-// still works. It only reports a page or visibility that changed: the worker
-// closes a tab that sends more than a person would.
+// still works. It only reports a page or visibility that changed (the worker
+// closes a tab that sends more than a person would), and says it went out of
+// view only once it has been for a minute, so a quick look elsewhere costs
+// nothing.
 //
 // Paths are sent as they are, repository pages included. Whether a
 // repository is private is not known here cheaply (the GitHub token is
@@ -28,6 +33,7 @@ import { MAX_PATH } from "~/features/admin/presence-protocol";
 
 const PRESENCE_URL = process.env.NEXT_PUBLIC_PRESENCE_URL?.replace(/\/$/, "");
 const PING_MS = 30_000;
+const IN_VIEW_BEFORE_OPEN_MS = 15_000;
 const MAX_FAILURES = 6;
 const STORAGE_KEY = "gd-presence-id";
 const ID = /^[a-z0-9]{8,24}$/;
@@ -97,13 +103,27 @@ export function LivePresence() {
   useEffect(() => {
     if (!PRESENCE_URL || navigator.webdriver) return;
     let stopped = false;
-    let ready = false; // the page went idle once
     let failures = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
     // What the worker was last told about this tab, so nothing is sent twice.
     let told = { p: "", v: "" };
+    // When the tab went out of view (null while in view), and the timer that
+    // tells the worker once it has been out of view long enough.
+    let hiddenAt: number | null = null;
+    let hiddenReport: ReturnType<typeof setTimeout> | undefined;
+    // How long the tab has been in view in all, counted up to viewedSince.
+    let viewedMs = 0;
+    let viewedSince: number | null = null;
 
     const visible = () => (document.visibilityState === "visible" ? "1" : "0");
+    if (visible() === "1") viewedSince = Date.now();
+    const viewed = () =>
+      viewedMs + (viewedSince === null ? 0 : Date.now() - viewedSince);
+    /** Visibility as the worker hears it: hidden only after a while. */
+    const reported = () =>
+      hiddenAt !== null && Date.now() - hiddenAt >= HIDDEN_REPORT_MS
+        ? "0"
+        : "1";
     const send = (message: string) => {
       if (socket.current?.readyState === WebSocket.OPEN)
         socket.current.send(message);
@@ -116,7 +136,7 @@ export function LivePresence() {
         send(`p:${p}`);
         told.p = p;
       }
-      const v = visible();
+      const v = reported();
       if (v !== told.v) {
         send(`v:${v}`);
         told.v = v;
@@ -126,9 +146,14 @@ export function LivePresence() {
     const open = () => {
       clearTimeout(retry);
       retry = undefined;
-      if (stopped || !ready || socket.current || skipped(path.current)) return;
+      if (stopped || socket.current || skipped(path.current)) return;
       if (visible() !== "1") return; // the visibility handler opens it later
-      told = { p: clipPath(path.current), v: visible() };
+      const wait = IN_VIEW_BEFORE_OPEN_MS - viewed();
+      if (wait > 0) {
+        retry = setTimeout(open, wait);
+        return;
+      }
+      told = { p: clipPath(path.current), v: reported() };
       const params = new URLSearchParams({
         ...told,
         d: isMobile() ? "m" : "d",
@@ -184,6 +209,17 @@ export function LivePresence() {
     };
 
     const onVisibility = () => {
+      clearTimeout(hiddenReport);
+      const now = Date.now();
+      if (visible() === "1") {
+        viewedSince ??= now;
+        hiddenAt = null;
+      } else {
+        if (viewedSince !== null) viewedMs += now - viewedSince;
+        viewedSince = null;
+        hiddenAt ??= now;
+        hiddenReport = setTimeout(report, hiddenAt + HIDDEN_REPORT_MS - now);
+      }
       if (socket.current) report();
       else if (visible() === "1") revive();
     };
@@ -196,14 +232,7 @@ export function LivePresence() {
       stopped = false;
       open();
     };
-    const onIdle = () => {
-      ready = true;
-      open();
-    };
-
-    if ("requestIdleCallback" in window)
-      window.requestIdleCallback(onIdle, { timeout: 5_000 });
-    else setTimeout(onIdle, 1_500);
+    open();
     const ping = setInterval(() => send("ping"), PING_MS);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", onPageHide);
@@ -212,6 +241,7 @@ export function LivePresence() {
       stopped = true;
       control.current = null;
       clearInterval(ping);
+      clearTimeout(hiddenReport);
       close();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", onPageHide);

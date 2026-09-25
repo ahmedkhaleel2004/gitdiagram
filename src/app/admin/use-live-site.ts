@@ -25,9 +25,13 @@ import type { LiveFeedEvent, PresenceMessage } from "~/features/admin/types";
 // a fresh token instead of retrying with one that has expired. The token
 // travels as a WebSocket subprotocol, so it stays out of request logs; newer
 // ones are sent over the open socket so it is not cut off when the first one
-// expires. Tokens last under a minute (so signing out cuts the socket off
-// quickly), and a hidden dashboard does not poll, so it asks for one itself
-// when the one it holds is running out.
+// expires. Tokens last five minutes, and a hidden dashboard does not poll, so
+// it asks for one itself when the one it holds is running out.
+//
+// A dashboard out of view for a minute closes its socket and opens a new one
+// (with a fresh snapshot) when it is looked at again: the worker's requests
+// are capped per day, and one left open in a background tab all day would
+// keep it sweeping and taking tokens for nobody.
 
 const PING_MS = 5_000;
 // No pong this long after a ping: the connection died without closing (the
@@ -35,9 +39,11 @@ const PING_MS = 5_000;
 // slowed to once a minute, so this is measured from the ping itself.
 const PONG_TIMEOUT_MS = 2 * PING_MS + 2_000;
 // Every poll brings a new token; the open socket is handed one only when the
-// token it holds has less than this left (tokens last 45 s), so about every
-// fifteen seconds.
-const RENEW_BEFORE_MS = 30_000;
+// token it holds has less than this left (tokens last five minutes), so about
+// every three minutes.
+const RENEW_BEFORE_MS = 2 * 60_000;
+// Out of view this long, the dashboard lets its socket go.
+const HIDDEN_CLOSE_MS = 60_000;
 
 export type LinkStatus = "connecting" | "live" | "offline";
 
@@ -76,6 +82,7 @@ export function useLiveSite(
     let sentToken: string | null = null;
     let pingSentAt = 0;
     let awaitingPong = false;
+    let hiddenClose: ReturnType<typeof setTimeout> | undefined;
 
     const hidden = () => document.visibilityState === "hidden";
 
@@ -166,8 +173,22 @@ export function useLiveSite(
       ws.send("ping");
     }, PING_MS);
 
+    /** Lets the socket go on purpose: nothing to retry until shown again. */
+    const letGo = () => {
+      const ws = socket;
+      if (!ws || !hidden()) return;
+      ws.onclose = null;
+      ws.onmessage = null;
+      ws.close(1000);
+      lost(ws);
+    };
+
     const onVisibility = () => {
-      if (hidden()) return;
+      clearTimeout(hiddenClose);
+      if (hidden()) {
+        hiddenClose = setTimeout(letGo, HIDDEN_CLOSE_MS);
+        return;
+      }
       failures = 0;
       connect();
     };
@@ -194,6 +215,7 @@ export function useLiveSite(
       stopped = true;
       link.current = null;
       clearTimeout(retry);
+      clearTimeout(hiddenClose);
       clearInterval(ping);
       document.removeEventListener("visibilitychange", onVisibility);
       socket?.close(1000);

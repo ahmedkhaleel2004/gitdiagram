@@ -32,7 +32,17 @@ it differs from the site's. Bump it with any change to what the two say to each
 other, and deploy the worker before the site.
 
 Dashboards send their token as a WebSocket subprotocol (`gd-admin, <token>`),
-never in the URL. Tokens last 45 seconds and the dashboard hands the open socket
-a newer one as it polls; the worker closes a dashboard whose token runs out, so
-a browser that was signed out (it gets no new tokens) loses the feed within a
-minute, and at once when the site reports "sign out everywhere".
+never in the URL. Tokens last five minutes and the dashboard hands the open
+socket a newer one as it polls (about every three minutes); the worker closes a
+dashboard whose token runs out, so a browser that was signed out (it gets no new
+tokens) loses the feed within five minutes, and at once when the site reports
+"sign out everywhere".
+
+The worker runs on Cloudflare's free plan: 100,000 requests a day, counting the
+Worker and the Durable Object together. A visitor connect costs two, and every
+tab message, sweep alarm and site event wakes the object once (pings answered by
+the runtime cost nothing). So tabs connect only after 15 seconds in view, report
+going out of view only after a minute, dashboards close their socket after a
+minute out of view, and sweeps run every minute while a dashboard watches and
+every 15 minutes otherwise. Check the day's use with the GraphQL datasets
+`workersInvocationsAdaptive` and `durableObjectsInvocationsAdaptiveGroups`.

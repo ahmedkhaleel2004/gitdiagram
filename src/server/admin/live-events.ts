@@ -40,7 +40,8 @@ function presenceSecret(): string | null {
 }
 
 /**
- * A short-lived token that lets the dashboard open the worker's admin socket.
+ * A short-lived token (minutes) that lets the dashboard open the worker's
+ * admin socket.
  * Only a signed-in dashboard gets one (each poll of its state checks the
  * session against Redis), so a browser signed out, or out everywhere, loses
  * its socket within DASHBOARD_TOKEN_MS: the worker closes a dashboard whose

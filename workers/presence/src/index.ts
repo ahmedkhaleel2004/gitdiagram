@@ -8,6 +8,7 @@ import {
 import {
   ADMIN_PROTOCOL,
   FEED_EVENTS,
+  HIDDEN_REPORT_MS,
   MAX_PATH,
   PRESENCE_PROTOCOL,
   SIGNED_OUT_EVERYWHERE,
@@ -79,9 +80,9 @@ const MAX_EVENT_BYTES = 4_000;
 const MAX_SOCKETS_PER_NETWORK = 64;
 // How often quiet sockets are swept: often while a dashboard watches, rarely
 // while only visitors are connected (so gone tabs still free their network's
-// places), never while nobody is.
-const SWEEP_MS = 30_000;
-const IDLE_SWEEP_MS = 5 * 60_000;
+// places), never while nobody is. Every sweep is a request Cloudflare counts.
+const SWEEP_MS = 60_000;
+const IDLE_SWEEP_MS = 15 * 60_000;
 // A dashboard's messages are its renewed tokens.
 const MAX_ADMIN_MESSAGE = 200;
 // A job with no end event (its server died) drops off after this long. An
@@ -223,7 +224,8 @@ export class Presence extends DurableObject<Env> {
       understood = true;
       const v = text === "v:1" ? 1 : 0;
       if (v !== state.v) {
-        const h = v ? 0 : now;
+        // A tab says it is hidden HIDDEN_REPORT_MS after it went.
+        const h = v ? 0 : Math.max(state.t, now - HIDDEN_REPORT_MS);
         next.v = v;
         next.h = h;
         update = { type: "update", id: state.id, v, h };
@@ -265,8 +267,8 @@ export class Presence extends DurableObject<Env> {
   }
 
   /**
-   * Every 30 s while a dashboard is open (and as a dashboard's token runs
-   * out), every 5 minutes while only visitors are connected: close sockets
+   * Every minute while a dashboard is open (and as a dashboard's token runs
+   * out), every 15 minutes while only visitors are connected: close sockets
    * that went quiet (visitors and dashboards), close dashboards whose token
    * ran out, forget orphaned jobs, and start a new day's peak at midnight
    * UTC. Counts and peaks only ever use live sockets, so the slow sweep is
