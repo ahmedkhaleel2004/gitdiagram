@@ -17,6 +17,13 @@ export interface DailyBudget {
   networkLimit: number;
 }
 
+/** Claude API credit: the balance last entered from the Console, and spend since. */
+export interface ClaudeCredit {
+  setUsd: number | null;
+  setAt: number | null;
+  spentUsd: number;
+}
+
 export interface AdminState {
   now: number;
   controls: LiveControls;
@@ -25,6 +32,8 @@ export interface AdminState {
     renders: DailyBudget;
   } | null;
   voiceCredits: number | null;
+  /** Null when ANTHROPIC_ADMIN_KEY is missing or a report failed. */
+  claudeCredit: ClaudeCredit | null;
   diagramQuota: {
     enabled: boolean;
     usedTokens: number;

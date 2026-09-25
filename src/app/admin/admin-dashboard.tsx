@@ -26,6 +26,10 @@ import { useLiveSite, type LinkStatus } from "./use-live-site";
 const POLL_MS = 5_000;
 
 const number = new Intl.NumberFormat("en-US");
+const dollars = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
 const compact = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -129,6 +133,123 @@ function Tile({
       ) : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
+  );
+}
+
+/**
+ * Records the Claude credit balance the Console shows, after a top-up. The
+ * dashboard then counts down from it using the organization's spend since.
+ */
+function SetClaudeCredit({ onDone }: { onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const usd = Number(value.replace(/[$,\s]/g, ""));
+  const valid = value.trim() !== "" && Number.isFinite(usd) && usd >= 0;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const response = await fetch("/api/admin/claude-credit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usd }),
+    }).catch(() => null);
+    const body = (await response?.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    setBusy(false);
+    if (response?.ok) {
+      setOpen(false);
+      setValue("");
+      onDone();
+    } else {
+      setError(body?.error ?? "The balance was not saved. Try again.");
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return;
+        setOpen(next);
+        setError(null);
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="neo-button-muted h-8 rounded-md px-3 text-xs font-semibold"
+      >
+        Update balance
+      </button>
+      <DialogContent className="neo-panel max-w-[calc(100%-2rem)] rounded-lg sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold">
+            Update the Claude balance
+          </DialogTitle>
+          <DialogDescription className="text-[hsl(var(--neo-soft-text))]">
+            Anthropic has no API for the balance, so copy it from the{" "}
+            <a
+              href="https://platform.claude.com/settings/billing"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              Console billing page
+            </a>{" "}
+            after each top-up. From then on, spend is taken off it every
+            minute. Keep auto-reload off, or the number drifts low.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (valid && !busy) void save();
+          }}
+          className="flex flex-col gap-4"
+        >
+          <label className="flex flex-col gap-1 text-sm font-semibold">
+            Balance in the Console (USD)
+            <input
+              inputMode="decimal"
+              autoFocus
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              placeholder="50.46"
+              className="h-11 rounded-md border-2 border-black bg-white px-3 text-base font-normal text-black tabular-nums"
+            />
+          </label>
+          {error ? (
+            <p
+              role="alert"
+              className="text-sm font-medium text-red-700 dark:text-red-400"
+            >
+              {error}
+            </p>
+          ) : null}
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setOpen(false)}
+              className="neo-button-muted h-11 rounded-md px-4 font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy || !valid}
+              className="neo-button h-11 rounded-md px-4 font-semibold disabled:opacity-60"
+            >
+              {busy ? "Saving…" : "Save balance"}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -771,6 +892,8 @@ export function AdminDashboard() {
   const controls = state?.controls;
   const video = state?.video;
   const quota = state?.diagramQuota;
+  const credit = state?.claudeCredit;
+  const creditSet = credit?.setUsd != null && credit.setAt != null;
   const running = {
     diagram: live.jobs.filter((job) => job.kind === "diagram").length,
     video: live.jobs.filter((job) => job.kind === "video").length,
@@ -933,6 +1056,33 @@ export function AdminDashboard() {
                 quota
                   ? `${compact.format(quota.reservedTokens)} held by runs in progress`
                   : undefined
+              }
+            />
+          </div>
+          <div className="col-span-2">
+            <Tile
+              label="Claude API credit"
+              value={
+                credit && creditSet
+                  ? dollars.format(credit.setUsd! - credit.spentUsd)
+                  : "–"
+              }
+              meter={
+                credit && creditSet
+                  ? credit.spentUsd / Math.max(0.01, credit.setUsd!)
+                  : null
+              }
+              sub={
+                !state
+                  ? undefined
+                  : !credit
+                    ? "Unreadable. Needs ANTHROPIC_ADMIN_KEY."
+                    : creditSet
+                      ? `${dollars.format(credit.spentUsd)} spent since ${dollars.format(credit.setUsd!)} was entered ${since(credit.setAt!, now)} ago · updates each minute`
+                      : "Enter the balance from the Console to start counting."
+              }
+              action={
+                credit ? <SetClaudeCredit onDone={() => void refresh()} /> : null
               }
             />
           </div>
