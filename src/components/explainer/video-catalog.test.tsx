@@ -6,7 +6,22 @@ import {
   VIDEO_PAGE_SIZE,
   VideoCatalog,
 } from "~/components/explainer/video-catalog";
+import type * as BrowseCatalog from "~/features/browse/catalog";
 import type { VideoCard } from "~/server/explainer/catalog";
+
+const browse = vi.hoisted(() => ({ prepared: 0 }));
+vi.mock("~/features/browse/catalog", async (importOriginal) => {
+  const actual = await importOriginal<typeof BrowseCatalog>();
+  return {
+    ...actual,
+    prepareBrowseIndex: (
+      ...args: Parameters<typeof actual.prepareBrowseIndex>
+    ) => {
+      browse.prepared += 1;
+      return actual.prepareBrowseIndex(...args);
+    },
+  };
+});
 
 vi.mock("next/link", () => ({
   default: ({
@@ -97,6 +112,17 @@ describe("VideoCatalog", () => {
       target: { value: "nothing" },
     });
     expect(screen.getByText("No videos match these filters")).toBeTruthy();
+  });
+
+  it("prepares the index once, however the query changes", () => {
+    browse.prepared = 0;
+    render(<VideoCatalog cards={cards} />);
+    for (const value of ["v", "ve", "ver"])
+      fireEvent.change(screen.getByRole("searchbox"), { target: { value } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort" }), {
+      target: { value: "stars_desc" },
+    });
+    expect(browse.prepared).toBe(1);
   });
 
   it("restores the query from the URL and pages through results", () => {

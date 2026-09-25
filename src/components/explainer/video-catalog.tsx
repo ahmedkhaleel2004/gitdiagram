@@ -7,9 +7,10 @@ import { BrowseCatalogPagination } from "~/components/browse-catalog-pagination"
 import { VideoGrid } from "~/components/explainer/video-grid";
 import {
   buildBrowseHref,
-  getBrowsePageFromEntries,
+  getBrowsePageFromPreparedIndex,
   normalizeBrowseQuery,
   parseBrowseQueryFromSearchParams,
+  prepareBrowseIndex,
 } from "~/features/browse/catalog";
 import type { BrowseSort } from "~/features/browse/catalog";
 import type { VideoCard } from "~/server/explainer/catalog";
@@ -43,20 +44,24 @@ export function VideoCatalog({ cards }: { cards: VideoCard[] }) {
   }, []);
 
   // Browse sorts and filters index entries; each one carries its card along.
-  const entries = useMemo(
+  // The index is prepared once and keeps each sort order it has made, so
+  // typing a search only filters.
+  const index = useMemo(
     () =>
-      cards.map((card) => ({
-        username: card.owner,
-        repo: card.repo,
-        lastSuccessfulAt: card.createdAt,
-        stargazerCount: card.stars,
-        card,
-      })),
+      prepareBrowseIndex(
+        cards.map((card) => ({
+          username: card.owner,
+          repo: card.repo,
+          lastSuccessfulAt: card.createdAt,
+          stargazerCount: card.stars,
+          card,
+        })),
+      ),
     [cards],
   );
   const result = useMemo(
-    () => getBrowsePageFromEntries(entries, query, VIDEO_PAGE_SIZE),
-    [entries, query],
+    () => getBrowsePageFromPreparedIndex(index, query, VIDEO_PAGE_SIZE),
+    [index, query],
   );
 
   if (!cards.length) return <VideoGrid cards={[]} />;
