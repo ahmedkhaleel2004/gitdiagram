@@ -1,8 +1,9 @@
 import "server-only";
 
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { after } from "next/server";
 
+import { DASHBOARD_TOKEN_MS } from "~/features/admin/presence-protocol";
 import { isDesktopRequest } from "~/server/explainer/audience";
 
 // Sends what the site is doing (generations starting and finishing, visitors
@@ -12,7 +13,10 @@ import { isDesktopRequest } from "~/server/explainer/audience";
 // request it describes.
 
 const SEND_TIMEOUT_MS = 2_000;
-const DASHBOARD_TOKEN_MS = 10 * 60_000;
+// The worker keeps job ids up to this long. Longer ones are hashed here (the
+// worker does the same), never cut: cutting can drop the part that tells two
+// jobs apart, such as the format of two renders of one repo.
+const MAX_JOB_ID = 120;
 
 export interface LiveEvent {
   kind: string;
@@ -44,10 +48,19 @@ export function createPresenceToken(now = Date.now()): string | null {
   return `${expires}.${signature}`;
 }
 
+/** The id a job is known by in the feed: short ids as they are. */
+export function liveJobId(id: string): string {
+  if (id.length <= MAX_JOB_ID) return id;
+  return `sha256:${createHash("sha256").update(id).digest("hex").slice(0, 40)}`;
+}
+
 async function send(event: LiveEvent): Promise<void> {
   const url = presenceSocketUrl();
   const secret = presenceSecret();
   if (!url || !secret) return;
+  const body = event.job
+    ? { ...event, job: { ...event.job, id: liveJobId(event.job.id) } }
+    : event;
   try {
     await fetch(`${url.replace(/^ws/, "http")}/event`, {
       method: "POST",
@@ -55,7 +68,7 @@ async function send(event: LiveEvent): Promise<void> {
         Authorization: `Bearer ${secret}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(event),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     });
   } catch {
