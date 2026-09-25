@@ -83,7 +83,14 @@ export function RepositoryToolbar({
           <Scan size={14} aria-hidden="true" />
           {zooming ? "Exit zoom" : "Enable zoom"}
         </button>
-        <DiagramExport diagram={diagram} getSvg={getSvg} disabled={pending} />
+        {/* On phones the actions sit in two columns; Export lands in the right
+            one after the Video button, so its menu opens toward the left. */}
+        <div
+          className={styles.exportSlot}
+          data-column={video ? "right" : "left"}
+        >
+          <DiagramExport diagram={diagram} getSvg={getSvg} disabled={pending} />
+        </div>
         <button
           ref={regenerateRef}
           type="button"

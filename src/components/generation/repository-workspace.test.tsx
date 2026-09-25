@@ -359,6 +359,26 @@ describe("repository generation workspace", () => {
     fireEvent.click(toggle);
     expect(screen.queryByText("explainer panel")).not.toBeInTheDocument();
   });
+  it("marks which phone column Export sits in, for its menu's direction", () => {
+    const column = () =>
+      screen
+        .getByRole("button", { name: "Export" })
+        .closest("[data-column]")
+        ?.getAttribute("data-column");
+    const { rerender } = render(
+      <RepositoryWorkspace {...props} state={cached} />,
+    );
+    finish("old");
+    expect(column()).toBe("left");
+    rerender(
+      <RepositoryWorkspace
+        {...props}
+        state={cached}
+        video={<p>explainer panel</p>}
+      />,
+    );
+    expect(column()).toBe("right");
+  });
   it("retains example regeneration protection", () => {
     render(
       <RepositoryWorkspace {...props} regenerateDisabled state={cached} />,
