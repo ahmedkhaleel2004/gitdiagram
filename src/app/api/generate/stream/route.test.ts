@@ -76,7 +76,7 @@ vi.mock("~/server/generate/cancellation", () => ({
 vi.mock("~/server/generate/github", () => ({
   getGithubData: mocks.getGithubData,
   REPOSITORY_TOO_LARGE_ERROR:
-    "Repository is too large (>195k tokens) for analysis. Try a smaller repo.",
+    "Repository is too large for analysis. Try a smaller repo.",
 }));
 vi.mock("~/server/generate/model-config", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -323,7 +323,7 @@ describe("POST /api/generate/stream", () => {
   });
 
   it("rejects an oversized repository before reserving complimentary quota", async () => {
-    mockEstimate(200_000);
+    mockEstimate(950_000);
 
     const response = await POST(request());
     const body = await response.text();
@@ -336,7 +336,7 @@ describe("POST /api/generate/stream", () => {
   });
 
   it("rejects a repository at exactly the hard token limit", async () => {
-    mockEstimate(195_000);
+    mockEstimate(900_000);
 
     const response = await POST(request());
     const body = await response.text();
@@ -371,7 +371,7 @@ describe("POST /api/generate/stream", () => {
   });
 
   it("uses same-origin stored credentials resolved at the request boundary", async () => {
-    mockEstimate(200_000);
+    mockEstimate(950_000);
     mocks.resolveRequestCredentials.mockResolvedValueOnce({
       apiKey: "stored-openai-key",
       githubPat: "stored-github-pat",

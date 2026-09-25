@@ -11,7 +11,6 @@ vi.mock("~/server/github-auth", () => ({
 import {
   GITHUB_REQUEST_TIMEOUT_MS,
   getGithubData,
-  MAX_INCLUDED_FILE_TREE_CHARACTERS,
   MAX_README_BYTES,
   REPOSITORY_TOO_LARGE_ERROR,
 } from "~/server/generate/github";
@@ -63,34 +62,35 @@ describe("getGithubData repository input bounds", () => {
     });
   });
 
-  it("rejects a truncated recursive tree while fetching inputs concurrently", async () => {
+  it("keeps GitHub's partial listing of a truncated recursive tree", async () => {
     const fetchMock = createGitHubFetch({
       truncated: true,
-      tree: [{ path: "src/main.ts" }],
+      tree: [{ path: "src/main.ts", type: "blob" }],
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getGithubData("acme", "demo")).rejects.toThrow(
-      REPOSITORY_TOO_LARGE_ERROR,
-    );
+    const data = await getGithubData("acme", "demo");
+
+    expect(data.fileTree).toBe("src/main.ts");
+    expect(data.pathTypes.get("src/main.ts")).toBe("blob");
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/readme"),
-      expect.anything(),
-    );
   });
 
-  it("rejects an oversized filtered file tree", async () => {
+  it("accepts a file tree far larger than the model prompt excerpt", async () => {
+    const paths = Array.from(
+      { length: 40_000 },
+      (_, index) => `packages/module-${index}/src/implementation-${index}.ts`,
+    );
     const fetchMock = createGitHubFetch({
       truncated: false,
-      tree: [{ path: "a".repeat(MAX_INCLUDED_FILE_TREE_CHARACTERS + 1) }],
+      tree: paths.map((path) => ({ path, type: "blob" })),
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getGithubData("acme", "demo")).rejects.toThrow(
-      REPOSITORY_TOO_LARGE_ERROR,
-    );
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const data = await getGithubData("acme", "demo");
+
+    expect(data.fileTree.length).toBeGreaterThan(1_000_000);
+    expect(data.pathTypes.size).toBe(paths.length);
   });
 
   it("rejects an oversized README from GitHub's size metadata", async () => {

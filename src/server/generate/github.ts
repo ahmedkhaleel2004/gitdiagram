@@ -53,7 +53,7 @@ export interface GithubData {
 export type RepositoryPathType = "blob" | "tree";
 
 export const REPOSITORY_TOO_LARGE_ERROR =
-  "Repository is too large (>195k tokens) for analysis. Try a smaller repo.";
+  "Repository is too large for analysis. Try a smaller repo.";
 // Messages this module authors itself. They describe the caller's own request
 // and carry no upstream response text, so `normalizeGenerationError` is willing
 // to show them verbatim.
@@ -67,7 +67,6 @@ function buildGithubRequestFailedError(status: number): string {
 }
 export const PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR =
   "A GitHub token is required to analyze a private repository.";
-export const MAX_INCLUDED_FILE_TREE_CHARACTERS = 780_000;
 export const MAX_README_BYTES = 750_000;
 export const GITHUB_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_PUBLIC_TREE_CACHE_ENTRIES = 8;
@@ -322,10 +321,9 @@ async function getFileTree(
   }
   const data = result.value;
 
-  if (data.truncated === true) {
-    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
-  }
-
+  // GitHub returns a partial listing above 100,000 entries or 7 MB. The model
+  // only sees a bounded excerpt of the tree anyway, so a partial listing still
+  // makes a diagram; links to paths it omits are dropped during validation.
   const paths: string[] = [];
   const pathTypes = new Map<string, RepositoryPathType>();
   const sourceBlobs = new Map<string, SourceBlob>();
@@ -353,13 +351,10 @@ async function getFileTree(
   }
 
   const fileTree = paths.join("\n");
-  if (fileTree.length > MAX_INCLUDED_FILE_TREE_CHARACTERS) {
-    throw new Error(REPOSITORY_TOO_LARGE_ERROR);
-  }
 
   if (usePublicConditionalCache) {
     deletePublicTreeCacheEntry(url);
-    if (result.etag) {
+    if (result.etag && fileTree.length <= MAX_PUBLIC_TREE_CACHE_CHARACTERS) {
       while (
         publicTreeCache.size >= MAX_PUBLIC_TREE_CACHE_ENTRIES ||
         publicTreeCacheCharacters + fileTree.length >

@@ -28,7 +28,7 @@ vi.mock("~/server/generate/complimentary-gate", () => ({
 vi.mock("~/server/generate/github", () => ({
   getGithubData: mocks.getGithubData,
   REPOSITORY_TOO_LARGE_ERROR:
-    "Repository is too large (>195k tokens) for analysis. Try a smaller repo.",
+    "Repository is too large for analysis. Try a smaller repo.",
 }));
 vi.mock("~/server/generate/model-config", async (importOriginal) => ({
   ...(await importOriginal<object>()),

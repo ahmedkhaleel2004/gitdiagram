@@ -40,6 +40,7 @@ import {
 import {
   EXPLANATION_REASONING_EFFORT,
   EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
+  MAX_GENERATION_INPUT_TOKENS,
   ARCHITECTURE_SLOW_RETRY_MS,
   getArchitectureReasoningEffort,
   EXPLANATION_TEXT_VERBOSITY,
@@ -107,7 +108,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const HARD_GENERATION_INPUT_TOKEN_LIMIT = 195_000;
 // Reserve enough of Vercel's 300s budget for quota reconciliation and a
 // contention-safe R2 write even when an upstream generation runs unusually long.
 const GENERATION_DEADLINE_MS = 220_000;
@@ -466,7 +466,7 @@ export async function POST(request: Request) {
           });
 
           throwIfAborted(generationAbortController.signal);
-          if (tokenCount >= HARD_GENERATION_INPUT_TOKEN_LIMIT) {
+          if (tokenCount >= MAX_GENERATION_INPUT_TOKENS) {
             const error = REPOSITORY_TOO_LARGE_ERROR;
             audit = withFailure(audit, {
               failureStage: "started",

@@ -22,3 +22,8 @@ export const GRAPH_TEXT_VERBOSITY = "low" as const;
 export const EXPLANATION_ESTIMATED_OUTPUT_TOKENS = 8_000;
 export const GRAPH_ESTIMATED_OUTPUT_TOKENS = 6_000;
 export const GRAPH_RETRY_INPUT_BUFFER_TOKENS = 2_000;
+
+// GPT-6 Luna and the GPT-5.6 models accept 922K input tokens. The prompt is
+// already bounded by repository-context.ts, so this only stops a request the
+// model would reject, with headroom for a graph repair.
+export const MAX_GENERATION_INPUT_TOKENS = 900_000;
