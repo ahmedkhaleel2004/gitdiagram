@@ -76,11 +76,11 @@ const Hero = () => {
           <span className="relative inline-block">
             diagram
             <FlankSparkle
-              className="flank-sparkle flank-sparkle-left pointer-events-none absolute top-[57%] -left-[1.18em] h-auto w-[0.8em] -translate-y-1/2 -rotate-10"
+              className="flank-sparkle-left pointer-events-none absolute top-[57%] -left-[1.18em] h-auto w-[0.8em] -translate-y-1/2 -rotate-10"
               fillClassName="fill-violet-500 dark:fill-[hsl(var(--neo-button))]"
             />
             <FlankSparkle
-              className="flank-sparkle flank-sparkle-alt pointer-events-none absolute top-1/2 -right-[1.18em] h-auto w-[0.8em] -translate-y-1/2 rotate-10"
+              className="flank-sparkle-right pointer-events-none absolute top-[57%] -right-[1.18em] h-auto w-[0.8em] -translate-y-1/2 rotate-10"
               fillClassName="fill-sky-400 dark:fill-[hsl(var(--neo-button-hover))]"
             />
           </span>
