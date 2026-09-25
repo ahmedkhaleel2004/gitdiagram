@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { stretchChannels } from "./time-stretch";
 
 const SAMPLE_RATE = 44_100;
@@ -58,5 +58,29 @@ describe("stretchChannels", () => {
     expect(Array.from(same!)).toEqual(Array.from(input));
     const [blip] = stretchChannels([tone(220, 0.01)], SAMPLE_RATE, 2);
     expect(blip!.length).toBe(Math.round(441 / 2));
+  });
+
+  it("stretches in a worker and hands the samples back without copying", async () => {
+    const scope: {
+      onmessage: ((event: { data: unknown }) => void) | null;
+      postMessage: ReturnType<typeof vi.fn>;
+    } = { onmessage: null, postMessage: vi.fn() };
+    vi.stubGlobal("self", scope);
+    await import("./time-stretch.worker");
+    vi.unstubAllGlobals();
+    scope.onmessage!({
+      data: {
+        id: 7,
+        channels: [tone(220, 0.5)],
+        sampleRate: SAMPLE_RATE,
+        rate: 2,
+      },
+    });
+    const [message, transfer] = scope.postMessage.mock.calls[0]!;
+    expect(message.id).toBe(7);
+    expect(message.channels[0].length).toBe(
+      Math.round((SAMPLE_RATE * 0.5) / 2),
+    );
+    expect(transfer).toEqual([message.channels[0].buffer]);
   });
 });
