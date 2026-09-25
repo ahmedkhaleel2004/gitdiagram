@@ -33,25 +33,27 @@ const MB = 1_000_000;
 // runs in the segment route (frames and posters). Generate needs ffmpeg for
 // the narration and asks the segment route for its poster, so it ships no
 // Chromium either. Ceilings are the traced files' total size on disk
-// (uncompressed), with some room over today's size; raise one only on purpose.
+// (uncompressed) apart from the ffmpeg binary, whose size depends on the
+// platform (about 46 MB on macOS, 80 MB on Linux CI), with some room over
+// today's size; raise one only on purpose.
 const routes = [
   {
     route: "api/video/render",
     requiredFiles: [ffmpeg],
     forbidden: chromiumPackages,
-    maxBytes: 60 * MB,
+    maxBytes: 15 * MB,
   },
   {
     route: "api/video/render/segment",
     requiredFiles: [ffmpeg, chromium],
     forbidden: [],
-    maxBytes: 140 * MB,
+    maxBytes: 95 * MB,
   },
   {
     route: "api/video/generate",
     requiredFiles: [ffmpeg],
     forbidden: chromiumPackages,
-    maxBytes: 60 * MB,
+    maxBytes: 15 * MB,
   },
 ];
 
@@ -92,6 +94,7 @@ for (const { route, requiredFiles, forbidden, maxBytes } of routes) {
   }
   let bytes = 0;
   for (const file of traced) {
+    if (file === path.normalize(ffmpeg.file)) continue;
     const stats = existsSync(file) ? statSync(file) : null;
     if (stats?.isFile()) bytes += stats.size;
   }
