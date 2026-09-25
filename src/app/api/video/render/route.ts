@@ -120,16 +120,16 @@ export async function POST(request: Request): Promise<Response> {
         }
       };
       const started = Date.now();
-      let last = -1;
+      let last = "";
       job = renderMp4InSegments({
         artifact,
         format,
         origin,
-        onProgress: (fraction) => {
+        onProgress: ({ fraction, step }) => {
           const percent = Math.floor(fraction * 100);
-          if (percent === last) return;
-          last = percent;
-          send({ status: "rendering", progress: percent / 100 });
+          if (`${step}:${percent}` === last) return;
+          last = `${step}:${percent}`;
+          send({ status: "rendering", progress: percent / 100, step });
         },
       })
         .then(async (mp4) => {

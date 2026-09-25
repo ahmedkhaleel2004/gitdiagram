@@ -2,8 +2,10 @@ import { jsonErrorResponse } from "~/server/http/same-origin-json";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import { renderVideoSegment } from "~/server/explainer/render";
 import {
+  encodeSegmentEvent,
   segmentJobSchema,
   verifySegmentJob,
+  type SegmentEvent,
 } from "~/server/explainer/segments";
 import { readVideoArtifact } from "~/server/explainer/store";
 
@@ -13,7 +15,8 @@ export const maxDuration = 800;
 
 /**
  * Render one ~10 s segment of a film. Called only by the render route, server
- * to server, with a signature over the exact job.
+ * to server, with a signature over the exact job. The answer streams progress
+ * as JSON lines and ends with the segment itself.
  */
 export async function POST(request: Request): Promise<Response> {
   if (!isVideoExplainerEnabled())
@@ -34,18 +37,56 @@ export async function POST(request: Request): Promise<Response> {
   const artifact = await readVideoArtifact(job.username, job.repo);
   if (!artifact || artifact.createdAt !== job.v)
     return jsonErrorResponse("This video version no longer exists.", 409);
-  const { mp4, sfx } = await renderVideoSegment({
-    artifact,
-    format: job.format,
-    origin: new URL(request.url).origin,
-    from: job.from,
-    to: job.to,
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let open = true;
+      const send = (event: SegmentEvent) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(encodeSegmentEvent(event)));
+        } catch {
+          open = false;
+        }
+      };
+      let reported = 0;
+      try {
+        const { mp4 } = await renderVideoSegment({
+          artifact,
+          format: job.format,
+          origin: new URL(request.url).origin,
+          from: job.from,
+          to: job.to,
+          onReady: (sfx) => send({ type: "ready", sfx }),
+          onFrame: (done) => {
+            // About three updates a second is plenty for a progress bar.
+            if (done - reported < 10) return;
+            reported = done;
+            send({ type: "frames", done });
+          },
+        });
+        send({ type: "done", mp4: mp4.toString("base64") });
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: "video.segment.failed",
+            from: job.from,
+            to: job.to,
+            error:
+              error instanceof Error ? error.message.slice(0, 300) : "unknown",
+          }),
+        );
+        send({ type: "error" });
+      } finally {
+        if (open) controller.close();
+      }
+    },
   });
-  return new Response(new Uint8Array(mp4), {
+  return new Response(stream, {
     headers: {
-      "Content-Type": "video/mp4",
-      "Cache-Control": "no-store",
-      "X-Video-Sfx": Buffer.from(JSON.stringify(sfx)).toString("base64url"),
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      "X-Accel-Buffering": "no",
     },
   });
 }

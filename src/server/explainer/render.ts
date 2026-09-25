@@ -223,7 +223,7 @@ async function openStage(
  * file sounds broken next to everything else. The pad before loudnorm keeps it
  * from clipping the tail.
  */
-async function mixSoundtrack(
+async function mixSoundtrackInto(
   dir: string,
   artifact: VideoArtifact,
   sfx: SfxCue[],
@@ -282,7 +282,7 @@ async function mixSoundtrack(
   const duration = artifact.timing.DURATION.toFixed(3);
   const labels = chains.map((_, index) => `[a${index}]`).join("");
   const graph = `${chains.join(";")};${labels}amix=inputs=${chains.length}:normalize=0:duration=longest,apad=whole_dur=${Number(duration) + 2},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,atrim=0:${duration}[mix]`;
-  const out = join(dir, "soundtrack.wav");
+  const out = join(dir, "soundtrack.m4a");
   await run(ffmpeg, [
     "-y",
     "-loglevel",
@@ -292,9 +292,38 @@ async function mixSoundtrack(
     graph,
     "-map",
     "[mix]",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "160k",
     out,
   ]);
   return out;
+}
+
+/**
+ * The finished soundtrack as AAC. It needs only the effect cues, which the
+ * first segment reports as soon as its stage is built, so it is mixed while
+ * the frames are still rendering.
+ */
+export async function mixSoundtrack(params: {
+  artifact: VideoArtifact;
+  sfx: SfxCue[];
+  origin: string;
+}): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), "explainer-"));
+  try {
+    const out = await mixSoundtrackInto(
+      dir,
+      params.artifact,
+      params.sfx,
+      params.origin,
+      await ffmpegPath(),
+    );
+    return await readFile(out);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 /** Frames per segment. Segments render in parallel, each well inside a function's time limit. */
@@ -323,6 +352,10 @@ export async function renderVideoSegment(params: {
   origin: string;
   from: number;
   to: number;
+  /** The stage is built; its effect cues are known. */
+  onReady?: (sfx: SfxCue[]) => void;
+  /** Frames captured so far in this segment. */
+  onFrame?: (done: number) => void;
 }): Promise<{ mp4: Buffer; sfx: SfxCue[] }> {
   const { artifact, format, origin } = params;
   const frame = FRAMES[format];
@@ -338,6 +371,7 @@ export async function renderVideoSegment(params: {
       { format, captions: true },
       frame.width / frame.cssWidth,
     );
+    params.onReady?.(sfx);
     const out = join(dir, "segment.mp4");
     const encoder = spawn(
       ffmpeg,
@@ -391,6 +425,7 @@ export async function renderVideoSegment(params: {
       timings.seek += b - a;
       timings.capture += c - b;
       timings.write += Date.now() - c;
+      params.onFrame?.(index + 1 - params.from);
     }
     encoder.stdin.end();
     const [code] = (await finished) as [number];
@@ -415,21 +450,14 @@ export async function renderVideoSegment(params: {
 
 /** Join rendered segments (in order) with the mixed soundtrack into the final MP4. */
 export async function assembleMp4(params: {
-  artifact: VideoArtifact;
   segments: Buffer[];
-  sfx: SfxCue[];
-  origin: string;
+  soundtrack: Buffer;
 }): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), "explainer-"));
   try {
     const ffmpeg = await ffmpegPath();
-    const soundtrack = await mixSoundtrack(
-      dir,
-      params.artifact,
-      params.sfx,
-      params.origin,
-      ffmpeg,
-    );
+    const soundtrack = join(dir, "soundtrack.m4a");
+    await writeFile(soundtrack, params.soundtrack);
     const list = await Promise.all(
       params.segments.map(async (segment, index) => {
         const path = join(dir, `segment-${index}.mp4`);
@@ -456,12 +484,8 @@ export async function assembleMp4(params: {
       "0:v",
       "-map",
       "1:a",
-      "-c:v",
+      "-c",
       "copy",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "160k",
       "-movflags",
       "+faststart",
       "-shortest",

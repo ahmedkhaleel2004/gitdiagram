@@ -147,7 +147,9 @@ export type VideoGenerationEvent =
   | { status: "complete"; artifact: VideoArtifact }
   | { status: "error"; error: string };
 
+export type VideoRenderStep = "starting" | "rendering" | "finishing";
+
 export type VideoRenderEvent =
-  | { status: "rendering"; progress: number }
+  | { status: "rendering"; progress: number; step?: VideoRenderStep }
   | { status: "complete" }
   | { status: "error"; error: string };

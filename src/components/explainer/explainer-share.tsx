@@ -15,12 +15,21 @@ import {
   watchPath,
   type RenderFormat,
 } from "~/features/explainer/api";
-import type { VideoArtifact } from "~/features/explainer/types";
+import type {
+  VideoArtifact,
+  VideoRenderStep,
+} from "~/features/explainer/types";
 import controls from "~/components/generation/workspace.module.css";
 import { JobRow } from "./explainer-progress";
 import styles from "./explainer-video.module.css";
 
 type Copied = "link" | "badge" | null;
+
+function jobLabel(format: RenderFormat, step: VideoRenderStep) {
+  if (step === "starting") return "Starting the renderer";
+  if (step === "finishing") return "Adding the soundtrack";
+  return `Rendering the ${format === "vertical" ? "9:16" : "16:9"} MP4 with captions`;
+}
 
 function triggerDownload(href: string) {
   const link = document.createElement("a");
@@ -41,6 +50,7 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
   const [job, setJob] = useState<{
     format: RenderFormat;
     progress: number;
+    step: VideoRenderStep;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<Copied>(null);
@@ -49,12 +59,16 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
 
   const download = async (format: RenderFormat) => {
     setError(null);
-    setJob({ format, progress: 0 });
+    setJob({ format, progress: 0, step: "starting" });
     let finished = false;
     try {
       await streamExplainerRender(owner, repo, format, (event) => {
         if (event.status === "rendering")
-          setJob({ format, progress: event.progress });
+          setJob({
+            format,
+            progress: event.progress,
+            step: event.step ?? "rendering",
+          });
         else if (event.status === "complete") finished = true;
         else throw new Error(event.error);
       });
@@ -156,12 +170,12 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
       {job && (
         <div className={styles.shareJob}>
           <JobRow
-            label={`Rendering the ${job.format === "vertical" ? "9:16" : "16:9"} MP4 with captions`}
+            label={jobLabel(job.format, job.step)}
             fraction={job.progress}
           />
           <div className={styles.shareNote}>
-            Only the first download renders; after that it is instant for
-            everyone.
+            The first download takes about a minute; after that it is instant
+            for everyone.
           </div>
         </div>
       )}
