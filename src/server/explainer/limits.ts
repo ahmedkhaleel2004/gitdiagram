@@ -1,6 +1,8 @@
 import "server-only";
 
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { readControls } from "~/server/admin/controls";
+import { isAdminRequest, isOperatorToken } from "~/server/admin/operator";
 import { toRateLimitBucket } from "~/server/generate/rate-limit";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
@@ -16,26 +18,32 @@ function readLimit(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-/** New videos the public may create per UTC day, across everyone. */
-const videoDailyLimit = () => readLimit("VIDEO_DAILY_LIMIT", 25);
-/** New videos one network may create per UTC day. */
-const videoNetworkDailyLimit = () => readLimit("VIDEO_IP_DAILY_LIMIT", 1);
+/**
+ * New videos the public may create per UTC day, across everyone and per
+ * network. The operator can override both live from /admin.
+ */
+async function videoLimits(): Promise<{ daily: number; network: number }> {
+  const controls = await readControls();
+  return {
+    daily: controls.videoDailyLimit ?? readLimit("VIDEO_DAILY_LIMIT", 25),
+    network:
+      controls.videoNetworkDailyLimit ?? readLimit("VIDEO_IP_DAILY_LIMIT", 1),
+  };
+}
 /** MP4 renders started per UTC day. Finished renders are cached and free to download. */
 const renderDailyLimit = () => readLimit("VIDEO_RENDER_DAILY_LIMIT", 300);
 const renderNetworkDailyLimit = () =>
   readLimit("VIDEO_RENDER_IP_DAILY_LIMIT", 8);
 
-/** The operator's token (VIDEO_ADMIN_TOKEN) skips limits and may regenerate. */
+/**
+ * The operator skips limits and may regenerate: by the token
+ * (VIDEO_ADMIN_TOKEN) as a Bearer, or signed in to /admin in this browser.
+ */
 export function isVideoAdmin(request: Request): boolean {
-  const token = process.env.VIDEO_ADMIN_TOKEN?.trim();
-  if (!token || token.length < 32) return false;
   const header = request.headers.get("authorization") ?? "";
-  if (!header.startsWith("Bearer ")) return false;
-  const presented = Buffer.from(header.slice("Bearer ".length).trim());
-  const expected = Buffer.from(token);
-  return (
-    presented.length === expected.length && timingSafeEqual(presented, expected)
-  );
+  if (header.startsWith("Bearer "))
+    return isOperatorToken(header.slice("Bearer ".length));
+  return isAdminRequest(request);
 }
 
 /** Limits guard the production budget; locally every caller is trusted. */
@@ -108,13 +116,9 @@ async function reserve(
   };
 }
 
-export function reserveVideoSlot(clientIp: string | null) {
-  return reserve(
-    "generate",
-    clientIp,
-    videoDailyLimit(),
-    videoNetworkDailyLimit(),
-  );
+export async function reserveVideoSlot(clientIp: string | null) {
+  const limits = await videoLimits();
+  return reserve("generate", clientIp, limits.daily, limits.network);
 }
 
 export function reserveRenderSlot(clientIp: string | null) {
@@ -128,11 +132,36 @@ export function reserveRenderSlot(clientIp: string | null) {
 
 /** How many more videos the public may start today. */
 export async function videosLeftToday(): Promise<number> {
-  const used = await upstashCommand<string | null>([
-    "GET",
-    `video:v1:generate:all:${today()}`,
+  const [used, limits] = await Promise.all([
+    upstashCommand<string | null>(["GET", `video:v1:generate:all:${today()}`]),
+    videoLimits(),
   ]);
-  return Math.max(0, videoDailyLimit() - (Number(used) || 0));
+  return Math.max(0, limits.daily - (Number(used) || 0));
+}
+
+/** Today's video and MP4 budgets and what the public has used, for /admin. */
+export async function videoUsageToday() {
+  const day = today();
+  const [[videos, renders], limits] = await Promise.all([
+    upstashCommand<Array<string | null>>([
+      "MGET",
+      `video:v1:generate:all:${day}`,
+      `video:v1:render:all:${day}`,
+    ]),
+    videoLimits(),
+  ]);
+  return {
+    videos: {
+      used: Number(videos) || 0,
+      limit: limits.daily,
+      networkLimit: limits.network,
+    },
+    renders: {
+      used: Number(renders) || 0,
+      limit: renderDailyLimit(),
+      networkLimit: renderNetworkDailyLimit(),
+    },
+  };
 }
 
 const RELEASE_SCRIPT = `

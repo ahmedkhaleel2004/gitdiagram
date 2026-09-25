@@ -9,6 +9,8 @@ export interface ExplainerVideoState {
   canGenerate: boolean;
   /** Why a visitor cannot start a video: early access, or today's budget. */
   paused: "audience" | "limit" | null;
+  /** The operator opened video making to everyone, tablets included. */
+  openToAll: boolean;
 }
 
 export type RenderFormat = "landscape" | "vertical";
@@ -25,6 +27,7 @@ export async function fetchExplainerVideo(
     video?: VideoArtifact | null;
     canGenerate?: boolean;
     paused?: "audience" | "limit" | null;
+    openToAll?: boolean;
     error?: string;
   };
   if (!response.ok || !body.ok)
@@ -33,6 +36,7 @@ export async function fetchExplainerVideo(
     video: body.video ?? null,
     canGenerate: Boolean(body.canGenerate),
     paused: body.paused ?? null,
+    openToAll: Boolean(body.openToAll),
   };
 }
 

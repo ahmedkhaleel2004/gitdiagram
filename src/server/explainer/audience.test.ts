@@ -90,4 +90,21 @@ describe("who may make new videos", () => {
       ),
     ).toBe(false);
   });
+
+  it("widens to any desktop, then everyone, when the operator says so", () => {
+    const texasMac = request({
+      "x-vercel-ip-country": "US",
+      "x-vercel-ip-country-region": "TX",
+      "user-agent": MAC,
+    });
+    const texasPhone = request({
+      "x-vercel-ip-country": "US",
+      "x-vercel-ip-country-region": "TX",
+      "user-agent": IPHONE,
+    });
+    expect(canMakeVideosHere(texasMac, "priority")).toBe(false);
+    expect(canMakeVideosHere(texasMac, "desktop")).toBe(true);
+    expect(canMakeVideosHere(texasPhone, "desktop")).toBe(false);
+    expect(canMakeVideosHere(texasPhone, "everyone")).toBe(true);
+  });
 });

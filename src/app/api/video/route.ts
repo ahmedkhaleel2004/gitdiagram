@@ -12,8 +12,10 @@ import {
   canGenerateVideos,
   isVideoExplainerEnabled,
 } from "~/server/explainer/config";
+import { readControls } from "~/server/admin/controls";
+import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
 import { canMakeVideosHere } from "~/server/explainer/audience";
-import { videosLeftToday } from "~/server/explainer/limits";
+import { isVideoAdmin, videosLeftToday } from "~/server/explainer/limits";
 import { hasNarrationCredits } from "~/server/explainer/narration";
 import { readVideoArtifact } from "~/server/explainer/store";
 
@@ -33,7 +35,12 @@ const querySchema = z.object({
  */
 async function videoAvailability(
   request: Request,
-): Promise<{ canGenerate: boolean; paused: "audience" | "limit" | null }> {
+  repository: string,
+): Promise<{
+  canGenerate: boolean;
+  paused: "audience" | "limit" | null;
+  openToAll?: boolean;
+}> {
   if (!canGenerateVideos()) return { canGenerate: false, paused: "limit" };
   if (process.env.NODE_ENV !== "production") {
     // Local preview of the paused states: VIDEO_PREVIEW_PAUSED=audience|limit.
@@ -42,15 +49,30 @@ async function videoAvailability(
       ? { canGenerate: false, paused: preview }
       : { canGenerate: true, paused: null };
   }
-  if (!canMakeVideosHere(request))
+  // The operator, signed in to /admin, may always make videos.
+  if (isVideoAdmin(request))
+    return { canGenerate: true, paused: null, openToAll: true };
+  const controls = await readControls();
+  // "Everyone" includes tablets, which the page otherwise holds back.
+  const openToAll = controls.videoAudience === "everyone";
+  if (controls.videosPaused) return { canGenerate: false, paused: "limit" };
+  if (!canMakeVideosHere(request, controls.videoAudience)) {
+    // Someone wanted a video the gate held back: demand the operator can see.
+    void emitLiveEvent({
+      kind: "video.gated",
+      repo: repository,
+      reason: "audience",
+      ...requestOrigin(request),
+    });
     return { canGenerate: false, paused: "audience" };
+  }
   try {
     const [left, credits] = await Promise.all([
       videosLeftToday(),
       hasNarrationCredits(),
     ]);
     return left > 0 && credits
-      ? { canGenerate: true, paused: null }
+      ? { canGenerate: true, paused: null, openToAll }
       : { canGenerate: false, paused: "limit" };
   } catch {
     return { canGenerate: false, paused: "limit" };
@@ -79,7 +101,14 @@ export async function GET(request: Request): Promise<Response> {
       },
     );
   return Response.json(
-    { ok: true, video: null, ...(await videoAvailability(request)) },
+    {
+      ok: true,
+      video: null,
+      ...(await videoAvailability(
+        request,
+        `${parsed.data.username}/${parsed.data.repo}`,
+      )),
+    },
     { headers: NO_STORE_RESPONSE_HEADERS },
   );
 }

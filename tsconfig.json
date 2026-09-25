@@ -47,6 +47,7 @@
     ".claude",
     ".playwright-mcp",
     "public/video-engine",
+    "workers",
     "**/__pycache__"
   ]
 }

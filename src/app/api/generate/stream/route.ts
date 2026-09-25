@@ -101,6 +101,7 @@ import {
   finalizeGenerationStream,
   logGenerationFinished,
 } from "~/server/generate/stream-finalization";
+import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -138,6 +139,10 @@ export async function POST(request: Request) {
     rateLimitedClientIp,
     rateLimitedWindowStartSeconds,
   } = admission.value;
+  // A private repository's name stays off the operator's live feed.
+  const liveLabel = githubPat?.trim()
+    ? "a private repository"
+    : `${username}/${repo}`;
   const generationAbortController = new AbortController();
   const deadlineSignal = AbortSignal.timeout(GENERATION_DEADLINE_MS);
   const postResponseTasks: Array<() => Promise<void>> = [];
@@ -301,6 +306,14 @@ export async function POST(request: Request) {
               used_private_github_token: Boolean(githubPat),
             }),
           );
+          void emitLiveEvent({
+            kind: "diagram.started",
+            repo: liveLabel,
+            model,
+            ownKey: Boolean(apiKey),
+            job: { id: audit.sessionId, state: "start", label: liveLabel },
+            ...requestOrigin(request),
+          });
 
           if (isComplimentaryGateEnabled() && !apiKey) {
             if (provider !== "openai") {
@@ -947,6 +960,24 @@ export async function POST(request: Request) {
             streamState,
             terminalErrorCode,
           });
+          // Sent after the response closes, while the function stays up for
+          // its post-response work.
+          const finishedCost = audit.finalCost ?? audit.estimatedCost;
+          postResponseTasks.push(() =>
+            emitLiveEvent({
+              kind: "diagram.finished",
+              repo: liveLabel,
+              outcome: streamState.wasCancelled
+                ? "cancelled"
+                : audit.status === "succeeded"
+                  ? "complete"
+                  : "error",
+              errorCode: terminalErrorCode,
+              ms: Math.round(performance.now() - invocationStartedAt),
+              costUsd: finishedCost?.amountUsd ?? null,
+              job: { id: audit.sessionId, state: "end" },
+            }),
+          );
         }
       };
 

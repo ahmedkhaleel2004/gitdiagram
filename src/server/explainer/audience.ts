@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { VideoAudience } from "~/features/admin/types";
+
 // Who may make new explainer videos during early access: desktop visitors
 // (Mac, Windows, Linux) in the places GitDiagram's most valuable audience
 // lives. It mirrors the PostHog "priority audiences" (docs/operations/posthog.md).
@@ -57,9 +59,17 @@ export function isInVideoRegion(request: Request): boolean {
   return /london/i.test(city);
 }
 
-/** Whether this visitor may make new videos during early access. */
-export function canMakeVideosHere(request: Request): boolean {
-  return isDesktopRequest(request) && isInVideoRegion(request);
+/**
+ * Whether this visitor may make new videos. The operator widens the audience
+ * from /admin: early-access places on desktop, any desktop, or everyone.
+ */
+export function canMakeVideosHere(
+  request: Request,
+  audience: VideoAudience = "priority",
+): boolean {
+  if (audience === "everyone") return true;
+  if (!isDesktopRequest(request)) return false;
+  return audience === "desktop" || isInVideoRegion(request);
 }
 
 export const EARLY_ACCESS_MESSAGE =

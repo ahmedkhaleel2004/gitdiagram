@@ -32,6 +32,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/server", () => ({ after: mocks.after }));
+vi.mock("~/server/admin/live-events", () => ({
+  emitLiveEvent: vi.fn(async () => undefined),
+  requestOrigin: vi.fn(() => ({})),
+}));
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),

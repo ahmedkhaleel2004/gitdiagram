@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { MAX_GRAPH_ATTEMPTS } from "~/features/diagram/graph";
 import {
+  buildQuotaKey,
   checkQuotaInUpstash,
   commitQuotaUsageInUpstash,
   markQuotaReservationStartedInUpstash,
 } from "~/server/storage/quota-store";
+import { upstashCommand } from "~/server/storage/upstash";
 import type { AIProvider } from "~/server/generate/model-config";
 import {
   EXPLANATION_ESTIMATED_OUTPUT_TOKENS,
@@ -187,6 +189,30 @@ export function buildComplimentaryStageTokenEstimate(
     GRAPH_RETRY_INPUT_BUFFER_TOKENS +
     GRAPH_ESTIMATED_OUTPUT_TOKENS
   );
+}
+
+/** Today's complimentary tokens: measured use, in-flight reservations, limit. */
+export async function readComplimentaryUsageToday(): Promise<{
+  enabled: boolean;
+  usedTokens: number;
+  reservedTokens: number;
+  limitTokens: number;
+}> {
+  const [used, reserved] = await upstashCommand<Array<string | null>>([
+    "HMGET",
+    buildQuotaKey(
+      getComplimentaryQuotaDateUtc(),
+      getComplimentaryQuotaBucket(),
+    ),
+    "used_tokens",
+    "reserved_tokens",
+  ]);
+  return {
+    enabled: isComplimentaryGateEnabled(),
+    usedTokens: Number(used) || 0,
+    reservedTokens: Number(reserved) || 0,
+    limitTokens: getComplimentaryDailyLimitTokens(),
+  };
 }
 
 export function getComplimentaryDenialMessage(): string {

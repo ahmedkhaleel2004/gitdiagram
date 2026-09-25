@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Live presence and the operator's event feed for gitdiagram.com/admin.
+  "name": "gitdiagram-presence",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": {
+    "ALLOWED_ORIGINS": "https://gitdiagram.com,https://www.gitdiagram.com"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "PRESENCE", "class_name": "Presence" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Presence"] }]
+}

@@ -13,6 +13,7 @@ const config = [
       "coverage/**",
       "next-env.d.ts",
       "public/video-engine/**",
+      "workers/**",
     ],
   },
   {

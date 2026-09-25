@@ -4,6 +4,7 @@ import { GeistSans } from "geist/font/sans";
 import { type Metadata } from "next";
 import { Header } from "~/components/header";
 import { Footer } from "~/components/footer";
+import { LivePresence } from "~/components/live-presence";
 import { CSPostHogProvider } from "./providers";
 import { InitialSponsorCampaignProvider } from "~/hooks/use-sponsor-campaign";
 import { activeSponsorCampaign } from "~/lib/sponsor-campaign";
@@ -88,6 +89,7 @@ export default function RootLayout({
             <div className="flex-grow">{children}</div>
             <Footer />
           </InitialSponsorCampaignProvider>
+          <LivePresence />
         </CSPostHogProvider>
       </body>
     </html>

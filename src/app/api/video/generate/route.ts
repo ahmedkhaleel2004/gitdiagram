@@ -11,6 +11,8 @@ import {
   jsonErrorResponse,
   parseSameOriginJsonRequest,
 } from "~/server/http/same-origin-json";
+import { readControls } from "~/server/admin/controls";
+import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
 import {
   canMakeVideosHere,
   EARLY_ACCESS_MESSAGE,
@@ -62,11 +64,30 @@ export async function POST(request: Request): Promise<Response> {
   if (!canGenerateVideos())
     return jsonErrorResponse("Explainer videos are not available.", 503);
   const { username, repo } = parsed.data;
+  const repository = `${username}/${repo}`;
   const trusted = isTrustedVideoCaller(request);
   const production = process.env.NODE_ENV === "production";
-  // Early access: only desktops in a few places may start new videos.
-  if (!trusted && !canMakeVideosHere(request))
-    return jsonErrorResponse(EARLY_ACCESS_MESSAGE, 403);
+  const origin = requestOrigin(request);
+  const gated = (reason: string) =>
+    void emitLiveEvent({
+      kind: "video.gated",
+      repo: repository,
+      reason,
+      ...origin,
+    });
+  if (!trusted) {
+    // The operator sets who may start new videos, and can pause them, live
+    // from /admin. By default only desktops in a few places may.
+    const controls = await readControls();
+    if (controls.videosPaused) {
+      gated("paused");
+      return jsonErrorResponse(limitMessage("daily"), 503);
+    }
+    if (!canMakeVideosHere(request, controls.videoAudience)) {
+      gated("audience");
+      return jsonErrorResponse(EARLY_ACCESS_MESSAGE, 403);
+    }
+  }
 
   // A video, once made, is everyone's: only the operator may replace it.
   if (!isVideoAdmin(request) && production) {
@@ -78,11 +99,15 @@ export async function POST(request: Request): Promise<Response> {
   let releaseLock: (() => Promise<void>) | null = null;
   try {
     if (!trusted) {
-      if (!(await hasNarrationCredits()))
+      if (!(await hasNarrationCredits())) {
+        gated("credits");
         return jsonErrorResponse(limitMessage("daily"), 503);
+      }
       reservation = await reserveVideoSlot(getClientIp(request));
-      if (!reservation.ok)
+      if (!reservation.ok) {
+        gated(reservation.reason);
         return jsonErrorResponse(limitMessage(reservation.reason), 429);
+      }
     }
     if (production) {
       releaseLock = await tryVideoLock(
@@ -112,8 +137,18 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const origin = new URL(request.url).origin;
+  const siteOrigin = new URL(request.url).origin;
   const encoder = new TextEncoder();
+  const startedAt = Date.now();
+  const jobId = `video:${repository}:${startedAt}`;
+  void emitLiveEvent({
+    kind: "video.started",
+    repo: repository,
+    operator: trusted,
+    job: { id: jobId, state: "start", label: repository },
+    ...origin,
+  });
+  let outcome: "complete" | "error" = "error";
   let closed = false;
   let job: Promise<void> = Promise.resolve();
 
@@ -140,11 +175,12 @@ export async function POST(request: Request): Promise<Response> {
       // so a viewer who leaves early still gets it on their next visit.
       job = generateExplainerVideo({ username, repo, onEvent: send })
         .then(async (artifact) => {
+          outcome = "complete";
           send({ status: "complete", artifact });
           clearInterval(heartbeat);
           close();
           // The link-preview still, made once the viewer already has the video.
-          await storePoster(artifact, origin);
+          await storePoster(artifact, siteOrigin);
         })
         .catch(async (error: unknown) => {
           console.error(
@@ -168,6 +204,13 @@ export async function POST(request: Request): Promise<Response> {
           clearInterval(heartbeat);
           close();
           await releaseLock?.();
+          await emitLiveEvent({
+            kind: "video.finished",
+            repo: repository,
+            outcome,
+            ms: Date.now() - startedAt,
+            job: { id: jobId, state: "end" },
+          });
         });
     },
     cancel() {

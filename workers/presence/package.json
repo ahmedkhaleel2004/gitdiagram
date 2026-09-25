@@ -1,0 +1,15 @@
+{
+  "name": "gitdiagram-presence",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260925.1",
+    "typescript": "7.0.2",
+    "wrangler": "4.139.0"
+  }
+}

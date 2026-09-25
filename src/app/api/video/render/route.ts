@@ -10,6 +10,7 @@ import {
   jsonErrorResponse,
   parseSameOriginJsonRequest,
 } from "~/server/http/same-origin-json";
+import { emitLiveEvent } from "~/server/admin/live-events";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import {
   isTrustedVideoCaller,
@@ -120,6 +121,15 @@ export async function POST(request: Request): Promise<Response> {
         }
       };
       const started = Date.now();
+      const jobId = `render:${artifact.repository}:${format}:${started}`;
+      const label = `${artifact.repository} (${format} MP4)`;
+      let outcome: "complete" | "error" = "error";
+      void emitLiveEvent({
+        kind: "render.started",
+        repo: artifact.repository,
+        format,
+        job: { id: jobId, state: "start", label },
+      });
       let last = "";
       job = renderMp4InSegments({
         artifact,
@@ -143,6 +153,7 @@ export async function POST(request: Request): Promise<Response> {
               ms: Date.now() - started,
             }),
           );
+          outcome = "complete";
           send({ status: "complete" });
         })
         .catch(async (error: unknown) => {
@@ -169,6 +180,14 @@ export async function POST(request: Request): Promise<Response> {
             controller.close();
           }
           await releaseLock?.();
+          await emitLiveEvent({
+            kind: "render.finished",
+            repo: artifact.repository,
+            format,
+            outcome,
+            ms: Date.now() - started,
+            job: { id: jobId, state: "end" },
+          });
         });
     },
     cancel() {

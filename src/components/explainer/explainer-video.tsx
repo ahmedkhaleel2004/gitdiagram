@@ -100,12 +100,13 @@ export function ExplainerVideo({
   useEffect(() => {
     const controller = new AbortController();
     fetchExplainerVideo(username, repo, controller.signal)
-      .then(({ video, canGenerate, paused }) =>
+      .then(({ video, canGenerate, paused, openToAll }) =>
         setState(
           video
             ? { kind: "ready", video }
-            : // iPads report a desktop Mac to the server; early access is for desktops.
-              isTouchMac()
+            : // iPads report a desktop Mac to the server; early access is for
+              // desktops unless the operator opened it to everyone.
+              isTouchMac() && !openToAll
               ? { kind: "empty", canGenerate: false, paused: "audience" }
               : { kind: "empty", canGenerate, paused },
         ),

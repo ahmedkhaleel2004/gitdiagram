@@ -1,0 +1,2 @@
+ALLOWED_ORIGINS="http://localhost:3000"
+PRESENCE_SECRET="replace-with-32-or-more-characters"

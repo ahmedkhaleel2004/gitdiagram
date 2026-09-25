@@ -1,5 +1,15 @@
 const isDevelopment = process.env.NODE_ENV !== "production";
 
+// The live-presence worker (workers/presence): every tab holds one socket to it.
+const presenceOrigin = (() => {
+  try {
+    const url = new URL(process.env.NEXT_PUBLIC_PRESENCE_URL ?? "");
+    return /^wss?:$/.test(url.protocol) ? ` ${url.origin}` : "";
+  } catch {
+    return "";
+  }
+})();
+
 // Defence in depth behind the diagram sanitization pipeline: if a DOMPurify
 // bypass ever lands, `connect-src 'self'` still denies the injected code any
 // way to phone home, and object/base/form rules deny the usual pivots.
@@ -16,7 +26,7 @@ const contentSecurityPolicy = [
   // blob: and data: carry the rendered SVG through the PNG export path.
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  `connect-src 'self'${presenceOrigin}`,
   "worker-src 'self' blob:",
   // Same-origin frames only: the explainer video stage (/video-engine).
   "frame-src 'self'",

@@ -43,12 +43,10 @@ const MIN_CREDITS = Math.max(
 let creditsCache: { at: number; remaining: number | null } | null = null;
 
 /**
- * Whether the voice account can narrate another video. The balance is read
- * live (cached five minutes per instance) so new videos stop cleanly instead
- * of failing halfway once the credits run out. An unreadable balance counts as
- * enough: narration itself will then report the real error.
+ * The voice account's remaining credits, read live and cached five minutes
+ * per instance; null when the balance cannot be read.
  */
-export async function hasNarrationCredits(): Promise<boolean> {
+export async function narrationCreditsRemaining(): Promise<number | null> {
   if (!creditsCache || Date.now() - creditsCache.at > 5 * 60_000) {
     let remaining: number | null = null;
     try {
@@ -72,9 +70,17 @@ export async function hasNarrationCredits(): Promise<boolean> {
     }
     creditsCache = { at: Date.now(), remaining };
   }
-  return (
-    creditsCache.remaining === null || creditsCache.remaining >= MIN_CREDITS
-  );
+  return creditsCache.remaining;
+}
+
+/**
+ * Whether the voice account can narrate another video, so new videos stop
+ * cleanly instead of failing halfway once the credits run out. An unreadable
+ * balance counts as enough: narration itself will then report the real error.
+ */
+export async function hasNarrationCredits(): Promise<boolean> {
+  const remaining = await narrationCreditsRemaining();
+  return remaining === null || remaining >= MIN_CREDITS;
 }
 
 const ttsModel = () => process.env.VIDEO_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
