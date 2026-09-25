@@ -1,14 +1,8 @@
 import "server-only";
 
 import type { VideoTiming, VideoWord } from "~/features/explainer/types";
-import {
-  isVoiceConfigured,
-  speak,
-  voiceCreditUsd,
-  voicePausedUntil,
-} from "./voice";
+import { speak, voicePausedUntil } from "./voice";
 import { normalizeWord } from "./text";
-import type { Alignment } from "./voice-alignment";
 
 const LEAD_IN_SECONDS = 0.4;
 const TAIL_SECONDS = 3.6;
@@ -20,10 +14,8 @@ export interface Narration {
   characters: number;
   /** The model and voice that read the take. */
   voice: string;
-}
-
-export function isNarrationConfigured(): boolean {
-  return isVoiceConfigured();
+  /** Voice and transcription cost in USD, estimated from list prices. */
+  costUsd: number;
 }
 
 /**
@@ -36,68 +28,17 @@ export async function isNarrationAvailable(): Promise<boolean> {
   return (await voicePausedUntil().catch(() => null)) === null;
 }
 
-/** When new videos can be voiced again, for /admin; null when they can now. */
-export function narrationPausedUntil(): Promise<number | null> {
-  return voicePausedUntil();
-}
-
-/** The voice's prepaid balance in USD, for /admin; null when unreadable. */
-export function narrationCreditUsd(): Promise<number | null> {
-  return voiceCreditUsd();
-}
-
-/**
- * Words with clock times and their offset in the spoken text, counted in the
- * same UTF-16 units as the text itself: an alignment entry may be a whole
- * emoji, which is two units of the string, so offsets are summed from the
- * entries' own lengths rather than taken from their index.
- */
-function spokenWords(
-  alignment: Alignment,
-  offset: number,
-): Array<VideoWord & { offset: number }> {
-  const words: Array<VideoWord & { offset: number }> = [];
-  let text = "";
-  let s = 0;
-  let e = 0;
-  let from = -1;
-  let position = 0;
-  const flush = () => {
-    if (from >= 0)
-      words.push({
-        w: normalizeWord(text),
-        s: Number((offset + s).toFixed(3)),
-        e: Number((offset + e).toFixed(3)),
-        offset: from,
-      });
-    text = "";
-    from = -1;
-  };
-  for (let index = 0; index < alignment.characters.length; index++) {
-    const character = alignment.characters[index]!;
-    const at = position;
-    position += character.length;
-    if (/\s/.test(character)) {
-      flush();
-      continue;
-    }
-    if (from < 0) {
-      from = at;
-      s = alignment.character_start_times_seconds[index] ?? 0;
-    }
-    text += character;
-    e = alignment.character_end_times_seconds[index] ?? s;
-  }
-  flush();
-  return words;
-}
+const seconds = (value: number) => Number(value.toFixed(3));
 
 /**
  * Voice the whole script as one continuous take, so the delivery carries from
  * scene to scene the way a storyteller's does (separate takes per scene each
  * restarted the voice's tone and joined with a gap), then split the take back
- * into beats with the character timestamps. A scene starts on a new paragraph,
+ * into beats with the word timestamps. A scene starts on a new paragraph,
  * which the voice reads as a slightly longer breath.
+ *
+ * A VoiceUnavailableError (the voice's balance ran out) is passed on as it
+ * is, so the caller can tell it apart.
  */
 export async function narrateBeats(
   beats: Array<{ narration: string; scene: string }>,
@@ -122,8 +63,13 @@ export async function narrateBeats(
     return { from, to: text.length };
   });
 
-  const { audio, alignment, voice } = await speak(text, signal);
-  const words = spokenWords(alignment, LEAD_IN_SECONDS);
+  const take = await speak(text, signal);
+  const words = take.words.map((word): VideoWord & { offset: number } => ({
+    w: normalizeWord(text.slice(word.from, word.to)),
+    s: seconds(LEAD_IN_SECONDS + word.start),
+    e: seconds(LEAD_IN_SECONDS + word.end),
+    offset: word.from,
+  }));
   const timing: VideoTiming["beats"] = [];
   for (const span of spans) {
     const own = words.filter(
@@ -139,15 +85,19 @@ export async function narrateBeats(
     });
   }
   const speechEnd = timing.at(-1)?.end ?? 0;
+  // The film runs past the take's real end, even when the transcription
+  // stopped hearing words before it.
+  const soundEnd = Math.max(speechEnd, LEAD_IN_SECONDS + take.seconds);
   return {
-    clips: [audio],
+    clips: [take.audio],
     timing: {
-      DURATION: Math.ceil((speechEnd + TAIL_SECONDS) * 10) / 10,
-      SPEECH_END: Number(speechEnd.toFixed(3)),
+      DURATION: Math.ceil((soundEnd + TAIL_SECONDS) * 10) / 10,
+      SPEECH_END: seconds(speechEnd),
       beats: timing,
     },
     voices: [{ start: LEAD_IN_SECONDS }],
     characters: text.length,
-    voice,
+    voice: take.voice,
+    costUsd: take.costUsd,
   };
 }

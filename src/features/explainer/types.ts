@@ -128,6 +128,11 @@ interface VideoGenerationStats {
   inputTokens: number | null;
   outputTokens: number | null;
   ttsCharacters: number;
+  /**
+   * Narration and transcription cost, estimated from list prices; missing on
+   * older videos, whose cost is the script and design only.
+   */
+  voiceCostUsd?: number;
   /** The voice model that read the narration; missing on older videos. */
   voice?: string;
   warnings: string[];

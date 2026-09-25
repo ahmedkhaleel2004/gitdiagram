@@ -1,6 +1,6 @@
 import "server-only";
 
-import { isNarrationConfigured } from "./narration";
+import { isVoiceConfigured } from "./voice";
 
 /** Explainer videos stay off unless a deployment opts in. */
 export function isVideoExplainerEnabled(): boolean {
@@ -8,7 +8,5 @@ export function isVideoExplainerEnabled(): boolean {
 }
 
 export function canGenerateVideos(): boolean {
-  return (
-    Boolean(process.env.ANTHROPIC_API_KEY?.trim()) && isNarrationConfigured()
-  );
+  return Boolean(process.env.ANTHROPIC_API_KEY?.trim()) && isVoiceConfigured();
 }

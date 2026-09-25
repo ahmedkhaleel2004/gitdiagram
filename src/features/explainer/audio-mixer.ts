@@ -28,17 +28,28 @@ function voiceClipUrl(artifact: VideoArtifact, index: number): string {
   return `/api/video/audio?${params.toString()}`;
 }
 
+/** Work cut short because the player closed. */
+const closed = () => new DOMException("The player closed.", "AbortError");
+
+const isClosed = (error: unknown) =>
+  error instanceof DOMException && error.name === "AbortError";
+
 /**
  * Runs time-stretching in a worker, so a speed change never freezes the page.
  * Without workers (tests, very old browsers) it runs here, after a yield.
+ * Once disposed, every stretch, waiting or new, rejects with an AbortError.
  */
 class Stretcher {
   private worker: Worker | null = null;
   private failed = typeof Worker === "undefined";
+  private disposed = false;
   private next = 0;
   private waiting = new Map<
     number,
-    (channels: Float32Array<ArrayBuffer>[] | null) => void
+    {
+      resolve: (channels: Float32Array<ArrayBuffer>[] | null) => void;
+      reject: (error: DOMException) => void;
+    }
   >();
 
   get offThread() {
@@ -50,14 +61,16 @@ class Stretcher {
     sampleRate: number,
     rate: number,
   ): Promise<Float32Array<ArrayBuffer>[]> {
+    if (this.disposed) throw closed();
     const worker = this.start();
     if (worker) {
       const id = ++this.next;
       // Copies: the originals belong to the decoded AudioBuffer.
       const copies = channels.map((channel) => channel.slice());
+      // Null: the worker failed, so the work is done here instead.
       const result = await new Promise<Float32Array<ArrayBuffer>[] | null>(
-        (resolve) => {
-          this.waiting.set(id, resolve);
+        (resolve, reject) => {
+          this.waiting.set(id, { resolve, reject });
           worker.postMessage(
             { id, channels: copies, sampleRate, rate },
             copies.map((channel) => channel.buffer),
@@ -67,14 +80,17 @@ class Stretcher {
       if (result) return result;
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
+    if (this.disposed) throw closed();
     return stretchChannels(channels, sampleRate, rate);
   }
 
   dispose() {
+    this.disposed = true;
     this.worker?.terminate();
     this.worker = null;
     this.failed = true;
-    this.settle(null);
+    for (const { reject } of this.waiting.values()) reject(closed());
+    this.waiting.clear();
   }
 
   private start(): Worker | null {
@@ -85,7 +101,7 @@ class Stretcher {
         { type: "module" },
       );
       worker.onmessage = (event: MessageEvent<StretchResponse>) => {
-        this.waiting.get(event.data.id)?.(event.data.channels);
+        this.waiting.get(event.data.id)?.resolve(event.data.channels);
         this.waiting.delete(event.data.id);
       };
       // A worker that cannot load (blocked, unsupported) falls back to here.
@@ -93,18 +109,14 @@ class Stretcher {
         worker.terminate();
         this.worker = null;
         this.failed = true;
-        this.settle(null);
+        for (const { resolve } of this.waiting.values()) resolve(null);
+        this.waiting.clear();
       };
       this.worker = worker;
     } catch {
       this.failed = true;
     }
     return this.worker;
-  }
-
-  private settle(result: null) {
-    for (const resolve of this.waiting.values()) resolve(result);
-    this.waiting.clear();
   }
 }
 
@@ -116,6 +128,10 @@ export class ExplainerAudio {
   private sources: AudioScheduledSourceNode[] = [];
   private startedAt = 0;
   private offset = 0;
+  /** Where a play still waiting will start; a seek meanwhile moves it. */
+  private startFrom = 0;
+  /** The latest time reported while playing; the clock never goes back. */
+  private heard = 0;
   private playing = false;
   /** Video seconds per real second. */
   private rate = 1;
@@ -125,8 +141,8 @@ export class ExplainerAudio {
   private ticket = 0;
   /**
    * Narration re-timed for a speed, so voices keep their pitch. Only the
-   * current speed and the press-and-hold speed are kept (a minute of stereo
-   * narration is about 20 MB per speed).
+   * current speed and the press-and-hold speed are kept (a minute of mono
+   * narration is about 10 MB of samples per speed).
    */
   private stretched = new Map<number, Promise<AudioBuffer[]>>();
   private stretcher = new Stretcher();
@@ -188,21 +204,29 @@ export class ExplainerAudio {
   }
 
   /**
-   * Where the listener is in the video: sound leaves the speakers
-   * `outputLatency` after the context's clock (a lot on Bluetooth), so the
-   * picture waits for it. Never before the point playback started from.
+   * Where the listener is in the video: sound leaves the speakers the
+   * context's base and output latency after its clock (a lot on Bluetooth),
+   * so the picture waits for it. Never before the point playback started
+   * from, and never back: the output latency is re-estimated while playing.
    */
   currentTime(): number {
     const context = this.context;
     if (!context || !this.playing) return this.offset;
-    const latency = [context.outputLatency, context.baseLatency].find(
-      (value) => Number.isFinite(value) && value > 0,
+    let latency = 0;
+    for (const value of [context.outputLatency, context.baseLatency])
+      if (Number.isFinite(value) && value > 0) latency += value;
+    const heard = context.currentTime - this.startedAt - latency;
+    this.heard = Math.max(
+      this.heard,
+      this.offset + Math.max(0, heard) * this.rate,
     );
-    const heard = context.currentTime - this.startedAt - (latency ?? 0);
-    return this.offset + Math.max(0, heard) * this.rate;
+    return this.heard;
   }
 
-  /** Narration for a speed; later calls share the same work. */
+  /**
+   * Narration for a speed; later calls share the same work. Rejects with an
+   * AbortError once the player is disposed.
+   */
   prepare(rate: number): Promise<AudioBuffer[]> {
     const context = this.context;
     if (!context || rate === 1) return Promise.resolve(this.voices);
@@ -220,6 +244,7 @@ export class ExplainerAudio {
             voice.sampleRate,
             rate,
           );
+          if (this.context !== context) throw closed();
           const buffer = context.createBuffer(
             output.length,
             output[0]!.length,
@@ -240,7 +265,10 @@ export class ExplainerAudio {
    * (in a worker); otherwise it waits until that speed is asked for.
    */
   prewarm(rate: number) {
-    if (this.stretcher.offThread) void this.prepare(rate);
+    if (this.stretcher.offThread)
+      this.prepare(rate).catch(() => {
+        // Closed, or it fails again when the speed is asked for.
+      });
   }
 
   /** Change speed; playback carries on from the same moment. */
@@ -248,21 +276,33 @@ export class ExplainerAudio {
     this.wantedRate = rate;
     for (const kept of this.stretched.keys())
       if (kept !== rate && kept !== this.holdRate) this.stretched.delete(kept);
-    await this.prepare(rate);
+    try {
+      await this.prepare(rate);
+    } catch (error) {
+      if (isClosed(error)) return;
+      throw error;
+    }
     if (this.wantedRate !== rate || rate === this.rate) return;
     // Re-anchor the clock first, so it runs on from here at the new speed.
     const time = this.currentTime();
     this.offset = time;
+    this.heard = time;
     this.startedAt = this.context?.currentTime ?? 0;
     this.rate = rate;
     if (this.playing) await this.play(time);
   }
 
-  async play(from: number): Promise<void> {
+  /**
+   * Start playing at `from` (or where a seek moved it while this waited).
+   * True once sound is scheduled; false when a later play, pause, seek or
+   * dispose took over first, so the caller must not show it playing.
+   */
+  async play(from: number): Promise<boolean> {
     const context = this.context;
     const master = this.master;
-    if (!context || !master) return;
+    if (!context || !master) return false;
     const ticket = ++this.ticket;
+    this.startFrom = from;
     // Safari mutes Web Audio under the iPhone's silent switch unless the page
     // declares it plays media.
     const session = (
@@ -271,15 +311,25 @@ export class ExplainerAudio {
     if (session) session.type = "playback";
     // Resume inside the tap that asked for sound, before anything waits.
     const resumed = context.resume();
+    resumed.catch(() => {
+      // Reported below, when it is awaited.
+    });
     // The speed may change while this waits; always start at the latest one.
     let rate = this.rate;
-    let voices = await this.prepare(rate);
-    await resumed;
-    while (ticket === this.ticket && rate !== this.rate) {
-      rate = this.rate;
+    let voices: AudioBuffer[];
+    try {
       voices = await this.prepare(rate);
+      await resumed;
+      while (ticket === this.ticket && rate !== this.rate) {
+        rate = this.rate;
+        voices = await this.prepare(rate);
+      }
+    } catch (error) {
+      if (ticket !== this.ticket || isClosed(error)) return false;
+      throw error;
     }
-    if (ticket !== this.ticket) return;
+    if (ticket !== this.ticket) return false;
+    from = this.startFrom;
     this.stopSources();
     const now = context.currentTime + START_DELAY;
     // Video time to the context's clock, and a clip's offset into its stretch.
@@ -310,13 +360,24 @@ export class ExplainerAudio {
 
     this.startedAt = now;
     this.offset = from;
+    this.heard = from;
     this.playing = true;
+    return true;
   }
 
-  /** Move the paused clock without making a sound. */
+  /**
+   * Move the clock. Playing, it plays on from there; a play still waiting
+   * starts there; paused, it moves without a sound.
+   */
   seek(time: number) {
-    if (this.playing) void this.play(time);
-    else this.offset = time;
+    if (this.playing)
+      this.play(time).catch(() => {
+        // The sound could not resume; the next play reports it.
+      });
+    else {
+      this.offset = time;
+      this.startFrom = time;
+    }
   }
 
   pause(): number {
@@ -324,10 +385,18 @@ export class ExplainerAudio {
     this.offset = this.currentTime();
     this.playing = false;
     this.stopSources();
+    // Let the device's audio go while paused (iOS otherwise holds the audio
+    // session, keeping other apps quiet and using battery). The next play
+    // resumes it inside the tap.
+    this.context?.suspend().catch(() => {
+      // Closed already.
+    });
     return this.offset;
   }
 
   dispose() {
+    this.ticket++;
+    this.playing = false;
     this.stopSources();
     this.stretcher.dispose();
     this.stretched.clear();

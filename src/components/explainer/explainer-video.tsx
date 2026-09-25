@@ -237,7 +237,14 @@ export function ExplainerVideo({
 
   if (state.kind === "ready") {
     const { video } = state;
-    const cost = video.stats.plannerCostUsd;
+    const { plannerCostUsd, voiceCostUsd } = video.stats;
+    // Older videos stored the script and design cost only.
+    const cost =
+      plannerCostUsd === null
+        ? ""
+        : voiceCostUsd === undefined
+          ? ` for $${plannerCostUsd.toFixed(2)} (script and design)`
+          : ` for $${(plannerCostUsd + voiceCostUsd).toFixed(2)}`;
     return (
       <div className={`${styles.panel} ${styles.enter}`}>
         <ExplainerPlayer key={video.createdAt} artifact={video} />
@@ -248,8 +255,7 @@ export function ExplainerVideo({
           </span>
           <span>
             Made with {modelLabel(video.stats.model)} in{" "}
-            {(video.stats.totalMs / 1000).toFixed(0)}s
-            {cost !== null ? ` for $${cost.toFixed(2)}` : ""}
+            {(video.stats.totalMs / 1000).toFixed(0)}s{cost}
           </span>
           {canRegenerate &&
             (confirming ? (

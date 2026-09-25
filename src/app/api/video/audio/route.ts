@@ -15,6 +15,9 @@ export const maxDuration = 15;
 const querySchema = z.object({
   username: githubUsernameSchema,
   repo: githubRepoSchema,
+  // The index of the narration clip in the artifact's `voices`. The name is
+  // from when every beat had its own clip; videos now have one take (always
+  // 0), but older videos still ask for one clip per scene, so it stays.
   beat: z.coerce.number().int().min(0).max(31),
   // The video's createdAt: clips live under their video's version folder.
   v: z.iso.datetime(),

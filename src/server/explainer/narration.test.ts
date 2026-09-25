@@ -2,29 +2,31 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { speak, voicePausedUntil } = vi.hoisted(() => ({
+const { speak, voicePausedUntil, VoiceUnavailableError } = vi.hoisted(() => ({
   speak: vi.fn(),
   voicePausedUntil: vi.fn(),
+  VoiceUnavailableError: class extends Error {},
 }));
-vi.mock("./voice", () => ({
-  speak,
-  voicePausedUntil,
-  isVoiceConfigured: () => true,
-}));
+vi.mock("./voice", () => ({ speak, voicePausedUntil, VoiceUnavailableError }));
 
 import { isNarrationAvailable, narrateBeats } from "./narration";
 
-/** A fake take: every character lasts 0.05 s, so offsets map straight to time. */
-function takeFor(text: string) {
-  const characters = text.split("");
+/**
+ * A fake take: every character lasts 0.05 s, so offsets map straight to time.
+ * `said` is what the take holds (blank where the voice skipped a word).
+ */
+function takeFor(text: string, said = text, seconds = text.length * 0.05) {
   return {
     audio: Buffer.from("mp3"),
     voice: "google/gemini-3.8-flash-tts:Charon",
-    alignment: {
-      characters,
-      character_start_times_seconds: characters.map((_, i) => i * 0.05),
-      character_end_times_seconds: characters.map((_, i) => (i + 1) * 0.05),
-    },
+    seconds,
+    costUsd: 0.03,
+    words: [...said.matchAll(/\S+/g)].map((match) => ({
+      from: match.index,
+      to: match.index + match[0].length,
+      start: match.index * 0.05,
+      end: (match.index + match[0].length) * 0.05,
+    })),
   };
 }
 
@@ -52,6 +54,7 @@ describe("narrateBeats", () => {
 
     expect(narration.clips).toHaveLength(1);
     expect(narration.voice).toBe("google/gemini-3.8-flash-tts:Charon");
+    expect(narration.costUsd).toBe(0.03);
     expect(narration.voices).toEqual([{ start: 0.4 }]);
     expect(
       narration.timing.beats.map((beat) => beat.words.map((w) => w.w)),
@@ -81,9 +84,9 @@ describe("narrateBeats", () => {
   });
 
   it("holds a beat with no aligned words where the one before ended", async () => {
-    // The voice skipped the middle beat: its characters come back blank.
+    // The voice skipped the middle beat: it has no words in the take.
     speak.mockImplementation(async (text: string) =>
-      takeFor(text.replace("and so", "      ")),
+      takeFor(text, text.replace("and so", "      ")),
     );
     const narration = await narrateBeats([
       { scene: "a", narration: "Hello there" },
@@ -94,6 +97,24 @@ describe("narrateBeats", () => {
     expect(second!.words).toEqual([]);
     expect(second!.start).toBe(first!.end);
     expect(second!.end).toBe(first!.end);
+  });
+
+  it("runs the film past the take's real end", async () => {
+    // The take runs 30 s, though the last word heard ends much sooner.
+    speak.mockImplementation(async (text: string) => takeFor(text, text, 30));
+    const narration = await narrateBeats([
+      { scene: "a", narration: "Short and sweet." },
+    ]);
+    expect(narration.timing.SPEECH_END).toBeLessThan(2);
+    expect(narration.timing.DURATION).toBeCloseTo(0.4 + 30 + 3.6);
+  });
+
+  it("passes on an empty voice balance as it is", async () => {
+    const error = new VoiceUnavailableError("The voice balance has run out.");
+    speak.mockRejectedValueOnce(error);
+    await expect(
+      narrateBeats([{ scene: "a", narration: "Hello." }]),
+    ).rejects.toBe(error);
   });
 });
 
