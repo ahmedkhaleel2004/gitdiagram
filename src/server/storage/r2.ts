@@ -30,7 +30,7 @@ export type ObjectWriteCondition = { ifMatch: string } | { ifNoneMatch: true };
  * Per-call timeouts: one per attempt (a request body of `bytes`, such as an
  * MP4 upload, gets a second more per MB) and one over every attempt.
  */
-export function requestOptions(bytes = 0) {
+function requestOptions(bytes = 0) {
   const attempt = R2_ATTEMPT_TIMEOUT_MS + Math.ceil(bytes / 2 ** 20) * 1_000;
   return {
     requestTimeout: attempt,

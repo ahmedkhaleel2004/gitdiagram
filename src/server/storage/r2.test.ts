@@ -28,8 +28,9 @@ import {
   putBinaryObject,
   R2_ATTEMPT_TIMEOUT_MS,
   R2_REQUEST_TIMEOUT_MS,
-  requestOptions,
 } from "./r2";
+
+type SendOptions = { requestTimeout: number; abortSignal: AbortSignal };
 
 const originalEnv = { ...process.env };
 
@@ -62,9 +63,7 @@ describe("R2 timeouts", () => {
         throwOnRequestTimeout: true,
       },
     });
-    const options = sdk.send.mock.calls[0]![1] as ReturnType<
-      typeof requestOptions
-    >;
+    const options = sdk.send.mock.calls[0]![1] as SendOptions;
     expect(options.requestTimeout).toBe(R2_ATTEMPT_TIMEOUT_MS);
     expect(options.abortSignal).toBeInstanceOf(AbortSignal);
   });
@@ -81,9 +80,7 @@ describe("R2 timeouts", () => {
       Buffer.alloc(20 * 2 ** 20),
       "video/mp4",
     );
-    const options = sdk.send.mock.calls[0]![1] as ReturnType<
-      typeof requestOptions
-    >;
+    const options = sdk.send.mock.calls[0]![1] as SendOptions;
     expect(options.requestTimeout).toBe(R2_ATTEMPT_TIMEOUT_MS + 20_000);
   });
 });
