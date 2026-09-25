@@ -90,7 +90,8 @@
   },
   "knip": {
     "ignore": [
-      "public/video-engine/**"
+      "public/video-engine/**",
+      "workers/**"
     ],
     "ignoreBinaries": [
       "redis-server"

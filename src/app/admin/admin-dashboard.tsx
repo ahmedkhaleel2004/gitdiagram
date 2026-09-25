@@ -200,8 +200,8 @@ function SetClaudeCredit({ onDone }: { onDone: () => void }) {
             >
               Console billing page
             </a>{" "}
-            after each top-up. From then on, spend is taken off it every
-            minute. Keep auto-reload off, or the number drifts low.
+            after each top-up. From then on, spend is taken off it every minute.
+            Keep auto-reload off, or the number drifts low.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -1082,7 +1082,9 @@ export function AdminDashboard() {
                       : "Enter the balance from the Console to start counting."
               }
               action={
-                credit ? <SetClaudeCredit onDone={() => void refresh()} /> : null
+                credit ? (
+                  <SetClaudeCredit onDone={() => void refresh()} />
+                ) : null
               }
             />
           </div>

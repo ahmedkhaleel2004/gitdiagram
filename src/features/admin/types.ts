@@ -10,7 +10,7 @@ export interface LiveControls {
   videoNetworkDailyLimit: number | null;
 }
 
-export interface DailyBudget {
+interface DailyBudget {
   used: number;
   limit: number;
   personLimit: number;

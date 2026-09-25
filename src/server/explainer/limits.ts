@@ -269,7 +269,7 @@ export async function tryVideoLock(
 }
 
 /** "about 7 hours" until the budgets reset at midnight UTC. */
-export function timeUntilReset(now = Date.now()): string {
+function timeUntilReset(now = Date.now()): string {
   const hours = Math.ceil(
     (DAY_SECONDS * 1000 - (now % (DAY_SECONDS * 1000))) / 3_600_000,
   );

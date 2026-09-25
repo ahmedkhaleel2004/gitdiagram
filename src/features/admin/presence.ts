@@ -8,7 +8,7 @@ import type { LiveVisitor } from "./types";
 
 export const RECENT_MS = 120_000;
 
-export function isHere(visitor: LiveVisitor, now: number): boolean {
+function isHere(visitor: LiveVisitor, now: number): boolean {
   return visitor.v === 1 || (visitor.h > 0 && now - visitor.h < RECENT_MS);
 }
 
