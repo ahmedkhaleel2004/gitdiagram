@@ -1,7 +1,8 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FakeSocket, setVisibility } from "~/app/admin/test-socket";
+import { MAX_PATH } from "~/features/admin/presence-protocol";
+import { FakeSocket, setVisibility } from "~/test/fake-socket";
 
 const navigation = vi.hoisted(() => ({ pathname: "/" }));
 vi.mock("next/navigation", () => ({ usePathname: () => navigation.pathname }));
@@ -110,7 +111,7 @@ describe("live presence", () => {
     const page = await mount();
     idle();
     act(() => FakeSocket.last!.drop());
-    // First retry: 4 s spread to between 2 and 6 s.
+    // First retry: between 2 and 4 s.
     act(() => vi.advanceTimersByTime(1_999));
     expect(FakeSocket.instances).toHaveLength(1);
     act(() => vi.advanceTimersByTime(1));
@@ -128,12 +129,62 @@ describe("live presence", () => {
     expect(FakeSocket.instances).toHaveLength(gaveUp + 1);
   });
 
-  it("disconnects on the operator's own pages", async () => {
+  it("lets a waiting retry run instead of reconnecting on every page", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const page = await mount();
+    idle();
+    act(() => FakeSocket.last!.drop());
+    // Down, with a retry due in 2 s: moving around the site does not jump it.
+    page.navigate("/acme/app");
+    page.navigate("/about");
+    act(() => setVisibility("hidden"));
+    act(() => setVisibility("visible"));
+    expect(FakeSocket.instances).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(FakeSocket.instances).toHaveLength(2);
+  });
+
+  it("disconnects on the operator's own pages, and comes back after", async () => {
     const page = await mount();
     idle();
     const socket = FakeSocket.last!;
     act(() => socket.open());
     page.navigate("/admin");
     expect(socket.closedWith).toBe(1000);
+    // Closed on purpose: no retry while there.
+    act(() => vi.advanceTimersByTime(600_000));
+    expect(FakeSocket.instances).toHaveLength(1);
+    page.navigate("/");
+    expect(FakeSocket.instances).toHaveLength(2);
+  });
+
+  it("sends only the referring site's origin", async () => {
+    const referrer = vi
+      .spyOn(document, "referrer", "get")
+      .mockReturnValue("https://news.example.com/item?id=42#top");
+    await mount();
+    idle();
+    expect(params(FakeSocket.last).get("r")).toBe("https://news.example.com");
+    referrer.mockReturnValue("not a url");
+    act(() => FakeSocket.last!.drop(1000));
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(params(FakeSocket.last).get("r")).toBe("");
+  });
+
+  it("only reports what changed, and paths no longer than the worker keeps", async () => {
+    const page = await mount();
+    idle();
+    const socket = FakeSocket.last!;
+    act(() => socket.open());
+    // Visibility events that change nothing (as some browsers repeat them).
+    act(() => setVisibility("visible"));
+    act(() => setVisibility("visible"));
+    expect(socket.sent).toEqual([]);
+    act(() => setVisibility("hidden"));
+    act(() => setVisibility("hidden"));
+    expect(socket.sent).toEqual(["v:0"]);
+    const long = `/${"x".repeat(MAX_PATH + 50)}`;
+    page.navigate(long);
+    expect(socket.sent).toEqual(["v:0", `p:${long.slice(0, MAX_PATH)}`]);
   });
 });

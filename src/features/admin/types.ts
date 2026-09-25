@@ -114,6 +114,8 @@ export interface LiveFeedEvent {
 export type PresenceMessage =
   | {
       type: "snapshot";
+      /** PRESENCE_PROTOCOL of the worker; missing from older workers. */
+      protocol?: number;
       now: number;
       visitors: LiveVisitor[];
       events: LiveFeedEvent[];

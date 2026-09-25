@@ -9,9 +9,10 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.2.7",
     "@cloudflare/workers-types": "5.20260925.1",
     "typescript": "7.0.2",
-    "vitest": "5.0.1",
+    "vitest": "4.1.11",
     "wrangler": "4.139.0"
   }
 }

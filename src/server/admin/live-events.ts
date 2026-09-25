@@ -3,7 +3,11 @@ import "server-only";
 import { createHash, createHmac } from "node:crypto";
 import { after } from "next/server";
 
-import { DASHBOARD_TOKEN_MS } from "~/features/admin/presence-protocol";
+import {
+  DASHBOARD_TOKEN_MS,
+  DASHBOARD_TOKEN_PREFIX,
+  MAX_JOB_ID,
+} from "~/features/admin/presence-protocol";
 import { isDesktopRequest } from "~/server/explainer/audience";
 
 // Sends what the site is doing (generations starting and finishing, visitors
@@ -13,10 +17,6 @@ import { isDesktopRequest } from "~/server/explainer/audience";
 // request it describes.
 
 const SEND_TIMEOUT_MS = 2_000;
-// The worker keeps job ids up to this long. Longer ones are hashed here (the
-// worker does the same), never cut: cutting can drop the part that tells two
-// jobs apart, such as the format of two renders of one repo.
-const MAX_JOB_ID = 120;
 
 export interface LiveEvent {
   kind: string;
@@ -37,18 +37,27 @@ function presenceSecret(): string | null {
   return secret && secret.length >= 32 ? secret : null;
 }
 
-/** A short-lived token that lets the dashboard open the worker's admin socket. */
+/**
+ * A short-lived token that lets the dashboard open the worker's admin socket.
+ * Only a signed-in dashboard gets one (each poll of its state checks the
+ * session against Redis), so a browser signed out, or out everywhere, loses
+ * its socket within DASHBOARD_TOKEN_MS: the worker closes a dashboard whose
+ * token runs out without a newer one.
+ */
 export function createPresenceToken(now = Date.now()): string | null {
   const secret = presenceSecret();
   if (!secret) return null;
   const expires = now + DASHBOARD_TOKEN_MS;
   const signature = createHmac("sha256", secret)
-    .update(`presence-admin:${expires}`)
+    .update(`${DASHBOARD_TOKEN_PREFIX}${expires}`)
     .digest("hex");
   return `${expires}.${signature}`;
 }
 
-/** The id a job is known by in the feed: short ids as they are. */
+/**
+ * The id a job is known by in the feed: short ids as they are, longer ones
+ * hashed (the worker does the same), never cut.
+ */
 export function liveJobId(id: string): string {
   if (id.length <= MAX_JOB_ID) return id;
   return `sha256:${createHash("sha256").update(id).digest("hex").slice(0, 40)}`;

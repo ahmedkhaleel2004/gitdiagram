@@ -4,6 +4,7 @@ import { useEffect, useReducer, useRef, useState } from "react";
 
 import {
   EMPTY_SITE,
+  isProtocolMismatch,
   isTokenFresh,
   reconnectDelay,
   reduceSite,
@@ -24,7 +25,9 @@ import type { LiveFeedEvent, PresenceMessage } from "~/features/admin/types";
 // a fresh token instead of retrying with one that has expired. The token
 // travels as a WebSocket subprotocol, so it stays out of request logs; newer
 // ones are sent over the open socket so it is not cut off when the first one
-// expires.
+// expires. Tokens last under a minute (so signing out cuts the socket off
+// quickly), and a hidden dashboard does not poll, so it asks for one itself
+// when the one it holds is running out.
 
 const PING_MS = 5_000;
 // No pong this long after a ping: the connection died without closing (the
@@ -32,8 +35,9 @@ const PING_MS = 5_000;
 // slowed to once a minute, so this is measured from the ping itself.
 const PONG_TIMEOUT_MS = 2 * PING_MS + 2_000;
 // Every poll brings a new token; the open socket is handed one only when the
-// token it holds has less than this left, so about every five minutes.
-const RENEW_BEFORE_MS = 5 * 60_000;
+// token it holds has less than this left (tokens last 45 s), so about every
+// fifteen seconds.
+const RENEW_BEFORE_MS = 30_000;
 
 export type LinkStatus = "connecting" | "live" | "offline";
 
@@ -148,6 +152,14 @@ export function useLiveSite(
         lost(ws);
         return;
       }
+      // Nothing newer to hand over and the held token is running out (the
+      // dashboard stops polling while hidden): ask for one.
+      const left = (tokenExpiry(sentToken ?? "") ?? Infinity) - Date.now();
+      if (
+        left < RENEW_BEFORE_MS &&
+        latest.current.presence?.token === sentToken
+      )
+        latest.current.onTokenNeeded();
       if (awaitingPong) return;
       awaitingPong = true;
       pingSentAt = performance.now();
@@ -192,5 +204,11 @@ export function useLiveSite(
     if (token) link.current?.tokenChanged();
   }, [token]);
 
-  return { ...site, status, latency };
+  return {
+    ...site,
+    status,
+    latency,
+    /** The worker and this site speak different protocol versions. */
+    protocolMismatch: isProtocolMismatch(site),
+  };
 }

@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   EMPTY_SITE,
+  isProtocolMismatch,
   isTokenFresh,
   reconnectDelay,
   reduceSite,
   type LiveSite,
 } from "./live-link";
-import { FEED_EVENTS } from "./presence-protocol";
+import { FEED_EVENTS, PRESENCE_PROTOCOL } from "./presence-protocol";
 import type { LiveVisitor, PresenceMessage } from "./types";
 
 const NOW = 1_800_000_000_000;
@@ -111,6 +112,25 @@ describe("the dashboard's live state", () => {
     expect(
       receive(site, { type: "join", visitor: visitor() }, NOW + 9).at,
     ).toBe(NOW + 9);
+  });
+
+  it("notices a worker that speaks another protocol version", () => {
+    expect(isProtocolMismatch(EMPTY_SITE)).toBe(false);
+    const current = receive(
+      EMPTY_SITE,
+      snapshot({ protocol: PRESENCE_PROTOCOL }),
+    );
+    expect(current.protocol).toBe(PRESENCE_PROTOCOL);
+    expect(isProtocolMismatch(current)).toBe(false);
+    // A worker from before protocol versions sends none.
+    const old = receive(EMPTY_SITE, snapshot());
+    expect(old.protocol).toBe(0);
+    expect(isProtocolMismatch(old)).toBe(true);
+    expect(
+      isProtocolMismatch(
+        receive(EMPTY_SITE, snapshot({ protocol: PRESENCE_PROTOCOL + 1 })),
+      ),
+    ).toBe(true);
   });
 });
 

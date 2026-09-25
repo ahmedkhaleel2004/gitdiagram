@@ -1,8 +1,12 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ADMIN_PROTOCOL } from "~/features/admin/presence-protocol";
-import { FakeSocket, setVisibility } from "./test-socket";
+import {
+  ADMIN_PROTOCOL,
+  DASHBOARD_TOKEN_MS,
+  PRESENCE_PROTOCOL,
+} from "~/features/admin/presence-protocol";
+import { FakeSocket, setVisibility } from "~/test/fake-socket";
 import { useLiveSite } from "./use-live-site";
 
 const SIG = "b".repeat(64);
@@ -90,21 +94,66 @@ describe("the dashboard's live socket", () => {
   });
 
   it("hands a newer token to the open socket before its own runs out", () => {
-    const { rerender } = setup();
-    act(() => FakeSocket.last!.open());
-    // Polls bring new tokens every few seconds: not worth a message yet.
-    rerender({ presence: { url: URL, token: token(605_000) } });
-    expect(FakeSocket.last?.sent).toEqual([]);
+    const { rerender, onTokenNeeded } = setup(token(DASHBOARD_TOKEN_MS));
     const socket = FakeSocket.last!;
-    for (let second = 0; second < 6 * 60; second += 5) {
+    act(() => socket.open());
+    act(() => vi.advanceTimersByTime(5_000));
+    act(() => socket.receive("pong"));
+    socket.sent = []; // the ping
+    // Polls bring new tokens every few seconds: not worth a message yet.
+    rerender({ presence: { url: URL, token: token(DASHBOARD_TOKEN_MS) } });
+    expect(socket.sent).toEqual([]);
+    for (let second = 5; second < 20; second += 5) {
       act(() => vi.advanceTimersByTime(5_000));
       act(() => socket.receive("pong"));
     }
     socket.sent = []; // the pings
-    const newer = token(600_000);
+    const newer = token(DASHBOARD_TOKEN_MS);
     rerender({ presence: { url: URL, token: newer } });
     expect(FakeSocket.last?.sent).toEqual([`t:${newer}`]);
     expect(FakeSocket.instances).toHaveLength(1);
+    // A newer token was on hand all along: no need to ask for one.
+    expect(onTokenNeeded).not.toHaveBeenCalled();
+  });
+
+  it("asks for a token itself while hidden, when polls stop bringing them", () => {
+    const first = token(DASHBOARD_TOKEN_MS);
+    const { rerender, onTokenNeeded } = setup(first);
+    const socket = FakeSocket.last!;
+    act(() => socket.open());
+    act(() => setVisibility("hidden"));
+    for (let second = 0; second < 15; second += 5) {
+      act(() => vi.advanceTimersByTime(5_000));
+      act(() => socket.receive("pong"));
+    }
+    expect(onTokenNeeded).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(onTokenNeeded).toHaveBeenCalled();
+    socket.sent = [];
+    const newer = token(DASHBOARD_TOKEN_MS);
+    rerender({ presence: { url: URL, token: newer } });
+    expect(socket.sent).toEqual([`t:${newer}`]);
+  });
+
+  it("says when the worker speaks another protocol version", () => {
+    const { result } = setup();
+    act(() => FakeSocket.last!.open());
+    expect(result.current.protocolMismatch).toBe(false);
+    const snapshot = {
+      type: "snapshot",
+      now: Date.now(),
+      visitors: [],
+      events: [],
+      jobs: [],
+      peak: { day: "2027-01-15", count: 0, at: 0 },
+    };
+    act(() =>
+      FakeSocket.last!.receive({ ...snapshot, protocol: PRESENCE_PROTOCOL }),
+    );
+    expect(result.current.protocolMismatch).toBe(false);
+    // A worker deployed before protocol versions existed.
+    act(() => FakeSocket.last!.receive(snapshot));
+    expect(result.current.protocolMismatch).toBe(true);
   });
 
   it("notices a connection that died without closing", () => {

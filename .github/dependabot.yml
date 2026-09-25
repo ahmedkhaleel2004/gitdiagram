@@ -36,6 +36,11 @@ updates:
     multi-ecosystem-group: "all-dependencies"
     cooldown:
       default-days: 3
+    ignore:
+      # @cloudflare/vitest-plugin supports Vitest 4 only; move with it.
+      - dependency-name: "vitest"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "github-actions"
     directory: "/"
