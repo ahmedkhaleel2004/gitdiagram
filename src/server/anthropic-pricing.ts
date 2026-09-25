@@ -24,8 +24,19 @@ const PRICES: Record<string, ClaudePrice> = {
 /** The most expensive model, for estimates that should err high. */
 export const HIGHEST_CLAUDE_PRICE = PRICES["claude-fable-5-1"]!;
 
+/**
+ * A model's price. Dated, "-latest" or provider-prefixed ids
+ * ("claude-opus-5-5-20260901", "anthropic/claude-opus-5-5") are priced as the
+ * model they name; any other unknown id (a newer model) has no price.
+ */
 export function claudePrice(model: string): ClaudePrice | null {
-  return PRICES[model] ?? null;
+  const id = model
+    .trim()
+    .toLowerCase()
+    .split("/")
+    .at(-1)!
+    .replace(/-(?:\d{8}|\d{4}-\d{2}-\d{2}|latest)$/, "");
+  return PRICES[id] ?? null;
 }
 
 export interface ClaudeTokens {

@@ -6,6 +6,7 @@ import type {
 } from "~/features/explainer/types";
 import { createFilmWriters, designGroups, type Planner } from "./director";
 import { narrateBeats } from "./narration";
+import { premiumPlanner } from "./planner";
 import { readRepositoryForVideo } from "./repository";
 import { normalizeShots } from "./shots";
 import { writeVideo } from "./store";
@@ -47,7 +48,9 @@ export async function generateExplainerVideo({
   const repository = await readRepositoryForVideo({ username, repo, signal });
   const readMs = elapsedMs();
   signal.throwIfAborted();
-  const planner = await choosePlanner?.({ stars: repository.prompt.stars });
+  const planner =
+    (await choosePlanner?.({ stars: repository.prompt.stars })) ??
+    premiumPlanner();
 
   // The director writes the script; then every scene is designed in parallel
   // while the narration is recorded, since the voice only needs the words.
@@ -106,7 +109,12 @@ export async function generateExplainerVideo({
   await Promise.allSettled([designing, voicing]);
   if (failure) throw failure.error;
   const [designed, narration] = await Promise.all([designing, voicing]);
-  const { plan, warnings } = normalizeShots(script, designed, repository.facts);
+  // Pictures an API refused were taken from the writers; they are not shown.
+  const seen = new Set(writers.pictureIds);
+  const { plan, warnings } = normalizeShots(script, designed, {
+    ...repository.facts,
+    images: repository.facts.images?.filter((id) => seen.has(id)),
+  });
   const voiceMs = elapsedMs() - readMs - planMs;
   signal.throwIfAborted();
 
@@ -114,13 +122,11 @@ export async function generateExplainerVideo({
   const createdAt = new Date().toISOString();
   // Only pictures the film shows are stored, beside its narration.
   const shown = new Set(
-    repository.pictures.length
-      ? plan.beats.flatMap((beat) =>
-          beat.elements.flatMap((element) =>
-            element.kind === "image" ? [String(element.src)] : [],
-          ),
-        )
-      : [],
+    plan.beats.flatMap((beat) =>
+      beat.elements.flatMap((element) =>
+        element.kind === "image" ? [String(element.src)] : [],
+      ),
+    ),
   );
   const pictures = repository.pictures.filter((p) => shown.has(p.id));
   if (pictures.length)

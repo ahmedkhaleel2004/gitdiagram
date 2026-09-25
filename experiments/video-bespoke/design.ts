@@ -5,6 +5,7 @@
  *
  *   bun --conditions=react-server experiments/video-bespoke/design.ts <variant> [base,...] [repo,...]
  */
+import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,7 +13,10 @@ import type { VideoArtifact } from "~/features/explainer/types";
 import { probePicture } from "~/server/explainer/readme-images";
 import { createFilmWriters, type FilmImage } from "~/server/explainer/director";
 import type { VideoRepository } from "~/server/explainer/repository";
-import { normalizeShots, type Script } from "~/server/explainer/shots";
+import type { Script } from "~/server/explainer/script";
+import { repositoryContext } from "~/server/explainer/shot-prompt";
+import { SCRIPT_TOOL, SHOTS_TOOL } from "~/server/explainer/shot-tools";
+import { normalizeShots } from "~/server/explainer/shots";
 import { beatEnds, browser, grab } from "./frames";
 import { artSystem } from "./prompts";
 
@@ -87,9 +91,44 @@ async function pictures(repo: string): Promise<FilmImage[]> {
 }
 
 // Production's director call writes the prompt cache before the designers
-// run; here the designers come first, so one call writes it for them.
-async function warm(run: () => Promise<void>) {
-  await run().catch((error) => console.warn("warm failed", error));
+// run; here the designers come first, so one call writes it for them. The
+// prefix (tools, system, pictures, repository block) matches production's
+// Claude designer calls.
+async function warm(params: {
+  model: string;
+  system: string;
+  images: FilmImage[];
+  repository: VideoRepository;
+}) {
+  await new Anthropic().messages
+    .create({
+      model: params.model,
+      max_tokens: 16,
+      system: params.system,
+      tools: [SCRIPT_TOOL, SHOTS_TOOL] as Anthropic.Tool[],
+      messages: [
+        {
+          role: "user",
+          content: [
+            ...params.images.map((image) => ({
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: image.mediaType,
+                data: image.data,
+              },
+            })),
+            {
+              type: "text",
+              text: repositoryContext(params.repository.prompt, params.images),
+              cache_control: { type: "ephemeral" },
+            },
+            { type: "text", text: "Reply with OK." },
+          ],
+        },
+      ],
+    })
+    .catch((error: unknown) => console.warn("warm failed", error));
 }
 
 /** The film's thread object, named once per script (a cheap call). */
@@ -142,17 +181,17 @@ async function runOne(
   if (variant.redesign) {
     images = variant.pictures ? await pictures(repo) : [];
     const thread = variant.thread ? await threadOf(script, dir) : null;
+    const system = artSystem({
+      art: variant.art,
+      pictures: variant.pictures,
+      thread,
+    });
     const writers = createFilmWriters(repository.prompt, BASES[base], {
       images,
-      prompts: {
-        system: artSystem({
-          art: variant.art,
-          pictures: variant.pictures,
-          thread,
-        }),
-      },
+      system,
     });
-    if (base === "opus-low") await warm(writers.warmup);
+    if (base === "opus-low")
+      await warm({ model: BASES[base].model, system, images, repository });
     const designed = await writers.design(script);
     const normalized = normalizeShots(script, designed, {
       ...repository.facts,
