@@ -1,3 +1,4 @@
+import { readSSEStream } from "~/features/diagram/sse";
 import type {
   VideoArtifact,
   VideoGenerationEvent,
@@ -13,9 +14,33 @@ export interface ExplainerVideoState {
   paused: VideoPausedReason | null;
   /** This visitor may make videos from any device, tablets included. */
   anyDevice: boolean;
+  /** No video yet, but one is being made for this repo right now. */
+  generating: boolean;
 }
 
 export type RenderFormat = "landscape" | "vertical";
+
+/** A video request the server turned down before any stream started. */
+export class VideoRequestError extends Error {
+  readonly status: number;
+  /** The video was replaced after this page loaded it. */
+  readonly stale: boolean;
+
+  constructor(message: string, status: number, stale = false) {
+    super(message);
+    this.name = "VideoRequestError";
+    this.status = status;
+    this.stale = stale;
+  }
+}
+
+/** The stream closed before saying how the work ended; it may still have finished. */
+export class VideoStreamEndedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VideoStreamEndedError";
+  }
+}
 
 export async function fetchExplainerVideo(
   username: string,
@@ -30,20 +55,27 @@ export async function fetchExplainerVideo(
     canGenerate?: boolean;
     paused?: VideoPausedReason | null;
     anyDevice?: boolean;
+    generating?: boolean;
     error?: string;
   };
   if (!response.ok || !body.ok)
     throw new Error(body.error ?? "Could not load the explainer video.");
+  const video = body.video ?? null;
   return {
-    video: body.video ?? null,
+    video,
     canGenerate: Boolean(body.canGenerate),
     paused: body.paused ?? null,
     anyDevice: Boolean(body.anyDevice),
+    generating: !video && body.generating === true,
   };
 }
 
-/** POST a JSON body and relay each server-sent event from the response. */
-async function streamEvents<T>(
+/**
+ * POST a JSON body and relay each server-sent event from the response. A
+ * stream must end with a `complete` or `error` event: one that closes without
+ * either rejects with {@link VideoStreamEndedError}.
+ */
+async function streamEvents<T extends { status: string }>(
   url: string,
   payload: unknown,
   onEvent: (event: T) => void,
@@ -59,26 +91,22 @@ async function streamEvents<T>(
   if (!response.ok || !response.body) {
     const body = (await response.json().catch(() => ({}))) as {
       error?: string;
+      stale?: boolean;
     };
-    throw new Error(body.error ?? fallbackError);
+    throw new VideoRequestError(
+      body.error ?? fallbackError,
+      response.status,
+      body.stale === true,
+    );
   }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary !== -1) {
-      const frame = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      for (const line of frame.split("\n")) {
-        if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)) as T);
-      }
-      boundary = buffer.indexOf("\n\n");
-    }
-  }
+  let finished = false;
+  await readSSEStream<T>(response.body, (event) => {
+    onEvent(event);
+    finished = event.status === "complete" || event.status === "error";
+    // Nothing follows the final event.
+    return !finished;
+  });
+  if (!finished) throw new VideoStreamEndedError(fallbackError);
 }
 
 /** Start generation and relay each server-sent progress event. */
@@ -97,17 +125,22 @@ export function streamExplainerVideo(
   );
 }
 
-/** Make (or reuse) a video's MP4 and relay render progress. */
+/**
+ * Make (or reuse) the MP4 of the video on screen and relay render progress.
+ * `version` is that video's `createdAt`; if the video has been replaced since,
+ * the server refuses with a stale {@link VideoRequestError}.
+ */
 export function streamExplainerRender(
   username: string,
   repo: string,
   format: RenderFormat,
+  version: string,
   onEvent: (event: VideoRenderEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   return streamEvents(
     "/api/video/render",
-    { username, repo, format },
+    { username, repo, format, v: version },
     onEvent,
     "Could not make the MP4.",
     signal,

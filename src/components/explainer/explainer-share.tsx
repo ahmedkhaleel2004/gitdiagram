@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   Download,
@@ -12,6 +12,7 @@ import {
 import {
   renderFileUrl,
   streamExplainerRender,
+  VideoRequestError,
   watchPath,
   type RenderFormat,
 } from "~/features/explainer/api";
@@ -24,6 +25,8 @@ import { JobRow } from "./explainer-progress";
 import styles from "./explainer-video.module.css";
 
 type Copied = "link" | "badge" | null;
+
+const RENDER_FAILED = "The MP4 could not be made. Try again.";
 
 function jobLabel(format: RenderFormat, step: VideoRenderStep) {
   if (step === "starting") return "Starting the renderer";
@@ -53,35 +56,57 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
     step: VideoRenderStep;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The video was replaced after this page loaded; its MP4 is no longer made.
+  const [stale, setStale] = useState(false);
   const [copied, setCopied] = useState<Copied>(null);
+  const render = useRef<AbortController | null>(null);
+  const copyTimer = useRef<number | undefined>(undefined);
   const url = `${window.location.origin}${watchPath(owner, repo)}`;
   const canShare = typeof navigator.share === "function";
 
+  // Leaving the video stops waiting for its MP4 (and its download).
+  useEffect(
+    () => () => {
+      render.current?.abort();
+      window.clearTimeout(copyTimer.current);
+    },
+    [],
+  );
+
   const download = async (format: RenderFormat) => {
+    const controller = new AbortController();
+    render.current = controller;
     setError(null);
     setJob({ format, progress: 0, step: "starting" });
     let finished = false;
     try {
-      await streamExplainerRender(owner, repo, format, (event) => {
-        if (event.status === "rendering")
-          setJob({
-            format,
-            progress: event.progress,
-            step: event.step ?? "rendering",
-          });
-        else if (event.status === "complete") finished = true;
-        else throw new Error(event.error);
-      });
-      if (!finished) throw new Error("The MP4 could not be made. Try again.");
-      triggerDownload(renderFileUrl(video, format));
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "The MP4 could not be made. Try again.",
+      await streamExplainerRender(
+        owner,
+        repo,
+        format,
+        video.createdAt,
+        (event) => {
+          if (event.status === "rendering")
+            setJob({
+              format,
+              progress: event.progress,
+              step: event.step ?? "rendering",
+            });
+          else if (event.status === "complete") finished = true;
+          else throw new Error(event.error);
+        },
+        controller.signal,
       );
+      if (!finished) throw new Error(RENDER_FAILED);
+      if (!controller.signal.aborted)
+        triggerDownload(renderFileUrl(video, format));
+    } catch (caught) {
+      if (controller.signal.aborted) return;
+      if (caught instanceof VideoRequestError && caught.stale) setStale(true);
+      else setError(caught instanceof Error ? caught.message : RENDER_FAILED);
     } finally {
-      setJob(null);
+      if (!controller.signal.aborted) setJob(null);
+      if (render.current === controller) render.current = null;
     }
   };
 
@@ -89,7 +114,8 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(what);
-      window.setTimeout(() => setCopied(null), 1800);
+      window.clearTimeout(copyTimer.current);
+      copyTimer.current = window.setTimeout(() => setCopied(null), 1800);
     } catch {
       setError("Copying was blocked by the browser.");
     }
@@ -106,8 +132,7 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
           type="button"
           className={`${controls.actionButton} ${controls.primary}`}
           onClick={() => void download("landscape")}
-          disabled={job !== null}
-          aria-live="polite"
+          disabled={job !== null || stale}
         >
           <Download size={15} aria-hidden="true" />
           {label("landscape", "Download MP4")}
@@ -116,8 +141,7 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
           type="button"
           className={controls.actionButton}
           onClick={() => void download("vertical")}
-          disabled={job !== null}
-          aria-live="polite"
+          disabled={job !== null || stale}
           title="9:16 for Shorts, Reels and TikTok"
         >
           <Smartphone size={15} aria-hidden="true" />
@@ -167,6 +191,10 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
           {copied === "badge" ? "Badge copied" : "README badge"}
         </button>
       </div>
+      {/* Announces each step once; the percentage beside it is not read out. */}
+      <span className="sr-only" role="status">
+        {job ? jobLabel(job.format, job.step) : ""}
+      </span>
       {job && (
         <div className={styles.shareJob}>
           <JobRow
@@ -179,7 +207,24 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
           </div>
         </div>
       )}
-      {error && <div className={styles.error}>{error}</div>}
+      {stale ? (
+        <div className={styles.error} role="alert">
+          This video was just updated.{" "}
+          <button
+            type="button"
+            className={styles.metaButton}
+            onClick={() => window.location.reload()}
+          >
+            Reload to get the new one
+          </button>
+        </div>
+      ) : (
+        error && (
+          <div className={styles.error} role="alert">
+            {error}
+          </div>
+        )
+      )}
     </div>
   );
 }
