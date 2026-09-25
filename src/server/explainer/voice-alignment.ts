@@ -1,9 +1,8 @@
-// Timing for a take whose voice does not report it (Gemini): a transcription
-// gives words with times, and these are matched back onto the script, so the
-// rest of narration.ts can split the take into beats exactly as it does with
-// ElevenLabs' character timestamps.
+// Timing for the take (voice.ts): a transcription gives words with times,
+// and these are matched back onto the script as a character-level
+// alignment, which narration.ts splits into beats.
 
-/** A character-level alignment over the script text, as ElevenLabs returns it. */
+/** When each character of the script text starts and ends in the take. */
 export interface Alignment {
   characters: string[];
   character_start_times_seconds: number[];

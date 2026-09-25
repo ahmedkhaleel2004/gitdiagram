@@ -40,9 +40,9 @@ export interface PlanRepositoryFacts {
   images?: string[];
 }
 
-// Delivery directions the voice takes (gemini-voice.ts). Any other bracketed
-// tag is dropped: pause tags stretch past a second, and sounds like [laughs]
-// do not belong in an explainer. Punctuation carries the pacing instead.
+// Delivery directions the director may write; the voice leaves them out of
+// the words it reads (voice.ts). Any other bracketed tag is dropped, and
+// punctuation carries the pacing.
 const DELIVERY_TAGS = [
   "curious",
   "excited",

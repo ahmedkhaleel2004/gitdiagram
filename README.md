@@ -58,7 +58,7 @@ Explainer videos are off by default. To turn them on, set `VIDEO_EXPLAINER_ENABL
 
 ## Development
 
-Built with Next.js, React, TypeScript, Tailwind CSS, and Mermaid. Videos use Claude or GPT for the script and scenes and Gemini for the voice. Deployed on Vercel.
+Built with Next.js, React, TypeScript, Tailwind CSS, and Mermaid. Videos use Claude or GPT for the script and scenes and OpenRouter (Gemini 3.8 Flash TTS) for the voice. Deployed on Vercel.
 
 - [Architecture](docs/architecture.md) — generation pipeline, storage, and API
 - [Development guide](docs/dev-setup.md) — setup, checks, and deployment

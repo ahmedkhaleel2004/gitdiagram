@@ -315,8 +315,8 @@ export async function resetUsageToday(kind: Kind): Promise<number> {
 }
 
 // Paid runs at once across every instance (VIDEO_MAX_PAID_RUNS, default 10).
-// Each run makes one short voice call, which waits out the voice's
-// per-minute limit (gemini-voice.ts), so the voice does not cap this.
+// Each run makes one short voice call (voice.ts), which OpenRouter does not
+// rate-limit, so the voice does not cap this.
 const maxPaidRuns = () => readLimit("VIDEO_MAX_PAID_RUNS", 10);
 const PAID_RUNS_KEY = "video:v1:generate:running";
 

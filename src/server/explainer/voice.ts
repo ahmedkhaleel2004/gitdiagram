@@ -5,17 +5,14 @@ import OpenAI, { toFile } from "openai";
 import { upstashCommand } from "~/server/storage/upstash";
 import { alignTake, type Alignment } from "./voice-alignment";
 
-// Gemini 3.8 Flash TTS, voice Charon, narrates every video: it won a blind
-// bake-off by ear (experiments/voices). It is called through OpenRouter,
-// which bills per use from a prepaid balance and sets no per-minute or
-// per-day limits on paid models (Google's own API capped this project at
-// about 10 a minute and 100 a day). It returns audio only, so whisper-1
-// transcribes the take with word times, which are matched back onto the
-// script (voice-alignment.ts).
+// The narrator: OpenRouter's text-to-speech with Gemini 3.8 Flash TTS and
+// the Charon voice, chosen by ear in a blind bake-off (experiments/voices).
+// OpenRouter bills per use from a prepaid balance. The audio comes back
+// without timings, so whisper-1 transcribes the take with word times, which
+// are matched back onto the script (voice-alignment.ts).
 //
-// Through OpenRouter one style directs the whole take. The script's
-// delivery tags are left out of the words: read inline, Gemini speaks them.
-// Blind listening rated this level with a style per tag.
+// One style directs the whole take. The script's delivery tags are left out
+// of the words, since the model would read them aloud.
 //
 // There is no other voice. When the OpenRouter balance runs out, new videos
 // pause (see voicePausedUntil) instead of paying for scripts no one can voice.
@@ -34,7 +31,7 @@ const OUT_OF_CREDIT_PAUSE_MS = 10 * 60_000;
 /** The voice cannot be paid for right now; new videos are paused. */
 export class VoiceUnavailableError extends Error {}
 
-export function isGeminiVoiceConfigured(): boolean {
+export function isVoiceConfigured(): boolean {
   return Boolean(
     process.env.OPENROUTER_API_KEY?.trim() &&
     process.env.OPENAI_API_KEY?.trim(),
@@ -94,8 +91,8 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/** The take as raw 24 kHz mono 16-bit PCM, the only format Gemini sends here. */
-async function takeFromGemini(
+/** The take as raw 24 kHz mono 16-bit PCM, the only format this model returns. */
+async function requestTake(
   text: string,
   signal?: AbortSignal,
 ): Promise<Buffer> {
@@ -211,11 +208,11 @@ async function heardWords(mp3: Buffer, signal?: AbortSignal) {
  * The whole script as one take, as MP3, with a character alignment over
  * `text` (tags included; narration.ts skips them when it reads words out).
  */
-export async function speakWithGemini(
+export async function speak(
   text: string,
   signal?: AbortSignal,
 ): Promise<{ audio: Buffer; alignment: Alignment; voice: string }> {
-  const audio = await toMp3(await takeFromGemini(text, signal));
+  const audio = await toMp3(await requestTake(text, signal));
   // A transcription that hears too little of the script would put scenes on
   // the wrong words, so it is tried once more, then the run fails.
   for (let attempt = 0; ; attempt++) {

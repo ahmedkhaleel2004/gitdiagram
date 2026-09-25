@@ -2,11 +2,11 @@ import "server-only";
 
 import type { VideoTiming, VideoWord } from "~/features/explainer/types";
 import {
-  isGeminiVoiceConfigured,
-  speakWithGemini,
+  isVoiceConfigured,
+  speak,
   voiceCreditUsd,
   voicePausedUntil,
-} from "./gemini-voice";
+} from "./voice";
 import { normalizeWord } from "./text";
 import type { Alignment } from "./voice-alignment";
 
@@ -23,12 +23,12 @@ export interface Narration {
 }
 
 export function isNarrationConfigured(): boolean {
-  return isGeminiVoiceConfigured();
+  return isVoiceConfigured();
 }
 
 /**
  * Whether a new video can be voiced now: false for a while after the voice's
- * balance ran out (see gemini-voice.ts), so no run pays for a script it
+ * balance ran out (see voice.ts), so no run pays for a script it
  * cannot voice.
  * If Redis cannot say, the budget check that follows fails closed anyway.
  */
@@ -131,7 +131,7 @@ export async function narrateBeats(
     return { from, to: text.length };
   });
 
-  const { audio, alignment, voice } = await speakWithGemini(text, signal);
+  const { audio, alignment, voice } = await speak(text, signal);
   const words = spokenWords(alignment, LEAD_IN_SECONDS);
   const timing: VideoTiming["beats"] = [];
   for (const span of spans) {

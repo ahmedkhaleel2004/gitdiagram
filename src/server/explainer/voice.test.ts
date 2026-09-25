@@ -15,9 +15,9 @@ vi.mock("openai", async (importOriginal) => ({
   },
 }));
 
-import { speakWithGemini, VoiceUnavailableError } from "./gemini-voice";
+import { speak, VoiceUnavailableError } from "./voice";
 
-/** A fifth of a second of silence, as the raw 24 kHz 16-bit PCM Gemini sends. */
+/** A fifth of a second of silence, as the raw 24 kHz 16-bit PCM the voice sends. */
 const take = () => new Response(Buffer.alloc(9_600));
 
 const heard = {
@@ -51,7 +51,7 @@ describe("the voice", () => {
 
   it("reads the words without their tags in Charon's voice, and times the take", async () => {
     fetchMock.mockResolvedValueOnce(take());
-    const result = await speakWithGemini("[curious] Lost? [warmly] It helps.");
+    const result = await speak("[curious] Lost? [warmly] It helps.");
     const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;
     expect(url).toBe("https://openrouter.ai/api/v1/audio/speech");
@@ -59,7 +59,7 @@ describe("the voice", () => {
       model: "google/gemini-3.8-flash-tts",
       voice: "Charon",
       response_format: "pcm",
-      // Read inline, Gemini would speak a tag.
+      // Read inline, the voice would speak a tag.
       input: "Lost? It helps.",
     });
     expect(result.voice).toBe("google/gemini-3.8-flash-tts:Charon");
@@ -86,7 +86,7 @@ describe("the voice", () => {
         words: [{ word: "Bowser", start: 9, end: 9.5 }],
       })
       .mockResolvedValueOnce(heard);
-    await speakWithGemini("Lost? It helps.");
+    await speak("Lost? It helps.");
     expect(transcribe).toHaveBeenCalledTimes(2);
   });
 
@@ -95,7 +95,7 @@ describe("the voice", () => {
     transcribe.mockResolvedValue({
       words: [{ word: "Zeitgeist", start: 29, end: 30 }],
     });
-    await expect(speakWithGemini("Lost? It helps.")).rejects.toThrow(
+    await expect(speak("Lost? It helps.")).rejects.toThrow(
       /could not be timed/,
     );
     expect(transcribe).toHaveBeenCalledTimes(2);
@@ -105,13 +105,13 @@ describe("the voice", () => {
     fetchMock
       .mockResolvedValueOnce(new Response("{}", { status: 429 }))
       .mockResolvedValueOnce(take());
-    await speakWithGemini("Lost? It helps.");
+    await speak("Lost? It helps.");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("pauses new videos when the balance runs out", async () => {
     fetchMock.mockResolvedValue(new Response("{}", { status: 402 }));
-    await expect(speakWithGemini("Lost? It helps.")).rejects.toBeInstanceOf(
+    await expect(speak("Lost? It helps.")).rejects.toBeInstanceOf(
       VoiceUnavailableError,
     );
     const [command] = upstashCommand.mock.calls[0]! as [unknown[]];
