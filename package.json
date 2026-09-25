@@ -19,6 +19,7 @@
     "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx,css,json,jsonc,yml,yaml}\" --cache",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx,css,json,jsonc,yml,yaml}\" --cache",
     "perf:budget": "node scripts/check-performance-budgets.mjs",
+    "check:video-tracing": "node scripts/check-video-render-tracing.mjs",
     "knip": "knip --reporter compact",
     "prepare": "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath .githooks || true"
   },
