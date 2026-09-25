@@ -30,14 +30,19 @@ export default function HomePage() {
       >
         {VIDEOS_ENABLED && (
           <div className="-mt-10 mb-[3.75rem] flex justify-center sm:mt-0 sm:mb-8 lg:mb-4">
-            <Link
-              href="/watch"
-              className="browse-muted-button inline-flex min-h-[40px] items-center gap-2.5 rounded-full py-1.5 pr-4 pl-2 text-sm font-semibold whitespace-nowrap max-[389px]:gap-2 max-[389px]:pr-3 max-[389px]:text-[0.8125rem]"
-            >
-              <NewBadge />
-              Watch any repo explained in a minute
-              <span aria-hidden="true">→</span>
-            </Link>
+            <div className="promo-banner relative isolate">
+              <span aria-hidden="true" className="promo-banner-glow" />
+              <Link
+                href="/watch"
+                className="browse-muted-button inline-flex min-h-[40px] items-center gap-2.5 rounded-full py-1.5 pr-4 pl-2 text-sm font-semibold whitespace-nowrap max-[389px]:gap-2 max-[389px]:pr-3 max-[389px]:text-[0.8125rem]"
+              >
+                <NewBadge />
+                Watch any repo explained in a minute
+                <span aria-hidden="true" className="promo-banner-arrow">
+                  →
+                </span>
+              </Link>
+            </div>
           </div>
         )}
         <Hero />

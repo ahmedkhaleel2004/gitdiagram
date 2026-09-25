@@ -553,3 +553,63 @@
     animation: none;
   }
 }
+
+/* Homepage video banner: a soft violet-pink-amber glow that breathes behind
+   the pill. Only opacity and transform animate, so it stays on the GPU. */
+@layer components {
+  .promo-banner-glow {
+    position: absolute;
+    inset: -6px -12px -10px -10px;
+    z-index: -1;
+    border-radius: 999px;
+    background: linear-gradient(
+      100deg,
+      #a855f7 0%,
+      #ec4899 45%,
+      #f59e0b 80%,
+      #a855f7 100%
+    );
+    filter: blur(18px);
+    --promo-glow: 0.95;
+    opacity: var(--promo-glow);
+    pointer-events: none;
+    animation: promo-banner-glow 3.2s ease-in-out infinite;
+  }
+
+  .dark .promo-banner-glow {
+    --promo-glow: 0.75;
+  }
+
+  .promo-banner-arrow {
+    display: inline-block;
+    transition: transform 200ms var(--ease-out);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .promo-banner:hover .promo-banner-glow {
+      --promo-glow: 1;
+    }
+
+    .promo-banner:hover .promo-banner-arrow {
+      transform: translateX(3px);
+    }
+  }
+}
+
+@keyframes promo-banner-glow {
+  0%,
+  100% {
+    transform: scale(0.94);
+    opacity: calc(var(--promo-glow) * 0.55);
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: var(--promo-glow);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-banner-glow {
+    animation: none;
+  }
+}
