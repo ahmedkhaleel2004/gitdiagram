@@ -51,7 +51,7 @@ export const REPOSITORY_TOO_LARGE_ERROR =
 // and carry no upstream response text, so `normalizeGenerationError` is willing
 // to show them verbatim.
 const GITHUB_REQUEST_TIMEOUT_ERROR = "GitHub request timed out. Please retry.";
-const REPOSITORY_NOT_FOUND_ERROR = "Repository not found.";
+export const REPOSITORY_NOT_FOUND_ERROR = "Repository not found.";
 const FILE_TREE_UNAVAILABLE_ERROR = "Could not fetch repository file tree.";
 const EMPTY_REPOSITORY_ERROR =
   "Could not fetch repository file tree. Repository might be empty or inaccessible.";

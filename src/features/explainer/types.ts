@@ -145,7 +145,8 @@ export type VideoGenerationEvent =
       progress?: VideoGenerationProgress;
     }
   | { status: "complete"; artifact: VideoArtifact }
-  | { status: "error"; error: string };
+  /** `retryable: false` means trying again cannot help (e.g. a private repo). */
+  | { status: "error"; error: string; retryable?: boolean };
 
 export type VideoRenderStep = "starting" | "rendering" | "finishing";
 

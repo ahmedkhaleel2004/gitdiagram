@@ -118,7 +118,7 @@ export function ExplainerVideo({
             error instanceof Error
               ? error.message
               : "Could not load the video.",
-          canGenerate: false,
+          canGenerate: true,
         });
       });
     return () => {
@@ -140,7 +140,11 @@ export function ExplainerVideo({
         if (event.status === "complete")
           setState({ kind: "ready", video: event.artifact });
         else if (event.status === "error")
-          setState({ kind: "error", message: event.error, canGenerate: true });
+          setState({
+            kind: "error",
+            message: event.error,
+            canGenerate: event.retryable !== false,
+          });
         else {
           progress = { ...progress, ...event.progress };
           setState({
@@ -256,7 +260,7 @@ export function ExplainerVideo({
             Watch the videos
           </Link>
         ) : (
-          (state.canGenerate || failed) && (
+          state.canGenerate && (
             <button
               type="button"
               className={`${controls.actionButton} ${controls.primary}`}

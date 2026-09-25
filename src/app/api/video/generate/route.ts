@@ -157,7 +157,11 @@ export async function POST(request: Request): Promise<Response> {
                   : "unknown",
             }),
           );
-          send({ status: "error", error: publicMessage(error) });
+          send({
+            status: "error",
+            error: publicMessage(error),
+            retryable: !(error instanceof VideoInputError),
+          });
           if (reservation?.ok) await reservation.refund();
         })
         .finally(async () => {

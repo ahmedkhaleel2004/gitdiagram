@@ -1,7 +1,10 @@
 import "server-only";
 
 import { getGitHubApiHeaders } from "~/server/github-auth";
-import { getGithubData } from "~/server/generate/github";
+import {
+  getGithubData,
+  REPOSITORY_NOT_FOUND_ERROR,
+} from "~/server/generate/github";
 import { prepareRepositoryContext } from "~/server/generate/repository-context";
 import { fetchSourceContext } from "~/server/generate/source-context";
 import type { VideoMeta } from "~/features/explainer/types";
@@ -23,6 +26,9 @@ export interface RepositoryContextInput {
 }
 
 export class VideoInputError extends Error {}
+
+const PUBLIC_ONLY_MESSAGE =
+  "Explainer videos are available for public repositories only.";
 
 export interface VideoRepository {
   meta: VideoMeta;
@@ -61,13 +67,19 @@ export async function readRepositoryForVideo(params: {
 }): Promise<VideoRepository> {
   const { username, repo, signal } = params;
   const [data, metadata] = await Promise.all([
-    getGithubData(username, repo, undefined, signal),
+    // Videos are read with GitDiagram's own token, never a visitor's, so a
+    // private repository looks missing here.
+    getGithubData(username, repo, undefined, signal).catch((error: unknown) => {
+      if (
+        error instanceof Error &&
+        error.message === REPOSITORY_NOT_FOUND_ERROR
+      )
+        throw new VideoInputError(PUBLIC_ONLY_MESSAGE);
+      throw error;
+    }),
     readMetadata(username, repo, signal),
   ]);
-  if (data.isPrivate)
-    throw new VideoInputError(
-      "Explainer videos are available for public repositories only.",
-    );
+  if (data.isPrivate) throw new VideoInputError(PUBLIC_ONLY_MESSAGE);
   const prepared = prepareRepositoryContext(data);
   const source = await fetchSourceContext({
     username,
