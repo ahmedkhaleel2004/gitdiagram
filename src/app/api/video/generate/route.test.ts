@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   after: vi.fn(),
-  emitLiveEvent: vi.fn(async () => undefined),
+  emitLiveEvent: vi.fn(async (_event: Record<string, unknown>) => undefined),
   reportHeldBack: vi.fn(),
   readAdmissionControls: vi.fn(),
   generateExplainerVideo: vi.fn(),
