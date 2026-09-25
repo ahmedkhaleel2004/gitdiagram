@@ -150,12 +150,6 @@
   transform: scale(0.97);
 }
 
-.loading {
-  font-size: 13px;
-  font-weight: 650;
-  color: #4e4463;
-}
-
 .controls {
   container-type: inline-size;
   display: flex;
@@ -515,10 +509,6 @@
   margin: 16px 0 0 27px;
   /* The fold clips overflow; leave room for the button's shadow and focus ring. */
   padding-bottom: 8px;
-}
-.note {
-  font-size: 12px;
-  color: var(--muted);
 }
 
 @media (prefers-reduced-motion: reduce) {
