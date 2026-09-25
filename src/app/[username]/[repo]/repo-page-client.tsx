@@ -13,6 +13,7 @@ import { useStarReminder } from "~/hooks/useStarReminder";
 import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { isExampleRepo } from "~/lib/exampleRepos";
+import { VIDEOS_ENABLED } from "~/lib/video-flag";
 import { githubAccessTitle } from "~/features/diagram/github-access";
 import controls from "~/components/generation/workspace.module.css";
 
@@ -23,9 +24,6 @@ const ExplainerVideo = dynamic(
     ),
   { ssr: false },
 );
-
-// Explainer videos are opt-in per deployment while the feature is tested.
-const VIDEO_EXPLAINER_ENABLED = process.env.NEXT_PUBLIC_VIDEO_EXPLAINER === "1";
 
 const PrivateReposDialog = dynamic(
   () =>
@@ -103,7 +101,7 @@ export default function RepoPageClient({
           onRenderError={handleDiagramRenderError}
           regenerateDisabled={isExampleRepo(normalizedUsername, normalizedRepo)}
           video={
-            VIDEO_EXPLAINER_ENABLED ? (
+            VIDEOS_ENABLED ? (
               <ExplainerVideo
                 username={normalizedUsername}
                 repo={normalizedRepo}

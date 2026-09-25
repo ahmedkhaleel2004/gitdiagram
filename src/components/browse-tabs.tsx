@@ -1,7 +1,6 @@
 import Link from "next/link";
+import { VIDEOS_ENABLED } from "~/lib/video-flag";
 import { NewBadge } from "./new-badge";
-
-const VIDEOS_ENABLED = process.env.NEXT_PUBLIC_VIDEO_EXPLAINER === "1";
 
 /** Switches between the diagram catalog and the explainer videos. */
 export function BrowseTabs({ active }: { active: "diagrams" | "videos" }) {

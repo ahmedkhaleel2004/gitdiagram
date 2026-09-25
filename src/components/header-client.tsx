@@ -8,13 +8,10 @@ import { Menu, X } from "lucide-react";
 
 import { GitHubIcon } from "~/components/icons/github-icon";
 import { GITHUB_REPO_URL } from "~/lib/site";
+import { VIDEOS_ENABLED } from "~/lib/video-flag";
 
 import { NewBadge } from "./new-badge";
 import { ThemeToggle } from "./theme-toggle";
-
-// Explainer videos are on per deployment; while they are new, the header
-// links their page with a badge.
-const VIDEOS_ENABLED = process.env.NEXT_PUBLIC_VIDEO_EXPLAINER === "1";
 
 const loadApiKeyDialog = () =>
   import("./api-key-dialog").then((module) => module.ApiKeyDialog);
@@ -131,6 +128,7 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
           </button>
         </div>
         <nav className="hidden items-center gap-6 sm:flex">
+          {/* While explainer videos are new, their page carries a badge. */}
           {VIDEOS_ENABLED && (
             <Link
               href="/videos"
