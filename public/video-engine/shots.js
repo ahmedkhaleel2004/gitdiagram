@@ -13,6 +13,15 @@ function build() {
   var tl = gsap.timeline({ paused: true });
   var stage = document.getElementById("scenes");
 
+  // Model-written ids and names index tables, and "constructor" is a fine id:
+  // no lookup may reach a prototype.
+  function dict() {
+    return Object.create(null);
+  }
+  function own(table, key) {
+    return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+  }
+
   // ---------- sound ----------
   // Builders ask for hits freely; mixSfx (run once the film is built) keeps a
   // sparse, varied few: short untuned foley only, the scene change plus at most
@@ -147,7 +156,7 @@ function build() {
   }
 
   // ---------- syntax tint ----------
-  var KW = {};
+  var KW = dict();
   "const let var function return if else for while do switch case break continue new class extends implements import export from default async await yield try catch finally throw typeof instanceof in of this super null undefined true false def lambda pass raise with as elif not and or is None True False self func package type struct interface map chan go defer select range fn pub impl trait enum mod use match mut ref where crate static public private protected void int string bool readonly abstract override val fun object when"
     .split(" ")
     .forEach(function (k) {
@@ -194,7 +203,7 @@ function build() {
     cache: '<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 7v10c0 1.7 3.6 3 8 3M20 7v4"/><path d="M15 16l2 2 4-4"/>',
   };
   function icon(name, size) {
-    if (!ICON[name]) return "";
+    if (!own(ICON, name)) return "";
     return (
       '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="#17111f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">' +
       ICON[name] +
@@ -208,18 +217,26 @@ function build() {
   var TONE_BG = { plain: "var(--card)", accent: "var(--purple)", soft: "var(--purple-soft)", ok: "var(--green-soft)", bad: "var(--red-soft)", ghost: "transparent" };
   var TONE_INK = { plain: INK, accent: INK, soft: INK, ok: "#0f7a48", bad: "#b3263a", ghost: INK };
   var PAINT = { none: "none", paper: "#f2e8ff", card: "#fdfaff", accent: "#bd85fb", soft: "#dcc2ff", ink: INK, ok: "#cff2de", bad: "#ffd9da" };
+  function toneOf(name) {
+    return own(TONE_BG, name) ? name : "plain";
+  }
 
   // ---------- clock ----------
+  // The server's normalizeWord (src/server/explainer/text.ts).
   function norm(w) {
-    return String(w || "").toLowerCase().replace(/[^a-z0-9.#/]/g, "").replace(/\.$/, "");
+    return String(w || "").toLowerCase().replace(/[^a-z0-9.#/]/g, "").replace(/^\.{2,}|\.+$/g, "");
   }
+  // An exact word first, so a cue for "data" never lands on an earlier
+  // "database"; a shared stem ("route" for "routes") only as a fallback.
   function cueTime(bi, word) {
     var c = norm(word);
     if (!c) return null;
     var ws = TB[bi].words;
-    for (var k = 0; k < ws.length; k++) {
+    var k;
+    for (k = 0; k < ws.length; k++) if (ws[k].w === c) return ws[k].s;
+    for (k = 0; k < ws.length; k++) {
       var w = ws[k].w;
-      if (w === c || (c.length > 3 && w.indexOf(c) === 0) || (w.length > 3 && c.indexOf(w) === 0)) return ws[k].s;
+      if ((c.length > 3 && w.indexOf(c) === 0) || (w.length > 3 && c.indexOf(w) === 0)) return ws[k].s;
     }
     return null;
   }
@@ -255,7 +272,9 @@ function build() {
   }
 
   // ---------- element builders ----------
-  // Each returns { el, enter(t), parts } where parts serve later actions.
+  // Each returns { el, enter(t) } plus whatever later actions need (a label to
+  // replace, line bars, typed lines). A visual made of sibling nodes (an
+  // arrow) lists them all in `nodes`, so every action reaches every part.
   function place(parent, e, extra) {
     var el = h(
       "div",
@@ -283,13 +302,8 @@ function build() {
     tl.fromTo(el, { clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)", duration: d, ease: "steps(" + n + ")" }, t);
     tl.set(el, { clipPath: "none" }, t + d + 0.01);
   }
-  function swapNode(host, style, html) {
-    var n = h("div", "", "position:absolute;inset:0;display:flex;align-items:center;" + style, host, html);
-    n.style.opacity = 0;
-    return n;
-  }
 
-  var B = {};
+  var B = dict();
   B.heading = function (e, layer) {
     var W = e.w * U;
     var H = e.h * U;
@@ -408,15 +422,15 @@ function build() {
   B.box = function (e, layer) {
     var W = e.w * U;
     var H = e.h * U;
-    var tone = e.tone || "plain";
-    var ghost = tone === "ghost";
-    var el = place(layer, e, cardStyle(TONE_BG[tone]) + (ghost ? "border-style:dashed;box-shadow:none;" : "") + "display:flex;align-items:center;gap:14px;padding:0 20px;");
+    var tn = toneOf(e.tone);
+    var ghost = tn === "ghost";
+    var el = place(layer, e, cardStyle(TONE_BG[tn]) + (ghost ? "border-style:dashed;box-shadow:none;" : "") + "display:flex;align-items:center;gap:14px;padding:0 20px;");
     var ic = e.icon && e.icon !== "none" ? Math.min(46, H * 0.42) : 0;
     if (ic) el.insertAdjacentHTML("beforeend", icon(e.icon, ic));
     var col = h("div", "", "position:relative;flex:1;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:center", el);
     var tw = W - 44 - (ic ? ic + 14 : 0);
     var ls = fitSize(e.label, function (s) { return "650 " + s + "px Geist"; }, tw, (e.sub ? H * 0.5 : H * 0.72), 1.12, 40, 16);
-    var label = h("div", "", "font:650 " + ls + "px/1.12 Geist;color:" + TONE_INK[tone] + ";letter-spacing:-0.01em", col, esc(e.label));
+    var label = h("div", "", "font:650 " + ls + "px/1.12 Geist;color:" + TONE_INK[tn] + ";letter-spacing:-0.01em", col, esc(e.label));
     var sub = null;
     if (e.sub) {
       var ss = Math.max(14, Math.min(22, Math.floor(tw / (e.sub.length * 0.6)), Math.floor(H * 0.22)));
@@ -427,9 +441,9 @@ function build() {
   };
   B.chip = function (e, layer) {
     var H = e.h * U;
-    var tone = e.tone || "plain";
+    var tn = toneOf(e.tone);
     var fs = Math.max(15, Math.min(Math.floor(H * 0.42), Math.floor((e.w * U - 36) / (e.text.length * 0.6))));
-    var el = place(layer, e, "display:flex;align-items:center;justify-content:center;border:3px solid " + INK + ";border-radius:999px;background:" + TONE_BG[tone] + ";box-shadow:3px 3px 0 " + INK + ";padding:0 18px;font:600 " + fs + "px/1 'Geist Mono';color:" + TONE_INK[tone] + ";white-space:nowrap;overflow:hidden");
+    var el = place(layer, e, "display:flex;align-items:center;justify-content:center;border:3px solid " + INK + ";border-radius:999px;background:" + TONE_BG[tn] + ";box-shadow:3px 3px 0 " + INK + ";padding:0 18px;font:600 " + fs + "px/1 'Geist Mono';color:" + TONE_INK[tn] + ";white-space:nowrap;overflow:hidden");
     var label = h("span", "", "display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis", el, esc(e.text));
     fitText(label, null, 12);
     return { el: el, label: label, labelHost: el, enter: function (t) { popIn(el, t, { from: 0.5 }); } };
@@ -456,7 +470,7 @@ function build() {
     var body = h("div", "", "position:absolute;left:0;right:0;top:" + (48 + Math.max(10, (e.h * U - 48 - rh * n) / 2)) + "px", el);
     var rows = [];
     var bars = {};
-    e.paths.forEach(function (p, i) {
+    e.paths.forEach(function (p) {
       rows.push(h("div", "mono", "position:relative;height:" + rh + "px;padding-left:28px;font:500 " + fs + "px/" + rh + "px 'Geist Mono';white-space:nowrap", body, esc(p)));
     });
     function bar(i) {
@@ -580,7 +594,7 @@ function build() {
     var first = odometer(host, e.value, e.prefix, e.suffix, size);
     var later = future.filter(function (a) { return a.do === "count"; }).map(function (a) {
       var wrapEl = h("div", "", "position:absolute;left:0;top:0;opacity:0", host);
-      return { at: a, od: odometer(wrapEl, Number(a.value) || 0, e.prefix, e.suffix, size), wrap: wrapEl };
+      return { od: odometer(wrapEl, Number(a.value) || 0, e.prefix, e.suffix, size), wrap: wrapEl };
     });
     if (label) h("div", "", "margin-top:12px;font:500 " + Math.max(16, Math.min(28, Math.floor(H * 0.16))) + "px/1.2 Geist;color:var(--ink-2)", el, esc(e.label));
     return {
@@ -670,7 +684,7 @@ function build() {
       });
       if (s.d) node.setAttribute("d", s.d);
       if (s.points) node.setAttribute("points", s.points);
-      node.setAttribute("fill", PAINT[s.fill] || "none");
+      node.setAttribute("fill", own(PAINT, s.fill) || "none");
       node.setAttribute("stroke", s.stroke === "none" ? "none" : s.stroke === "accent" ? "#7a2be0" : INK);
       node.setAttribute("stroke-width", "4");
       node.setAttribute("vector-effect", "non-scaling-stroke");
@@ -723,6 +737,8 @@ function build() {
     var pts = route(rectOf(a), rectOf(b));
     var svg = document.createElementNS(NS, "svg");
     svg.setAttribute("class", "wires");
+    svg.setAttribute("data-id", e.id);
+    svg.setAttribute("data-kind", "arrow");
     layer.insertBefore(svg, layer.firstChild);
     var p = document.createElementNS(NS, "path");
     p.setAttribute("d", "M" + pts.map(function (q) { return q[0].toFixed(1) + "," + q[1].toFixed(1); }).join(" L"));
@@ -745,17 +761,37 @@ function build() {
     head.setAttribute("transform", "translate(" + end[0] + "," + end[1] + ") rotate(" + ang + ")");
     head.style.opacity = 0;
     svg.appendChild(head);
+    var nodes = [svg];
     var label = null;
     if (e.label) {
       var mid = pts[Math.floor((pts.length - 1) / 2)];
       var nxt = pts[Math.floor((pts.length - 1) / 2) + 1];
       label = h("div", "mono", "position:absolute;left:" + ((mid[0] + nxt[0]) / 2 - 130) + "px;top:" + ((mid[1] + nxt[1]) / 2 - 17) + "px;width:260px;text-align:center;font:600 18px/34px 'Geist Mono';color:var(--ink-2)", layer, '<span style="background:var(--paper);padding:3px 9px;border-radius:6px">' + esc(e.label) + "</span>");
+      nodes.push(label);
     }
-    var packet = h("div", "", "position:absolute;left:" + (pts[0][0] - 11) + "px;top:" + (pts[0][1] - 11) + "px;width:22px;height:22px;border-radius:50%;background:#7a2be0;border:3px solid " + INK + ";opacity:0", layer);
+    // Packets ride in their own box, so an arrow that exits takes a packet
+    // still running with it.
+    var packets = h("div", "", "position:absolute;left:0;top:0", layer);
+    nodes.push(packets);
+    var packet = h("div", "", "position:absolute;left:" + (pts[0][0] - 11) + "px;top:" + (pts[0][1] - 11) + "px;width:22px;height:22px;border-radius:50%;background:#7a2be0;border:3px solid " + INK + ";opacity:0", packets);
+    // The route's bounds (padded to the label's height), for actions that
+    // frame or mark the arrow.
+    var xs = pts.map(function (q) { return q[0]; });
+    var ys = pts.map(function (q) { return q[1]; });
+    var x0 = Math.min.apply(null, xs) - 20;
+    var y0 = Math.min.apply(null, ys) - 20;
     return {
       el: svg,
-      packet: packet,
-      pts: pts,
+      nodes: nodes,
+      arrow: true,
+      box: { x: x0 / U, y: y0 / U, w: (Math.max.apply(null, xs) + 20 - x0) / U, h: (Math.max.apply(null, ys) + 20 - y0) / U },
+      highlight: function (t) {
+        tl.to(p, { attr: { stroke: "#7a2be0" }, duration: 0.25 }, t);
+        tl.to(head, { attr: { fill: "#7a2be0" }, duration: 0.25 }, t);
+      },
+      pulse: function (t) {
+        tl.to(p, { attr: { "stroke-width": 8 }, duration: 0.15, yoyo: true, repeat: 1, ease: "power2.out" }, t);
+      },
       enter: function (t) {
         if (e.dashed) tl.fromTo(p, { opacity: 0 }, { opacity: 1, duration: 0.3 }, t);
         else tl.fromTo(p, { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.38, ease: "power2.inOut" }, t);
@@ -784,9 +820,19 @@ function build() {
   }
 
   // ---------- actions ----------
+  // Every node that belongs to an item (its body, an arrow's label and packets,
+  // badges and strikes added later) with where it was drawn, so dim, exit,
+  // shake and move treat the item as one thing.
+  function adopt(item, el) {
+    item.nodes.push({ el: el, home: { x: item.pos.x, y: item.pos.y } });
+  }
+  function nodesOf(item) {
+    return item.nodes.map(function (n) { return n.el; });
+  }
   function badge(item, good, t) {
     var r = rectOf(item);
     var el = h("div", "badge " + (good ? "ok" : "bad"), "left:" + (r.x + r.w - 26) + "px;top:" + (r.y - 22) + "px;width:52px;height:52px;z-index:4", item.layer, good ? CHECK : CROSS);
+    adopt(item, el);
     popIn(el, t, { from: 0.2, ease: "back.out(3)" });
     sfx("pop", t, -16);
   }
@@ -802,7 +848,8 @@ function build() {
     targets.forEach(function (it) { grow(rectOf(it)); });
     var others = Object.keys(sc.items)
       .map(function (id) { return sc.items[id]; })
-      .filter(function (it) { return targets.indexOf(it) < 0 && !it.gone && it.pos && isFinite(it.pos.x); });
+      // Lines running out of frame read fine; only cut cards look broken.
+      .filter(function (it) { return targets.indexOf(it) < 0 && !it.gone && !it.arrow; });
     for (var pass = 0; pass < 6; pass++) {
       var s = Math.min(1.7, Math.min((1920 * 0.68) / (box.x1 - box.x0), (1080 * 0.68) / (box.y1 - box.y0)));
       if (s < 1.08) return null;
@@ -837,14 +884,15 @@ function build() {
     }
     return null;
   }
-  function applyAction(a, t, sc, bi) {
+  function applyAction(a, t, sc) {
     var items = sc.items;
     var targets = (a.target || []).map(function (id) { return items[id]; }).filter(Boolean);
     var first = targets[0];
     switch (a.do) {
       case "highlight":
         if (!first) return;
-        if (first.built.bar && a.lines && a.lines.length) {
+        if (first.built.highlight) first.built.highlight(t);
+        else if (first.built.bar && a.lines && a.lines.length) {
           a.lines.forEach(function (n) { var b = first.built.bar(n); if (b) tl.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t); });
         } else if (first.built.rowBar && a.rows && a.rows.length) {
           a.rows.forEach(function (n) { var b = first.built.rowBar(n); if (b) tl.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power3.out" }, t); });
@@ -858,29 +906,42 @@ function build() {
         sfx("tick", t, -17);
         break;
       case "dim":
-        targets.forEach(function (it) { tl.to(it.el, { opacity: 0.28, duration: 0.3 }, t); });
+        targets.forEach(function (it) { tl.to(nodesOf(it), { opacity: 0.28, duration: 0.3 }, t); });
         break;
       case "restore":
-        targets.forEach(function (it) { tl.to(it.el, { opacity: 1, duration: 0.3 }, t); });
+        targets.forEach(function (it) {
+          tl.to(nodesOf(it), { opacity: 1, duration: 0.3 }, t);
+          it.gone = false;
+        });
         break;
       case "exit":
-        targets.forEach(function (it) { tl.to(it.el, { opacity: 0, scale: 0.9, duration: 0.25, ease: "power2.in" }, t); });
+        targets.forEach(function (it) {
+          tl.to(nodesOf(it), { opacity: 0, duration: 0.25, ease: "power2.in" }, t);
+          // An arrow spans the canvas; shrinking it would slide it sideways.
+          if (!it.arrow) tl.to(it.el, { scale: 0.9, duration: 0.25, ease: "power2.in" }, t);
+          it.gone = true;
+        });
         break;
       case "strike":
         if (!first) return;
         var r = rectOf(first);
         var line = h("div", "", "position:absolute;left:" + (r.x + 10) + "px;top:" + (r.y + r.h / 2 - 2) + "px;width:" + (r.w - 20) + "px;height:5px;border-radius:3px;background:#b3263a;transform-origin:left center;z-index:4", first.layer);
+        adopt(first, line);
         tl.fromTo(line, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power2.out" }, t);
         tl.to(first.el, { opacity: 0.55, duration: 0.3 }, t + 0.1);
         (first.strikes = first.strikes || []).push(line);
         sfx("tick", t, -16);
         break;
       case "pulse":
-        targets.forEach(function (it) { tl.to(it.el, { scale: 1.07, duration: 0.15, yoyo: true, repeat: 1, ease: "power2.out" }, t); });
+        targets.forEach(function (it) {
+          if (it.built.pulse) it.built.pulse(t);
+          else tl.to(it.el, { scale: 1.07, duration: 0.15, yoyo: true, repeat: 1, ease: "power2.out" }, t);
+        });
         sfx("tick", t, -17);
         break;
       case "shake":
-        if (first) tl.to(first.el, { x: 10, duration: 0.05, yoyo: true, repeat: 5, ease: "none" }, t);
+        // Relative, so an element moved earlier shakes where it now stands.
+        if (first) tl.to(nodesOf(first), { x: "+=10", duration: 0.05, yoyo: true, repeat: 5, ease: "none" }, t);
         break;
       case "check":
       case "cross":
@@ -892,8 +953,10 @@ function build() {
         var old = first.current;
         // New words are not struck out: a replacement clears any strike.
         if (first.strikes && first.strikes.length) {
-          tl.to(first.strikes, { opacity: 0, duration: 0.2 }, t);
+          var struck = first.strikes;
+          tl.to(struck, { opacity: 0, duration: 0.2 }, t);
           tl.to(first.el, { opacity: 1, duration: 0.25 }, t + 0.1);
+          first.nodes = first.nodes.filter(function (n) { return struck.indexOf(n.el) < 0; });
           first.strikes = [];
         }
         tl.to(old, { opacity: 0, y: -22, duration: 0.2, ease: "power2.in" }, t);
@@ -911,8 +974,10 @@ function build() {
         sfx("tick", t, -16);
         break;
       case "move":
-        if (!first) return;
-        tl.to(first.el, { x: (Number(a.x) - first.home.x) * U, y: (Number(a.y) - first.home.y) * U, duration: 0.55, ease: "power3.inOut" }, t);
+        if (!first || first.arrow) return;
+        first.nodes.forEach(function (n) {
+          tl.to(n.el, { x: (Number(a.x) - n.home.x) * U, y: (Number(a.y) - n.home.y) * U, duration: 0.55, ease: "power3.inOut" }, t);
+        });
         first.pos = { x: Number(a.x), y: Number(a.y), w: first.pos.w, h: first.pos.h };
         break;
       case "type":
@@ -962,7 +1027,7 @@ function build() {
     var drift = h("div", "", "position:absolute;inset:0;transform-origin:50% 46%", inner);
     var cam = h("div", "", "position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0", drift);
     sc.cam = cam;
-    sc.items = {};
+    sc.items = dict();
     tl.set(sec, { visibility: "visible" }, sc.tIn);
     transitionIn(inner, sc.transition, sc.tIn);
     if (!RENDER) tl.fromTo(drift, { scale: 1 }, { scale: 1.015, duration: Math.max(0.5, sc.tOut - sc.tIn), ease: "none" }, sc.tIn);
@@ -972,7 +1037,7 @@ function build() {
     if (k > 0) sfx("whoosh", sc.tIn - 0.04, -17, 1, true);
 
     // Actions that later need prepared DOM (swaps, counts, typed lines).
-    var future = {};
+    var future = dict();
     sc.beats.forEach(function (bi) {
       beats[bi].actions.forEach(function (a) {
         (a.target || []).forEach(function (id) { (future[id] = future[id] || []).push(a); });
@@ -989,16 +1054,28 @@ function build() {
         tl.to(sc.cam, { scale: 1, x: 0, y: 0, duration: 0.6, ease: "power3.inOut" }, TB[bi].start - 0.25);
         sc.focused = false;
       }
+      // Cue times follow the plan's order, but every arrow is built after the
+      // elements it joins, wherever the designer listed it.
       var stagger = 0;
-      beat.elements.forEach(function (e) {
+      var timed = beat.elements.map(function (e) {
         var cued = cueTime(bi, e.at);
-        var t = Math.max(floor, cued == null ? TB[bi].start + 0.06 + 0.13 * stagger++ : cued - 0.04);
+        return { e: e, t: Math.max(floor, cued == null ? TB[bi].start + 0.06 + 0.13 * stagger++ : cued - 0.04) };
+      });
+      var arrowsLast = timed.filter(function (x) { return x.e.kind !== "arrow"; }).concat(timed.filter(function (x) { return x.e.kind === "arrow"; }));
+      arrowsLast.forEach(function (x) {
+        var e = x.e;
+        var t = x.t;
         var built;
-        if (e.kind === "arrow") built = buildArrow(e, cam, sc.items);
-        else if (B[e.kind]) built = B[e.kind](e, cam, future[e.id] || []);
+        if (e.kind === "arrow") {
+          built = buildArrow(e, cam, sc.items);
+          // Never drawn before both of its ends are on screen.
+          if (built) t = Math.max(t, sc.items[e.from].t, sc.items[e.to].t);
+        } else if (B[e.kind]) built = B[e.kind](e, cam, future[e.id] || []);
         if (!built) return;
         empty = false;
-        var item = { built: built, el: built.el, pos: { x: e.x, y: e.y, w: e.w, h: e.h }, home: { x: e.x, y: e.y }, layer: cam };
+        var pos = built.box || { x: e.x, y: e.y, w: e.w, h: e.h };
+        var item = { built: built, el: built.el, t: t, arrow: Boolean(built.arrow), pos: pos, layer: cam, nodes: [] };
+        (built.nodes || [built.el]).forEach(function (n) { adopt(item, n); });
         if (built.label && built.labelHost) {
           var swaps = (future[e.id] || []).filter(function (a) { return a.do === "replace"; });
           item.current = built.label;
@@ -1031,11 +1108,14 @@ function build() {
         }
         sc.items[e.id] = item;
         built.enter(t);
+        // An arrow marked "flow" runs packets once drawn, unless a flow action
+        // starts them on a later word.
+        if (e.flow && built.flow && !(future[e.id] || []).some(function (a) { return a.do === "flow"; })) built.flow(t + 0.45, sc.tOut - 0.3);
       });
       beat.actions.forEach(function (a) {
         var cued = cueTime(bi, a.at);
         var t = Math.max(floor + 0.35, cued == null ? (TB[bi].start + TB[bi].end) / 2 : cued - 0.03);
-        applyAction(a, Math.min(t, sc.tOut - 0.35), sc, bi);
+        applyAction(a, Math.min(t, sc.tOut - 0.35), sc);
       });
     });
 
