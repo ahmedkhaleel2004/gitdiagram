@@ -42,6 +42,8 @@ function build() {
   var square = K.square;
   var focusView = K.focusView;
   var autoView = K.autoView;
+  // The frame: the wide 1920 × 1080 one, or a tall one for reels (stage.js).
+  var F = K.frame;
   var sound = K.sound();
   var sfx = sound.sfx;
 
@@ -852,8 +854,8 @@ function build() {
         var view = focusView(targets, sc);
         // A push-in that would barely zoom past the framing is skipped.
         if (!view || view.s < sc.view.s * 1.08) break;
-        tl.to(sc.cam, { scale: view.s, x: 960 - view.s * view.cx, y: 540 - view.s * view.cy, duration: 0.75, ease: "power3.inOut" }, t);
-        sc.view = { s: view.s, x: 960 - view.s * view.cx, y: 540 - view.s * view.cy };
+        tl.to(sc.cam, { scale: view.s, x: F.fx - view.s * view.cx, y: F.fy - view.s * view.cy, duration: 0.75, ease: "power3.inOut" }, t);
+        sc.view = { s: view.s, x: F.fx - view.s * view.cx, y: F.fy - view.s * view.cy };
         sc.focused = true;
         break;
       case "reset":
@@ -877,7 +879,7 @@ function build() {
     var sec = h("section", "scene", "", stage);
     var inner = h("div", "inner", "", sec);
     var drift = h("div", "", "position:absolute;inset:0;transform-origin:50% 46%", inner);
-    var cam = h("div", "", "position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0", drift);
+    var cam = h("div", "", "position:absolute;left:0;top:0;width:" + F.w + "px;height:" + F.h + "px;transform-origin:0 0", drift);
     sc.cam = cam;
     sc.items = dict();
     sc.view = { s: 1, x: 0, y: 0 };
@@ -975,7 +977,8 @@ function build() {
     // A scene the designer never delivered still says its line on screen.
     if (empty) {
       var fallback = sc.beats.map(function (bi) { return beats[bi].narration; }).join(" ");
-      var built = B.heading({ text: fallback, x: 1, y: 2.2, w: 14, h: 4.5 }, cam);
+      var spot = F.h > F.w ? { x: F.L / U, y: F.TOP / U + 0.4, w: (F.R - F.L) / U, h: Math.min(6, (F.BOT - F.TOP) / U - 0.8) } : { x: 1, y: 2.2, w: 14, h: 4.5 };
+      var built = B.heading(Object.assign({ text: fallback }, spot), cam);
       built.enter(sc.tIn + 0.3);
     }
   });
@@ -991,20 +994,24 @@ function build() {
   tl.to(label, { opacity: 0, duration: 0.3 }, endAt - 0.1);
 
   var rail = document.getElementById("rail");
-  var hair = h("div", "", "position:absolute;left:0;bottom:0;width:1920px;height:6px;background:#7a2be0;transform-origin:left center", rail);
+  var hair = h("div", "", "position:absolute;left:0;bottom:0;width:" + F.w + "px;height:6px;background:#7a2be0;transform-origin:left center", rail);
   tl.fromTo(hair, { scaleX: 0 }, { scaleX: 1, duration: DUR, ease: "none" }, 0);
 
   var end = h("section", "scene", "", stage);
-  var endInner = h("div", "inner", "display:flex;flex-direction:column;justify-content:center;padding:0 150px", end);
+  // A tall frame keeps the end card inside the area its captions leave free.
+  var tall = F.h > F.w;
+  var endPad = tall ? F.L + 20 : 150;
+  var endW = F.w - 2 * endPad;
+  var endInner = h("div", "inner", "display:flex;flex-direction:column;justify-content:center;padding:0 " + endPad + "px" + (tall ? ";top:" + F.TOP + "px;bottom:" + (F.h - F.BOT) + "px" : ""), end);
   var outro = S.outro || S.title;
-  var os = fitSize(outro.replace(/\*/g, ""), function (s) { return "400 " + s + 'px "Instrument Serif"'; }, 1620, 420, 1.02, 150, 60);
-  var line = h("div", "serif", "font-size:" + os + "px;line-height:1.02;letter-spacing:-0.02em;max-width:1620px", endInner);
+  var os = fitSize(outro.replace(/\*/g, ""), function (s) { return "400 " + s + 'px "Instrument Serif"'; }, endW, tall ? 620 : 420, 1.02, tall ? 132 : 150, tall ? 52 : 60);
+  var line = h("div", "serif", "font-size:" + os + "px;line-height:1.02;letter-spacing:-0.02em;max-width:" + endW + "px", endInner);
   var words = accentWords(outro).map(function (w) {
     var sp = h("span", "hw", "", line, w);
     line.appendChild(document.createTextNode(" "));
     return sp;
   });
-  var sign = h("div", "", "margin-top:56px;display:flex;align-items:center;gap:18px", endInner, GLYPH + '<span class="mono" style="font:600 28px/1 \'Geist Mono\'">github.com/' + esc(M.owner + "/" + M.repo) + '</span><span style="font:400 24px/1 Geist;color:var(--ink-2);margin-left:6px">· made with GitDiagram</span>');
+  var sign = h("div", "", "margin-top:56px;display:flex;flex-wrap:wrap;align-items:center;gap:18px", endInner, GLYPH + '<span class="mono" style="font:600 28px/1 \'Geist Mono\'">github.com/' + esc(M.owner + "/" + M.repo) + '</span><span style="font:400 24px/1 Geist;color:var(--ink-2);margin-left:6px">· made with GitDiagram</span>');
   tl.set(end, { visibility: "visible" }, endAt);
   words.forEach(function (sp, k) { tl.fromTo(sp, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, endAt + 0.1 + k * 0.06); });
   riseIn(sign, endAt + 0.5, { y: 20, d: 0.5 });

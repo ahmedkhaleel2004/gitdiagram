@@ -1,21 +1,21 @@
 @font-face {
   font-family: "Geist";
-  src: url("assets/fonts/Geist-Variable.woff2?v=19") format("woff2");
+  src: url("assets/fonts/Geist-Variable.woff2?v=20") format("woff2");
   font-weight: 100 900;
 }
 @font-face {
   font-family: "Geist Mono";
-  src: url("assets/fonts/GeistMono-Variable.woff2?v=19") format("woff2");
+  src: url("assets/fonts/GeistMono-Variable.woff2?v=20") format("woff2");
   font-weight: 100 900;
 }
 @font-face {
   font-family: "Instrument Serif";
-  src: url("assets/fonts/InstrumentSerif-Regular.woff2?v=19") format("woff2");
+  src: url("assets/fonts/InstrumentSerif-Regular.woff2?v=20") format("woff2");
   font-style: normal;
 }
 @font-face {
   font-family: "Instrument Serif";
-  src: url("assets/fonts/InstrumentSerif-Italic.woff2?v=19") format("woff2");
+  src: url("assets/fonts/InstrumentSerif-Italic.woff2?v=20") format("woff2");
   font-style: italic;
 }
 
@@ -124,7 +124,7 @@ svg.wires {
   inset: 0;
   opacity: 0.1;
   mix-blend-mode: multiply;
-  background: url("assets/grain.png?v=19") 0 0 / 128px 128px;
+  background: url("assets/grain.png?v=20") 0 0 / 128px 128px;
 }
 
 /* components */
@@ -366,6 +366,71 @@ html.vertical #captions span.on {
   text-align: center;
   font: 600 32px/1 "Geist Mono", monospace;
   color: var(--ink-2);
+}
+
+/* reel: a tall canvas (1080 wide, as tall as the phone screen is in
+   proportion; see stage.js) that the page overlays with its own buttons.
+   The repo label and progress line live in the page instead. */
+html.reel,
+html.reel body {
+  width: var(--cw);
+  height: var(--ch);
+}
+html.reel #root {
+  width: var(--cw);
+  height: var(--ch);
+}
+html.fit.reel,
+html.fit.reel body {
+  width: 100%;
+  height: 100%;
+}
+html.fit.reel #root {
+  width: var(--cw);
+  height: var(--ch);
+  transform: translate(var(--fit-x, 0), var(--fit-y, 0)) scale(var(--fit, 1));
+}
+html.reel #brand,
+html.reel #rail {
+  display: none;
+}
+html.reel #bg-grid {
+  width: calc(var(--cw) + 160px);
+  height: calc(var(--ch) + 160px);
+}
+html.reel #bg-glow {
+  left: 180px;
+  top: -520px;
+}
+html.reel #bg-glow-2 {
+  left: -560px;
+  top: auto;
+  bottom: -300px;
+}
+html.reel #captions {
+  left: 56px;
+  right: var(--cap-right, 56px);
+  bottom: var(--cap-bottom, 120px);
+  transform: none;
+  max-width: none;
+  width: auto;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: 750 64px/1.16 "Geist", sans-serif;
+  letter-spacing: -0.02em;
+  text-align: left;
+  text-wrap: balance;
+}
+html.reel #captions span {
+  opacity: 0.3;
+}
+html.reel #captions span.on {
+  opacity: 1;
+}
+html.reel #captions span.now {
+  color: var(--purple-deep);
 }
 
 /* poster: a still with a play button, used for link previews */

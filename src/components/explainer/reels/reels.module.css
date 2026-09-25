@@ -1,0 +1,435 @@
+/* The reels feed: a full-screen column of tall reels. On phones the column
+   is the whole screen; on wider screens it is a phone-shaped column in the
+   middle, with up and down buttons beside it. */
+
+@font-face {
+  font-family: "Reels Serif";
+  src: url("/video-engine/assets/fonts/InstrumentSerif-Italic.woff2?v=20")
+    format("woff2");
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Reels Mono";
+  src: url("/video-engine/assets/fonts/GeistMono-Variable.woff2?v=20")
+    format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+.shell {
+  --ink: #17111f;
+  --ink-2: #4e4463;
+  --paper: #f2e8ff;
+  --card: #fdfaff;
+  --purple: #bd85fb;
+  --purple-deep: #7a2be0;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #120d1a;
+  color: var(--ink);
+  /* Swipes only: no pinch or double-tap zoom. Zooming multiplies the
+     stage's graphics memory, which is what crashed iPhones before. */
+  touch-action: pan-y;
+}
+
+.column {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+@media (min-width: 640px) {
+  .column {
+    width: min(100vw, calc((100dvh - 32px) * 9 / 16));
+    height: calc(100dvh - 32px);
+    border: 3px solid var(--ink);
+    border-radius: 20px;
+    box-shadow: 8px 8px 0 #7a2be0;
+  }
+}
+
+.scroller {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  /* A video opened by link goes in on top; the feed must land on it, not
+     keep the one it pushed down in view (see the feed's landOn). */
+  overflow-anchor: none;
+}
+.scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.slide {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  background-color: var(--paper);
+  background-image: radial-gradient(
+    circle,
+    rgba(23, 17, 31, 0.14) 1px,
+    transparent 1.4px
+  );
+  background-size: 15px 15px;
+}
+
+/* Under the stage while it builds or waits its turn: the video's title. */
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 28px 30%;
+}
+.placeholder p {
+  font:
+    italic 400 clamp(34px, 11vw, 52px) / 1.02 "Reels Serif",
+    Georgia,
+    serif;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  /* Hidden, not just clear, while it waits: WebKit then drops the frame's
+     graphics memory, which a phone needs for the reel on screen. */
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity 0.25s ease,
+    visibility 0s linear 0.25s;
+}
+.stage[data-shown] {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+/* The whole reel is the play/pause button, under the text and buttons. */
+.tap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tap:focus-visible {
+  outline: 3px solid var(--purple-deep);
+  outline-offset: -3px;
+}
+
+.pausedIcon,
+.startPlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  background: var(--purple);
+  color: var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.pausedIcon {
+  width: 72px;
+  height: 72px;
+  padding-left: 5px;
+  animation: pop 0.18s ease-out;
+}
+
+.unavailable {
+  max-width: 260px;
+  padding: 10px 16px;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  background: var(--card);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.topBar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: calc(8px + env(safe-area-inset-top)) 10px 8px 6px;
+  pointer-events: none;
+}
+.topBar > * {
+  pointer-events: auto;
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  color: var(--ink);
+}
+
+.wordmark {
+  flex: 1;
+  font:
+    italic 400 32px/1 "Reels Serif",
+    Georgia,
+    serif;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.iconButton:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+.iconButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.info {
+  position: absolute;
+  left: 16px;
+  right: 78px;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 2;
+}
+
+.repo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.avatar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--purple);
+  font-size: 14px;
+  font-weight: 800;
+}
+.repoName {
+  overflow: hidden;
+  font:
+    700 15px/1.2 "Reels Mono",
+    ui-monospace,
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  display: -webkit-box;
+  margin-top: 8px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.metaLink {
+  position: relative;
+  font-weight: 700;
+  color: var(--purple-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* A comfortable tap target for a small link. */
+.metaLink::after {
+  position: absolute;
+  inset: -12px -8px;
+  content: "";
+}
+
+.rail {
+  position: absolute;
+  right: 10px;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.railItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 52px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.railIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: 2px 2px 0 var(--ink);
+  transition: transform 0.12s ease;
+}
+.railItem:active .railIcon {
+  transform: scale(0.92);
+}
+.railLabel {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.progressTrack {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
+  height: 3px;
+  background: rgba(23, 17, 31, 0.1);
+}
+.progress {
+  height: 100%;
+  background: var(--purple-deep);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+/* The first screen: sound needs one tap. */
+.start {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  border: 0;
+  background: rgba(242, 232, 255, 0.45);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.startPlay {
+  width: 96px;
+  height: 96px;
+  padding-left: 6px;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.startLabel {
+  padding: 10px 18px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 3px 3px 0 var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.empty {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.empty a {
+  color: var(--purple-deep);
+  text-decoration: underline;
+}
+
+.nav {
+  display: none;
+}
+@media (min-width: 640px) {
+  .nav {
+    position: absolute;
+    top: 50%;
+    right: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transform: translateY(-50%);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage,
+  .pausedIcon {
+    transition: none;
+    animation: none;
+  }
+}

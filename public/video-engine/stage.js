@@ -10,6 +10,8 @@
   var captions = null;
   // A captions toggle that arrives before the timeline is built waits here.
   var captionsWanted = null;
+  // The tall reel canvas ({ w, h }), once a reel is loaded.
+  var reel = null;
 
   function post(message) {
     window.parent.postMessage(message, window.location.origin);
@@ -35,7 +37,32 @@
 
   // ---------- captions: the current beat's words, lit as they are spoken ----------
   function setupCaptions(host) {
-    captions = { box: el("div", "captions", host), beat: -1, words: [], lit: [], on: true, shown: null };
+    captions = { box: el("div", "captions", host), beat: -1, words: [], lit: [], on: true, shown: null, chunks: null, chunk: -1 };
+  }
+
+  // Reels show a few words at a time, like a phone video's captions: a beat's
+  // words in runs short enough for two lines, broken after punctuation.
+  var CHUNK_CHARS = 30;
+  function chunksOf(words) {
+    var chunks = [];
+    var run = [];
+    var length = 0;
+    words.forEach(function (word, k) {
+      if (run.length && length + 1 + word.length > CHUNK_CHARS) {
+        chunks.push(run);
+        run = [];
+        length = 0;
+      }
+      run.push(k);
+      length += (length ? 1 : 0) + word.length;
+      if (/[.,;:?!\u2014\u2026]$/.test(word) && length > CHUNK_CHARS / 2) {
+        chunks.push(run);
+        run = [];
+        length = 0;
+      }
+    });
+    if (run.length) chunks.push(run);
+    return chunks;
   }
 
   // The latest beat that has started holds the caption, a little past its end
@@ -63,25 +90,46 @@
       return;
     }
     var beat = window.TIMING.beats[index];
-    if (index !== captions.beat) {
-      captions.beat = index;
-      captions.box.textContent = "";
-      var text = String((window.SPEC.beats[index] || {}).narration || "");
-      captions.words = text.split(/\s+/).filter(Boolean).map(function (word, k) {
-        if (k) captions.box.appendChild(document.createTextNode(" "));
-        return el("span", "", captions.box, word);
-      });
-      captions.lit = captions.words.map(function () {
-        return false;
-      });
-    }
     // Timing words line up with the narration's whitespace-separated words.
     var timed = beat.words;
-    captions.words.forEach(function (span, k) {
-      var spoken = timed[k] ? timed[k].s <= t : t >= beat.end;
-      if (captions.lit[k] === spoken) return;
-      captions.lit[k] = spoken;
-      span.className = spoken ? "on" : "";
+    var spokenAt = function (k) {
+      return timed[k] ? timed[k].s <= t : t >= beat.end;
+    };
+    if (index !== captions.beat) {
+      captions.beat = index;
+      captions.chunk = -1;
+      var text = String((window.SPEC.beats[index] || {}).narration || "");
+      var words = text.split(/\s+/).filter(Boolean);
+      captions.all = words;
+      captions.chunks = reel ? chunksOf(words) : [words.map(function (_, k) { return k; })];
+    }
+    // The latest run whose first word has been said.
+    var chunk = 0;
+    for (var c = captions.chunks.length - 1; c > 0; c--) {
+      if (spokenAt(captions.chunks[c][0])) {
+        chunk = c;
+        break;
+      }
+    }
+    if (chunk !== captions.chunk) {
+      captions.chunk = chunk;
+      captions.box.textContent = "";
+      captions.words = captions.chunks[chunk].map(function (k, i) {
+        if (i) captions.box.appendChild(document.createTextNode(" "));
+        return el("span", "", captions.box, captions.all[k]);
+      });
+      captions.lit = captions.words.map(function () {
+        return null;
+      });
+    }
+    var run = captions.chunks[chunk];
+    captions.words.forEach(function (span, i) {
+      var spoken = spokenAt(run[i]);
+      // In a reel the word being said stands out from those already said.
+      var state = spoken ? (reel && (i === run.length - 1 || !spokenAt(run[i + 1])) ? "on now" : "on") : "";
+      if (captions.lit[i] === state) return;
+      captions.lit[i] = state;
+      span.className = state;
     });
     showCaptions(true);
   }
@@ -103,6 +151,57 @@
     return captionHost;
   }
 
+  // ---------- reel: a tall canvas that fills a phone screen ----------
+  // The page lays its own buttons and text over the frame's edges and says
+  // how much of each edge they cover (CSS pixels); the scene keeps clear of
+  // them and of the captions, which sit just above the bottom ones.
+  var REEL_W = 1080;
+  var CAPTION_ROOM = 190;
+  var CAPTION_GAP = 44;
+  function setupReel(options) {
+    var root = document.documentElement;
+    root.classList.add("reel");
+    var inFrame = window.parent !== window;
+    var h = inFrame
+      ? Math.round((REEL_W * window.innerHeight) / Math.max(1, window.innerWidth))
+      : Number(options.height) || 1920;
+    h = Math.max(1500, Math.min(2800, h));
+    reel = { w: REEL_W, h: h };
+    root.style.setProperty("--cw", REEL_W + "px");
+    root.style.setProperty("--ch", h + "px");
+    if (window.__fit) window.__fit();
+    var scale = inFrame ? Math.min(window.innerWidth / REEL_W, window.innerHeight / h) : 1;
+    var insets = options.insets || {};
+    var edge = function (name) {
+      return Math.max(0, Number(insets[name]) || 0) / scale;
+    };
+    var top = edge("top");
+    var bottom = edge("bottom");
+    var right = edge("right");
+    root.style.setProperty("--cap-bottom", Math.round(bottom + CAPTION_GAP) + "px");
+    root.style.setProperty("--cap-right", Math.round(Math.max(56, right + 20)) + "px");
+    var L = 48;
+    var R = REEL_W - 48;
+    var TOP = top + 40;
+    var BOT = Math.max(TOP + 700, h - bottom - CAPTION_GAP - CAPTION_ROOM - 30);
+    var kit = window.ShotKit;
+    kit.frame = {
+      w: REEL_W,
+      h: h,
+      L: L,
+      R: R,
+      TOP: TOP,
+      BOT: BOT,
+      fx: (L + R) / 2,
+      fy: (TOP + BOT) / 2,
+      fw: (R - L) * 0.92,
+      fh: (BOT - TOP) * 0.8,
+      view: { x0: 0, y0: TOP - 30, x1: REEL_W, y1: BOT + 30 },
+      minScale: 0.45,
+    };
+    window.SPEC = kit.reflow(window.SPEC, { x: L / kit.U, y: TOP / kit.U, w: (R - L) / kit.U, h: (BOT - TOP) / kit.U });
+  }
+
   // ---------- poster: a still with a play button, for link previews ----------
   function showPoster() {
     var overlay = el("div", "poster", document.getElementById("root"));
@@ -122,9 +221,18 @@
     var root = document.documentElement;
     root.classList.add("fit");
     gsap.config({ force3D: false });
+    // A reel keeps the canvas it was laid out on and fits it whole, centred.
     var fit = function () {
-      root.style.setProperty("--fit", String(window.innerWidth / 1920));
+      if (!reel) {
+        root.style.setProperty("--fit", String(window.innerWidth / 1920));
+        return;
+      }
+      var k = Math.min(window.innerWidth / reel.w, window.innerHeight / reel.h);
+      root.style.setProperty("--fit", String(k));
+      root.style.setProperty("--fit-x", (window.innerWidth - reel.w * k) / 2 + "px");
+      root.style.setProperty("--fit-y", (window.innerHeight - reel.h * k) / 2 + "px");
     };
+    window.__fit = fit;
     fit();
     window.addEventListener("resize", fit);
   }
@@ -190,6 +298,15 @@
       window.SPEC = message.spec;
       window.META = message.meta;
       window.TIMING = message.timing;
+      // A reel re-lays the plan for its tall canvas before the engine builds it.
+      if (message.layout === "reel") {
+        try {
+          setupReel({ insets: message.insets, height: message.height });
+        } catch (error) {
+          fail(error && error.message ? error.message : error);
+          return;
+        }
+      }
       var engine = document.createElement("script");
       engine.src = "shots.js?v=" + encodeURIComponent(version);
       engine.onerror = function () {

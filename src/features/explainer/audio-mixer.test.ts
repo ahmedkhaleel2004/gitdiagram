@@ -76,7 +76,11 @@ class FakeContext {
     };
   }
   createGain() {
-    return { gain: { value: 1 }, connect: (node: unknown) => node };
+    return {
+      gain: { value: 1 },
+      connect: (node: unknown) => node,
+      disconnect: vi.fn(),
+    };
   }
   createBuffer(channels: number, length: number, sampleRate: number) {
     return new FakeBuffer(channels, length, sampleRate);
@@ -310,5 +314,28 @@ describe("ExplainerAudio", () => {
     expect(workers[0]!.terminate).toHaveBeenCalled();
     expect(createBuffer).not.toHaveBeenCalled();
     expect(mixer.isPlaying).toBe(false);
+  });
+});
+
+describe("ExplainerAudio on a shared output", () => {
+  it("plays into the feed's context and never suspends or closes it", async () => {
+    const context = new FakeContext();
+    const close = vi.spyOn(context, "close");
+    const destination = { connect: vi.fn() };
+    const mixer = new ExplainerAudio(artifact, [], 2, {
+      context: context as unknown as AudioContext,
+      destination: destination as unknown as AudioNode,
+    });
+    await mixer.load();
+    // No context of its own: the one the feed unlocked is the one it uses.
+    expect(FakeContext.last).toBe(context);
+    expect(context.onstatechange).toBeNull();
+    expect(await mixer.play(0)).toBe(true);
+    expect(voiceSource(context).start).toHaveBeenCalled();
+    mixer.pause();
+    expect(context.suspend).not.toHaveBeenCalled();
+    mixer.dispose();
+    expect(close).not.toHaveBeenCalled();
+    expect(context.state).toBe("running");
   });
 });

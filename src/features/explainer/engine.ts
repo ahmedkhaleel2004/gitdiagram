@@ -2,7 +2,7 @@
 // player and the server's MP4 renderer, so both draw and mix the same film.
 
 /** Bump with any change under public/video-engine so no browser pairs new data with a cached engine. */
-export const ENGINE_VERSION = "19";
+export const ENGINE_VERSION = "20";
 
 export const STAGE_PATH = `/video-engine/stage.html?v=${ENGINE_VERSION}`;
 

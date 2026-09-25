@@ -63,6 +63,12 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
             changeFrequency: "daily" as const,
             priority: 0.8,
           },
+          {
+            url: `${SITE_URL}/reels`,
+            lastModified: new Date(),
+            changeFrequency: "daily" as const,
+            priority: 0.6,
+          },
         ]
       : []),
     {

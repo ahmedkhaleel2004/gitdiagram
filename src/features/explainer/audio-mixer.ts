@@ -120,6 +120,16 @@ class Stretcher {
   }
 }
 
+/**
+ * A sound output several players share (the reels feed): one context, which
+ * a single tap unlocks for every video after it. Players on it never suspend
+ * or close it; whoever made it owns that.
+ */
+export interface SharedAudioOutput {
+  context: AudioContext;
+  destination: AudioNode;
+}
+
 export class ExplainerAudio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -153,25 +163,30 @@ export class ExplainerAudio {
     private readonly artifact: VideoArtifact,
     private readonly cues: SfxCue[],
     private readonly holdRate = 2,
+    private readonly shared: SharedAudioOutput | null = null,
   ) {}
 
   /** Fetch and decode everything up front so playback never stalls mid-video. */
   async load(): Promise<void> {
-    const context = new AudioContext();
+    const context = this.shared?.context ?? new AudioContext();
     this.context = context;
     // iOS suspends the context for a call or an app switch; the picture
     // follows the audio clock, so pause rather than show a frozen "playing".
-    context.onstatechange = () => {
-      if (!this.playing || context.state === "running") return;
-      this.pause();
-      this.onInterrupted?.();
-    };
+    // A shared context's owner watches it instead.
+    if (!this.shared)
+      context.onstatechange = () => {
+        if (!this.playing || context.state === "running") return;
+        this.pause();
+        this.onInterrupted?.();
+      };
     const compressor = context.createDynamicsCompressor();
     compressor.threshold.value = -10;
     compressor.ratio.value = 4;
     this.master = context.createGain();
     this.master.gain.value = MASTER_GAIN;
-    this.master.connect(compressor).connect(context.destination);
+    this.master
+      .connect(compressor)
+      .connect(this.shared?.destination ?? context.destination);
 
     const decode = async (url: string) => {
       const response = await fetch(url);
@@ -392,10 +407,11 @@ export class ExplainerAudio {
     this.stopSources();
     // Let the device's audio go while paused (iOS otherwise holds the audio
     // session, keeping other apps quiet and using battery). The next play
-    // resumes it inside the tap.
-    this.context?.suspend().catch(() => {
-      // Closed already.
-    });
+    // resumes it inside the tap. A shared context stays on for the next video.
+    if (!this.shared)
+      this.context?.suspend().catch(() => {
+        // Closed already.
+      });
     return this.offset;
   }
 
@@ -405,8 +421,12 @@ export class ExplainerAudio {
     this.stopSources();
     this.stretcher.dispose();
     this.stretched.clear();
-    if (this.context) this.context.onstatechange = null;
-    void this.context?.close();
+    if (this.shared) this.master?.disconnect();
+    else {
+      if (this.context) this.context.onstatechange = null;
+      void this.context?.close();
+    }
+    this.master = null;
     this.context = null;
   }
 

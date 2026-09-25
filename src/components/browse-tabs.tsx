@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { Play } from "lucide-react";
 import { VIDEOS_ENABLED } from "~/lib/video-flag";
 import { NewBadge } from "./new-badge";
 
-/** Switches between the diagram catalog and the explainer videos. */
+/** Switches between the diagram catalog and the explainer videos (and their reels). */
 export function BrowseTabs({ active }: { active: "diagrams" | "videos" }) {
   if (!VIDEOS_ENABLED) return null;
   const tab = (current: boolean) =>
@@ -23,6 +24,10 @@ export function BrowseTabs({ active }: { active: "diagrams" | "videos" }) {
       >
         Videos
         <NewBadge />
+      </Link>
+      <Link href="/reels" className={tab(false)}>
+        <Play size={14} fill="currentColor" aria-hidden="true" />
+        Reels
       </Link>
     </nav>
   );

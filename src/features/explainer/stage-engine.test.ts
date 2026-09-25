@@ -67,6 +67,8 @@ interface StageOptions {
   onMessage?: (data: { type?: string }) => void;
   /** Runs once the stage listens, before the player's own "load". */
   beforeLoad?: (window: StageWindow) => void;
+  /** More fields for the "load" message (a reel's layout and insets). */
+  load?: Record<string, unknown>;
 }
 
 async function openStage(
@@ -127,7 +129,14 @@ async function openStage(
       }),
     );
   options.beforeLoad?.(window);
-  send({ type: "load", spec, meta: META, timing, captions: true });
+  send({
+    type: "load",
+    spec,
+    meta: META,
+    timing,
+    captions: true,
+    ...options.load,
+  });
   const duration = await ready;
   const stage: Stage = {
     window,
@@ -925,5 +934,159 @@ describe("video engine", () => {
         }),
       );
     expect(Number(stage.window.gsap.getProperty(hair, "scaleX"))).toBe(at);
+  });
+});
+
+describe("reel layout", () => {
+  const REEL = {
+    layout: "reel",
+    height: 1920,
+    insets: { top: 150, bottom: 330, right: 170 },
+  };
+  interface Rect {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }
+  const rectOf = (node: HTMLElement): Rect => ({
+    x: parseFloat(node.style.left),
+    y: parseFloat(node.style.top),
+    w: parseFloat(node.style.width),
+    h: parseFloat(node.style.height),
+  });
+  const overlap = (a: Rect, b: Rect) =>
+    a.x < b.x + b.w - 1 &&
+    b.x < a.x + a.w - 1 &&
+    a.y < b.y + b.h - 1 &&
+    b.y < a.y + a.h - 1;
+
+  it("turns a flow across the wide frame into one down the tall one", async () => {
+    const spec = plan([
+      {
+        narration: "A request goes to the router and then the handler.",
+        elements: [
+          box("request", 1, 3.5),
+          box("router", 6.5, 3.5),
+          box("handler", 12, 3.5),
+          arrow("a1", "request", "router"),
+          arrow("a2", "router", "handler"),
+        ],
+      },
+    ]);
+    const stage = await openStage(spec, timingFor([spec.beats[0]!.narration]), {
+      load: REEL,
+    });
+    const root = stage.window.document.documentElement;
+    expect(root.classList.contains("reel")).toBe(true);
+    const [request, router, handler] = ["request", "router", "handler"].map(
+      (id) => rectOf(stage.node(id)),
+    );
+    // Stacked top to bottom, in the order they ran left to right.
+    expect(router!.y).toBeGreaterThan(request!.y + request!.h);
+    expect(handler!.y).toBeGreaterThan(router!.y + router!.h);
+    // Inside the tall frame's width.
+    for (const rect of [request!, router!, handler!]) {
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.w).toBeLessThanOrEqual(1080);
+    }
+    // The camera frames the scene inside the tall frame.
+    const camera = stage.node("request").parentElement!;
+    expect(camera.style.width).toBe("1080px");
+    expect(camera.style.height).toBe("1920px");
+  });
+
+  it("re-lays a real film without drawing parts over each other", async () => {
+    const artifact = fixture as unknown as {
+      plan: { title: string; outro: string; beats: ShotBeat[] };
+      timing: VideoTiming;
+    };
+    const stage = await openStage(artifact.plan, artifact.timing, {
+      load: REEL,
+    });
+    for (let t = 0; t <= stage.duration; t += 0.25) stage.seek(t);
+    const kit = (
+      stage.window as unknown as {
+        ShotKit: {
+          reflow: (spec: unknown, room: Rect) => { beats: ShotBeat[] };
+        };
+      }
+    ).ShotKit;
+    const room = { x: 0.4, y: 1.6, w: 8.2, h: 10 };
+    const before = JSON.stringify(artifact.plan);
+    const tall = kit.reflow(artifact.plan, room);
+    // The plan it was given is left as it was.
+    expect(JSON.stringify(artifact.plan)).toBe(before);
+    const scenes = new Map<string, ShotElement[][]>();
+    tall.beats.forEach((beat, index) => {
+      const wide = artifact.plan.beats[index]!;
+      const pairs = scenes.get(beat.scene) ?? [];
+      beat.elements.forEach((element, k) =>
+        pairs.push([element, wide.elements[k]!]),
+      );
+      scenes.set(beat.scene, pairs);
+    });
+    for (const pairs of scenes.values()) {
+      const parts = pairs.filter(([element]) => element!.kind !== "arrow");
+      for (let i = 0; i < parts.length; i++)
+        for (let j = i + 1; j < parts.length; j++) {
+          const [a, wideA] = parts[i]!;
+          const [b, wideB] = parts[j]!;
+          // Only parts the designer drew over each other may overlap.
+          if (overlap(a!, b!)) expect(overlap(wideA!, wideB!)).toBe(true);
+        }
+      // Nothing wider than the tall frame's free width.
+      for (const [element] of parts)
+        expect(element!.w).toBeLessThanOrEqual(8.21);
+    }
+  });
+
+  it("re-wraps wide text narrower and taller", async () => {
+    const spec = plan([
+      {
+        narration: "Every change is checked before it ships.",
+        elements: [
+          {
+            id: "title",
+            kind: "heading",
+            x: 1,
+            y: 1,
+            w: 14,
+            h: 1.6,
+            at: "",
+            text: "Every change is checked before it ships",
+          },
+        ],
+      },
+    ]);
+    const stage = await openStage(spec, timingFor([spec.beats[0]!.narration]), {
+      load: REEL,
+    });
+    const title = rectOf(stage.node("title"));
+    expect(title.w).toBeLessThanOrEqual(1000);
+    expect(title.h).toBeGreaterThan(1.6 * 120);
+  });
+
+  it("captions a few words at a time, the one being said marked", async () => {
+    const narration =
+      "The scheduler reads every job from the queue, sorts them by deadline, and hands each one to a worker.";
+    const spec = plan([{ narration }]);
+    const timing = timingFor([narration]);
+    const stage = await openStage(spec, timing, { load: REEL });
+    const words = timing.beats[0]!.words;
+    const seen = new Set<string>();
+    for (const word of words) {
+      stage.seek(word.s + 0.01);
+      const shown = stage.captions();
+      expect(shown.length).toBeLessThanOrEqual(40);
+      seen.add(shown);
+      const now = stage.window.document.querySelectorAll("#captions .now");
+      expect(now).toHaveLength(1);
+    }
+    // The whole line is shown over the beat, run by run.
+    expect(seen.size).toBeGreaterThan(2);
+    expect([...seen].join(" ").split(/\s+/)).toEqual(
+      expect.arrayContaining(narration.split(/\s+/)),
+    );
   });
 });

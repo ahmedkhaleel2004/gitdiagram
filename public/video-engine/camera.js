@@ -39,11 +39,29 @@
     var m = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2];
     return [pts[0], m, m.slice(), pts[1]];
   }
+  // The frame the camera works in: its size, the area the label and captions
+  // leave free, the point a focus centres on and the part of the frame where
+  // a card counts as in view. Reels set a tall one (stage.js).
+  kit.frame = {
+    w: 1920,
+    h: 1080,
+    L: 110,
+    R: 1810,
+    TOP: 125,
+    BOT: 895,
+    fx: 960,
+    fy: 540,
+    fw: 1920 * 0.68,
+    fh: 1080 * 0.68,
+    view: { x0: 0, y0: 0, x1: 1920, y1: 1080 },
+    minScale: 1,
+  };
   // Where the camera pushes in for a focus. Nothing else on screen may end up
   // half in frame (that reads as a glitch): the view shifts to push it fully
   // out while keeping the targets in, or takes it in too. A push-in that would
   // barely zoom is skipped.
   function focusView(targets, sc) {
+    var F = kit.frame;
     var box = null;
     function grow(q) {
       box = box ? { x0: Math.min(box.x0, q.x), y0: Math.min(box.y0, q.y), x1: Math.max(box.x1, q.x + q.w), y1: Math.max(box.y1, q.y + q.h) } : { x0: q.x, y0: q.y, x1: q.x + q.w, y1: q.y + q.h };
@@ -54,30 +72,32 @@
       // Lines running out of frame read fine; only cut cards look broken.
       .filter(function (it) { return targets.indexOf(it) < 0 && !it.gone && !it.arrow; });
     for (var pass = 0; pass < 6; pass++) {
-      var s = Math.min(1.7, Math.min((1920 * 0.68) / (box.x1 - box.x0), (1080 * 0.68) / (box.y1 - box.y0)));
-      if (s < 1.08) return null;
-      var hw = 960 / s, hh = 540 / s;
+      var s = Math.min(1.7, Math.min(F.fw / (box.x1 - box.x0), F.fh / (box.y1 - box.y0)));
+      if (s < F.minScale * 1.08) return null;
+      // How far the view reaches either side of the point it centres on.
+      var left = (F.fx - F.view.x0) / s, right = (F.view.x1 - F.fx) / s;
+      var up = (F.fy - F.view.y0) / s, down = (F.view.y1 - F.fy) / s;
       var cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
       var cut = null;
       for (var k = 0; k < others.length && !cut; k++) {
         var q = rectOf(others[k]);
-        var ix = Math.max(0, Math.min(q.x + q.w, cx + hw) - Math.max(q.x, cx - hw));
-        var iy = Math.max(0, Math.min(q.y + q.h, cy + hh) - Math.max(q.y, cy - hh));
+        var ix = Math.max(0, Math.min(q.x + q.w, cx + right) - Math.max(q.x, cx - left));
+        var iy = Math.max(0, Math.min(q.y + q.h, cy + down) - Math.max(q.y, cy - up));
         var frac = (ix * iy) / Math.max(1, q.w * q.h);
         if (frac > 0.01 && frac < 0.97) cut = q;
       }
       if (!cut) return { s: s, cx: cx, cy: cy };
       // Push it fully out along one axis if the targets still fit.
       var shifted = false;
-      if (cut.x >= box.x1 && cut.x - 16 - 2 * hw >= box.x0 - 60) { cx = cut.x - 16 - hw; shifted = true; }
-      else if (cut.x + cut.w <= box.x0 && cut.x + cut.w + 16 + 2 * hw <= box.x1 + 60) { cx = cut.x + cut.w + 16 + hw; shifted = true; }
-      else if (cut.y >= box.y1 && cut.y - 16 - 2 * hh >= box.y0 - 40) { cy = cut.y - 16 - hh; shifted = true; }
-      else if (cut.y + cut.h <= box.y0 && cut.y + cut.h + 16 + 2 * hh <= box.y1 + 40) { cy = cut.y + cut.h + 16 + hh; shifted = true; }
+      if (cut.x >= box.x1 && cut.x - 16 - left - right >= box.x0 - 60) { cx = cut.x - 16 - right; shifted = true; }
+      else if (cut.x + cut.w <= box.x0 && cut.x + cut.w + 16 + left + right <= box.x1 + 60) { cx = cut.x + cut.w + 16 + left; shifted = true; }
+      else if (cut.y >= box.y1 && cut.y - 16 - up - down >= box.y0 - 40) { cy = cut.y - 16 - down; shifted = true; }
+      else if (cut.y + cut.h <= box.y0 && cut.y + cut.h + 16 + up + down <= box.y1 + 40) { cy = cut.y + cut.h + 16 + up; shifted = true; }
       if (shifted) {
         var clean = others.every(function (it) {
           var r = rectOf(it);
-          var jx = Math.max(0, Math.min(r.x + r.w, cx + hw) - Math.max(r.x, cx - hw));
-          var jy = Math.max(0, Math.min(r.y + r.h, cy + hh) - Math.max(r.y, cy - hh));
+          var jx = Math.max(0, Math.min(r.x + r.w, cx + right) - Math.max(r.x, cx - left));
+          var jy = Math.max(0, Math.min(r.y + r.h, cy + down) - Math.max(r.y, cy - up));
           var f = (jx * jy) / Math.max(1, r.w * r.h);
           return f <= 0.01 || f >= 0.97;
         });
@@ -101,8 +121,9 @@
       box = box ? { x0: Math.min(box.x0, q.x), y0: Math.min(box.y0, q.y), x1: Math.max(box.x1, q.x + q.w), y1: Math.max(box.y1, q.y + q.h) } : { x0: q.x, y0: q.y, x1: q.x + q.w, y1: q.y + q.h };
     });
     if (!box) return { s: 1, x: 0, y: 0 };
-    var L = 110, R = 1810, TOP = 125, BOT = 895;
-    var s = Math.max(1, Math.min(AUTO_MAX, (R - L) / (box.x1 - box.x0 + 70), (BOT - TOP) / (box.y1 - box.y0 + 70)));
+    var F = kit.frame;
+    var L = F.L, R = F.R, TOP = F.TOP, BOT = F.BOT;
+    var s = Math.max(F.minScale, Math.min(AUTO_MAX, (R - L) / (box.x1 - box.x0 + 70), (BOT - TOP) / (box.y1 - box.y0 + 70)));
     var x = (L + R) / 2 - s * (box.x0 + box.x1) / 2;
     var y = (TOP + BOT) / 2 - s * (box.y0 + box.y1) / 2;
     // Content bigger than the safe area is never pushed further out of it
