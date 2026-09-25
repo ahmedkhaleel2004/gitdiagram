@@ -16,6 +16,7 @@ import type { VideoArtifact } from "~/features/explainer/types";
 const api = vi.hoisted(() => ({
   fetchExplainerVideo: vi.fn(),
   streamExplainerVideo: vi.fn(),
+  VideoStreamEndedError: class VideoStreamEndedError extends Error {},
 }));
 
 vi.mock("~/features/explainer/api", () => api);
@@ -103,7 +104,6 @@ describe("ExplainerVideo regenerate", () => {
       "acme",
       "tiny",
       expect.any(Function),
-      expect.any(AbortSignal),
     );
     expect((await screen.findByTestId("player")).textContent).toBe(
       "2026-09-25T00:00:00.000Z",
@@ -129,5 +129,140 @@ describe("ExplainerVideo regenerate", () => {
     expect((await screen.findByTestId("player")).textContent).toBe(
       "2026-09-24T00:00:00.000Z",
     );
+  });
+});
+
+const empty = {
+  video: null,
+  canGenerate: true,
+  paused: null,
+  anyDevice: true,
+  generating: false,
+};
+
+describe("ExplainerVideo generation", () => {
+  it("keeps making the video while the panel is closed, and shows it on reopening", async () => {
+    let send: (event: unknown) => void = () => undefined;
+    let finish: () => void = () => undefined;
+    api.fetchExplainerVideo.mockResolvedValue(empty);
+    api.streamExplainerVideo.mockImplementation(
+      (_user, _repo, onEvent: (event: unknown) => void) => {
+        send = onEvent;
+        return new Promise<void>((resolve) => (finish = resolve));
+      },
+    );
+    const first = render(<ExplainerVideo username="acme" repo="closing" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Make the video" }),
+    );
+    act(() => send({ status: "planning", elapsedMs: 1, progress: {} }));
+    expect(screen.getByText("Writing the script")).toBeTruthy();
+
+    // Closing the panel unmounts it; the run carries on.
+    first.unmount();
+    act(() => send({ status: "designing", elapsedMs: 2, progress: {} }));
+    render(<ExplainerVideo username="acme" repo="closing" />);
+    expect(
+      await screen.findByText("Designing the scenes and recording the voice"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Make the video" }),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      send({ status: "complete", artifact: video("2026-09-25T01:00:00.000Z") });
+      finish();
+    });
+    expect((await screen.findByTestId("player")).textContent).toBe(
+      "2026-09-25T01:00:00.000Z",
+    );
+    expect(api.streamExplainerVideo).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a video someone is making right now and plays it once it lands", async () => {
+    vi.useFakeTimers();
+    try {
+      api.fetchExplainerVideo
+        .mockResolvedValueOnce({ ...empty, generating: true })
+        .mockResolvedValueOnce({ ...empty, generating: true })
+        .mockResolvedValue({
+          ...empty,
+          video: video("2026-09-25T02:00:00.000Z"),
+        });
+      render(<ExplainerVideo username="acme" repo="elsewhere" />);
+      await act(async () => undefined);
+      expect(
+        screen.getByText("This video is being made right now"),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: "Make the video" }),
+      ).not.toBeInTheDocument();
+
+      await act(async () => vi.advanceTimersByTimeAsync(5_000));
+      expect(
+        screen.getByText("This video is being made right now"),
+      ).toBeTruthy();
+      await act(async () => vi.advanceTimersByTimeAsync(5_000));
+      expect(screen.getByTestId("player").textContent).toBe(
+        "2026-09-25T02:00:00.000Z",
+      );
+      expect(api.fetchExplainerVideo).toHaveBeenCalledTimes(3);
+      expect(api.streamExplainerVideo).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers the saved video when the stream closes without a result", async () => {
+    api.fetchExplainerVideo.mockResolvedValueOnce(empty).mockResolvedValue({
+      ...empty,
+      video: video("2026-09-25T03:00:00.000Z"),
+    });
+    api.streamExplainerVideo.mockRejectedValue(
+      new api.VideoStreamEndedError("Could not start video generation."),
+    );
+    render(<ExplainerVideo username="acme" repo="dropped" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Make the video" }),
+    );
+    expect((await screen.findByTestId("player")).textContent).toBe(
+      "2026-09-25T03:00:00.000Z",
+    );
+  });
+
+  it("offers another try when the stream closes and nothing was saved", async () => {
+    api.fetchExplainerVideo.mockResolvedValue(empty);
+    api.streamExplainerVideo.mockRejectedValue(
+      new api.VideoStreamEndedError("Could not start video generation."),
+    );
+    render(<ExplainerVideo username="acme" repo="lost" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Make the video" }),
+    );
+    const message = "The connection dropped before the video was finished.";
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    // The alert wraps the heading instead of replacing its role.
+    expect(screen.getByRole("heading", { name: message })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+});
+
+describe("ExplainerVideo lookup", () => {
+  it("retries a failed lookup without starting a video", async () => {
+    api.fetchExplainerVideo
+      .mockRejectedValueOnce(new Error("Could not load the explainer video."))
+      .mockResolvedValue({
+        ...empty,
+        video: video("2026-09-24T00:00:00.000Z"),
+      });
+    render(<ExplainerVideo username="acme" repo="flaky" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not load the explainer video.",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByTestId("player");
+    expect(api.fetchExplainerVideo).toHaveBeenCalledTimes(2);
+    expect(api.streamExplainerVideo).not.toHaveBeenCalled();
   });
 });

@@ -159,7 +159,8 @@ export function RepositoryWorkspace({
           aria-hidden={!videoVisible}
           inert={!videoVisible}
         >
-          {/* Mounted only while open, so closing it stops playback and frees audio. */}
+          {/* Mounted only while open, so closing it stops playback and frees
+              audio. A video being made keeps going (features/explainer/runs.ts). */}
           <div className={styles.foldClip}>{videoVisible && video}</div>
         </div>
       )}

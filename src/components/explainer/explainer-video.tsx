@@ -1,18 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CircleAlert, Clapperboard } from "lucide-react";
+import { CircleAlert, Clapperboard, RotateCcw } from "lucide-react";
 import {
   fetchExplainerVideo,
-  streamExplainerVideo,
+  type ExplainerVideoState,
   type VideoPausedReason,
 } from "~/features/explainer/api";
-import type {
-  VideoArtifact,
-  VideoGenerationProgress,
-  VideoGenerationStage,
-} from "~/features/explainer/types";
+import {
+  clearVideoRun,
+  releaseVideoRun,
+  startVideoRun,
+  useVideoRun,
+  type VideoRun,
+} from "~/features/explainer/runs";
+import type { VideoGenerationStage } from "~/features/explainer/types";
 import { useAdminTools } from "~/features/admin/tools";
 import { ActivityMark } from "~/components/generation/activity-mark";
 import { useGenerationClock } from "~/components/generation/generation-status";
@@ -66,27 +69,36 @@ function useCanRegenerate(): boolean {
   return DEVELOPMENT || (adminTools && admin);
 }
 
+// While someone else's run is being made, look for the finished video this often.
+const WAITING_POLL_MS = 5_000;
+
 type PanelState =
   | { kind: "loading" }
+  /** The stored video could not be looked up; retrying only looks again. */
+  | { kind: "lookupError"; message: string }
   | {
       kind: "empty";
       canGenerate: boolean;
       paused: VideoPausedReason | null;
     }
-  | {
-      kind: "generating";
-      stage: VideoGenerationStage;
-      startedAt: number;
-      progress: VideoGenerationProgress;
-    }
-  | { kind: "ready"; video: VideoArtifact }
-  | {
-      kind: "error";
-      message: string;
-      canGenerate: boolean;
-      /** The stored video a failed regeneration left in place. */
-      previous?: VideoArtifact;
-    };
+  | VideoRun;
+
+/** What the panel shows for a lookup of the stored video. */
+function lookedUp({
+  video,
+  canGenerate,
+  paused,
+  anyDevice,
+  generating,
+}: ExplainerVideoState): PanelState {
+  if (video) return { kind: "ready", video };
+  if (generating) return { kind: "waiting" };
+  // iPads report a desktop Mac to the server; hold them back when this
+  // visitor was let in only as a desktop.
+  if (isTouchMac() && !anyDevice)
+    return { kind: "empty", canGenerate: false, paused: "device" };
+  return { kind: "empty", canGenerate, paused };
+}
 
 function Elapsed({ startedAt }: { startedAt: number }) {
   const { seconds } = useGenerationClock({
@@ -125,41 +137,62 @@ export function ExplainerVideo({
   username: string;
   repo: string;
 }) {
-  const [state, setState] = useState<PanelState>({ kind: "loading" });
-  const running = useRef<AbortController | null>(null);
+  const [lookedUpState, setState] = useState<PanelState>({ kind: "loading" });
+  const [lookup, setLookup] = useState(0);
+  // A run this tab started outlives the panel (see runs.ts) and wins over
+  // whatever the lookup found.
+  const run = useVideoRun(username, repo);
+  const state: PanelState = run ?? lookedUpState;
   const canRegenerate = useCanRegenerate();
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchExplainerVideo(username, repo, controller.signal)
-      .then(({ video, canGenerate, paused, anyDevice }) =>
-        setState(
-          video
-            ? { kind: "ready", video }
-            : // iPads report a desktop Mac to the server; hold them back when
-              // this visitor was let in only as a desktop.
-              isTouchMac() && !anyDevice
-              ? { kind: "empty", canGenerate: false, paused: "device" }
-              : { kind: "empty", canGenerate, paused },
-        ),
-      )
+      .then((result) => setState(lookedUp(result)))
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setState({
-          kind: "error",
+          kind: "lookupError",
           message:
             error instanceof Error
               ? error.message
               : "Could not load the video.",
-          canGenerate: true,
         });
       });
     return () => {
       controller.abort();
-      running.current?.abort();
+      releaseVideoRun(username, repo);
     };
-  }, [username, repo]);
+  }, [username, repo, lookup]);
+
+  // A run is under way somewhere (another tab, or before a reload): look for
+  // its video until it lands.
+  const waiting = state.kind === "waiting";
+  useEffect(() => {
+    if (!waiting) return;
+    const controller = new AbortController();
+    let busy = false;
+    const timer = window.setInterval(() => {
+      if (busy) return;
+      busy = true;
+      fetchExplainerVideo(username, repo, controller.signal)
+        .then((result) => {
+          if (result.generating) return;
+          clearVideoRun(username, repo);
+          setState(lookedUp(result));
+        })
+        // A missed poll is retried on the next tick.
+        .catch(() => undefined)
+        .finally(() => {
+          busy = false;
+        });
+    }, WAITING_POLL_MS);
+    return () => {
+      window.clearInterval(timer);
+      controller.abort();
+    };
+  }, [waiting, username, repo]);
 
   const generate = () => {
     // A failed regeneration keeps the stored video, so it stays one click away.
@@ -170,45 +203,12 @@ export function ExplainerVideo({
           ? state.previous
           : undefined;
     setConfirming(false);
-    const controller = new AbortController();
-    running.current = controller;
-    const startedAt = Date.now();
-    let progress: VideoGenerationProgress = {};
-    setState({ kind: "generating", stage: "reading", startedAt, progress });
-    streamExplainerVideo(
-      username,
-      repo,
-      (event) => {
-        if (event.status === "complete")
-          setState({ kind: "ready", video: event.artifact });
-        else if (event.status === "error")
-          setState({
-            kind: "error",
-            message: event.error,
-            canGenerate: event.retryable !== false,
-            previous,
-          });
-        else {
-          progress = { ...progress, ...event.progress };
-          setState({
-            kind: "generating",
-            stage: event.status,
-            startedAt,
-            progress,
-          });
-        }
-      },
-      controller.signal,
-    ).catch((error: unknown) => {
-      if (controller.signal.aborted) return;
-      setState({
-        kind: "error",
-        message:
-          error instanceof Error ? error.message : "Video generation failed.",
-        canGenerate: true,
-        previous,
-      });
-    });
+    startVideoRun(username, repo, previous);
+  };
+
+  const retryLookup = () => {
+    setState({ kind: "loading" });
+    setLookup((value) => value + 1);
   };
 
   if (state.kind === "loading") return <PlayerSkeleton />;
@@ -289,6 +289,44 @@ export function ExplainerVideo({
       </div>
     );
 
+  if (state.kind === "waiting")
+    return (
+      <div className={`${controls.feedback} ${styles.enter}`}>
+        <div className={controls.statusLine}>
+          <ActivityMark />
+          <h2 className={`${controls.statusTitle} ${styles.shimmer}`}>
+            This video is being made right now
+          </h2>
+        </div>
+        <p className={controls.description}>
+          It will appear here as soon as it is ready, usually in a minute or
+          two.
+        </p>
+      </div>
+    );
+
+  if (state.kind === "lookupError")
+    return (
+      <div className={`${controls.feedback} ${styles.enter}`}>
+        <div className={controls.statusLine}>
+          <CircleAlert size={17} aria-hidden="true" />
+          <div role="alert">
+            <h2 className={controls.statusTitle}>{state.message}</h2>
+          </div>
+        </div>
+        <div className={styles.cta}>
+          <button
+            type="button"
+            className={`${controls.actionButton} ${controls.primary}`}
+            onClick={retryLookup}
+          >
+            <RotateCcw size={15} aria-hidden="true" />
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+
   const failed = state.kind === "error";
   const paused = !failed && !state.canGenerate;
   return (
@@ -299,12 +337,16 @@ export function ExplainerVideo({
         ) : (
           <Clapperboard size={17} aria-hidden="true" />
         )}
-        <h2
-          className={controls.statusTitle}
-          role={failed ? "alert" : undefined}
-        >
-          {failed ? state.message : `There's no video of ${repo} yet`}
-        </h2>
+        {failed ? (
+          // The alert wraps the heading so it keeps its heading role.
+          <div role="alert">
+            <h2 className={controls.statusTitle}>{state.message}</h2>
+          </div>
+        ) : (
+          <h2 className={controls.statusTitle}>
+            There&apos;s no video of {repo} yet
+          </h2>
+        )}
       </div>
       {!failed && (
         <p className={controls.description}>
@@ -338,7 +380,10 @@ export function ExplainerVideo({
           <button
             type="button"
             className={controls.actionButton}
-            onClick={() => setState({ kind: "ready", video: state.previous! })}
+            onClick={() => {
+              clearVideoRun(username, repo);
+              setState({ kind: "ready", video: state.previous! });
+            }}
           >
             Keep the current video
           </button>
