@@ -60,9 +60,6 @@ body {
   position: absolute;
   inset: 0;
 }
-.abs {
-  position: absolute;
-}
 .scene {
   position: absolute;
   inset: 0;
@@ -131,14 +128,6 @@ svg.wires {
 }
 
 /* components */
-.card {
-  position: absolute;
-  background: var(--card);
-  border: 3px solid var(--ink);
-  border-radius: 18px;
-  box-shadow: 8px 8px 0 var(--ink);
-  overflow: hidden;
-}
 .panel-head {
   height: 60px;
   border-bottom: 3px solid var(--ink);
@@ -153,10 +142,6 @@ svg.wires {
   white-space: nowrap;
   overflow: hidden;
 }
-.panel-head.caps {
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
 .dots {
   display: flex;
   gap: 10px;
@@ -168,65 +153,6 @@ svg.wires {
   border-radius: 50%;
   border: 3px solid var(--ink);
   background: var(--card);
-}
-.node {
-  position: absolute;
-  background: var(--card);
-  border: 3px solid var(--ink);
-  border-radius: 14px;
-  box-shadow: 5px 5px 0 var(--ink);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 0 20px;
-  font: 650 26px/1.12 "Geist", sans-serif;
-  overflow: hidden;
-}
-.node .nl {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.node small {
-  font: 500 18px/1.2 "Geist Mono", monospace;
-  color: var(--ink-2);
-  margin-top: 7px;
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.node.purple {
-  background: var(--purple);
-}
-.node.purple small {
-  color: var(--ink);
-}
-.node.tint {
-  background: var(--purple-soft);
-}
-.node.ext {
-  border-style: dashed;
-  box-shadow: none;
-}
-.group {
-  position: absolute;
-  border: 3px solid var(--ink);
-  border-radius: 22px;
-  background: rgba(230, 213, 255, 0.55);
-}
-.group-tag {
-  position: absolute;
-  left: 18px;
-  top: 11px;
-  font: 600 18px/1 "Geist Mono", monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  white-space: nowrap;
 }
 .hl {
   position: absolute;
@@ -251,38 +177,9 @@ svg.wires {
 .badge.bad {
   background: var(--red-soft);
 }
-.pill {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 3px solid var(--ink);
-  border-radius: 999px;
-  background: var(--card);
-  box-shadow: 4px 4px 0 var(--ink);
-  padding: 0 22px;
-  height: 56px;
-  white-space: nowrap;
-}
-.pill.static {
-  position: static;
-}
-.label {
-  position: absolute;
-  font: 600 20px/1 "Geist Mono", monospace;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
 .code {
   font: 400 24px/44px "Geist Mono", monospace;
   color: var(--ink);
-}
-.code .ln {
-  display: block;
-  width: max-content;
-  white-space: pre;
 }
 .tk-k {
   color: var(--purple-deep);
@@ -298,26 +195,9 @@ svg.wires {
 .tk-n {
   color: #0d6e7a;
 }
-.clamp2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.clamp3 {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 .hw {
   display: inline-block;
   line-height: 1;
-}
-.digits {
-  display: inline-flex;
-  overflow: hidden;
-  vertical-align: bottom;
 }
 .digit {
   display: inline-block;
@@ -345,84 +225,7 @@ svg.wires {
   font-weight: 400;
   color: var(--ink-2);
 }
-#rail-base,
-#rail-prog {
-  position: absolute;
-  top: 992px;
-  height: 4px;
-  border-radius: 2px;
-}
-#rail-base {
-  background: rgba(23, 17, 31, 0.18);
-}
-#rail-prog {
-  background: var(--purple-deep);
-  transform-origin: left center;
-}
-.station {
-  position: absolute;
-  top: 982px;
-  width: 220px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-.sdot {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 3px solid var(--ink);
-  background: var(--card);
-  display: block;
-}
-.slabel {
-  font: 600 20px/1 "Geist Mono", monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
 
-/* the idea card */
-#note {
-  position: absolute;
-  left: 300px;
-  top: 270px;
-  width: 1320px;
-  height: 540px;
-  perspective: 2400px;
-}
-#note-inner {
-  position: absolute;
-  inset: 0;
-  transform-style: preserve-3d;
-}
-.face {
-  position: absolute;
-  inset: 0;
-  border: 5px solid var(--ink);
-  border-radius: 26px;
-  box-shadow: 16px 16px 0 var(--ink);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  display: flex;
-  align-items: center;
-}
-#note-front {
-  background: var(--purple);
-  padding: 0 90px;
-  gap: 60px;
-}
-#note-back {
-  visibility: hidden;
-  background: var(--card);
-  transform: rotateY(180deg);
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 0 110px;
-}
 
 /* offline renders: no full-frame noise (see stage.js) */
 html.render #grain {
