@@ -26,6 +26,7 @@ import {
   shuffled,
 } from "~/features/explainer/reels";
 import type { VideoArtifact } from "~/features/explainer/types";
+import { captureVideoEvent } from "~/features/explainer/watch-analytics";
 import { formatCompact } from "~/lib/format";
 import { ReelStage, type ReelInsets } from "./reel-stage";
 import styles from "./reels.module.css";
@@ -389,7 +390,14 @@ function ReelSlide({
 
   const share = async () => {
     const url = new URL(reelPath(card), window.location.origin).toString();
-    if (navigator.share) {
+    // Some browsers have no share sheet (desktop Firefox, http pages).
+    const native = typeof navigator.share === "function";
+    if (video)
+      captureVideoEvent("video_shared", video, {
+        method: native ? "native" : "link",
+        surface: "reels",
+      });
+    if (native) {
       await navigator
         .share({ title: `${name} explained`, url })
         .catch(() => undefined);
