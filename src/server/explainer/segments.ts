@@ -445,13 +445,15 @@ export async function renderMp4InSegments(params: {
 
 /**
  * Remake a video's poster and gallery still on a render instance, through the
- * segment route; resolves whether they were stored.
+ * segment route; resolves whether they were stored. `timeoutMs` (default two
+ * minutes) bounds the wait, retries included.
  */
 export async function remakePosterRemotely(
   artifact: VideoArtifact,
   origin: string,
+  { timeoutMs = 120_000 }: { timeoutMs?: number } = {},
 ): Promise<boolean> {
-  const deadline = Date.now() + 120_000;
+  const deadline = Date.now() + timeoutMs;
   const job: SegmentJob = {
     username: artifact.meta.owner,
     repo: artifact.meta.repo,

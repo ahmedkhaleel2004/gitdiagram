@@ -58,7 +58,8 @@ const videoStagePolicy = [
 // ship native binaries that must stay out of the bundle and be traced into the
 // functions that launch them. The render route only mixes and joins with
 // ffmpeg (segments and posters render through /api/video/render/segment), so
-// it leaves Chromium's ~60 MB out; its code (ffmpeg.ts) never imports the
+// it and the generate route (which asks the segment route for its poster)
+// leave Chromium's ~60 MB out; their code (ffmpeg.ts) never imports the
 // Chromium half (render.ts), and scripts/check-video-render-tracing.mjs keeps
 // it that way. All of bin/ is needed even with graphics mode off:
 // @sparticuz/chromium unpacks swiftshader.tar.br on every launch regardless.
@@ -77,10 +78,11 @@ const config = {
   outputFileTracingIncludes: {
     "/api/video/render": ffmpegFiles,
     "/api/video/render/segment": videoRenderFiles,
-    "/api/video/generate": videoRenderFiles,
+    "/api/video/generate": ffmpegFiles,
   },
   outputFileTracingExcludes: {
     "/api/video/render": chromiumFiles,
+    "/api/video/generate": chromiumFiles,
   },
   allowedDevOrigins: ["127.0.0.1"],
   ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),

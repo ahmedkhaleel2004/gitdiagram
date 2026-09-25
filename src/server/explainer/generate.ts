@@ -16,7 +16,8 @@ import { writeVideo } from "./store";
  * lock, so only one run per repository happens at a time.
  *
  * `signal` is the run's deadline. `onPaidWork` is called just before the
- * first model call: a failure before it cost nothing. `choosePlanner` picks
+ * first model call (and awaited: if it throws, no model is called): a failure
+ * before it cost nothing. `choosePlanner` picks
  * the model once the repository's star count is known (the premium model by
  * default). When this rejects, nothing it started is still running, so the
  * caller may release its lock.
@@ -32,7 +33,7 @@ export async function generateExplainerVideo({
   username: string;
   repo: string;
   onEvent: (event: VideoGenerationEvent) => void;
-  onPaidWork?: () => void;
+  onPaidWork?: () => void | Promise<void>;
   choosePlanner?: (repository: { stars: number }) => Promise<Planner>;
   signal?: AbortSignal;
 }): Promise<VideoArtifact> {
@@ -63,7 +64,7 @@ export async function generateExplainerVideo({
     progress: { sourceFiles: repository.sourceFileCount, model: writers.model },
   });
   signal.throwIfAborted();
-  onPaidWork?.();
+  await onPaidWork?.();
   const script = await writers.direct(signal);
   const planMs = elapsedMs() - readMs;
 

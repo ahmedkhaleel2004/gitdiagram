@@ -2,6 +2,7 @@ import "server-only";
 
 import { isPriorityPlace } from "~/features/admin/priority-places";
 import type { PriorityPlaces, VideoAudience } from "~/features/admin/types";
+import { requestGeo } from "~/server/http/vercel-geo";
 
 // Who may make new explainer videos during early access: anyone, on any
 // device, in the places GitDiagram's most valuable audience lives. It mirrors
@@ -32,40 +33,7 @@ export function isInVideoRegion(
   request: Request,
   places: PriorityPlaces = "cities",
 ): boolean {
-  const headers = request.headers;
-  const lat = Number.parseFloat(headers.get("x-vercel-ip-latitude") ?? "");
-  const lon = Number.parseFloat(headers.get("x-vercel-ip-longitude") ?? "");
-  return isPriorityPlace(
-    {
-      country: headers.get("x-vercel-ip-country") ?? "",
-      region: headers.get("x-vercel-ip-country-region") ?? "",
-      city: safeDecode(headers.get("x-vercel-ip-city") ?? ""),
-      lat: Number.isFinite(lat) ? lat : null,
-      lon: Number.isFinite(lon) ? lon : null,
-    },
-    places,
-  );
-}
-
-/** Vercel percent-encodes the city; off Vercel the header may be anything. */
-function safeDecode(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-/**
- * Whether this visitor may make new videos. The operator widens the audience
- * from /admin: the early-access places, plus any desktop, or everyone.
- */
-export function canMakeVideosHere(
-  request: Request,
-  audience: VideoAudience = "priority",
-  places: PriorityPlaces = "cities",
-): boolean {
-  return audienceBlock(request, audience, places) === null;
+  return isPriorityPlace(requestGeo(request), places);
 }
 
 /**

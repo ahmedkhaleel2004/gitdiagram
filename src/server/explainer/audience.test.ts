@@ -6,7 +6,6 @@ import {
   anyDeviceHere,
   audienceBlock,
   audienceMessage,
-  canMakeVideosHere,
   isDesktopRequest,
   isInVideoRegion,
 } from "./audience";
@@ -114,14 +113,14 @@ describe("who may make new videos", () => {
       "x-vercel-ip-country-region": "ON",
     };
     expect(
-      canMakeVideosHere(request({ ...inOntario, "user-agent": MAC })),
-    ).toBe(true);
+      audienceBlock(request({ ...inOntario, "user-agent": MAC })),
+    ).toBeNull();
     expect(
-      canMakeVideosHere(request({ ...inOntario, "user-agent": IPHONE })),
-    ).toBe(true);
+      audienceBlock(request({ ...inOntario, "user-agent": IPHONE })),
+    ).toBeNull();
     expect(
-      canMakeVideosHere(request({ ...inOntario, "user-agent": ANDROID })),
-    ).toBe(true);
+      audienceBlock(request({ ...inOntario, "user-agent": ANDROID })),
+    ).toBeNull();
     expect(anyDeviceHere(request({ ...inOntario, "user-agent": MAC }))).toBe(
       true,
     );
@@ -152,11 +151,11 @@ describe("who may make new videos", () => {
       "x-vercel-ip-country-region": "TX",
       "user-agent": IPHONE,
     });
-    expect(canMakeVideosHere(texasMac, "priority")).toBe(false);
-    expect(canMakeVideosHere(texasMac, "desktop")).toBe(true);
+    expect(audienceBlock(texasMac, "priority")).toBe("place");
+    expect(audienceBlock(texasMac, "desktop")).toBeNull();
     expect(anyDeviceHere(texasMac, "desktop")).toBe(false);
-    expect(canMakeVideosHere(texasPhone, "desktop")).toBe(false);
-    expect(canMakeVideosHere(texasPhone, "everyone")).toBe(true);
+    expect(audienceBlock(texasPhone, "desktop")).toBe("mobile");
+    expect(audienceBlock(texasPhone, "everyone")).toBeNull();
     expect(anyDeviceHere(texasPhone, "everyone")).toBe(true);
   });
 });

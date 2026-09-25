@@ -31,7 +31,8 @@ const MB = 1_000_000;
 
 // The render route only joins segments, so it ships ffmpeg alone; Chromium
 // runs in the segment route (frames and posters). Generate needs ffmpeg for
-// the narration. Ceilings are the traced files' total size on disk
+// the narration and asks the segment route for its poster, so it ships no
+// Chromium either. Ceilings are the traced files' total size on disk
 // (uncompressed), with some room over today's size; raise one only on purpose.
 const routes = [
   {
@@ -49,8 +50,8 @@ const routes = [
   {
     route: "api/video/generate",
     requiredFiles: [ffmpeg],
-    forbidden: [],
-    maxBytes: 140 * MB,
+    forbidden: chromiumPackages,
+    maxBytes: 60 * MB,
   },
 ];
 

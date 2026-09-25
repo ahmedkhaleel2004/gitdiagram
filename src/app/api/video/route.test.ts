@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   reportHeldBack: vi.fn(),
   readVideoArtifact: vi.fn(),
   isVideoLockHeld: vi.fn(),
-  videosLeftToday: vi.fn(),
+  videoLimitReached: vi.fn(),
   isNarrationAvailable: vi.fn(),
 }));
 
@@ -25,7 +25,7 @@ vi.mock("~/server/explainer/limits", () => ({
   generationLockName: (u: string, r: string) => `generate:${u}/${r}`,
   isVideoAdmin: () => false,
   isVideoLockHeld: mocks.isVideoLockHeld,
-  videosLeftToday: mocks.videosLeftToday,
+  videoLimitReached: mocks.videoLimitReached,
 }));
 vi.mock("~/server/explainer/narration", () => ({
   isNarrationAvailable: mocks.isNarrationAvailable,
@@ -48,7 +48,7 @@ beforeEach(() => {
   });
   mocks.readVideoArtifact.mockResolvedValue(null);
   mocks.isVideoLockHeld.mockResolvedValue(false);
-  mocks.videosLeftToday.mockResolvedValue(5);
+  mocks.videoLimitReached.mockResolvedValue(null);
   mocks.isNarrationAvailable.mockResolvedValue(true);
 });
 
@@ -85,6 +85,46 @@ describe("GET /api/video", () => {
       paused: "limit",
       generating: false,
     });
+  });
+
+  it("offers no new video once this visitor's own or connection's budget is spent", async () => {
+    const visitor = "0b6f3a52-6a1f-4a8e-9a3c-2f0d7c1e5b44";
+    const request = new Request(
+      "https://gitdiagram.com/api/video?username=acme&repo=demo",
+      {
+        headers: {
+          cookie: `gd_visitor=${visitor}`,
+          "x-forwarded-for": "203.0.113.9",
+        },
+      },
+    );
+    for (const reason of ["person", "network"] as const) {
+      mocks.videoLimitReached.mockResolvedValueOnce({ reason, limit: 1 });
+      expect(await (await GET(request)).json()).toMatchObject({
+        canGenerate: false,
+        paused: "limit",
+      });
+      expect(mocks.reportHeldBack).toHaveBeenLastCalledWith(
+        expect.any(Request),
+        expect.objectContaining({ reason }),
+      );
+    }
+    expect(mocks.videoLimitReached).toHaveBeenCalledWith(
+      { visitorId: visitor, clientIp: "203.0.113.9" },
+      { priority: false },
+    );
+  });
+
+  it("reports a paused narrator as the reason when the budgets have room", async () => {
+    mocks.isNarrationAvailable.mockResolvedValue(false);
+    expect(await (await get()).json()).toMatchObject({
+      canGenerate: false,
+      paused: "limit",
+    });
+    expect(mocks.reportHeldBack).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({ reason: "voice" }),
+    );
   });
 
   it("reports a held-back visitor through the deduplicated notice", async () => {

@@ -27,18 +27,22 @@ vi.mock("~/server/admin/controls", () => ({
 }));
 
 import {
+  attemptLimitMessage,
   firstGateNotice,
   generationLockName,
   isTrustedVideoCaller,
   isVideoAdmin,
   isVideoLockHeld,
   limitMessage,
+  pausedMessage,
   reserveVideoSlot,
   resetUsageToday,
+  takeGateLookup,
   takePremiumVideo,
+  takeVideoAttempt,
   tryPaidVideoRun,
   tryVideoLock,
-  videosLeftToday,
+  videoLimitReached,
 } from "./limits";
 
 const TOKEN = "t".repeat(40);
@@ -169,10 +173,11 @@ describe("explainer video limits", () => {
     expect(personLimits).toEqual([3, 1]);
   });
 
-  it("takes one premium video per person a day, and gives it back", async () => {
+  it("takes one premium video per person and a few per connection a day, and gives them back", async () => {
     process.env.VIDEO_PREMIUM_PERSON_DAILY_LIMIT = "1";
+    const alice = { visitorId: "alice", clientIp: "2001:db8:1:2:3:4:5:6" };
     upstashEval.mockResolvedValueOnce(1);
-    const taken = await takePremiumVideo("alice");
+    const taken = await takePremiumVideo(alice);
     expect(taken).not.toBeNull();
     const call = upstashEval.mock.calls[0]![0] as {
       keys: string[];
@@ -180,8 +185,13 @@ describe("explainer video limits", () => {
     };
     expect(call.keys).toEqual([
       expect.stringMatching(/^video:v1:premium:who:alice:\d+$/),
+      // One IPv6 subscriber's whole /64 is one connection.
+      expect.stringMatching(
+        /^video:v1:premium:net:2001%3A0db8%3A0001%3A0002%3A%3A%2F64:\d+$/,
+      ),
     ]);
-    expect(call.args[0]).toBe(1);
+    // The connection gets twice a person's premium videos by default.
+    expect(call.args.slice(0, 2)).toEqual([1, 2]);
 
     upstashEval.mockResolvedValueOnce(0);
     await taken!.refund();
@@ -190,7 +200,45 @@ describe("explainer video limits", () => {
     );
 
     upstashEval.mockResolvedValueOnce(0);
-    expect(await takePremiumVideo("alice")).toBeNull();
+    expect(await takePremiumVideo(alice)).toBeNull();
+
+    process.env.VIDEO_PREMIUM_NETWORK_DAILY_LIMIT = "5";
+    upstashEval.mockResolvedValueOnce(1);
+    await takePremiumVideo(alice);
+    expect(
+      (upstashEval.mock.calls[3]![0] as { args: number[] }).args.slice(0, 2),
+    ).toEqual([1, 5]);
+  });
+
+  it("counts new-video attempts per connection per hour, never refunded", async () => {
+    upstashEval.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    const first = await takeVideoAttempt("203.0.113.9");
+    expect(first.ok).toBe(true);
+    expect(first.retryAfterSeconds).toBeGreaterThan(0);
+    expect(first.retryAfterSeconds).toBeLessThanOrEqual(3600);
+    const call = upstashEval.mock.calls[0]![0] as {
+      keys: string[];
+      args: number[];
+    };
+    expect(call.keys[0]).toMatch(/^video:v1:attempts:203\.0\.113\.9:\d+$/);
+    expect(call.args[0]).toBe(10);
+    expect((await takeVideoAttempt("203.0.113.9")).ok).toBe(false);
+    upstashEval.mockRejectedValueOnce(new Error("down"));
+    await expect(takeVideoAttempt(null)).rejects.toThrow("down");
+  });
+
+  it("allows only a few feed lookups per connection, and none without Redis", async () => {
+    upstashEval.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    expect(await takeGateLookup("203.0.113.9")).toBe(true);
+    expect(await takeGateLookup("203.0.113.9")).toBe(false);
+    const call = upstashEval.mock.calls[0]![0] as {
+      keys: string[];
+      args: number[];
+    };
+    expect(call.keys[0]).toMatch(/^video:v1:gate-lookups:203\.0\.113\.9:\d+$/);
+    expect(call.args[0]).toBe(5);
+    upstashEval.mockRejectedValueOnce(new Error("down"));
+    expect(await takeGateLookup("203.0.113.9")).toBe(false);
   });
 
   it("counts people who share a connection separately", async () => {
@@ -232,13 +280,36 @@ describe("explainer video limits", () => {
     expect(upstashEval).toHaveBeenCalledTimes(2);
   });
 
-  it("reports what is left today", async () => {
+  it("tells which budget a visitor would meet, reading it only", async () => {
     process.env.VIDEO_DAILY_LIMIT = "25";
+    process.env.VIDEO_PERSON_DAILY_LIMIT = "1";
+    process.env.VIDEO_PRIORITY_PERSON_DAILY_LIMIT = "3";
+    process.env.VIDEO_NETWORK_DAILY_LIMIT = "10";
     const day = Math.floor(Date.now() / 86_400_000);
+    const alice = { visitorId: "alice", clientIp: "203.0.113.9" };
+    const person = `video:v1:generate:who:alice:${day}`;
+    const network = `video:v1:generate:net:203.0.113.9:${day}`;
+
     redis({ [`video:v1:generate:all:${day}`]: "24" });
-    expect(await videosLeftToday()).toBe(1);
-    redis();
-    expect(await videosLeftToday()).toBe(25);
+    expect(await videoLimitReached(alice, { priority: false })).toBeNull();
+    redis({ [`video:v1:generate:all:${day}`]: "25" });
+    expect(await videoLimitReached(alice, { priority: false })).toEqual({
+      reason: "daily",
+      limit: 25,
+    });
+    redis({ [person]: "1" });
+    expect(await videoLimitReached(alice, { priority: false })).toEqual({
+      reason: "person",
+      limit: 1,
+    });
+    // Someone in a priority place has more of their own.
+    expect(await videoLimitReached(alice, { priority: true })).toBeNull();
+    redis({ [network]: "10" });
+    expect(await videoLimitReached(alice, { priority: true })).toEqual({
+      reason: "network",
+      limit: 10,
+    });
+    expect(upstashEval).not.toHaveBeenCalled();
   });
 
   it("resets by moving to a new epoch, so old refunds cannot free new slots", async () => {
@@ -273,7 +344,12 @@ describe("explainer video limits", () => {
     // The old run's refund touches only the old epoch's counters.
     await before.refund();
     expect(evalKeys(2)).toEqual(oldKeys);
-    expect(await videosLeftToday()).toBe(25);
+    expect(
+      await videoLimitReached(
+        { visitorId: "f", clientIp: null },
+        { priority: false },
+      ),
+    ).toBeNull();
   });
 
   it("locks once across instances and releases only its own lock", async () => {
@@ -356,5 +432,16 @@ describe("explainer video limits", () => {
     );
     expect(limitMessage("person", 1, at)).not.toMatch(/network/i);
     expect(limitMessage("network", 10, at)).not.toMatch(/network/i);
+  });
+
+  it("says a pause is a pause, not a spent daily budget", () => {
+    // The voice pause lifts within minutes; the operator's lasts until they
+    // resume. Neither is "today's videos have all been made".
+    expect(pausedMessage("voice")).toMatch(/paused for a few minutes/);
+    expect(pausedMessage("paused")).toMatch(/paused for now/);
+    for (const message of [pausedMessage("voice"), pausedMessage("paused")])
+      expect(message).not.toMatch(/all been made|hours/);
+    expect(attemptLimitMessage(1500)).toContain("about 25 minutes");
+    expect(attemptLimitMessage(20)).toContain("about 1 minute.");
   });
 });

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
+import { readCookie } from "~/server/http/cookies";
 import { errorText, logEvent } from "~/server/log";
 import { upstashCommand } from "~/server/storage/upstash";
 
@@ -145,14 +146,6 @@ export async function verifyAdminSession(
   if (own === null) return false;
   const generation = await sessionGeneration(now);
   return generation === null || own === generation;
-}
-
-function readCookie(request: Request, name: string): string | null {
-  for (const part of (request.headers.get("cookie") ?? "").split(";")) {
-    const [key, ...rest] = part.trim().split("=");
-    if (key === name) return rest.join("=");
-  }
-  return null;
 }
 
 /** Whether the request carries a valid dashboard session (checked in Redis). */

@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   keys: [] as string[],
+  published: null as { createdAt: string } | null | Error,
 }));
 
 vi.mock("server-only", () => ({}));
@@ -34,6 +35,11 @@ vi.mock("~/server/storage/r2", () => ({
   deleteObject: vi.fn(async (_bucket: string, key: string) => {
     mocks.calls.push(`delete ${key}`);
   }),
+  getJsonObject: vi.fn(async (_bucket: string, key: string) => {
+    mocks.calls.push(`get ${key}`);
+    if (mocks.published instanceof Error) throw mocks.published;
+    return mocks.published;
+  }),
 }));
 
 import type { VideoArtifact } from "~/features/explainer/types";
@@ -51,6 +57,7 @@ afterEach(() => {
   process.env = { ...originalEnv };
   mocks.calls.length = 0;
   mocks.keys.length = 0;
+  mocks.published = null;
   vi.restoreAllMocks();
 });
 
@@ -76,7 +83,7 @@ describe("explainer video storage", () => {
       `${root}/1780000000000/beat-01.mp3`,
       `${root}/1770000000000/landscape.e15.mp4`,
     ];
-    expect(staleVideoKeys(keys, artifact)).toEqual([
+    expect(staleVideoKeys(keys, artifact, "1790000000000")).toEqual([
       `${current}/landscape.e14.mp4`,
       `${current}/vertical.e9.mp4`,
       `${current}/poster.e13.jpg`,
@@ -84,6 +91,29 @@ describe("explainer video storage", () => {
       `${root}/1780000000000/beat-01.mp3`,
       `${root}/1770000000000/landscape.e15.mp4`,
     ]);
+    // Without knowing what it replaced, only the renders go.
+    expect(staleVideoKeys(keys, artifact)).toEqual([
+      `${current}/landscape.e14.mp4`,
+      `${current}/vertical.e9.mp4`,
+      `${current}/poster.e13.jpg`,
+    ]);
+  });
+
+  it("keeps the published version it replaced, not a newer failed upload", () => {
+    // Published A, then B's upload failed before its artifact was written,
+    // then C was published: A is what open tabs show, B was never seen.
+    const keys = [
+      `${root}/1770000000000/beat-00.mp3`,
+      `${root}/1780000000000/beat-00.mp3`,
+      `${root}/1790000000000/beat-00.mp3`,
+      `${current}/beat-00.mp3`,
+    ];
+    expect(staleVideoKeys(keys, artifact, "1780000000000")).toEqual([
+      `${root}/1770000000000/beat-00.mp3`,
+      `${root}/1790000000000/beat-00.mp3`,
+    ]);
+    // With nothing published before, every older folder is left over.
+    expect(staleVideoKeys(keys, artifact, null)).toEqual(keys.slice(0, 3));
   });
 
   it("never names newer files, or another repository's", () => {
@@ -95,7 +125,7 @@ describe("explainer video storage", () => {
       "video/v1/acme/widget-two/1770000000000/beat-00.mp3",
       "video/v1/acme/widgetx/artifact.json",
     ];
-    expect(staleVideoKeys(keys, artifact)).toEqual([]);
+    expect(staleVideoKeys(keys, artifact, null)).toEqual([]);
   });
 
   it("stores a new version, drops the cached answer, then prunes", async () => {
@@ -105,8 +135,10 @@ describe("explainer video storage", () => {
       `${root}/1790000000000/beat-00.mp3`,
       `${root}/1780000000000/beat-00.mp3`,
     );
+    mocks.published = { createdAt: new Date(1790000000000).toISOString() };
     await writeVideo(artifact, [Buffer.from("clip")]);
     expect(mocks.calls).toEqual([
+      `get ${root}/artifact.json`,
       `put ${current}/beat-00.mp3`,
       `put ${root}/artifact.json`,
       "index",
@@ -114,6 +146,15 @@ describe("explainer video storage", () => {
       "list",
       `delete ${root}/1780000000000/beat-00.mp3`,
     ]);
+  });
+
+  it("prunes no older version when the published one cannot be read", async () => {
+    process.env.VIDEO_STORE = "r2";
+    process.env.R2_PUBLIC_BUCKET = "bucket";
+    mocks.keys.push(`${root}/1780000000000/beat-00.mp3`);
+    mocks.published = new Error("R2 is down");
+    await writeVideo(artifact, [Buffer.from("clip")]);
+    expect(mocks.calls.filter((call) => call.startsWith("delete"))).toEqual([]);
   });
 });
 
@@ -146,5 +187,27 @@ describe("local video storage", () => {
       "artifact.json",
     ]);
     expect(mocks.calls).not.toContain("purge");
+  });
+
+  it("deletes a failed upload's files but keeps the version tabs still show", async () => {
+    const a = "2026-09-01T00:00:00.000Z";
+    const b = "2026-09-02T00:00:00.000Z";
+    const c = "2026-09-03T00:00:00.000Z";
+    await writeVideo(version(a), [Buffer.from("a")]);
+    // B's clips were uploaded, but it failed before its artifact was written.
+    const orphan = join(dir, ".video-cache", root, String(Date.parse(b)));
+    await mkdir(orphan, { recursive: true });
+    await writeFile(join(orphan, "beat-00.mp3"), "b");
+    await writeVideo(version(c), [Buffer.from("c")]);
+    const files = await readdir(join(dir, ".video-cache", root), {
+      recursive: true,
+    });
+    expect(files.sort()).toEqual([
+      String(Date.parse(a)),
+      `${Date.parse(a)}/beat-00.mp3`,
+      String(Date.parse(c)),
+      `${Date.parse(c)}/beat-00.mp3`,
+      "artifact.json",
+    ]);
   });
 });

@@ -18,10 +18,7 @@ import {
   audienceMessage,
   isInVideoRegion,
 } from "~/server/explainer/audience";
-import {
-  purgeVideoResponse,
-  refreshVideoPages,
-} from "~/server/explainer/cache";
+import { refreshVideoPages } from "~/server/explainer/cache";
 import {
   canGenerateVideos,
   isVideoExplainerEnabled,
@@ -30,27 +27,34 @@ import { VideoRefusalError } from "~/server/explainer/director";
 import { reportHeldBack } from "~/server/explainer/gate-notice";
 import { generateExplainerVideo } from "~/server/explainer/generate";
 import {
+  attemptLimitMessage,
   generationLockName,
   isTrustedVideoCaller,
-  isVideoAdmin,
   limitMessage,
+  pausedMessage,
   reserveVideoSlot,
   takePremiumVideo,
+  takeVideoAttempt,
   tryPaidVideoRun,
   tryVideoLock,
   type Reservation,
 } from "~/server/explainer/limits";
 import { isNarrationAvailable } from "~/server/explainer/narration";
 import { choosePlanner } from "~/server/explainer/planner";
-import { storePoster } from "~/server/explainer/posters";
 import { VideoInputError } from "~/server/explainer/repository";
+import { remakePosterRemotely } from "~/server/explainer/segments";
 import { readVideoArtifact } from "~/server/explainer/store";
+import { VoiceUnavailableError } from "~/server/explainer/voice";
 import {
   readVisitor,
   withVisitorCookie,
   type Visitor,
 } from "~/server/explainer/visitor";
-import type { VideoGenerationEvent } from "~/features/explainer/types";
+import { errorText, logEvent } from "~/server/log";
+import type {
+  VideoArtifact,
+  VideoGenerationEvent,
+} from "~/features/explainer/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +65,12 @@ export const maxDuration = 300;
 const VIDEO_DEADLINE_MS = 240_000;
 // The lock and the paid-run place outlive the function if it dies.
 const RUN_TTL_MS = 6 * 60_000;
+// Everything, the poster included, is done by here: short of maxDuration, so
+// the function always ends on its own rather than being stopped.
+const FUNCTION_BUDGET_MS = 285_000;
+// With less time than this left, the poster is not attempted (a poster can
+// be remade later from the player).
+const MIN_POSTER_MS = 20_000;
 
 const requestSchema = z.strictObject({
   username: githubUsernameSchema,
@@ -69,10 +79,26 @@ const requestSchema = z.strictObject({
 
 const UNAVAILABLE_MESSAGE =
   "Video generation is unavailable right now. Try again soon.";
+const BUSY_MESSAGE =
+  "Lots of videos are being made right now. Try again in a few minutes.";
+const NARRATOR_MESSAGE =
+  "The narrator is unavailable right now. Try again in a few minutes.";
 
+/** The cap on paid runs at once was reached just before the first model call. */
+class PaidRunsBusyError extends Error {}
+
+/**
+ * What the viewer is told when a run fails, and whether trying again could
+ * help. Once paid work started, a failure keeps the visitor's daily place,
+ * so for most people another try the same day would only meet their limit.
+ */
 function failureEvent(
   error: unknown,
-  timedOut: boolean,
+  {
+    timedOut,
+    paid,
+    trusted,
+  }: { timedOut: boolean; paid: boolean; trusted: boolean },
 ): Extract<VideoGenerationEvent, { status: "error" }> {
   if (error instanceof VideoInputError)
     return { status: "error", error: error.message, retryable: false };
@@ -82,13 +108,20 @@ function failureEvent(
       error: "An explainer video can't be made for this repository.",
       retryable: false,
     };
-  return {
-    status: "error",
-    error: timedOut
-      ? "The explainer video took too long to make. Try again."
-      : "The explainer video could not be generated. Try again.",
-    retryable: true,
-  };
+  if (error instanceof VoiceUnavailableError)
+    return { status: "error", error: NARRATOR_MESSAGE, retryable: true };
+  if (error instanceof PaidRunsBusyError)
+    return { status: "error", error: BUSY_MESSAGE, retryable: true };
+  const failed = timedOut
+    ? "The explainer video took too long to make."
+    : "The explainer video could not be generated.";
+  return !paid || trusted
+    ? { status: "error", error: `${failed} Try again.`, retryable: true }
+    : {
+        status: "error",
+        error: `${failed} This try counted toward today's free videos.`,
+        retryable: false,
+      };
 }
 
 /** Every response names the visitor, so their next request counts as them. */
@@ -98,6 +131,7 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 async function generate(request: Request, visitor: Visitor): Promise<Response> {
+  const requestStartedAt = Date.now();
   if (!isVideoExplainerEnabled())
     return jsonErrorResponse("Explainer videos are not enabled.", 404);
   const parsed = await parseSameOriginJsonRequest(request, {
@@ -110,10 +144,12 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     return jsonErrorResponse("Explainer videos are not available.", 503);
   const { username, repo } = parsed.data;
   const repository = `${username}/${repo}`;
+  // Only the operator (or anyone, locally) skips the limits, and only they may
+  // replace a video: once made, a video is everyone's.
   const trusted = await isTrustedVideoCaller(request);
   const production = process.env.NODE_ENV === "production";
-  // A video, once made, is everyone's: only the operator may replace it.
-  const mayReplace = !production || (await isVideoAdmin(request));
+  const clientIp = getClientIp(request);
+  const requester = { visitorId: visitor.id, clientIp };
   const gated = (reason: string) =>
     reportHeldBack(request, { username, repo, reason, step: "start" });
   // Someone in a priority place may make more videos a day, and their first
@@ -135,7 +171,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     }
     if (controls.videosPaused) {
       gated("paused");
-      return jsonErrorResponse(limitMessage("daily"), 503);
+      return jsonErrorResponse(pausedMessage("paused"), 503);
     }
     const blocked = audienceBlock(
       request,
@@ -151,9 +187,6 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
 
   const alreadyMade = () =>
     jsonErrorResponse("This repository already has a video.", 409);
-  if (!mayReplace && (await readVideoArtifact(username, repo)))
-    return alreadyMade();
-
   let reservation: Reservation | null = null;
   let releaseLock: (() => Promise<void>) | null = null;
   let releaseRun: (() => Promise<void>) | null = null;
@@ -168,15 +201,14 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     return response;
   };
   try {
+    if (!trusted && (await readVideoArtifact(username, repo)))
+      return alreadyMade();
     if (!trusted) {
       if (!(await isNarrationAvailable())) {
         gated("voice");
-        return jsonErrorResponse(limitMessage("daily"), 503);
+        return jsonErrorResponse(pausedMessage("voice"), 503);
       }
-      reservation = await reserveVideoSlot(
-        { visitorId: visitor.id, clientIp: getClientIp(request) },
-        { priority },
-      );
+      reservation = await reserveVideoSlot(requester, { priority });
       if (!reservation.ok) {
         gated(reservation.reason);
         return jsonErrorResponse(
@@ -199,30 +231,28 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
         );
       // Checked again under the lock: a run that finished between the first
       // check and taking the lock has stored its video by now.
-      if (!mayReplace && (await readVideoArtifact(username, repo)))
+      if (!trusted && (await readVideoArtifact(username, repo)))
         return await turnAway(alreadyMade());
-      releaseRun = await tryPaidVideoRun({
-        operator: trusted,
-        ttlMs: RUN_TTL_MS,
-      });
-      if (!releaseRun) {
-        gated("busy");
+    }
+    if (!trusted) {
+      // The run reads the repository from GitHub next. That read is counted
+      // per connection and never refunded, so failing runs cannot repeat it
+      // without end (see takeVideoAttempt).
+      const attempt = await takeVideoAttempt(clientIp);
+      if (!attempt.ok) {
+        gated("attempts");
         return await turnAway(
           jsonErrorResponse(
-            "Lots of videos are being made right now. Try again in a few minutes.",
-            503,
+            attemptLimitMessage(attempt.retryAfterSeconds),
+            429,
           ),
         );
       }
     }
   } catch (error) {
-    // Redis holds the budget, so without it nothing new is started.
-    console.error(
-      JSON.stringify({
-        event: "video.admission_failed",
-        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
-      }),
-    );
+    // Redis and storage hold the budget and the videos, so without them
+    // nothing new is started.
+    logEvent("error", "video.admission_failed", { error: errorText(error) });
     return turnAway(jsonErrorResponse(UNAVAILABLE_MESSAGE, 503));
   }
 
@@ -233,7 +263,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   // The job id stays free of the repository's name, which may be private.
   const jobId = `video:${startedAt}:${randomUUID().slice(0, 8)}`;
   const deadline = AbortSignal.timeout(VIDEO_DEADLINE_MS);
-  let outcome: "complete" | "error" = "error";
+  let stored: VideoArtifact | null = null;
   // Reading the repository proved it public, so the feed may name it.
   let confirmedPublic = false;
   // A model has been called: from here on the run costs real money.
@@ -282,7 +312,20 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
         username,
         repo,
         onEvent,
-        onPaidWork: () => {
+        // Paid runs at once are capped, and a run only takes its place here,
+        // once it has read the repository, so runs that fail before any
+        // model call never crowd out ones that are being paid for.
+        onPaidWork: async () => {
+          if (production) {
+            releaseRun = await tryPaidVideoRun({
+              operator: trusted,
+              ttlMs: RUN_TTL_MS,
+            });
+            if (!releaseRun) {
+              gated("busy");
+              throw new PaidRunsBusyError("Too many paid runs at once.");
+            }
+          }
           paid = true;
         },
         choosePlanner: async ({ stars }) => {
@@ -290,7 +333,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
             operator: trusted,
             stars,
             priority,
-            takePremium: () => takePremiumVideo(visitor.id),
+            takePremium: () => takePremiumVideo(requester),
           });
           refundPremium = choice.refund;
           return choice.planner;
@@ -298,49 +341,40 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
         signal: deadline,
       })
         .then(
-          async (artifact) => {
-            outcome = "complete";
+          (artifact) => {
+            stored = artifact;
             send({ status: "complete", artifact });
             clearInterval(heartbeat);
             close();
-            // A replaced video's files are already gone: stop the CDN sending it.
-            await purgeVideoResponse(username, repo);
-            // The link-preview still, made once the viewer already has the video.
-            await storePoster(artifact, siteOrigin);
           },
           async (error: unknown) => {
-            console.error(
-              JSON.stringify({
-                event: "video.generation_failed",
-                repository,
-                paid,
+            logEvent("error", "video.generation_failed", {
+              repository,
+              paid,
+              timedOut: deadline.aborted,
+              error: errorText(error, 300),
+            });
+            send(
+              failureEvent(error, {
                 timedOut: deadline.aborted,
-                error:
-                  error instanceof Error
-                    ? error.message.slice(0, 300)
-                    : "unknown",
+                paid,
+                trusted,
               }),
             );
-            send(failureEvent(error, deadline.aborted));
             // Only a failure before any model call is refunded. After that the
             // run was paid for, and a refund would let one failing repository
-            // be retried for free again and again.
-            if (!paid) {
+            // be retried for free again and again. A narrator out of credit is
+            // the operator's doing, not the visitor's, so that is refunded too.
+            if (!paid || error instanceof VoiceUnavailableError) {
               if (reservation?.ok) await reservation.refund();
               await refundPremium?.();
             }
           },
         )
         .catch((error: unknown) => {
-          console.error(
-            JSON.stringify({
-              event: "video.generation_cleanup_failed",
-              error:
-                error instanceof Error
-                  ? error.message.slice(0, 200)
-                  : "unknown",
-            }),
-          );
+          logEvent("error", "video.generation_cleanup_failed", {
+            error: errorText(error),
+          });
         })
         .finally(async () => {
           clearInterval(heartbeat);
@@ -351,7 +385,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
           await emitLiveEvent({
             kind: "video.finished",
             repo: confirmedPublic ? repository : "a repository",
-            outcome,
+            outcome: stored ? "complete" : "error",
             ms: Date.now() - startedAt,
             ...(confirmedPublic ? { job: { id: jobId, state: "end" } } : {}),
           });
@@ -361,11 +395,22 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       closed = true;
     },
   });
-  // Keep the function alive until the video and its poster are stored, then
-  // point the pages that name it at the new one.
+  // Once the run has settled (and released its lock), point the pages that
+  // name the video at the new one, then make its link-preview poster on a
+  // render instance, within what is left of this function's time.
   after(async () => {
     await job;
-    if (outcome === "complete") refreshVideoPages(username, repo);
+    const artifact = stored;
+    if (!artifact) return;
+    refreshVideoPages(username, repo);
+    const left = FUNCTION_BUDGET_MS - (Date.now() - requestStartedAt);
+    if (left < MIN_POSTER_MS) {
+      logEvent("warn", "video.poster.skipped", { repository, leftMs: left });
+      return;
+    }
+    if (await remakePosterRemotely(artifact, siteOrigin, { timeoutMs: left }))
+      refreshVideoPages(username, repo);
+    else logEvent("error", "video.poster.remote_failed", { repository });
   });
 
   return new Response(stream, {
