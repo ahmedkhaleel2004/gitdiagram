@@ -2,17 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type * as NextServer from "next/server";
 
-const { callbacks } = vi.hoisted(() => ({
+const { callbacks, upstashEval } = vi.hoisted(() => ({
   callbacks: [] as Array<() => Promise<void>>,
+  upstashEval: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
+vi.mock("~/server/storage/upstash", () => ({ upstashEval }));
 vi.mock("next/server", async (importOriginal) => ({
   ...(await importOriginal<typeof NextServer>()),
   after: (callback: () => Promise<void>) => callbacks.push(callback),
 }));
 
 import { GET, HEAD } from "~/app/out/[campaign]/route";
-import { sponsorClickHref, sponsorPlacements } from "~/lib/sponsor-campaign";
+import {
+  coderabbitCampaign,
+  sentCampaign,
+  sponsorClickHref,
+  sponsorPlacements,
+} from "~/lib/sponsor-campaign";
 
 const browser =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36";
@@ -29,6 +36,9 @@ function request(placement = "home", headers: Record<string, string> = {}) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
+  upstashEval.mockReset().mockResolvedValue(1);
   callbacks.length = 0;
   fetchMock.mockReset().mockResolvedValue(new Response("1"));
   vi.stubGlobal("fetch", fetchMock);
@@ -36,6 +46,7 @@ beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -200,4 +211,79 @@ describe("sponsor click redirects", () => {
       expect(console.warn).toHaveBeenCalledOnce();
     },
   );
+
+  it("sends clicks on ended or unstarted campaigns to /advertise without recording them", async () => {
+    for (const [campaign, at] of [
+      [sentCampaign.id, sentCampaign.endsAt],
+      [coderabbitCampaign.id, "2026-09-25T12:00:00Z"],
+    ] as const) {
+      vi.setSystemTime(new Date(at));
+      const response = await GET(
+        new NextRequest(
+          `https://gitdiagram.com${sponsorClickHref("readme", campaign)}`,
+          { headers: { "user-agent": browser } },
+        ),
+        { params: Promise.resolve({ campaign }) },
+      );
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(
+        "https://gitdiagram.com/advertise",
+      );
+      expect(response.headers.get("cache-control")).toContain("no-store");
+    }
+    expect(callbacks).toHaveLength(0);
+    // Controlled checks and preview deployments still reach the sponsor.
+    const test = await GET(
+      new NextRequest(
+        `https://gitdiagram.com/out/${coderabbitCampaign.id}?placement=home&test=1`,
+        { headers: { "user-agent": browser } },
+      ),
+      { params: Promise.resolve({ campaign: coderabbitCampaign.id }) },
+    );
+    expect(new URL(test.headers.get("location")!).hostname).toBe(
+      "www.coderabbit.ai",
+    );
+    const preview = await GET(
+      new NextRequest(
+        `https://gitdiagram-coderabbit-preview.vercel.app/out/${coderabbitCampaign.id}?placement=home`,
+        { headers: { "user-agent": browser } },
+      ),
+      { params: Promise.resolve({ campaign: coderabbitCampaign.id }) },
+    );
+    expect(new URL(preview.headers.get("location")!).hostname).toBe(
+      "www.coderabbit.ai",
+    );
+  });
+
+  it("records one click per network and placement in a window, keyed by a hash of the IP", async () => {
+    upstashEval.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    const headers = { "x-forwarded-for": "192.0.2.7" };
+    expect((await GET(request("home", headers), context)).status).toBe(302);
+    expect((await GET(request("home", headers), context)).status).toBe(302);
+    await Promise.all(callbacks.map((callback) => callback()));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [first, second] = upstashEval.mock.calls.map(
+      ([call]) => (call as { keys: string[] }).keys,
+    );
+    expect(first).toEqual(second);
+    expect(first![0]).toMatch(
+      /^sponsor:v1:click:sent-2026-09:home:[0-9a-f]{32}:\d+$/,
+    );
+    expect(JSON.stringify(upstashEval.mock.calls)).not.toContain("192.0.2.7");
+  });
+
+  it("still records clicks when Redis is down, and skips dedupe for test clicks", async () => {
+    upstashEval.mockRejectedValue(new Error("Upstash unavailable"));
+    await GET(request("home", { "x-forwarded-for": "192.0.2.7" }), context);
+    await callbacks[0]!();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    upstashEval.mockClear();
+    await GET(
+      request("home&test=1", { "x-forwarded-for": "192.0.2.7" }),
+      context,
+    );
+    await callbacks[1]!();
+    expect(upstashEval).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

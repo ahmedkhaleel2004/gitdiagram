@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type * as NextServer from "next/server";
-const { callbacks } = vi.hoisted(() => ({
+const { callbacks, upstashEval } = vi.hoisted(() => ({
   callbacks: [] as Array<() => Promise<void>>,
+  upstashEval: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
+vi.mock("~/server/storage/upstash", () => ({ upstashEval }));
 vi.mock("next/server", async (original) => ({
   ...(await original<typeof NextServer>()),
   after: (cb: () => Promise<void>) => callbacks.push(cb),
@@ -14,13 +16,13 @@ import { GET } from "~/app/out/[campaign]/route";
 import { sponsorDestination } from "./sponsor-clicks";
 import { coderabbitCampaign } from "~/lib/sponsor-campaign";
 
-const eventId = "245446b3-90c6-4843-b7a2-3ca364c70a12";
+const pageViewId = "245446b3-90c6-4843-b7a2-3ca364c70a12";
 const context = {
   params: Promise.resolve({ campaign: coderabbitCampaign.id }),
 };
 const capture = vi.fn<typeof fetch>();
 function request(
-  body: unknown = { placement: "home", eventId },
+  body: unknown = { placement: "home", pageViewId },
   headers: Record<string, string> = {},
   query = "",
 ) {
@@ -38,10 +40,14 @@ function request(
     },
   );
 }
+const claimed = (call: number) =>
+  upstashEval.mock.calls[call]![0] as { keys: string[]; args: number[] };
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-21T12:00:00Z"));
   callbacks.length = 0;
+  upstashEval.mockReset().mockResolvedValue(1);
   capture.mockReset().mockResolvedValue(new Response("1"));
   vi.stubGlobal("fetch", capture);
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "public-test-token");
@@ -50,6 +56,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 it("records loaded ad impressions independently with the same browser identity as clicks", async () => {
@@ -60,8 +67,11 @@ it("records loaded ad impressions independently with the same browser identity a
     .get("set-cookie")!
     .match(/^gd_sponsor_visitor=([^;]+)/)![1];
   await callbacks[0]!();
-  expect(JSON.parse(capture.mock.calls[0]![1]!.body as string)).toMatchObject({
-    uuid: eventId,
+  const event = JSON.parse(capture.mock.calls[0]![1]!.body as string);
+  // PostHog's event ID is per event; the page-view ID is only for dedupe.
+  expect(event.uuid).toMatch(/^[0-9a-f-]{36}$/);
+  expect(event.uuid).not.toBe(pageViewId);
+  expect(event).toMatchObject({
     event: "sponsor_impression",
     distinct_id: `sponsor:${cookieValue}`,
     properties: {
@@ -103,11 +113,19 @@ it("rejects cross-origin capture, README impressions, malformed events, and unkn
     ).status,
   ).toBe(403);
   expect(
-    (await POST(request({ placement: "readme", eventId }), context)).status,
+    (await POST(request({ placement: "readme", pageViewId }), context)).status,
   ).toBe(400);
   expect(
-    (await POST(request({ placement: "home", eventId: "bad" }), context))
+    (await POST(request({ placement: "home", pageViewId: "bad" }), context))
       .status,
+  ).toBe(400);
+  expect(
+    (
+      await POST(
+        request({ placement: "home", pageViewId, eventId: pageViewId }),
+        context,
+      )
+    ).status,
   ).toBe(400);
   expect(
     (
@@ -140,6 +158,45 @@ it("excludes prelaunch and expired impressions, but allows explicitly marked ver
   expect(
     JSON.parse(capture.mock.calls[0]![1]!.body as string).properties.is_test,
   ).toBe(true);
+  // Verification events are excluded from reports, so they skip dedupe.
+  expect(upstashEval).not.toHaveBeenCalled();
+});
+
+it("records one impression per page view and caps each network per hour", async () => {
+  const headers = { "x-forwarded-for": "2001:db8:1:2:3:4:5:6" };
+  upstashEval.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+  await POST(request(undefined, headers), context);
+  await POST(request(undefined, headers), context);
+  await Promise.all(callbacks.map((callback) => callback()));
+  expect(capture).toHaveBeenCalledOnce();
+  const { keys, args } = claimed(0);
+  expect(keys[0]).toBe(
+    `sponsor:v1:impression:${coderabbitCampaign.id}:home:${pageViewId}`,
+  );
+  expect(keys[1]).toMatch(
+    /^sponsor:v1:impression-cap:coderabbit-2026-10:[0-9a-f]{32}:\d+$/,
+  );
+  expect(args.slice(0, 2)).toEqual([86400, 120]);
+  expect(JSON.stringify(upstashEval.mock.calls)).not.toContain("2001:db8");
+});
+
+it("accepts the random event IDs sent by tabs opened before page-view IDs", async () => {
+  const response = await POST(
+    request({ placement: "browse", eventId: pageViewId }),
+    context,
+  );
+  expect(response.status).toBe(204);
+  await callbacks[0]!();
+  expect(claimed(0).keys[0]).toContain(`:browse:${pageViewId}`);
+  expect(capture).toHaveBeenCalledOnce();
+});
+
+it("records impressions when Redis is down", async () => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  upstashEval.mockRejectedValue(new Error("Upstash unavailable"));
+  await POST(request(), context);
+  await callbacks[0]!();
+  expect(capture).toHaveBeenCalledOnce();
 });
 
 it("preserves sponsor-supplied attribution while filling missing placement tags", () => {

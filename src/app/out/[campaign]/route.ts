@@ -1,10 +1,14 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import {
+  activeSponsorCampaign,
   findSponsorCampaign,
+  isProductionSponsorHost,
   sponsorPlacements,
   type SponsorPlacement,
 } from "~/lib/sponsor-campaign";
+import { getClientIp } from "~/server/http/client-ip";
 import {
+  claimSponsorEvent,
   recordSponsorEvent,
   shouldRecordSponsorClick,
   sponsorDestination,
@@ -32,6 +36,22 @@ export async function GET(request: NextRequest, context: Context) {
     });
   }
 
+  const isTest = request.nextUrl.searchParams.get("test") === "1";
+  // Old README revisions and stale cached pages still link to campaigns that
+  // have ended or not started. Those clicks go to /advertise and are not
+  // recorded: an unpaid sponsor gets no traffic and the paying one no
+  // misattributed clicks. Previews and `?test=1` checks keep the real target.
+  if (
+    activeSponsorCampaign()?.id !== config.id &&
+    !isTest &&
+    isProductionSponsorHost(request.nextUrl.hostname)
+  ) {
+    return NextResponse.redirect(new URL("/advertise", request.url), {
+      status: 302,
+      headers,
+    });
+  }
+
   const surface = placement as SponsorPlacement;
   // The destination is allowlisted in code; never accept a redirect URL from input.
   const response = NextResponse.redirect(sponsorDestination(surface, config), {
@@ -44,16 +64,26 @@ export async function GET(request: NextRequest, context: Context) {
     process.env.NEXT_PUBLIC_POSTHOG_KEY
   ) {
     const visitorId = sponsorVisitor(request, response);
-    const isTest = request.nextUrl.searchParams.get("test") === "1";
-    after(() =>
-      recordSponsorEvent({
-        event: "sponsor_click",
-        campaign: config,
-        placement: surface,
-        visitorId,
-        isTest,
-      }),
-    );
+    const clientIp = getClientIp(request);
+    after(async () => {
+      // Verification clicks are excluded from reports, so they skip dedupe.
+      if (
+        isTest ||
+        (await claimSponsorEvent({
+          event: "sponsor_click",
+          campaignId: config.id,
+          placement: surface,
+          clientIp,
+        }))
+      )
+        await recordSponsorEvent({
+          event: "sponsor_click",
+          campaign: config,
+          placement: surface,
+          visitorId,
+          isTest,
+        });
+    });
   }
 
   return response;

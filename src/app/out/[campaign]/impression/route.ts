@@ -3,19 +3,26 @@ import { z } from "zod";
 import {
   activeSponsorCampaign,
   findSponsorCampaign,
+  websiteSponsorPlacements,
 } from "~/lib/sponsor-campaign";
+import { getClientIp } from "~/server/http/client-ip";
 import { parseSameOriginJsonRequest } from "~/server/http/same-origin-json";
 import {
+  claimSponsorEvent,
   recordSponsorEvent,
   shouldRecordSponsorEvent,
   sponsorVisitor,
 } from "~/server/sponsor-clicks";
 
 export const dynamic = "force-dynamic";
-const schema = z.strictObject({
-  placement: z.enum(["home", "diagram", "browse"]),
-  eventId: z.uuid(),
-});
+const placement = z.enum(websiteSponsorPlacements);
+const schema = z.union([
+  z.strictObject({ placement, pageViewId: z.uuid() }),
+  // Tabs loaded before page-view IDs send a random ID per request instead.
+  z
+    .strictObject({ placement, eventId: z.uuid() })
+    .transform(({ eventId, ...event }) => ({ ...event, pageViewId: eventId })),
+]);
 
 export async function POST(
   request: NextRequest,
@@ -42,14 +49,27 @@ export async function POST(
   )
     return response;
   const visitorId = sponsorVisitor(request, response);
-  after(() =>
-    recordSponsorEvent({
-      event: "sponsor_impression",
-      campaign,
-      visitorId,
-      isTest,
-      ...parsed.data,
-    }),
-  );
+  const clientIp = getClientIp(request);
+  const { placement, pageViewId } = parsed.data;
+  after(async () => {
+    // Verification events are excluded from reports, so they skip dedupe.
+    if (
+      isTest ||
+      (await claimSponsorEvent({
+        event: "sponsor_impression",
+        campaignId: campaign.id,
+        placement,
+        clientIp,
+        pageViewId,
+      }))
+    )
+      await recordSponsorEvent({
+        event: "sponsor_impression",
+        campaign,
+        placement,
+        visitorId,
+        isTest,
+      });
+  });
   return response;
 }
