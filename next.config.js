@@ -58,7 +58,8 @@ const videoStagePolicy = [
 // ship native binaries that must stay out of the bundle and be traced into the
 // functions that launch them. The render route only mixes and joins with
 // ffmpeg (segments and posters render through /api/video/render/segment), so
-// it leaves Chromium's ~60 MB out.
+// it and the generate route (which asks the segment route for its poster)
+// leave Chromium's ~60 MB out.
 const chromiumFiles = ["./node_modules/@sparticuz/chromium/bin/**"];
 const ffmpegFiles = ["./node_modules/ffmpeg-static/ffmpeg"];
 const videoRenderFiles = [...chromiumFiles, ...ffmpegFiles];
@@ -74,10 +75,11 @@ const config = {
   outputFileTracingIncludes: {
     "/api/video/render": ffmpegFiles,
     "/api/video/render/segment": videoRenderFiles,
-    "/api/video/generate": videoRenderFiles,
+    "/api/video/generate": ffmpegFiles,
   },
   outputFileTracingExcludes: {
     "/api/video/render": chromiumFiles,
+    "/api/video/generate": chromiumFiles,
   },
   allowedDevOrigins: ["127.0.0.1"],
   ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),

@@ -14,6 +14,8 @@ const HELD_BACK: Record<string, string> = {
   person: "They already made today's video",
   network: "Their connection hit its daily backstop",
   voice: "The voice balance ran out",
+  busy: "Too many videos were being made",
+  attempts: "Their connection started too many videos this hour",
 };
 
 const FAILED = "text-red-700 dark:text-red-400";

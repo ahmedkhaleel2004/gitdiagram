@@ -1,9 +1,12 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { networkOf } from "~/lib/network";
 import { readAdmissionControls, readControls } from "~/server/admin/controls";
 import { isOperatorToken, verifyAdminRequest } from "~/server/admin/operator";
-import { toRateLimitBucket } from "~/server/generate/rate-limit";
+import { readIntEnv } from "~/server/env";
+import { errorText, logEvent } from "~/server/log";
+import { tryDistributedLock } from "~/server/storage/distributed-lock";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
 // Every new video spends real money (Claude or GPT, plus the voice), so the
@@ -17,6 +20,13 @@ import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 // this fails closed: the daily budget lives in Redis too, so without Redis
 // there is no bound on spend.
 //
+// Premium-model videos are counted per person and per connection, so a
+// browser that sends a new visitor id with every request still gets only a
+// few. Starting a video at all is also limited per connection per hour, and
+// that count is never refunded: a run that fails before any model call gives
+// back its daily place, but it has still read the repository with the site's
+// credentials.
+//
 // The operator can start today's counts over from /admin. Rather than delete
 // counters that runs in flight still hold, a reset moves every count to a new
 // epoch (part of each counter's name): new runs count from zero, and a refund
@@ -24,10 +34,13 @@ import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
 const DAY_SECONDS = 86_400;
 
-function readLimit(name: string, fallback: number): number {
-  const parsed = Number.parseInt(process.env[name]?.trim() ?? "", 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
+/**
+ * The connection a request came from, as part of a counter's name. One IPv6
+ * subscriber holds a whole /64, so that is one connection. Unattributable
+ * callers share one bucket rather than escaping the limit.
+ */
+const networkKey = (clientIp: string | null) =>
+  encodeURIComponent(networkOf(clientIp ?? "unknown"));
 
 interface Limits {
   daily: number;
@@ -46,26 +59,30 @@ async function videoLimits(
 ): Promise<Limits & { priorityPerson: number }> {
   const controls = await (admission ? readAdmissionControls() : readControls());
   return {
-    daily: controls.videoDailyLimit ?? readLimit("VIDEO_DAILY_LIMIT", 25),
+    daily: controls.videoDailyLimit ?? readIntEnv("VIDEO_DAILY_LIMIT", 25),
     person:
       controls.videoPersonDailyLimit ??
-      readLimit("VIDEO_PERSON_DAILY_LIMIT", 1),
+      readIntEnv("VIDEO_PERSON_DAILY_LIMIT", 1),
     priorityPerson:
       controls.videoPriorityPersonDailyLimit ??
-      readLimit("VIDEO_PRIORITY_PERSON_DAILY_LIMIT", 3),
+      readIntEnv("VIDEO_PRIORITY_PERSON_DAILY_LIMIT", 3),
     network:
       controls.videoNetworkDailyLimit ??
-      readLimit("VIDEO_NETWORK_DAILY_LIMIT", 10),
+      readIntEnv("VIDEO_NETWORK_DAILY_LIMIT", 10),
   };
 }
 
 /** Premium-model videos per priority person per UTC day. */
-const premiumPerPerson = () => readLimit("VIDEO_PREMIUM_PERSON_DAILY_LIMIT", 1);
+const premiumPerPerson = () =>
+  readIntEnv("VIDEO_PREMIUM_PERSON_DAILY_LIMIT", 1);
+/** Premium-model videos per connection per UTC day (twice a person's by default). */
+const premiumPerNetwork = () =>
+  readIntEnv("VIDEO_PREMIUM_NETWORK_DAILY_LIMIT", premiumPerPerson() * 2);
 /** MP4 renders started per UTC day. Finished renders are cached and free to download. */
 const renderLimits = (): Limits => ({
-  daily: readLimit("VIDEO_RENDER_DAILY_LIMIT", 300),
-  person: readLimit("VIDEO_RENDER_PERSON_DAILY_LIMIT", 8),
-  network: readLimit("VIDEO_RENDER_NETWORK_DAILY_LIMIT", 40),
+  daily: readIntEnv("VIDEO_RENDER_DAILY_LIMIT", 300),
+  person: readIntEnv("VIDEO_RENDER_PERSON_DAILY_LIMIT", 8),
+  network: readIntEnv("VIDEO_RENDER_NETWORK_DAILY_LIMIT", 40),
 });
 
 /**
@@ -100,6 +117,19 @@ async function currentEpochs(kinds: Kind[]): Promise<string[]> {
     ...kinds.map(epochKey),
   ]);
   return kinds.map((_, index) => epochs[index] ?? "0");
+}
+
+/** Today's counters for everyone, this person and this connection. */
+function budgetKeys(
+  kind: Kind,
+  { visitorId, clientIp }: Requester,
+  suffix: string,
+): string[] {
+  return [
+    `video:v1:${kind}:all:${suffix}`,
+    `video:v1:${kind}:who:${encodeURIComponent(visitorId)}:${suffix}`,
+    `video:v1:${kind}:net:${networkKey(clientIp)}:${suffix}`,
+  ];
 }
 
 // KEYS: everyone, this person, this connection, the epoch. ARGV: their
@@ -147,23 +177,16 @@ export interface Requester {
 
 async function reserve(
   kind: Kind,
-  { visitorId, clientIp }: Requester,
+  requester: Requester,
   limits: Limits,
 ): Promise<Reservation> {
   const day = today();
-  // Unattributable callers share one bucket rather than escaping the limit.
-  const network = encodeURIComponent(toRateLimitBucket(clientIp ?? "unknown"));
   let keys: string[] = [];
   let result = -1;
   // A reset between reading the epoch and counting is rare; count again.
   for (let attempt = 0; attempt < 3 && result === -1; attempt++) {
     const [epoch] = await currentEpochs([kind]);
-    const suffix = period(day, epoch!);
-    keys = [
-      `video:v1:${kind}:all:${suffix}`,
-      `video:v1:${kind}:who:${encodeURIComponent(visitorId)}:${suffix}`,
-      `video:v1:${kind}:net:${network}:${suffix}`,
-    ];
+    keys = budgetKeys(kind, requester, period(day, epoch!));
     result = await upstashEval<number>({
       script: RESERVE_SCRIPT,
       keys: [...keys, epochKey(kind)],
@@ -187,12 +210,9 @@ async function reserve(
       try {
         await upstashEval<number>({ script: REFUND_SCRIPT, keys });
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            event: "video.limit.refund_failed",
-            error: error instanceof Error ? error.message : "unknown",
-          }),
-        );
+        logEvent("error", "video.limit.refund_failed", {
+          error: errorText(error),
+        });
       }
     },
   };
@@ -210,44 +230,51 @@ export async function reserveVideoSlot(
   });
 }
 
-// KEYS: this person's premium count. ARGV: the limit, the TTL. Returns 1 when
-// one was taken.
+// KEYS: this person's and this connection's premium counts. ARGV: their
+// limits, then the TTL. Returns 1 when one was taken (from both).
 const TAKE_PREMIUM_SCRIPT = `
-if tonumber(redis.call("GET", KEYS[1]) or "0") >= tonumber(ARGV[1]) then
-  return 0
+for index = 1, #KEYS do
+  if tonumber(redis.call("GET", KEYS[index]) or "0") >= tonumber(ARGV[index]) then
+    return 0
+  end
 end
-redis.call("INCR", KEYS[1])
-redis.call("EXPIRE", KEYS[1], ARGV[2])
+for index = 1, #KEYS do
+  redis.call("INCR", KEYS[index])
+  redis.call("EXPIRE", KEYS[index], ARGV[#KEYS + 1])
+end
 return 1
 `;
 
 /**
  * One of this person's premium-model videos for today, with a way to give it
- * back, or null when they have used theirs. It counts in the same epoch as
- * the video budget, so a reset in /admin starts it over too.
+ * back, or null when they, or their connection, have used theirs. It counts
+ * in the same epoch as the video budget, so a reset in /admin starts it over
+ * too.
  */
-export async function takePremiumVideo(
-  visitorId: string,
-): Promise<{ refund: () => Promise<void> } | null> {
+export async function takePremiumVideo({
+  visitorId,
+  clientIp,
+}: Requester): Promise<{ refund: () => Promise<void> } | null> {
   const [epoch] = await currentEpochs(["generate"]);
-  const key = `video:v1:premium:who:${encodeURIComponent(visitorId)}:${period(today(), epoch!)}`;
+  const suffix = period(today(), epoch!);
+  const keys = [
+    `video:v1:premium:who:${encodeURIComponent(visitorId)}:${suffix}`,
+    `video:v1:premium:net:${networkKey(clientIp)}:${suffix}`,
+  ];
   const taken = await upstashEval<number>({
     script: TAKE_PREMIUM_SCRIPT,
-    keys: [key],
-    args: [premiumPerPerson(), DAY_SECONDS * 2],
+    keys,
+    args: [premiumPerPerson(), premiumPerNetwork(), DAY_SECONDS * 2],
   });
   if (taken !== 1) return null;
   return {
     refund: async () => {
       try {
-        await upstashEval<number>({ script: REFUND_SCRIPT, keys: [key] });
+        await upstashEval<number>({ script: REFUND_SCRIPT, keys });
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            event: "video.premium.refund_failed",
-            error: error instanceof Error ? error.message : "unknown",
-          }),
-        );
+        logEvent("error", "video.premium.refund_failed", {
+          error: errorText(error),
+        });
       }
     },
   };
@@ -270,13 +297,32 @@ async function usedToday(kinds: Kind[]): Promise<number[]> {
   return kinds.map((_, index) => Number(used[index]) || 0);
 }
 
-/** How many more videos the public may start today. Throws without Redis. */
-export async function videosLeftToday(): Promise<number> {
-  const [[used], limits] = await Promise.all([
-    usedToday(["generate"]),
+/**
+ * Which of today's budgets would turn this person away (everyone's, their
+ * own or their connection's), or null while all have room. Read-only: the
+ * generate route still reserves atomically. Throws without Redis.
+ */
+export async function videoLimitReached(
+  requester: Requester,
+  options: { priority: boolean },
+): Promise<{ reason: LimitReason; limit: number } | null> {
+  const day = today();
+  const [[epoch], limits] = await Promise.all([
+    currentEpochs(["generate"]),
     videoLimits(true),
   ]);
-  return Math.max(0, limits.daily - used!);
+  const used = await upstashCommand<Array<string | null>>([
+    "MGET",
+    ...budgetKeys("generate", requester, period(day, epoch!)),
+  ]);
+  const allowed: Limits = {
+    ...limits,
+    person: options.priority ? limits.priorityPerson : limits.person,
+  };
+  for (const [index, reason] of REASONS.entries())
+    if ((Number(used[index]) || 0) >= allowed[reason])
+      return { reason, limit: allowed[reason] };
+  return null;
 }
 
 /** Today's video and MP4 budgets and what the public has used, for /admin. */
@@ -317,7 +363,7 @@ export async function resetUsageToday(kind: Kind): Promise<number> {
 // Paid runs at once across every instance (VIDEO_MAX_PAID_RUNS, default 10).
 // Each run makes one short voice call (voice.ts), which OpenRouter does not
 // rate-limit, so the voice does not cap this.
-const maxPaidRuns = () => readLimit("VIDEO_MAX_PAID_RUNS", 10);
+const maxPaidRuns = () => readIntEnv("VIDEO_MAX_PAID_RUNS", 10);
 const PAID_RUNS_KEY = "video:v1:generate:running";
 
 // KEYS: the running set. ARGV: now, the cap, whether to skip the cap, this
@@ -334,10 +380,10 @@ return 1
 
 /**
  * A place among the videos being paid for right now, or null when the cap is
- * reached. A refunded failure costs its visitor nothing, but the Claude and
- * voice calls were still paid; the cap bounds how much of that can happen at
- * once. The operator's runs count toward it but are never refused. A run
- * that dies without releasing its place loses it after ttlMs.
+ * reached. Taken just before a run's first model call, so runs still reading
+ * the repository (or failing to) hold none. The operator's runs count toward
+ * it but are never refused. A run that dies without releasing its place
+ * loses it after ttlMs.
  */
 export async function tryPaidVideoRun(params: {
   operator: boolean;
@@ -362,14 +408,89 @@ export async function tryPaidVideoRun(params: {
     try {
       await upstashCommand<number>(["ZREM", PAID_RUNS_KEY, token]);
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          event: "video.paid_run.release_failed",
-          error: error instanceof Error ? error.message : "unknown",
-        }),
-      );
+      logEvent("error", "video.paid_run.release_failed", {
+        error: errorText(error),
+      });
     }
   };
+}
+
+// KEYS: one connection's counter for the current window. ARGV: the limit,
+// then the seconds left in the window. Returns 1 while under the limit. The
+// count is never given back.
+const WINDOW_SCRIPT = `
+local count = redis.call("INCR", KEYS[1])
+if count == 1 or redis.call("TTL", KEYS[1]) < 0 then
+  redis.call("EXPIRE", KEYS[1], ARGV[2])
+end
+if count > tonumber(ARGV[1]) then
+  return 0
+end
+return 1
+`;
+
+/**
+ * Count one more use of `name` by this connection in the current fixed
+ * window (aligned to the epoch, so its start names the counter). Throws when
+ * Redis fails.
+ */
+async function countInWindow(
+  name: string,
+  clientIp: string | null,
+  limit: number,
+  windowSeconds: number,
+): Promise<{ ok: boolean; retryAfterSeconds: number }> {
+  const now = Math.floor(Date.now() / 1000);
+  const start = now - (now % windowSeconds);
+  const left = start + windowSeconds - now;
+  const ok = await upstashEval<number>({
+    script: WINDOW_SCRIPT,
+    keys: [`video:v1:${name}:${networkKey(clientIp)}:${start}`],
+    args: [limit, left],
+  });
+  return { ok: ok === 1, retryAfterSeconds: left };
+}
+
+/**
+ * One more new video started from this connection this hour
+ * (VIDEO_NETWORK_ATTEMPT_LIMIT, default 10), or how long until it may start
+ * another. Every run reads the repository from GitHub with the site's
+ * credentials before any model call, and a run that fails there gets its
+ * daily place back, so this count is what bounds those reads: it is never
+ * refunded. Throws when Redis fails.
+ */
+export function takeVideoAttempt(clientIp: string | null) {
+  return countInWindow(
+    "attempts",
+    clientIp,
+    readIntEnv("VIDEO_NETWORK_ATTEMPT_LIMIT", 10),
+    readIntEnv("VIDEO_NETWORK_ATTEMPT_WINDOW_SECONDS", 3600, { min: 1 }),
+  );
+}
+
+/** GitHub lookups for the /admin feed per connection every ten minutes. */
+const GATE_LOOKUPS = { limit: 5, windowSeconds: 600 };
+
+/**
+ * Whether the /admin feed may look a held-back visitor's repository up on
+ * GitHub (to name it only if it is public): a few lookups per connection
+ * every ten minutes. The feed is only telemetry, so over the limit, or when
+ * Redis cannot say, the answer is no.
+ */
+export async function takeGateLookup(
+  clientIp: string | null,
+): Promise<boolean> {
+  try {
+    const { ok } = await countInWindow(
+      "gate-lookups",
+      clientIp,
+      GATE_LOOKUPS.limit,
+      GATE_LOOKUPS.windowSeconds,
+    );
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -382,9 +503,7 @@ export async function firstGateNotice(params: {
   repository: string;
   step: string;
 }): Promise<boolean> {
-  const network = encodeURIComponent(
-    toRateLimitBucket(params.clientIp ?? "unknown"),
-  );
+  const network = networkKey(params.clientIp);
   try {
     const set = await upstashCommand<"OK" | null>([
       "SET",
@@ -400,49 +519,19 @@ export async function firstGateNotice(params: {
   }
 }
 
-const RELEASE_SCRIPT = `
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`;
-
 /**
  * One holder at a time across every server instance, or null if someone else
  * holds it. The lock expires on its own if the holder dies.
  */
-export async function tryVideoLock(
+export function tryVideoLock(
   name: string,
   ttlMs: number,
 ): Promise<(() => Promise<void>) | null> {
-  const key = `video:v1:lock:${name}`;
-  const token = randomUUID();
-  const acquired = await upstashCommand<"OK" | null>([
-    "SET",
-    key,
-    token,
-    "NX",
-    "PX",
+  return tryDistributedLock({
+    key: `video:v1:lock:${name}`,
     ttlMs,
-  ]);
-  if (acquired !== "OK") return null;
-  return async () => {
-    try {
-      await upstashEval<number>({
-        script: RELEASE_SCRIPT,
-        keys: [key],
-        args: [token],
-      });
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          event: "video.lock.release_failed",
-          lock: name,
-          error: error instanceof Error ? error.message : "unknown",
-        }),
-      );
-    }
-  };
+    releaseFailureEvent: "video.lock.release_failed",
+  });
 }
 
 /** The lock a repository's video generation holds while it runs. */
@@ -486,6 +575,23 @@ export function limitMessage(
       ? "You've already made your free video for today"
       : `You've already made your ${limit} free videos for today`;
   return `${used}. You can make another in ${wait}. ${STILL_FREE}`;
+}
+
+/**
+ * Why new videos are paused: the operator paused them from /admin
+ * ("paused", until they resume), or the narrator's balance ran out ("voice",
+ * which lifts on its own within minutes).
+ */
+export function pausedMessage(reason: "paused" | "voice"): string {
+  return reason === "voice"
+    ? `New videos are paused for a few minutes. Try again soon. ${STILL_FREE}`
+    : `New videos are paused for now. Try again later. ${STILL_FREE}`;
+}
+
+/** Too many new videos started from one connection within the hour. */
+export function attemptLimitMessage(retryAfterSeconds: number): string {
+  const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+  return `Lots of videos have been started from your internet connection lately. Try again in about ${minutes} minute${minutes === 1 ? "" : "s"}. ${STILL_FREE}`;
 }
 
 /** The MP4 download limit, worded for whichever budget ran out. */

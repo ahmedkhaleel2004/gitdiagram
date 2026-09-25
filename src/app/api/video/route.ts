@@ -14,17 +14,26 @@ import {
 } from "~/server/explainer/config";
 import { readAdmissionControls } from "~/server/admin/controls";
 import { videoResponseTag } from "~/server/explainer/cache";
-import { anyDeviceHere, audienceBlock } from "~/server/explainer/audience";
+import {
+  anyDeviceHere,
+  audienceBlock,
+  isInVideoRegion,
+} from "~/server/explainer/audience";
 import { reportHeldBack } from "~/server/explainer/gate-notice";
 import {
   generationLockName,
   isVideoAdmin,
   isVideoLockHeld,
-  videosLeftToday,
+  videoLimitReached,
 } from "~/server/explainer/limits";
 import { isNarrationAvailable } from "~/server/explainer/narration";
 import { readVideoArtifact } from "~/server/explainer/store";
-import { readVisitor, withVisitorCookie } from "~/server/explainer/visitor";
+import {
+  readVisitor,
+  withVisitorCookie,
+  type Visitor,
+} from "~/server/explainer/visitor";
+import { getClientIp } from "~/server/http/client-ip";
 import type { VideoPausedReason } from "~/features/explainer/api";
 
 export const runtime = "nodejs";
@@ -39,10 +48,12 @@ const querySchema = z.object({
 /**
  * Whether this visitor could start a new video right now, and if not, why:
  * "audience" (early access is limited to a few places), "device" (open to
- * desktops only here) or "limit" (today's budget is spent).
+ * desktops only here) or "limit" (paused, or a budget this visitor would
+ * meet is spent: everyone's, their own or their connection's).
  */
 async function videoAvailability(
   request: Request,
+  visitor: Visitor,
   username: string,
   repo: string,
 ): Promise<{
@@ -90,13 +101,16 @@ async function videoAvailability(
         paused: blocked === "mobile" ? "device" : "audience",
       };
     }
-    const [left, credits] = await Promise.all([
-      videosLeftToday(),
+    const [reached, credits] = await Promise.all([
+      videoLimitReached(
+        { visitorId: visitor.id, clientIp: getClientIp(request) },
+        { priority: isInVideoRegion(request, controls.priorityPlaces) },
+      ),
       isNarrationAvailable(),
     ]);
-    if (left > 0 && credits)
+    if (!reached && credits)
       return { canGenerate: true, paused: null, anyDevice };
-    heldBack(left > 0 ? "voice" : "daily");
+    heldBack(reached?.reason ?? "voice");
     return { canGenerate: false, paused: "limit" };
   } catch {
     // Without Redis nothing new can start (see the generate route).
@@ -128,8 +142,9 @@ export async function GET(request: Request): Promise<Response> {
         },
       },
     );
+  const visitor = readVisitor(request);
   const [availability, generating] = await Promise.all([
-    videoAvailability(request, username, repo),
+    videoAvailability(request, visitor, username, repo),
     // A run in progress, which the page can wait for instead of offering a
     // new one. Only production takes the lock.
     process.env.NODE_ENV === "production"
@@ -144,6 +159,6 @@ export async function GET(request: Request): Promise<Response> {
       { ok: true, video: null, generating, ...availability },
       { headers: NO_STORE_RESPONSE_HEADERS },
     ),
-    readVisitor(request),
+    visitor,
   );
 }

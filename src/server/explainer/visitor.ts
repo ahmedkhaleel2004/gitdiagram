@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { readCookie } from "~/server/http/cookies";
 
 // Video budgets count per person, and a person here is one browser: a random
 // id kept in a cookie. People who share an internet connection (an office, a
@@ -20,12 +21,10 @@ export interface Visitor {
 }
 
 export function readVisitor(request: Request): Visitor {
-  for (const part of (request.headers.get("cookie") ?? "").split(";")) {
-    const [key, value] = part.trim().split("=");
-    if (key === VISITOR_COOKIE && value && ID.test(value))
-      return { id: value, fresh: false };
-  }
-  return { id: randomUUID(), fresh: true };
+  const value = readCookie(request, VISITOR_COOKIE);
+  return value && ID.test(value)
+    ? { id: value, fresh: false }
+    : { id: randomUUID(), fresh: true };
 }
 
 /** Hand a new visitor their id, so their next request counts as them. */

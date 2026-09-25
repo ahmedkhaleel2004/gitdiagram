@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { readCookie } from "~/server/http/cookies";
 import { upstashCommand } from "~/server/storage/upstash";
 
 // The operator (the site's owner) signs in to /admin with the operator token,
@@ -152,14 +153,6 @@ export async function verifyAdminSession(
 ): Promise<boolean> {
   if (generationOf(value, now) === null) return false;
   return isAdminSession(value, now, await sessionGeneration(now));
-}
-
-function readCookie(request: Request, name: string): string | null {
-  for (const part of (request.headers.get("cookie") ?? "").split(";")) {
-    const [key, ...rest] = part.trim().split("=");
-    if (key === name) return rest.join("=");
-  }
-  return null;
 }
 
 /** Whether the request carries a valid dashboard session (checked in Redis). */

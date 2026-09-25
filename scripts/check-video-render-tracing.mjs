@@ -17,17 +17,26 @@ const chromium = {
   minBytes: 10_000_000,
 };
 
-// The render route only joins segments, so it ships ffmpeg alone; Chromium
-// runs in the segment route (frames and posters) and in generate (posters).
+// Chromium runs only in the segment route (frames and posters). The render
+// route joins segments and generate voices narration, so they ship ffmpeg
+// alone, and must not carry Chromium's ~60 MB.
 const routes = [
-  { route: "api/video/render", requiredFiles: [ffmpeg] },
+  {
+    route: "api/video/render",
+    requiredFiles: [ffmpeg],
+    forbiddenFiles: [chromium],
+  },
   { route: "api/video/render/segment", requiredFiles: [ffmpeg, chromium] },
-  { route: "api/video/generate", requiredFiles: [ffmpeg, chromium] },
+  {
+    route: "api/video/generate",
+    requiredFiles: [ffmpeg],
+    forbiddenFiles: [chromium],
+  },
 ];
 
 const failures = [];
 
-for (const { route, requiredFiles } of routes) {
+for (const { route, requiredFiles, forbiddenFiles = [] } of routes) {
   const nftFile = `.next/server/app/${route}/route.js.nft.json`;
   if (!existsSync(nftFile)) {
     failures.push(`${nftFile} is missing. Run the production build first.`);
@@ -39,6 +48,10 @@ for (const { route, requiredFiles } of routes) {
       path.relative(".", path.resolve(path.dirname(nftFile), file)),
     ),
   );
+  for (const { file } of forbiddenFiles) {
+    if (traced.has(path.normalize(file)))
+      failures.push(`/${route} traces ${file}, which it does not use.`);
+  }
   for (const { file, minBytes } of requiredFiles) {
     if (!traced.has(path.normalize(file))) {
       failures.push(`/${route} does not trace ${file}.`);
