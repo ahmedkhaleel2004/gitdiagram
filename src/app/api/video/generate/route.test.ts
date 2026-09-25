@@ -244,6 +244,7 @@ describe("POST /api/video/generate", () => {
     expect(response.status).toBe(409);
     expect(JSON.parse(text)).toMatchObject({
       error: "This repository already has a video.",
+      reason: "exists",
     });
     expect(mocks.reserveVideoSlot).not.toHaveBeenCalled();
     expect(mocks.tryVideoLock).not.toHaveBeenCalled();
@@ -273,8 +274,9 @@ describe("POST /api/video/generate", () => {
 
   it("refunds the reservation when the repository's lock is already held", async () => {
     mocks.tryVideoLock.mockResolvedValue(null);
-    const { response } = await run();
+    const { response, text } = await run();
     expect(response.status).toBe(409);
+    expect(JSON.parse(text)).toMatchObject({ reason: "generating" });
     expect(mocks.refund).toHaveBeenCalledTimes(1);
     expect(mocks.takeVideoAttempt).not.toHaveBeenCalled();
     expect(mocks.generateExplainerVideo).not.toHaveBeenCalled();
@@ -288,6 +290,7 @@ describe("POST /api/video/generate", () => {
     expect(response.status).toBe(409);
     expect(JSON.parse(text)).toMatchObject({
       error: "This repository already has a video.",
+      reason: "exists",
     });
     expect(mocks.generateExplainerVideo).not.toHaveBeenCalled();
     expect(mocks.refund).toHaveBeenCalledTimes(1);

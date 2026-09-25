@@ -4,18 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { Play, Star } from "lucide-react";
 import type { VideoCard } from "~/features/explainer/catalog-types";
+import { videoFileUrl } from "~/features/explainer/file-url";
 import { formatCompact } from "~/lib/format";
 import styles from "./video-grid.module.css";
 
 function Poster({ card }: { card: VideoCard }) {
   const [failed, setFailed] = useState(false);
-  const src = `/api/video/file?${new URLSearchParams({
-    username: card.owner,
-    repo: card.repo,
-    format: "still",
-    v: card.createdAt,
-    ...(card.posterAt ? { p: String(card.posterAt) } : {}),
-  }).toString()}`;
+  const src = videoFileUrl(card, "still");
   return (
     <div className={styles.poster}>
       {failed ? (

@@ -9,6 +9,7 @@ import {
 import { getClientIp } from "~/server/http/client-ip";
 import {
   jsonErrorResponse,
+  NO_STORE_RESPONSE_HEADERS,
   parseSameOriginJsonRequest,
 } from "~/server/http/same-origin-json";
 import { readAdmissionControls } from "~/server/admin/controls";
@@ -185,8 +186,16 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     priority = isInVideoRegion(request, controls.priorityPlaces);
   }
 
+  // `reason` lets the panel show the video (or wait for it) instead of an error.
   const alreadyMade = () =>
-    jsonErrorResponse("This repository already has a video.", 409);
+    Response.json(
+      {
+        ok: false,
+        error: "This repository already has a video.",
+        reason: "exists",
+      },
+      { status: 409, headers: NO_STORE_RESPONSE_HEADERS },
+    );
   let reservation: Reservation | null = null;
   let releaseLock: (() => Promise<void>) | null = null;
   let releaseRun: (() => Promise<void>) | null = null;
@@ -224,9 +233,14 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       );
       if (!releaseLock)
         return await turnAway(
-          jsonErrorResponse(
-            "This video is being made right now. It will be here in about a minute.",
-            409,
+          Response.json(
+            {
+              ok: false,
+              error:
+                "This video is being made right now. It will be here in about a minute.",
+              reason: "generating",
+            },
+            { status: 409, headers: NO_STORE_RESPONSE_HEADERS },
           ),
         );
       // Checked again under the lock: a run that finished between the first
