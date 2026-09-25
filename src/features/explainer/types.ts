@@ -5,7 +5,8 @@
  * The free-form shot language the scene engine (public/video-engine/shots.js)
  * draws. These lists are the single source of truth for the designer's tool
  * schema, the prompt, the server normalizer and the engine (a test checks
- * that shots.js and the prompt cover every entry).
+ * that shots.js and the prompt cover every entry). The field values below
+ * them (tones, icons, …) are checked against shots.js the same way.
  */
 export const SHOT_KINDS = [
   "heading",
@@ -49,6 +50,56 @@ export const SHOT_ACTIONS = [
   "reset",
 ] as const;
 type ShotActionName = (typeof SHOT_ACTIONS)[number];
+
+// The values the engine draws for a few element fields; anything else falls
+// back to the first entry. A test checks each list against shots.js.
+
+/** Box, chip and stamp tones. */
+export const SHOT_TONES = ["plain", "accent", "soft", "ok", "bad", "ghost"];
+/** Box icons ("none" draws no icon). */
+export const SHOT_ICONS = [
+  "server",
+  "database",
+  "user",
+  "file",
+  "folder",
+  "globe",
+  "lock",
+  "bolt",
+  "clock",
+  "queue",
+  "cpu",
+  "cloud",
+  "key",
+  "gear",
+  "package",
+  "browser",
+  "terminal",
+  "shield",
+  "cache",
+  "none",
+];
+/** How a scene enters ("cut" is the engine's plain fallback). */
+export const SHOT_TRANSITIONS = ["slide", "push", "zoom", "cut"];
+/** The SVG shapes an svg element may draw, and the fills they may use. */
+export const SVG_SHAPES = [
+  "path",
+  "rect",
+  "circle",
+  "line",
+  "polyline",
+  "polygon",
+];
+export const SVG_PAINT = [
+  "none",
+  "paper",
+  "card",
+  "accent",
+  "soft",
+  "ink",
+  "ok",
+  "bad",
+];
 
 /** README pictures a film shows are img1, img2 or img3. */
 export const PICTURE_ID = /^img[1-3]$/;

@@ -12,6 +12,7 @@ import { prepareRepositoryContext } from "~/server/generate/repository-context";
 import { fetchSourceContext } from "~/server/generate/source-context";
 import type { VideoMeta } from "~/features/explainer/types";
 import { readReadmeImages, type StoredPicture } from "./readme-images";
+import { repositoryContext } from "./shot-prompt";
 import type { PlanRepositoryFacts } from "./text";
 
 /** Everything the film's writers see about the repository. */
@@ -108,6 +109,7 @@ export async function readRepositoryForVideo(params: {
       selectedPaths: prepared.selectedPaths,
       signal,
     }),
+    // Bounded by its own deadline, so it never holds up the read.
     readReadmeImages({
       readme: data.readme,
       owner: username,
@@ -124,29 +126,32 @@ export async function readRepositoryForVideo(params: {
     stars: data.stargazerCount ?? 0,
     language: data.language ?? "",
   };
+  const prompt: RepositoryContextInput = {
+    owner: username,
+    repo,
+    url: meta.url,
+    description: meta.description,
+    stars: meta.stars,
+    language: meta.language,
+    topics: data.topics ?? [],
+    readme: prepared.readme,
+    fileTree: prepared.fileTree,
+    treeTruncated: prepared.treeTruncated,
+    sourceText: source.text,
+  };
   return {
     meta,
     sourceFileCount: prepared.selectedPaths.length,
     pictures,
-    prompt: {
-      owner: username,
-      repo,
-      url: meta.url,
-      description: meta.description,
-      stars: meta.stars,
-      language: meta.language,
-      topics: data.topics ?? [],
-      readme: prepared.readme,
-      fileTree: prepared.fileTree,
-      treeTruncated: prepared.treeTruncated,
-      sourceText: source.text,
-    },
+    prompt,
     facts: {
       name: repo,
       paths: data.fileTree.split("\n").filter(Boolean),
       // README examples are real code too; on-screen code may quote either.
       sourceText: `${source.text}\n${prepared.readme}`,
       images: pictures.map((picture) => picture.id),
+      // What the writers read; on-screen web addresses must come from it.
+      material: repositoryContext(prompt),
     },
   };
 }

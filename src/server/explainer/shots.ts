@@ -1,162 +1,31 @@
 import {
   SHOT_ACTIONS,
+  SHOT_ICONS,
   SHOT_KINDS,
+  SHOT_TONES,
+  SHOT_TRANSITIONS,
+  SVG_PAINT,
+  SVG_SHAPES,
   type ShotAction,
   type ShotBeat,
   type ShotElement,
   type ShotKind,
   type ShotPlan,
 } from "~/features/explainer/types";
+import type { Script } from "./script";
 import {
   clip,
   normalizeWord,
-  writtenLine,
+  plainText as text,
+  records as list,
+  withoutStrangeAddresses,
   type PlanRepositoryFacts,
 } from "./text";
 
-type JsonSchema = Record<string, unknown>;
-const str: JsonSchema = { type: "string" };
-const num: JsonSchema = { type: "number" };
-const bool: JsonSchema = { type: "boolean" };
-const arr = (items: JsonSchema): JsonSchema => ({ type: "array", items });
-
-const TONES = ["plain", "accent", "soft", "ok", "bad", "ghost"];
-const ICONS = [
-  "server",
-  "database",
-  "user",
-  "file",
-  "folder",
-  "globe",
-  "lock",
-  "bolt",
-  "clock",
-  "queue",
-  "cpu",
-  "cloud",
-  "key",
-  "gear",
-  "package",
-  "browser",
-  "terminal",
-  "shield",
-  "cache",
-  "none",
-];
-const TRANSITIONS = ["slide", "push", "zoom", "cut"];
-
-// Both roles get both tools so the cached prefix (tools → system → repo) is shared.
-export const SCRIPT_TOOL = {
-  name: "write_script",
-  description: "DIRECTOR only: submit the film's script.",
-  input_schema: {
-    type: "object",
-    properties: {
-      title: str,
-      story: {
-        type: "string",
-        description:
-          "The whole narration as one flowing paragraph, written before the beats; the beats split it word for word.",
-      },
-      outro: str,
-      beats: arr({
-        type: "object",
-        properties: { scene: str, narration: str, brief: str },
-        required: ["scene", "narration", "brief"],
-      }),
-    },
-    required: ["title", "story", "outro", "beats"],
-  },
-};
-
-export const SHOTS_TOOL = {
-  name: "write_shots",
-  description:
-    "DESIGNER only: submit the exact shots for the beats you were assigned.",
-  input_schema: {
-    type: "object",
-    properties: {
-      shots: arr({
-        type: "object",
-        properties: {
-          beat: { type: "integer" },
-          transition: { type: "string", enum: TRANSITIONS },
-          elements: arr({
-            type: "object",
-            properties: {
-              id: str,
-              kind: { type: "string", enum: SHOT_KINDS },
-              x: num,
-              y: num,
-              w: num,
-              h: num,
-              at: str,
-              text: str,
-              size: str,
-              tone: str,
-              mono: bool,
-              title: str,
-              lines: arr(str),
-              focus: arr({ type: "integer" }),
-              label: str,
-              sub: str,
-              icon: str,
-              path: str,
-              paths: arr(str),
-              columns: arr(str),
-              rows: arr(arr(str)),
-              items: { type: "array" },
-              unit: str,
-              value: num,
-              prefix: str,
-              suffix: str,
-              url: str,
-              method: str,
-              status: { type: ["integer", "null"] },
-              viewBox: str,
-              shapes: arr({ type: "object" }),
-              src: str,
-              fit: str,
-              from: str,
-              to: str,
-              dashed: bool,
-              flow: bool,
-            },
-            required: ["id", "kind"],
-          }),
-          actions: arr({
-            type: "object",
-            properties: {
-              at: str,
-              do: { type: "string", enum: SHOT_ACTIONS },
-              target: {},
-              lines: arr({ type: "integer" }),
-              rows: arr({ type: "integer" }),
-              text: str,
-              value: num,
-              x: num,
-              y: num,
-              line: str,
-            },
-            required: ["do"],
-          }),
-        },
-        required: ["beat", "elements", "actions"],
-      }),
-    },
-    required: ["shots"],
-  },
-};
+// The designers' shots, merged into the script and checked against the
+// repository before anything reaches the stage.
 
 type Json = Record<string, unknown>;
-const rec = (value: unknown): Json =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Json)
-    : {};
-const list = (value: unknown): Json[] =>
-  Array.isArray(value) ? value.map(rec) : [];
-const text = (value: unknown): string =>
-  typeof value === "string" || typeof value === "number" ? String(value) : "";
 const strings = (value: unknown, max: number, limit: number): string[] =>
   (Array.isArray(value) ? value : [])
     .slice(0, max)
@@ -170,108 +39,29 @@ const clamp = (n: number, lo: number, hi: number) =>
 const words = (sentence: string) =>
   sentence.split(/\s+/).map(normalizeWord).filter(Boolean);
 
-interface ScriptBeat {
-  scene: string;
-  /** What the voice reads, the captions show and the cues match. */
-  narration: string;
-  brief: string;
+// More than a beat can show; a designer asking for more loses the rest.
+const MAX_ELEMENTS_PER_BEAT = 12;
+const MAX_ACTIONS_PER_BEAT = 16;
+// Warnings are stored in the public artifact; past this only a count is kept.
+const MAX_WARNINGS = 50;
+
+/** A warning list that stops growing at MAX_WARNINGS. */
+class Warnings {
+  readonly list: string[] = [];
+  private dropped = 0;
+  get full() {
+    return this.list.length >= MAX_WARNINGS;
+  }
+  push(warning: string) {
+    if (this.full) this.dropped++;
+    else this.list.push(warning);
+  }
+  done(): string[] {
+    return this.dropped
+      ? [...this.list, `…and ${this.dropped} more warnings`]
+      : this.list;
+  }
 }
-export interface Script {
-  title: string;
-  outro: string;
-  beats: ScriptBeat[];
-}
-
-// A web address in the narration: a scheme or "www.", or a bare host on a
-// common web domain ("example.com", but not "Next.js").
-const WEB_ADDRESS =
-  /\b(?:https?:\/\/|www\.)[^\s]+|\b(?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|app|ai|co|xyz|me|sh|gg|ly|so|info|biz|site|online|link|top|click|us|uk|de|ru|cn|tk|tv|fm)\b(?:\/[^\s]*)?/gi;
-
-function hostOf(address: string): string {
-  return address
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .split(/[/?#:]/)[0]!
-    .replace(/[.,;!?)\]'"…]+$/, "");
-}
-
-/**
- * Repository text is untrusted, so a script may carry an address the README
- * planted. Sentences naming an address the repository never mentions are cut
- * (the rest of the line is kept, so the paid run still makes its film).
- */
-function withoutStrangeAddresses(value: string, repository: string): string {
-  const known = repository.toLowerCase();
-  const strange = (sentence: string) =>
-    (sentence.match(WEB_ADDRESS) ?? []).some((address) => {
-      const host = hostOf(address);
-      return !host || !known.includes(host);
-    });
-  if (!strange(value)) return value;
-  const kept = value
-    .split(/(?<=[.!?…])\s+/)
-    .filter((sentence) => !strange(sentence))
-    .join(" ");
-  console.warn(
-    JSON.stringify({ event: "video.script.address_removed", kept: !!kept }),
-  );
-  return kept;
-}
-
-/**
- * The director's script, cleaned. `repository` is the material the director
- * read; web addresses it does not contain never reach the voice or the screen.
- */
-export function normalizeScript(
-  raw: unknown,
-  name: string,
-  repository = "",
-): Script {
-  const input = rec(raw);
-  const clean = (value: unknown) =>
-    withoutStrangeAddresses(text(value), repository);
-  const beats = list(input.beats)
-    .slice(0, 22)
-    .map((beat) => {
-      const narration = clean(beat.narration);
-      return {
-        scene: clip(beat.scene, 24) || "s",
-        narration: writtenLine(narration),
-        brief: clip(beat.brief, 900),
-      };
-    })
-    .filter((beat) => beat.narration);
-  if (beats.length < 4) throw new Error("The script has too few beats.");
-  return {
-    title: clip(clean(input.title) || name, 28),
-    outro: clip(clean(input.outro), 60),
-    beats,
-  };
-}
-
-// At a natural speaking pace (about 2.1 words a second, with pauses) this
-// keeps the film near a minute. Longer scripts go back to the director once.
-export const SCRIPT_WORD_TARGET = 125;
-export const SCRIPT_WORD_LIMIT = 140;
-
-export function scriptWordCount(script: Script): number {
-  return script.beats.reduce(
-    (sum, beat) => sum + beat.narration.split(/\s+/).filter(Boolean).length,
-    0,
-  );
-}
-
-/** The script as designers see it: numbered beats with scene and brief. */
-export function scriptForDesigners(script: Script): string {
-  return script.beats
-    .map(
-      (beat, index) =>
-        `${index}. [${beat.scene}] "${beat.narration}" — ${beat.brief}`,
-    )
-    .join("\n");
-}
-
 const MIN_SIZE: Record<Exclude<ShotKind, "arrow">, [number, number]> = {
   heading: [2, 0.8],
   text: [1.5, 0.4],
@@ -331,7 +121,7 @@ function normalizeElement(
   raw: Json,
   narration: string,
   facts: PlanRepositoryFacts,
-  warnings: string[],
+  warnings: Warnings,
   where: string,
 ): ShotElement | null {
   const kind = text(raw.kind) as ShotKind;
@@ -360,7 +150,7 @@ function normalizeElement(
   const x = clamp(number(raw.x, 0.8), CANVAS.left, CANVAS.right - w);
   const y = clamp(number(raw.y, 1), CANVAS.top, CANVAS.bottom - h);
   const element: ShotElement = { ...base, x, y, w, h };
-  const tone = TONES.includes(text(raw.tone)) ? text(raw.tone) : "plain";
+  const tone = SHOT_TONES.includes(text(raw.tone)) ? text(raw.tone) : "plain";
   switch (kind) {
     case "heading":
       element.text = clip(raw.text, 60);
@@ -405,7 +195,9 @@ function normalizeElement(
     case "box":
       element.label = clip(raw.label, 28);
       element.sub = clip(raw.sub, 36);
-      element.icon = ICONS.includes(text(raw.icon)) ? text(raw.icon) : "none";
+      element.icon = SHOT_ICONS.includes(text(raw.icon))
+        ? text(raw.icon)
+        : "none";
       element.tone = tone;
       break;
     case "chip":
@@ -501,7 +293,53 @@ function normalizeElement(
       element.shapes = sanitizeShapes(raw.shapes);
       break;
   }
+  withoutStrangeAddressesOnScreen(
+    element,
+    facts.material ?? facts.sourceText,
+    warnings,
+    where,
+  );
   return element;
+}
+
+// Every on-screen field that can carry free text.
+const SCREEN_TEXT = ["text", "label", "sub", "title", "url"] as const;
+const SCREEN_LINES = ["lines", "items", "columns"] as const;
+
+/**
+ * The narration's web-address rule (withoutStrangeAddresses), applied to what
+ * the element shows: a text naming an address the repository never mentions
+ * loses that sentence, and a list keeps its length (the line is emptied) so
+ * line and row numbers still point at the same entries.
+ */
+function withoutStrangeAddressesOnScreen(
+  element: ShotElement,
+  known: string,
+  warnings: Warnings,
+  where: string,
+) {
+  let removed = false;
+  const clean = (value: unknown) => {
+    if (typeof value !== "string") return value;
+    const kept = withoutStrangeAddresses(value, known);
+    if (kept !== value) removed = true;
+    return kept;
+  };
+  for (const key of SCREEN_TEXT)
+    if (key in element) element[key] = clean(element[key]);
+  for (const key of SCREEN_LINES)
+    if (Array.isArray(element[key]))
+      element[key] = (element[key] as unknown[]).map((item) =>
+        item && typeof item === "object"
+          ? { ...item, label: clean((item as Json).label) }
+          : clean(item),
+      );
+  if (Array.isArray(element.rows))
+    element.rows = (element.rows as unknown[][]).map((row) => row.map(clean));
+  if (removed)
+    warnings.push(
+      `removed an unknown web address from ${element.id} (${where})`,
+    );
 }
 
 function numbers(value: unknown, max: number): number[] {
@@ -559,8 +397,6 @@ function displayPath(path: string): string {
     : `…${tail.slice(-(PATH_DISPLAY_LIMIT - 1))}`;
 }
 
-const SHAPES = ["path", "rect", "circle", "line", "polyline", "polygon"];
-const PAINT = ["none", "paper", "card", "accent", "soft", "ink", "ok", "bad"];
 const GEOMETRY = [
   "x",
   "y",
@@ -579,7 +415,7 @@ const GEOMETRY = [
 function sanitizeShapes(value: unknown) {
   return list(value)
     .slice(0, 24)
-    .filter((shape) => SHAPES.includes(text(shape.shape)))
+    .filter((shape) => SVG_SHAPES.includes(text(shape.shape)))
     .map((shape) => {
       const clean: Json = { shape: text(shape.shape) };
       for (const key of GEOMETRY)
@@ -589,7 +425,9 @@ function sanitizeShapes(value: unknown) {
         clean.d = text(shape.d).slice(0, 600);
       if (/^[\d.,\s-]+$/.test(text(shape.points)))
         clean.points = text(shape.points).slice(0, 400);
-      clean.fill = PAINT.includes(text(shape.fill)) ? text(shape.fill) : "none";
+      clean.fill = SVG_PAINT.includes(text(shape.fill))
+        ? text(shape.fill)
+        : "none";
       clean.stroke = ["ink", "accent", "none"].includes(text(shape.stroke))
         ? text(shape.stroke)
         : "ink";
@@ -600,7 +438,7 @@ function sanitizeShapes(value: unknown) {
 function normalizeAction(
   raw: Json,
   narration: string,
-  warnings: string[],
+  warnings: Warnings,
   where: string,
 ): ShotAction | null {
   const kind = text(raw.do) as ShotAction["do"];
@@ -634,7 +472,7 @@ export function normalizeShots(
   designed: Map<number, Json>,
   facts: PlanRepositoryFacts,
 ): { plan: ShotPlan; warnings: string[] } {
-  const warnings: string[] = [];
+  const warnings = new Warnings();
   const beats: ShotBeat[] = [];
   let sceneIds = new Set<string>();
   let present = new Map<string, ShotElement>();
@@ -654,7 +492,17 @@ export function normalizeShots(
     const shot = designed.get(index);
     if (!shot) warnings.push(`no shot designed for ${where}`);
     const elements: ShotElement[] = [];
-    for (const raw of list(shot?.elements)) {
+    const rawElements = list(shot?.elements);
+    const rawActions = list(shot?.actions);
+    if (rawElements.length > MAX_ELEMENTS_PER_BEAT)
+      warnings.push(
+        `dropped ${rawElements.length - MAX_ELEMENTS_PER_BEAT} elements past the limit (${where})`,
+      );
+    if (rawActions.length > MAX_ACTIONS_PER_BEAT)
+      warnings.push(
+        `dropped ${rawActions.length - MAX_ACTIONS_PER_BEAT} actions past the limit (${where})`,
+      );
+    for (const raw of rawElements.slice(0, MAX_ELEMENTS_PER_BEAT)) {
       const element = normalizeElement(
         raw,
         beat.narration,
@@ -694,7 +542,7 @@ export function normalizeShots(
     });
     for (const element of kept) present.set(element.id, element);
     const actions: ShotAction[] = [];
-    for (const raw of list(shot?.actions)) {
+    for (const raw of rawActions.slice(0, MAX_ACTIONS_PER_BEAT)) {
       const action = normalizeAction(raw, beat.narration, warnings, where);
       if (!action) continue;
       const targets = (action.target as string[]).map(resolve).filter(
@@ -731,7 +579,7 @@ export function normalizeShots(
       scene: beat.scene,
       narration: beat.narration,
       transition:
-        first && TRANSITIONS.includes(text(shot?.transition))
+        first && SHOT_TRANSITIONS.includes(text(shot?.transition))
           ? text(shot?.transition)
           : "",
       elements: kept,
@@ -740,15 +588,18 @@ export function normalizeShots(
   });
   return {
     plan: { title: script.title, outro: script.outro, beats },
-    warnings,
+    warnings: warnings.done(),
   };
 }
 
 function warnOverlaps(
   elements: ShotElement[],
-  warnings: string[],
+  warnings: Warnings,
   where: string,
 ) {
+  // Pairs grow with the square of what is on screen; once the warnings are
+  // full, nothing more would be kept.
+  if (warnings.full) return;
   const boxes = elements.filter(
     (element) => element.kind !== "arrow" && element.kind !== "browser",
   );

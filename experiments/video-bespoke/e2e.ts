@@ -4,8 +4,8 @@
  *
  *   VIDEO_STORE=local bun --conditions=react-server experiments/video-bespoke/e2e.ts owner/repo
  */
-import { standardPlanner } from "~/server/explainer/director";
 import { generateExplainerVideo } from "~/server/explainer/generate";
+import { choosePlanner } from "~/server/explainer/planner";
 
 const [username, repo] = (process.argv[2] ?? "").split("/") as [string, string];
 const artifact = await generateExplainerVideo({
@@ -15,7 +15,16 @@ const artifact = await generateExplainerVideo({
     if (event.status !== "complete")
       console.info(JSON.stringify(event).slice(0, 200));
   },
-  choosePlanner: async () => standardPlanner(),
+  // A small repository and an ordinary visitor: the standard planner.
+  choosePlanner: async () =>
+    (
+      await choosePlanner({
+        operator: false,
+        stars: 0,
+        priority: false,
+        takePremium: async () => null,
+      })
+    ).planner,
 });
 console.info(
   JSON.stringify(

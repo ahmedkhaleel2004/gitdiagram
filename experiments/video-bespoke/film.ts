@@ -15,7 +15,8 @@ import {
 import { narrateBeats } from "~/server/explainer/narration";
 import { probePicture } from "~/server/explainer/readme-images";
 import type { VideoRepository } from "~/server/explainer/repository";
-import { normalizeShots, scriptWordCount } from "~/server/explainer/shots";
+import { scriptWordCount } from "~/server/explainer/script";
+import { normalizeShots } from "~/server/explainer/shots";
 import { videoVersion } from "~/server/explainer/store";
 import { REPOS } from "./design";
 import { beatEnds, browser, grab } from "./frames";
@@ -69,7 +70,7 @@ async function makeFilm(configName: string, repo: string) {
   const images = config.pictures ? await pictures(repo) : [];
   const options = {
     images,
-    prompts: config.pictures ? { system: pictureSystem() } : {},
+    ...(config.pictures ? { system: pictureSystem() } : {}),
   };
   const director = createFilmWriters(
     repository.prompt,

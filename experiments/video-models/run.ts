@@ -11,6 +11,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { VideoArtifact } from "~/features/explainer/types";
 import { createFilmWriters } from "~/server/explainer/director";
+import { premiumPlanner } from "~/server/explainer/planner";
 import { narrateBeats } from "~/server/explainer/narration";
 import {
   readRepositoryForVideo,
@@ -22,7 +23,8 @@ import {
   segmentRanges,
 } from "~/server/explainer/ffmpeg";
 import { renderVideoSegment } from "~/server/explainer/render";
-import { normalizeShots, scriptWordCount } from "~/server/explainer/shots";
+import { scriptWordCount } from "~/server/explainer/script";
+import { normalizeShots } from "~/server/explainer/shots";
 import { videoVersion } from "~/server/explainer/store";
 
 const ROOT = join(process.cwd(), "experiments", "video-models", "out");
@@ -98,7 +100,7 @@ async function generateOne(variant: Variant, repository: VideoRepository) {
   // createFilmWriters reads these synchronously, so parallel variants are safe.
   process.env.VIDEO_PLANNER_MODEL = variant.model;
   process.env.VIDEO_PLANNER_EFFORT = variant.effort;
-  const writers = createFilmWriters(repository.prompt);
+  const writers = createFilmWriters(repository.prompt, premiumPlanner());
   const log: string[] = [];
   console.warn = (...args: unknown[]) => {
     log.push(args.map(String).join(" "));

@@ -2,12 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { choosePlanner } from "./planner";
+import { canGenerateVideos } from "./config";
+import { choosePlanner, premiumPlanner } from "./planner";
 
 const OPUS = { model: "claude-opus-5-5", effort: "low" };
 const SOL = { model: "gpt-6-sol", effort: "medium" };
 // Opus writes the script, Sol designs the scenes.
 const STANDARD = { ...OPUS, designer: SOL };
+// Opus writes and designs; Sol takes over both if Opus fails.
+const PREMIUM = { ...OPUS, fallback: SOL };
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -35,7 +38,7 @@ describe("choosing the video planner", () => {
 
   it("gives a priority visitor Opus while their premium video lasts", async () => {
     const first = await choose({ priority: true });
-    expect(first.planner).toEqual(OPUS);
+    expect(first.planner).toEqual(PREMIUM);
     expect(first.refund).toBeTypeOf("function");
     const later = await choose({
       priority: true,
@@ -47,10 +50,10 @@ describe("choosing the video planner", () => {
   it("makes popular repositories and the operator's videos with Opus", async () => {
     const takePremium = vi.fn();
     expect((await choose({ stars: 10_000, takePremium })).planner).toEqual(
-      OPUS,
+      PREMIUM,
     );
     expect((await choose({ operator: true, takePremium })).planner).toEqual(
-      OPUS,
+      PREMIUM,
     );
     expect(takePremium).not.toHaveBeenCalled();
   });
@@ -71,14 +74,30 @@ describe("choosing the video planner", () => {
     expect((await choose()).planner).toEqual(SOL);
   });
 
-  it("uses Opus for everyone when there is no OpenAI key", async () => {
+  it("gives Opus no stand-in without an OpenAI key", () => {
     vi.stubEnv("OPENAI_API_KEY", "");
-    const choice = await choosePlanner({
-      operator: false,
-      stars: 1,
-      priority: false,
-      takePremium: vi.fn(),
-    });
-    expect(choice.planner).toEqual(OPUS);
+    expect(premiumPlanner()).toEqual(OPUS);
+  });
+});
+
+describe("whether videos can be made", () => {
+  const keys = (anthropic: string, openai: string) => {
+    vi.stubEnv("ANTHROPIC_API_KEY", anthropic);
+    vi.stubEnv("OPENAI_API_KEY", openai);
+    vi.stubEnv("OPENROUTER_API_KEY", "or-test");
+  };
+
+  it("needs the key of every configured model's provider", () => {
+    keys("sk-ant", "sk-test");
+    expect(canGenerateVideos()).toBe(true);
+    keys("", "sk-test");
+    expect(canGenerateVideos()).toBe(false);
+  });
+
+  it("needs no Claude key when every model is a GPT", () => {
+    keys("", "sk-test");
+    vi.stubEnv("VIDEO_PLANNER_MODEL", "gpt-6-sol");
+    vi.stubEnv("VIDEO_STANDARD_DIRECTOR_MODEL", "gpt-6-sol");
+    expect(canGenerateVideos()).toBe(true);
   });
 });
