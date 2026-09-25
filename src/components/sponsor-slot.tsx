@@ -2,14 +2,15 @@
 
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
-import { sponsorClickHref } from "~/lib/sponsor-campaign";
+import {
+  sponsorClickHref,
+  type WebsiteSponsorPlacement,
+} from "~/lib/sponsor-campaign";
 import { sponsorCreatives, type SponsorCreative } from "~/lib/sponsor-creative";
 import { useSponsorCampaign } from "~/hooks/use-sponsor-campaign";
 import { useSponsorImpression } from "~/hooks/use-sponsor-impression";
 import { cn } from "~/lib/utils";
 import styles from "./sponsor-slot.module.css";
-
-type SponsorSurface = "home" | "diagram" | "browse";
 
 function SponsorBanner({
   creative,
@@ -24,9 +25,9 @@ function SponsorBanner({
   href: string;
   className?: string;
   embedded?: boolean;
-  campaignId?: string;
+  campaignId: string;
   confirmed: boolean;
-  surface: SponsorSurface;
+  surface: WebsiteSponsorPlacement;
 }) {
   const { logo } = creative;
   // Only count the campaign the schedule check confirmed, not a stale render.
@@ -37,11 +38,7 @@ function SponsorBanner({
       href={href}
       target="_blank"
       rel="sponsored noopener noreferrer"
-      aria-label={
-        campaignId
-          ? `Sponsored by ${creative.name}: ${creative.message}`
-          : "Advertise on GitDiagram"
-      }
+      aria-label={`Sponsored by ${creative.name}: ${creative.message}`}
       className={cn(styles.banner, embedded && styles.embedded, className)}
     >
       <span className={styles.content}>
@@ -72,9 +69,7 @@ function SponsorBanner({
         </span>
         <span className={styles.message}>{creative.message}</span>
         <span className={styles.end}>
-          <span className={styles.disclosure}>
-            {campaignId ? "Sponsored" : "Ad space"}
-          </span>
+          <span className={styles.disclosure}>Sponsored</span>
           <span className={styles.action}>
             {creative.action}
             <ArrowUpRight className={styles.arrow} aria-hidden="true" />
@@ -89,12 +84,11 @@ export function SponsorSlot({
   surface,
   className,
 }: {
-  surface: SponsorSurface;
+  surface: WebsiteSponsorPlacement;
   className?: string;
 }) {
   const { campaign, confirmed } = useSponsorCampaign();
-  const creative = campaign && sponsorCreatives[campaign.id];
-  if (!campaign || !creative)
+  if (!campaign)
     return (
       <div className={className}>
         <Link className={cn(styles.banner, styles.vacant)} href="/advertise">
@@ -107,7 +101,7 @@ export function SponsorSlot({
       campaignId={campaign.id}
       confirmed={confirmed}
       surface={surface}
-      creative={creative}
+      creative={sponsorCreatives[campaign.id]}
       href={sponsorClickHref(surface, campaign.id)}
       className={className}
     />
@@ -116,19 +110,18 @@ export function SponsorSlot({
 
 export function SponsorCatalogRow() {
   const { campaign, confirmed } = useSponsorCampaign();
-  const creative = campaign && sponsorCreatives[campaign.id];
   return (
     <tr
       aria-label={campaign ? `Sponsored by ${campaign.sponsor}` : "Ad space"}
       className="block border-b border-black/15 align-middle lg:table-row dark:border-white/10"
     >
       <td colSpan={4} className="block p-0 lg:table-cell">
-        {campaign && creative ? (
+        {campaign ? (
           <SponsorBanner
             campaignId={campaign.id}
             confirmed={confirmed}
             surface="browse"
-            creative={creative}
+            creative={sponsorCreatives[campaign.id]}
             href={sponsorClickHref("browse", campaign.id)}
             embedded
           />
