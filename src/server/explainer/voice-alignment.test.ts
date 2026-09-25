@@ -17,7 +17,7 @@ function timeOf(
 
 describe("voice alignment", () => {
   it("times each script word from the words heard", () => {
-    const text = "[curious] So what happens next?";
+    const text = "So what happens next?";
     const alignment = alignTake(text, [
       { word: "So", start: 0.1, end: 0.3 },
       { word: "what", start: 0.3, end: 0.5 },
@@ -27,8 +27,6 @@ describe("voice alignment", () => {
     expect(alignment.characters.join("")).toBe(text);
     expect(timeOf(text, alignment, "So")).toEqual([0.1, 0.3]);
     expect(timeOf(text, alignment, "happens")).toEqual([0.5, 0.9]);
-    // The tag holds the time before the first word.
-    expect(alignment.character_start_times_seconds[0]).toBe(0);
   });
 
   it("shares the time of words heard differently between their neighbours", () => {

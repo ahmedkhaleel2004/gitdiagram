@@ -50,9 +50,7 @@ export function narrationCreditUsd(): Promise<number | null> {
  * Words with clock times and their offset in the spoken text, counted in the
  * same UTF-16 units as the text itself: an alignment entry may be a whole
  * emoji, which is two units of the string, so offsets are summed from the
- * entries' own lengths rather than taken from their index. Delivery tags come
- * back in the alignment as characters too; they are skipped, so the words
- * line up one to one with the caption's.
+ * entries' own lengths rather than taken from their index.
  */
 function spokenWords(
   alignment: Alignment,
@@ -63,7 +61,6 @@ function spokenWords(
   let s = 0;
   let e = 0;
   let from = -1;
-  let inTag = false;
   let position = 0;
   const flush = () => {
     if (from >= 0)
@@ -80,11 +77,6 @@ function spokenWords(
     const character = alignment.characters[index]!;
     const at = position;
     position += character.length;
-    if (character === "[" || inTag) {
-      inTag = character !== "]";
-      flush();
-      continue;
-    }
     if (/\s/.test(character)) {
       flush();
       continue;
@@ -108,13 +100,12 @@ function spokenWords(
  * which the voice reads as a slightly longer breath.
  */
 export async function narrateBeats(
-  beats: Array<{ narration: string; spoken: string; scene: string }>,
+  beats: Array<{ narration: string; scene: string }>,
   signal?: AbortSignal,
 ): Promise<Narration> {
-  // The spoken lines keep their delivery tags; the voice takes them as direction.
   let text = "";
   const spans = beats.map((beat, index) => {
-    const said = beat.spoken;
+    const said = beat.narration;
     const last = index === beats.length - 1;
     // A beat may end mid-sentence now that the take runs on, but a scene or
     // the film always ends on a full stop.

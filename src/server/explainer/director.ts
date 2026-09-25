@@ -415,14 +415,7 @@ export function createFilmWriters(
     try {
       trimmed = await write(
         trimTask({
-          // As written, delivery tags included, so the trim keeps them.
-          script: JSON.stringify({
-            ...script,
-            beats: script.beats.map(({ spoken, ...beat }) => ({
-              ...beat,
-              narration: spoken,
-            })),
-          }),
+          script: JSON.stringify(script),
           words,
           target: SCRIPT_WORD_TARGET,
         }),

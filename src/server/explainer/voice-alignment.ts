@@ -22,7 +22,7 @@ const comparable = (word: string) =>
  * Match heard words to script words (fewest edits), give every script word a
  * time (unmatched ones share the gap between their matched neighbours), then
  * spread each word's time over its characters. Characters outside words
- * (spaces, punctuation between words, delivery tags) hold the time where the
+ * (spaces, punctuation between words) hold the time where the
  * previous word ended.
  */
 export function alignTake(
@@ -30,8 +30,7 @@ export function alignTake(
   heard: HeardWord[],
 ): Alignment & { matched: number; words: number } {
   const scriptWords: Array<{ from: number; to: number; key: string }> = [];
-  for (const match of text.matchAll(/\[[^\]]*\]|[^\s[]+/g)) {
-    if (match[0].startsWith("[")) continue;
+  for (const match of text.matchAll(/\S+/g)) {
     const key = comparable(match[0]);
     if (key)
       scriptWords.push({

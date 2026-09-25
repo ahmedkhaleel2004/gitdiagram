@@ -11,8 +11,7 @@ import { alignTake, type Alignment } from "./voice-alignment";
 // without timings, so whisper-1 transcribes the take with word times, which
 // are matched back onto the script (voice-alignment.ts).
 //
-// One style directs the whole take. The script's delivery tags are left out
-// of the words, since the model would read them aloud.
+// One style directs the whole take; punctuation in the script paces it.
 //
 // There is no other voice. When the OpenRouter balance runs out, new videos
 // pause (see voicePausedUntil) instead of paying for scripts no one can voice.
@@ -96,7 +95,6 @@ async function requestTake(
   text: string,
   signal?: AbortSignal,
 ): Promise<Buffer> {
-  const words = text.replace(/\[[a-z ]+\]\s*/gi, "");
   for (let attempt = 0; ; attempt++) {
     const timeout = AbortSignal.timeout(TAKE_TIMEOUT_MS);
     const response = await fetch(SPEECH_API, {
@@ -107,7 +105,7 @@ async function requestTake(
       },
       body: JSON.stringify({
         model: VOICE_MODEL,
-        input: words,
+        input: text,
         voice: VOICE_NAME,
         response_format: "pcm",
         provider: {
@@ -206,7 +204,7 @@ async function heardWords(mp3: Buffer, signal?: AbortSignal) {
 
 /**
  * The whole script as one take, as MP3, with a character alignment over
- * `text` (tags included; narration.ts skips them when it reads words out).
+ * `text`.
  */
 export async function speak(
   text: string,

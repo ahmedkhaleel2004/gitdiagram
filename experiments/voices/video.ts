@@ -24,7 +24,7 @@ const report = JSON.parse(
   await readFile(join(source, "report.json"), "utf8"),
 ) as {
   script: {
-    beats: Array<{ scene: string; narration: string; spoken: string }>;
+    beats: Array<{ scene: string; narration: string }>;
   };
 };
 const started = Date.now();

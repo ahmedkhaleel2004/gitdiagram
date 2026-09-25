@@ -52,7 +52,6 @@ function scriptOf(wordsPerBeat: number, scene = (i: number) => `s${i}`) {
     beats: [0, 1, 2, 3].map((i) => ({
       scene: scene(i),
       narration: line,
-      spoken: line,
       brief: "b",
     })),
   } satisfies Script;

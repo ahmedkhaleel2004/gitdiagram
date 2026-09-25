@@ -40,41 +40,15 @@ export interface PlanRepositoryFacts {
   images?: string[];
 }
 
-// Delivery directions the director may write; the voice leaves them out of
-// the words it reads (voice.ts). Any other bracketed tag is dropped, and
-// punctuation carries the pacing.
-const DELIVERY_TAGS = [
-  "curious",
-  "excited",
-  "thoughtful",
-  "warmly",
-  "confident",
-  "impressed",
-  "amused",
-  "playfully",
-] as const;
-
-// Splitting on this leaves the tag names at the odd indices.
+// Splitting on this leaves any bracketed direction at the odd indices.
 const TAG = /\[([^\]]*)\]/;
 const tidy = (value: string) =>
   value.replace(/[[\]]/g, "").replace(/\s+/g, " ").trim();
 
-/** The line as the voice reads it: known delivery tags kept, each set off by spaces. */
-export function spokenLine(value: string): string {
-  return value
-    .split(TAG)
-    .map((part, index) => {
-      if (index % 2 === 0) return tidy(part);
-      const name = part.trim().toLowerCase();
-      return (DELIVERY_TAGS as readonly string[]).includes(name)
-        ? `[${name}]`
-        : "";
-    })
-    .filter(Boolean)
-    .join(" ");
-}
-
-/** The line as captioned and cued: every direction removed. */
+/**
+ * The narration line as voiced, captioned and cued. Punctuation carries the
+ * pacing; a bracketed direction the model writes anyway ("[laughs]") is dropped.
+ */
 export function writtenLine(value: string): string {
   return value
     .split(TAG)

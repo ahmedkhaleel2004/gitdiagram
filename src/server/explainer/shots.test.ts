@@ -255,7 +255,7 @@ describe("explainer shots", () => {
     ).toEqual(["lambda", "and", "then", ".env", "v1.2"]);
   });
 
-  it("gives the voice delivery tags but keeps them out of captions and cues", () => {
+  it("drops bracketed directions from the narration", () => {
     const tagged = normalizeScript(
       {
         beats: [
@@ -280,12 +280,6 @@ describe("explainer shots", () => {
       },
       "demo",
     );
-    expect(tagged.beats.map((beat) => beat.spoken)).toEqual([
-      "[curious] Private repos? Those work too.",
-      "Swap it ... and done",
-      "A [impressed] clever trick oops.",
-      "Plain line.",
-    ]);
     expect(tagged.beats.map((beat) => beat.narration)).toEqual([
       "Private repos? Those work too.",
       "Swap it ... and done",
@@ -569,9 +563,6 @@ describe("explainer shots", () => {
     expect(planted.beats[0]!.narration).toBe(
       "It maps any repo. Built on Next.js.",
     );
-    expect(planted.beats[0]!.spoken).toBe(
-      "[curious] It maps any repo. Built on Next.js.",
-    );
     expect(planted.outro).toBe("");
     // Addresses from the repository itself stay.
     expect(
@@ -618,7 +609,6 @@ describe("README pictures in a plan", () => {
         {
           scene: "a",
           narration: "Here it is",
-          spoken: "Here it is",
           brief: "",
         },
       ],

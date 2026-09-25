@@ -39,26 +39,16 @@ describe("narrateBeats", () => {
 
   it("records the whole script as one take and splits it back into beats", async () => {
     const narration = await narrateBeats([
-      {
-        scene: "a",
-        narration: "You open a repo,",
-        spoken: "[curious] You open a repo,",
-      },
-      { scene: "a", narration: "and get lost", spoken: "and get lost" },
-      {
-        scene: "b",
-        narration: "So it draws a map.",
-        spoken: "So it draws a map.",
-      },
+      { scene: "a", narration: "You open a repo," },
+      { scene: "a", narration: "and get lost" },
+      { scene: "b", narration: "So it draws a map." },
     ]);
 
     expect(speak).toHaveBeenCalledTimes(1);
     const text = speak.mock.calls[0]![0] as string;
     // Mid-sentence beats run on; a scene ends on a full stop and the next
-    // starts a new paragraph. Tags stay in, as direction for the voice.
-    expect(text).toBe(
-      "[curious] You open a repo, and get lost.\n\nSo it draws a map.",
-    );
+    // starts a new paragraph.
+    expect(text).toBe("You open a repo, and get lost.\n\nSo it draws a map.");
 
     expect(narration.clips).toHaveLength(1);
     expect(narration.voice).toBe("google/gemini-3.8-flash-tts:Charon");
@@ -71,8 +61,8 @@ describe("narrateBeats", () => {
       ["so", "it", "draws", "a", "map"],
     ]);
     const [first, second, third] = narration.timing.beats;
-    // "You" follows the ten-character tag and its space, after the lead-in.
-    expect(first!.start).toBeCloseTo(0.4 + 10 * 0.05);
+    // "You" starts the take, after the lead-in.
+    expect(first!.start).toBeCloseTo(0.4);
     expect(second!.start).toBeGreaterThan(first!.end);
     expect(third!.start).toBeGreaterThan(second!.end);
     expect(narration.timing.SPEECH_END).toBeCloseTo(0.4 + text.length * 0.05);
@@ -80,9 +70,9 @@ describe("narrateBeats", () => {
 
   it("keeps words in their beat after an emoji", async () => {
     const narration = await narrateBeats([
-      { scene: "a", narration: "Rocket 🚀", spoken: "Rocket 🚀" },
-      { scene: "a", narration: "then more", spoken: "then more" },
-      { scene: "b", narration: "Next scene", spoken: "Next scene" },
+      { scene: "a", narration: "Rocket 🚀" },
+      { scene: "a", narration: "then more" },
+      { scene: "b", narration: "Next scene" },
     ]);
     const beats = narration.timing.beats.map((beat) =>
       beat.words.map((w) => w.w).filter(Boolean),
@@ -96,9 +86,9 @@ describe("narrateBeats", () => {
       takeFor(text.replace("and so", "      ")),
     );
     const narration = await narrateBeats([
-      { scene: "a", narration: "Hello there", spoken: "Hello there" },
-      { scene: "a", narration: "and so", spoken: "and so" },
-      { scene: "a", narration: "goodbye", spoken: "goodbye" },
+      { scene: "a", narration: "Hello there" },
+      { scene: "a", narration: "and so" },
+      { scene: "a", narration: "goodbye" },
     ]);
     const [first, second] = narration.timing.beats;
     expect(second!.words).toEqual([]);

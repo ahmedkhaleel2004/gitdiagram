@@ -10,7 +10,6 @@ import {
 import {
   clip,
   normalizeWord,
-  spokenLine,
   writtenLine,
   type PlanRepositoryFacts,
 } from "./text";
@@ -173,10 +172,8 @@ const words = (sentence: string) =>
 
 interface ScriptBeat {
   scene: string;
-  /** What the captions show and cues match: no delivery tags. */
+  /** What the voice reads, the captions show and the cues match. */
   narration: string;
-  /** What the voice reads: the narration with its delivery tags. */
-  spoken: string;
   brief: string;
 }
 export interface Script {
@@ -241,7 +238,6 @@ export function normalizeScript(
       return {
         scene: clip(beat.scene, 24) || "s",
         narration: writtenLine(narration),
-        spoken: spokenLine(narration),
         brief: clip(beat.brief, 900),
       };
     })

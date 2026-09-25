@@ -39,7 +39,6 @@ const SCRIPT = {
   beats: ["a", "b", "a"].map((scene) => ({
     scene,
     narration: "one two",
-    spoken: "one two",
     brief: "",
   })),
 };
