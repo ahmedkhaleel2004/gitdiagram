@@ -74,7 +74,8 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
   // pathname is identical on server and client for full-page loads (the proxy
   // never rewrites URLs), so these can render at SSR without mismatch risk.
   const isBrowsePage = pathname === "/browse";
-  const showMobileGithubButton = pathname === "/" || isBrowsePage;
+  const showMobileGithubButton =
+    pathname === "/" || isBrowsePage || pathname === "/watch";
 
   return (
     <header className="border-black sm:border-b-[3px] dark:border-black">
