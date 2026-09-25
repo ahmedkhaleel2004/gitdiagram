@@ -228,9 +228,7 @@ async function listVideoKeys(root: string): Promise<string[]> {
  * Delete the files a video no longer uses; resolves how many went. Never
  * throws: a leftover file only costs storage.
  */
-async function pruneVideoFiles(
-  artifact: VideoArtifact,
-): Promise<number> {
+async function pruneVideoFiles(artifact: VideoArtifact): Promise<number> {
   try {
     const root = `${prefix(artifact.meta.owner, artifact.meta.repo)}/`;
     const stale = staleVideoKeys(await listVideoKeys(root), artifact);
