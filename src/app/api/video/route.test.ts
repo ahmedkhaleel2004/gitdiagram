@@ -36,8 +36,12 @@ vi.mock("~/server/explainer/store", () => ({
 
 import { GET } from "./route";
 
-const get = () =>
-  GET(new Request("https://gitdiagram.com/api/video?username=acme&repo=demo"));
+const get = (headers: Record<string, string> = {}) =>
+  GET(
+    new Request("https://gitdiagram.com/api/video?username=acme&repo=demo", {
+      headers,
+    }),
+  );
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -111,7 +115,7 @@ describe("GET /api/video", () => {
     }
     expect(mocks.videoLimitReached).toHaveBeenCalledWith(
       { visitorId: visitor, clientIp: "203.0.113.9" },
-      { priority: false },
+      { priority: false, limited: false },
     );
   });
 
@@ -142,5 +146,24 @@ describe("GET /api/video", () => {
       reason: "place",
       step: "page",
     });
+  });
+
+  it("holds back a limited country the operator blocked", async () => {
+    mocks.readAdmissionControls.mockResolvedValue({
+      videoAudience: "everyone",
+      videosPaused: false,
+      limitedCountryAccess: "blocked",
+      limitedCountryShare: null,
+    });
+    expect(
+      await (await get({ "x-vercel-ip-country": "PK" })).json(),
+    ).toMatchObject({ canGenerate: false, paused: "audience" });
+    expect(mocks.reportHeldBack).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({ reason: "country" }),
+    );
+    expect(
+      await (await get({ "x-vercel-ip-country": "US" })).json(),
+    ).toMatchObject({ canGenerate: true });
   });
 });

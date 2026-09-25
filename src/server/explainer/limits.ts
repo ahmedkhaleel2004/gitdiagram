@@ -220,15 +220,19 @@ async function reserve(
   };
 }
 
-/** A place in today's video budget; someone in a priority place gets more. */
+/**
+ * A place in today's video budget; someone in a priority place gets more,
+ * someone let in from a limited country at most one.
+ */
 export async function reserveVideoSlot(
   requester: Requester,
-  options: { priority: boolean },
+  options: { priority: boolean; limited?: boolean },
 ) {
   const limits = await videoLimits(true);
+  const person = options.priority ? limits.priorityPerson : limits.person;
   return reserve("generate", requester, {
     ...limits,
-    person: options.priority ? limits.priorityPerson : limits.person,
+    person: options.limited ? Math.min(person, 1) : person,
   });
 }
 
@@ -306,7 +310,7 @@ async function usedToday(kinds: Kind[]): Promise<number[]> {
  */
 export async function videoLimitReached(
   requester: Requester,
-  options: { priority: boolean },
+  options: { priority: boolean; limited?: boolean },
 ): Promise<{ reason: LimitReason; limit: number } | null> {
   const day = today();
   const [[epoch], limits] = await Promise.all([
@@ -317,9 +321,10 @@ export async function videoLimitReached(
     "MGET",
     ...budgetKeys("generate", requester, period(day, epoch!)),
   ]);
+  const person = options.priority ? limits.priorityPerson : limits.person;
   const allowed: Limits = {
     ...limits,
-    person: options.priority ? limits.priorityPerson : limits.person,
+    person: options.limited ? Math.min(person, 1) : person,
   };
   for (const [index, reason] of REASONS.entries())
     if ((Number(used[index]) || 0) >= allowed[reason])

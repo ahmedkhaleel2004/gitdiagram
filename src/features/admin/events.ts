@@ -8,6 +8,7 @@ import type { LiveFeedEvent } from "./types";
 const HELD_BACK: Record<string, string> = {
   mobile: "On a phone or tablet",
   place: "Outside the priority places",
+  country: "In a limited country",
   audience: "Not in early access",
   paused: "Videos are paused",
   daily: "Today's video limit is used up",

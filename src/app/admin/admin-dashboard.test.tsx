@@ -28,6 +28,8 @@ const adminState = (overrides: Partial<AdminState> = {}): AdminState => ({
     videoPersonDailyLimit: null,
     videoPriorityPersonDailyLimit: null,
     videoNetworkDailyLimit: null,
+    limitedCountryAccess: "some",
+    limitedCountryShare: null,
   },
   controlsUnreadable: false,
   video: null,

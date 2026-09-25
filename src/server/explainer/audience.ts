@@ -1,7 +1,17 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+import {
+  DEFAULT_LIMITED_COUNTRY_SHARE,
+  isLimitedCountry,
+} from "~/features/admin/limited-countries";
 import { isPriorityPlace } from "~/features/admin/priority-places";
-import type { PriorityPlaces, VideoAudience } from "~/features/admin/types";
+import type {
+  LiveControls,
+  PriorityPlaces,
+  VideoAudience,
+} from "~/features/admin/types";
+import { networkOf } from "~/lib/network";
 import { requestGeo } from "~/server/http/vercel-geo";
 
 // Who may make new explainer videos during early access: anyone, on any
@@ -61,6 +71,35 @@ export function anyDeviceHere(
   places: PriorityPlaces = "cities",
 ): boolean {
   return audience === "everyone" || isInVideoRegion(request, places);
+}
+
+/**
+ * How the limited countries rule (features/admin/limited-countries.ts) treats
+ * this visitor: null when it does not apply, "limited" when they may make one
+ * standard video today, "blocked" when they may not make any. It applies on
+ * top of the audience rule, whatever the audience.
+ *
+ * Under "some", the day's draw is by connection, not by browser, so clearing
+ * cookies or opening a private window does not draw again. It changes at
+ * midnight UTC.
+ */
+export function limitedCountryRule(
+  request: Request,
+  controls: Pick<LiveControls, "limitedCountryAccess" | "limitedCountryShare">,
+  clientIp: string | null,
+  now = Date.now(),
+): "limited" | "blocked" | null {
+  if (controls.limitedCountryAccess === "open") return null;
+  if (!isLimitedCountry(request.headers.get("x-vercel-ip-country") ?? ""))
+    return null;
+  if (controls.limitedCountryAccess === "blocked") return "blocked";
+  const share = controls.limitedCountryShare ?? DEFAULT_LIMITED_COUNTRY_SHARE;
+  const day = Math.floor(now / 86_400_000);
+  const draw = createHash("sha256")
+    .update(`video-draw:${day}:${networkOf(clientIp ?? "unknown")}`)
+    .digest()
+    .readUInt32BE(0);
+  return draw % 100 < share ? "limited" : "blocked";
 }
 
 const EARLY_ACCESS_MESSAGE =

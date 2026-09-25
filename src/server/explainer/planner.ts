@@ -11,7 +11,9 @@ import type { Effort, Planner } from "./director";
 // - popular repositories, whoever asks (VIDEO_PREMIUM_MIN_STARS),
 // - a priority visitor's first video of the day (takePremiumVideo).
 // Every other video is written by Opus and designed by GPT-6 Sol, which
-// blind-judged about level (see experiments/video-bespoke).
+// blind-judged about level (see experiments/video-bespoke). A visitor let in
+// from a limited country (features/admin/limited-countries.ts) always gets the
+// standard planner, even for a popular repository.
 
 /** GPT models run on OpenAI; every other model on the Claude API. */
 export const isOpenAIModel = (model: string) => /^gpt-/i.test(model);
@@ -93,12 +95,13 @@ export async function choosePlanner(params: {
   operator: boolean;
   stars: number;
   priority: boolean;
+  /** Never the premium planner (a visitor from a limited country). */
+  standardOnly?: boolean;
   takePremium: () => Promise<{ refund: () => Promise<void> } | null>;
 }): Promise<PlannerChoice> {
-  if (
-    params.operator ||
-    params.stars >= readIntEnv("VIDEO_PREMIUM_MIN_STARS", 10_000)
-  )
+  if (params.operator) return { planner: premiumPlanner() };
+  if (params.standardOnly) return { planner: standardPlanner() };
+  if (params.stars >= readIntEnv("VIDEO_PREMIUM_MIN_STARS", 10_000))
     return { planner: premiumPlanner() };
   if (params.priority) {
     // Without Redis the visitor gets the standard model, never a free premium one.

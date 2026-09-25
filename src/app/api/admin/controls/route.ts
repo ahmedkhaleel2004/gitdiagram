@@ -21,6 +21,8 @@ const requestSchema = z
   .strictObject({
     videoAudience: z.enum(["priority", "desktop", "everyone"]),
     priorityPlaces: z.enum(["cities", "countries"]),
+    limitedCountryAccess: z.enum(["blocked", "some", "open"]),
+    limitedCountryShare: limit(100),
     videosPaused: z.boolean(),
     videoDailyLimit: limit(10_000),
     videoPersonDailyLimit: limit(1_000),

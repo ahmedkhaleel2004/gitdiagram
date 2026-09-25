@@ -238,6 +238,24 @@ describe("POST /api/video/generate", () => {
     expect(mocks.reserveVideoSlot).not.toHaveBeenCalled();
   });
 
+  it("holds back a limited country the operator blocked", async () => {
+    mocks.readAdmissionControls.mockResolvedValue({
+      videoAudience: "everyone",
+      videosPaused: false,
+      limitedCountryAccess: "blocked",
+      limitedCountryShare: null,
+    });
+    const { response } = await run(
+      request(undefined, { "x-vercel-ip-country": "IN" }),
+    );
+    expect(response.status).toBe(403);
+    expect(mocks.reportHeldBack).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: "country" }),
+    );
+    expect(mocks.reserveVideoSlot).not.toHaveBeenCalled();
+  });
+
   it("turns away a visitor asking for a video that already exists, before reserving", async () => {
     mocks.readVideoArtifact.mockResolvedValue({ repository: "acme/demo" });
     const { response, text } = await run();
@@ -310,6 +328,21 @@ describe("POST /api/video/generate", () => {
     expect(mocks.refund).toHaveBeenCalledTimes(1);
     expect(mocks.releaseLock).toHaveBeenCalledTimes(1);
     expect(mocks.generateExplainerVideo).not.toHaveBeenCalled();
+  });
+
+  it("gives someone drawn in a limited country one video at most", async () => {
+    mocks.readAdmissionControls.mockResolvedValue({
+      videoAudience: "everyone",
+      videosPaused: false,
+      limitedCountryAccess: "some",
+      limitedCountryShare: 100,
+    });
+    failAfter(new Error("GitHub timed out"), { paid: false });
+    await run(request(undefined, { "x-vercel-ip-country": "BR" }));
+    expect(mocks.reserveVideoSlot).toHaveBeenCalledWith(expect.anything(), {
+      priority: false,
+      limited: true,
+    });
   });
 
   it("refunds a failure that happened before any model was paid", async () => {

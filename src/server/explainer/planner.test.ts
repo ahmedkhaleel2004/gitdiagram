@@ -58,6 +58,18 @@ describe("choosing the video planner", () => {
     expect(takePremium).not.toHaveBeenCalled();
   });
 
+  it("never gives a visitor from a limited country Opus alone", async () => {
+    const takePremium = vi.fn();
+    const choice = await choose({
+      stars: 50_000,
+      priority: true,
+      standardOnly: true,
+      takePremium,
+    });
+    expect(choice.planner).toEqual(STANDARD);
+    expect(takePremium).not.toHaveBeenCalled();
+  });
+
   it("falls back to the standard planner when the premium count cannot be read", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const choice = await choose({

@@ -4,6 +4,7 @@ import {
   githubRepoSchema,
   githubUsernameSchema,
 } from "~/server/generate/types";
+import { getClientIp } from "~/server/http/client-ip";
 import {
   jsonErrorResponse,
   NO_STORE_RESPONSE_HEADERS,
@@ -18,6 +19,7 @@ import {
   anyDeviceHere,
   audienceBlock,
   isInVideoRegion,
+  limitedCountryRule,
 } from "~/server/explainer/audience";
 import { reportHeldBack } from "~/server/explainer/gate-notice";
 import {
@@ -33,7 +35,6 @@ import {
   withVisitorCookie,
   type Visitor,
 } from "~/server/explainer/visitor";
-import { getClientIp } from "~/server/http/client-ip";
 import type { VideoPausedReason } from "~/features/explainer/api";
 
 export const runtime = "nodejs";
@@ -101,10 +102,18 @@ async function videoAvailability(
         paused: blocked === "mobile" ? "device" : "audience",
       };
     }
+    const country = limitedCountryRule(request, controls, getClientIp(request));
+    if (country === "blocked") {
+      heldBack("country");
+      return { canGenerate: false, paused: "audience" };
+    }
     const [reached, credits] = await Promise.all([
       videoLimitReached(
         { visitorId: visitor.id, clientIp: getClientIp(request) },
-        { priority: isInVideoRegion(request, controls.priorityPlaces) },
+        {
+          priority: isInVideoRegion(request, controls.priorityPlaces),
+          limited: country === "limited",
+        },
       ),
       isNarrationAvailable(),
     ]);
