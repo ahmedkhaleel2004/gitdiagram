@@ -6,13 +6,18 @@ const config = [
   ...nextTypescript,
   {
     // eslint-plugin-react's version auto-detection calls context.getFilename,
-    // which ESLint 10 removed.
+    // which ESLint 10 removed. The same removal crashes the
+    // react/forward-ref-uses-ref and react/jsx-filename-extension rules, so
+    // leave those off until eslint-plugin-react supports ESLint 10.
     settings: { react: { version: "19.3" } },
   },
   {
     ignores: [
       ".next/**",
       ".claude/**",
+      ".agents/**",
+      ".playwright-mcp/**",
+      "tmp/**",
       "node_modules/**",
       "dist/**",
       "coverage/**",
