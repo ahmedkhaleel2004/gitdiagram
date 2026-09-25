@@ -4,7 +4,7 @@ import type {
   VideoArtifact,
   VideoGenerationEvent,
 } from "~/features/explainer/types";
-import { createFilmWriters, designGroups } from "./director";
+import { createFilmWriters, designGroups, type Planner } from "./director";
 import { narrateBeats } from "./narration";
 import { readRepositoryForVideo } from "./repository";
 import { normalizeShots } from "./shots";
@@ -15,20 +15,24 @@ import { writeVideo } from "./store";
  * lock, so only one run per repository happens at a time.
  *
  * `signal` is the run's deadline. `onPaidWork` is called just before the
- * first model call: a failure before it cost nothing. When this rejects,
- * nothing it started is still running, so the caller may release its lock.
+ * first model call: a failure before it cost nothing. `choosePlanner` picks
+ * the model once the repository's star count is known (the premium model by
+ * default). When this rejects, nothing it started is still running, so the
+ * caller may release its lock.
  */
 export async function generateExplainerVideo({
   username,
   repo,
   onEvent,
   onPaidWork,
+  choosePlanner,
   signal: deadline,
 }: {
   username: string;
   repo: string;
   onEvent: (event: VideoGenerationEvent) => void;
   onPaidWork?: () => void;
+  choosePlanner?: (repository: { stars: number }) => Promise<Planner>;
   signal?: AbortSignal;
 }): Promise<VideoArtifact> {
   const started = Date.now();
@@ -42,17 +46,19 @@ export async function generateExplainerVideo({
   onEvent({ status: "reading", elapsedMs: 0 });
   const repository = await readRepositoryForVideo({ username, repo, signal });
   const readMs = elapsedMs();
+  signal.throwIfAborted();
+  const planner = await choosePlanner?.({ stars: repository.prompt.stars });
 
   // The director writes the script; then every scene is designed in parallel
   // while the narration is recorded, since the voice only needs the words.
+  const writers = createFilmWriters(repository.prompt, planner);
   onEvent({
     status: "planning",
     elapsedMs: readMs,
-    progress: { sourceFiles: repository.sourceFileCount },
+    progress: { sourceFiles: repository.sourceFileCount, model: writers.model },
   });
   signal.throwIfAborted();
   onPaidWork?.();
-  const writers = createFilmWriters(repository.prompt);
   const script = await writers.direct(signal);
   const planMs = elapsedMs() - readMs;
 
@@ -62,6 +68,7 @@ export async function generateExplainerVideo({
   const scenes = designGroups(script).length;
   const progress = {
     sourceFiles: repository.sourceFileCount,
+    model: writers.model,
     scenes,
     beats: script.beats.length,
     words: narrationLines.join(" ").split(/\s+/).filter(Boolean).length,

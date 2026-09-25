@@ -2,11 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { stream } = vi.hoisted(() => ({ stream: vi.fn() }));
+const { stream, create } = vi.hoisted(() => ({
+  stream: vi.fn(),
+  create: vi.fn(),
+}));
 
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
     messages = { stream };
+  },
+}));
+
+vi.mock("openai", () => ({
+  default: class {
+    responses = { create };
   },
 }));
 
@@ -87,8 +96,38 @@ const reply = (message: Record<string, unknown>) => ({
   }),
 });
 
+/** An OpenAI response calling write_script with a script of `words` words. */
+function openAIScriptReply(words: number, status = "completed") {
+  const script = scriptOf(Math.ceil(words / 4));
+  return {
+    status,
+    incomplete_details:
+      status === "completed" ? null : { reason: "max_output_tokens" },
+    usage: {
+      input_tokens: 2_000_000,
+      input_tokens_details: { cached_tokens: 1_000_000 },
+      output_tokens: 100_000,
+    },
+    output: [
+      {
+        type: "function_call",
+        name: "write_script",
+        arguments: JSON.stringify({
+          ...script,
+          beats: script.beats.map(({ scene, narration, brief }) => ({
+            scene,
+            narration,
+            brief,
+          })),
+        }),
+      },
+    ],
+  };
+}
+
 beforeEach(() => {
   stream.mockReset();
+  create.mockReset();
   vi.spyOn(console, "info").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
@@ -100,6 +139,38 @@ describe("the director", () => {
     await writers.direct();
     // A million uncached input tokens ($4) and a million cache reads ($0.20).
     expect(writers.usage.costUsd).toBeCloseTo(4.2);
+  });
+
+  it("writes with GPT-6 Sol through the Responses API", async () => {
+    create.mockResolvedValueOnce(openAIScriptReply(120));
+    const writers = createFilmWriters(input, {
+      model: "gpt-6-sol",
+      effort: "medium",
+    });
+    const script = await writers.direct();
+    expect(script.beats).toHaveLength(4);
+    expect(stream).not.toHaveBeenCalled();
+    const request = create.mock.calls[0]![0] as {
+      model: string;
+      reasoning: { effort: string };
+      tool_choice: { name: string };
+    };
+    expect(request.model).toBe("gpt-6-sol");
+    expect(request.reasoning.effort).toBe("medium");
+    expect(request.tool_choice.name).toBe("write_script");
+    // A million uncached ($2), a million cached ($0.20), 100k out ($1).
+    expect(writers.usage.costUsd).toBeCloseTo(3.2);
+  });
+
+  it("retries an OpenAI reply that stopped early", async () => {
+    create
+      .mockResolvedValueOnce(openAIScriptReply(120, "incomplete"))
+      .mockResolvedValueOnce(openAIScriptReply(120));
+    await createFilmWriters(input, {
+      model: "gpt-6-sol",
+      effort: "medium",
+    }).direct();
+    expect(create).toHaveBeenCalledTimes(2);
   });
 
   it("retries a reply cut off at max_tokens instead of using it", async () => {

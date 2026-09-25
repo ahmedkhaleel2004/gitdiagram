@@ -20,9 +20,11 @@ const limit = (max: number) => z.number().int().min(0).max(max).nullable();
 const requestSchema = z
   .strictObject({
     videoAudience: z.enum(["priority", "desktop", "everyone"]),
+    priorityPlaces: z.enum(["cities", "countries"]),
     videosPaused: z.boolean(),
     videoDailyLimit: limit(10_000),
     videoPersonDailyLimit: limit(1_000),
+    videoPriorityPersonDailyLimit: limit(1_000),
     videoNetworkDailyLimit: limit(1_000),
   })
   .partial();

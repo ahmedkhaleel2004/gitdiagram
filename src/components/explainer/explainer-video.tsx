@@ -17,6 +17,7 @@ import {
 } from "~/features/explainer/runs";
 import type { VideoGenerationStage } from "~/features/explainer/types";
 import { useAdminTools } from "~/features/admin/tools";
+import { modelLabel } from "~/features/explainer/model-label";
 import { ActivityMark } from "~/components/generation/activity-mark";
 import { useGenerationClock } from "~/components/generation/generation-status";
 import controls from "~/components/generation/workspace.module.css";
@@ -225,7 +226,8 @@ export function ExplainerVideo({
             {Math.round(video.timing.DURATION)}s
           </span>
           <span>
-            Made in {(video.stats.totalMs / 1000).toFixed(0)}s
+            Made with {modelLabel(video.stats.model)} in{" "}
+            {(video.stats.totalMs / 1000).toFixed(0)}s
             {cost !== null ? ` · $${cost.toFixed(2)} model` : ""}
           </span>
           {canRegenerate &&
@@ -277,8 +279,14 @@ export function ExplainerVideo({
           <Elapsed startedAt={state.startedAt} />
         </div>
         <p className={controls.description}>
-          Claude reads {repo}, writes a script and designs every scene while the
-          narration is recorded. Usually under a minute.
+          {state.progress.model
+            ? modelLabel(state.progress.model)
+            : "GitDiagram"}{" "}
+          reads {repo}, writes a script and designs every scene while the
+          narration is recorded.{" "}
+          {state.progress.model?.startsWith("gpt-")
+            ? "Usually a minute or two."
+            : "Usually under a minute."}
         </p>
         <div className={styles.progressBody}>
           <GenerationRows stage={state.stage} progress={state.progress} />

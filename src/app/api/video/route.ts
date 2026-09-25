@@ -69,12 +69,20 @@ async function videoAvailability(
     const controls = await readAdmissionControls();
     // Tablets pass as desktops here, so the page holds them back itself unless
     // this visitor may use any device.
-    const anyDevice = anyDeviceHere(request, controls.videoAudience);
+    const anyDevice = anyDeviceHere(
+      request,
+      controls.videoAudience,
+      controls.priorityPlaces,
+    );
     if (controls.videosPaused) {
       heldBack("paused");
       return { canGenerate: false, paused: "limit" };
     }
-    const blocked = audienceBlock(request, controls.videoAudience);
+    const blocked = audienceBlock(
+      request,
+      controls.videoAudience,
+      controls.priorityPlaces,
+    );
     if (blocked) {
       heldBack(blocked);
       return {

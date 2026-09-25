@@ -15,7 +15,9 @@ const CONTROLS = {
   videosPaused: false,
   videoDailyLimit: null,
   videoPersonDailyLimit: null,
+  videoPriorityPersonDailyLimit: null,
   videoNetworkDailyLimit: null,
+  priorityPlaces: "cities",
 };
 
 vi.mock("~/server/storage/upstash", () => ({ upstashEval, upstashCommand }));
@@ -33,6 +35,7 @@ import {
   limitMessage,
   reserveVideoSlot,
   resetUsageToday,
+  takePremiumVideo,
   tryPaidVideoRun,
   tryVideoLock,
   videosLeftToday,
@@ -102,7 +105,7 @@ describe("explainer video limits", () => {
     process.env.VIDEO_NETWORK_DAILY_LIMIT = "10";
     const alice = { visitorId: "alice", clientIp: "203.0.113.9" };
     upstashEval.mockResolvedValueOnce(0);
-    const granted = await reserveVideoSlot(alice);
+    const granted = await reserveVideoSlot(alice, { priority: false });
     expect(granted.ok).toBe(true);
     const call = upstashEval.mock.calls[0]![0] as {
       keys: string[];
@@ -117,20 +120,23 @@ describe("explainer video limits", () => {
     expect(call.args[4]).toBe("0");
 
     upstashEval.mockResolvedValueOnce(1);
-    expect(await reserveVideoSlot(alice)).toEqual({
+    expect(await reserveVideoSlot(alice, { priority: false })).toEqual({
       ok: false,
       reason: "daily",
       limit: 25,
     });
     upstashEval.mockResolvedValueOnce(2);
-    expect(await reserveVideoSlot(alice)).toEqual({
+    expect(await reserveVideoSlot(alice, { priority: false })).toEqual({
       ok: false,
       reason: "person",
       limit: 1,
     });
     upstashEval.mockResolvedValueOnce(3);
     expect(
-      await reserveVideoSlot({ visitorId: "bob", clientIp: null }),
+      await reserveVideoSlot(
+        { visitorId: "bob", clientIp: null },
+        { priority: false },
+      ),
     ).toEqual({
       ok: false,
       reason: "network",
@@ -142,15 +148,61 @@ describe("explainer video limits", () => {
   it("refuses to reserve when the live limits cannot be read", async () => {
     readAdmissionControls.mockRejectedValueOnce(new Error("redis down"));
     await expect(
-      reserveVideoSlot({ visitorId: "alice", clientIp: null }),
+      reserveVideoSlot(
+        { visitorId: "alice", clientIp: null },
+        { priority: false },
+      ),
     ).rejects.toThrow("redis down");
     expect(upstashEval).not.toHaveBeenCalled();
   });
 
+  it("gives someone in a priority place the higher per-person limit", async () => {
+    process.env.VIDEO_PERSON_DAILY_LIMIT = "1";
+    process.env.VIDEO_PRIORITY_PERSON_DAILY_LIMIT = "3";
+    const alice = { visitorId: "alice", clientIp: null };
+    upstashEval.mockResolvedValue(0);
+    await reserveVideoSlot(alice, { priority: true });
+    await reserveVideoSlot(alice, { priority: false });
+    const personLimits = upstashEval.mock.calls.map(
+      ([call]) => (call as { args: number[] }).args[1],
+    );
+    expect(personLimits).toEqual([3, 1]);
+  });
+
+  it("takes one premium video per person a day, and gives it back", async () => {
+    process.env.VIDEO_PREMIUM_PERSON_DAILY_LIMIT = "1";
+    upstashEval.mockResolvedValueOnce(1);
+    const taken = await takePremiumVideo("alice");
+    expect(taken).not.toBeNull();
+    const call = upstashEval.mock.calls[0]![0] as {
+      keys: string[];
+      args: number[];
+    };
+    expect(call.keys).toEqual([
+      expect.stringMatching(/^video:v1:premium:who:alice:\d+$/),
+    ]);
+    expect(call.args[0]).toBe(1);
+
+    upstashEval.mockResolvedValueOnce(0);
+    await taken!.refund();
+    expect((upstashEval.mock.calls[1]![0] as { keys: string[] }).keys).toEqual(
+      call.keys,
+    );
+
+    upstashEval.mockResolvedValueOnce(0);
+    expect(await takePremiumVideo("alice")).toBeNull();
+  });
+
   it("counts people who share a connection separately", async () => {
     upstashEval.mockResolvedValue(0);
-    await reserveVideoSlot({ visitorId: "alice", clientIp: "203.0.113.9" });
-    await reserveVideoSlot({ visitorId: "bob", clientIp: "203.0.113.9" });
+    await reserveVideoSlot(
+      { visitorId: "alice", clientIp: "203.0.113.9" },
+      { priority: false },
+    );
+    await reserveVideoSlot(
+      { visitorId: "bob", clientIp: "203.0.113.9" },
+      { priority: false },
+    );
     const [alice, bob] = [evalKeys(0), evalKeys(1)];
     expect(alice[1]).not.toBe(bob[1]);
     expect(alice[2]).toBe(bob[2]);
@@ -158,10 +210,13 @@ describe("explainer video limits", () => {
 
   it("refunds a slot against the same keys it took", async () => {
     upstashEval.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
-    const granted = await reserveVideoSlot({
-      visitorId: "carol",
-      clientIp: "198.51.100.4",
-    });
+    const granted = await reserveVideoSlot(
+      {
+        visitorId: "carol",
+        clientIp: "198.51.100.4",
+      },
+      { priority: false },
+    );
     if (!granted.ok) throw new Error("expected a slot");
     await granted.refund();
     expect(evalKeys(1)).toEqual(evalKeys(0).slice(0, 3));
@@ -169,7 +224,10 @@ describe("explainer video limits", () => {
 
   it("counts again when a reset lands mid-reservation", async () => {
     upstashEval.mockResolvedValueOnce(-1).mockResolvedValueOnce(0);
-    const granted = await reserveVideoSlot({ visitorId: "d", clientIp: null });
+    const granted = await reserveVideoSlot(
+      { visitorId: "d", clientIp: null },
+      { priority: false },
+    );
     expect(granted.ok).toBe(true);
     expect(upstashEval).toHaveBeenCalledTimes(2);
   });
@@ -187,7 +245,10 @@ describe("explainer video limits", () => {
     const day = Math.floor(Date.now() / 86_400_000);
     const values = redis({ [`video:v1:generate:all:${day}`]: "7" });
     upstashEval.mockResolvedValue(0);
-    const before = await reserveVideoSlot({ visitorId: "e", clientIp: null });
+    const before = await reserveVideoSlot(
+      { visitorId: "e", clientIp: null },
+      { priority: false },
+    );
     if (!before.ok) throw new Error("expected a slot");
 
     await expect(resetUsageToday("generate")).resolves.toBe(7);
@@ -199,7 +260,10 @@ describe("explainer video limits", () => {
       ),
     ).toBe(false);
 
-    const after = await reserveVideoSlot({ visitorId: "e", clientIp: null });
+    const after = await reserveVideoSlot(
+      { visitorId: "e", clientIp: null },
+      { priority: false },
+    );
     if (!after.ok) throw new Error("expected a slot");
     const oldKeys = evalKeys(0).slice(0, 3);
     const newKeys = evalKeys(1).slice(0, 3);

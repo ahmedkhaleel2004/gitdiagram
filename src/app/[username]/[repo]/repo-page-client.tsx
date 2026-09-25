@@ -25,6 +25,14 @@ const ExplainerVideo = dynamic(
   { ssr: false },
 );
 
+const VideoInfo = dynamic(
+  () =>
+    import("~/components/explainer/video-info").then(
+      (module) => module.VideoInfo,
+    ),
+  { ssr: false },
+);
+
 const PrivateReposDialog = dynamic(
   () =>
     import("~/components/private-repos-dialog").then(
@@ -106,6 +114,11 @@ export default function RepoPageClient({
                 username={normalizedUsername}
                 repo={normalizedRepo}
               />
+            ) : undefined
+          }
+          info={
+            VIDEOS_ENABLED ? (
+              <VideoInfo username={normalizedUsername} repo={normalizedRepo} />
             ) : undefined
           }
           recovery={

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { isPriorityPlace } from "~/features/admin/priority-places";
-import type { VideoAudience } from "~/features/admin/types";
+import type { PriorityPlaces, VideoAudience } from "~/features/admin/types";
 
 // Who may make new explainer videos during early access: anyone, on any
 // device, in the places GitDiagram's most valuable audience lives. It mirrors
@@ -28,17 +28,23 @@ export function isDesktopRequest(request: Request): boolean {
   return !MOBILE.test(agent) && DESKTOP.test(agent);
 }
 
-export function isInVideoRegion(request: Request): boolean {
+export function isInVideoRegion(
+  request: Request,
+  places: PriorityPlaces = "cities",
+): boolean {
   const headers = request.headers;
   const lat = Number.parseFloat(headers.get("x-vercel-ip-latitude") ?? "");
   const lon = Number.parseFloat(headers.get("x-vercel-ip-longitude") ?? "");
-  return isPriorityPlace({
-    country: headers.get("x-vercel-ip-country") ?? "",
-    region: headers.get("x-vercel-ip-country-region") ?? "",
-    city: safeDecode(headers.get("x-vercel-ip-city") ?? ""),
-    lat: Number.isFinite(lat) ? lat : null,
-    lon: Number.isFinite(lon) ? lon : null,
-  });
+  return isPriorityPlace(
+    {
+      country: headers.get("x-vercel-ip-country") ?? "",
+      region: headers.get("x-vercel-ip-country-region") ?? "",
+      city: safeDecode(headers.get("x-vercel-ip-city") ?? ""),
+      lat: Number.isFinite(lat) ? lat : null,
+      lon: Number.isFinite(lon) ? lon : null,
+    },
+    places,
+  );
 }
 
 /** Vercel percent-encodes the city; off Vercel the header may be anything. */
@@ -57,8 +63,9 @@ function safeDecode(value: string): string {
 export function canMakeVideosHere(
   request: Request,
   audience: VideoAudience = "priority",
+  places: PriorityPlaces = "cities",
 ): boolean {
-  return audienceBlock(request, audience) === null;
+  return audienceBlock(request, audience, places) === null;
 }
 
 /**
@@ -69,8 +76,9 @@ export function canMakeVideosHere(
 export function audienceBlock(
   request: Request,
   audience: VideoAudience = "priority",
+  places: PriorityPlaces = "cities",
 ): "mobile" | "place" | null {
-  if (audience === "everyone" || isInVideoRegion(request)) return null;
+  if (audience === "everyone" || isInVideoRegion(request, places)) return null;
   if (audience !== "desktop") return "place";
   return isDesktopRequest(request) ? null : "mobile";
 }
@@ -82,8 +90,9 @@ export function audienceBlock(
 export function anyDeviceHere(
   request: Request,
   audience: VideoAudience = "priority",
+  places: PriorityPlaces = "cities",
 ): boolean {
-  return audience === "everyone" || isInVideoRegion(request);
+  return audience === "everyone" || isInVideoRegion(request, places);
 }
 
 const EARLY_ACCESS_MESSAGE =

@@ -76,7 +76,7 @@ export function ExpandedActivity({ state }: { state: DiagramStreamState }) {
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
       <summary>
-        Activity <ChevronDown size={12} aria-hidden="true" />
+        Info <ChevronDown size={12} aria-hidden="true" />
       </summary>
       <div className={styles.detailBody}>
         <GenerationActivity state={state} />

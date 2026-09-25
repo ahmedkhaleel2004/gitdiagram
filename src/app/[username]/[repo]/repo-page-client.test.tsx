@@ -100,7 +100,7 @@ describe("RepoPageClient", () => {
       screen.queryByRole("button", { name: /use your ai key/i }),
     ).not.toBeInTheDocument();
   });
-  it("shows final cost within Activity", async () => {
+  it("shows final cost within Info", async () => {
     setup({
       status: "complete",
       diagram: "flowchart TD\nA-->B",
@@ -124,10 +124,10 @@ describe("RepoPageClient", () => {
         hidden: true,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
-    expect(
-      screen.getByRole("region", { name: "Generation activity" }),
-    ).toHaveTextContent("Estimated cost: $0.0100 USD");
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    expect(screen.getByRole("region", { name: "Info" })).toHaveTextContent(
+      "Estimated cost: $0.0100 USD",
+    );
   });
   it("offers GitHub access recovery and retries the current repository", () => {
     setup({

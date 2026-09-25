@@ -47,22 +47,27 @@ export function AdminDashboard() {
   // two minutes. Everything below counts these people, not tabs.
   const now = usePeopleClock(tabs, live.at);
   const people = useMemo(() => peopleHere(tabs, now), [tabs, now]);
+  // Counted by whichever priority places are switched on.
+  const places = state?.controls.priorityPlaces ?? "cities";
   const { mismatched, priority } = useMemo(
     () => ({
       mismatched: new Set(
         people.filter((v) => hasClockMismatch(v, now)).map((v) => v.id),
       ) as ReadonlySet<string>,
       priority: people.filter((v) =>
-        isPriorityPlace({
-          country: v.c,
-          region: v.r,
-          city: v.ct,
-          lat: v.la,
-          lon: v.lo,
-        }),
+        isPriorityPlace(
+          {
+            country: v.c,
+            region: v.r,
+            city: v.ct,
+            lat: v.la,
+            lon: v.lo,
+          },
+          places,
+        ),
       ).length,
     }),
-    [people, now],
+    [people, now, places],
   );
 
   async function signOut(everywhere: boolean) {

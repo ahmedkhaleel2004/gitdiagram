@@ -144,6 +144,8 @@ export type VideoGenerationStage =
 /** What a generation has done so far, for the live progress rows. */
 export interface VideoGenerationProgress {
   sourceFiles?: number;
+  /** The model writing and designing the film, once it is chosen. */
+  model?: string;
   scenes?: number;
   beats?: number;
   words?: number;

@@ -55,6 +55,18 @@ describe("who may make new videos", () => {
     expect(at("DE", "BE")).toBe(false);
   });
 
+  it("lets anyone in the US, Canada or the UK in when the operator widens it", () => {
+    const texas = request({
+      "x-vercel-ip-country": "US",
+      "x-vercel-ip-country-region": "TX",
+      "user-agent": IPHONE,
+    });
+    expect(isInVideoRegion(texas)).toBe(false);
+    expect(isInVideoRegion(texas, "countries")).toBe(true);
+    expect(audienceBlock(texas, "priority", "countries")).toBeNull();
+    expect(anyDeviceHere(texas, "priority", "countries")).toBe(true);
+  });
+
   it("takes anywhere around London, by distance or by city", () => {
     const uk = (lat: string, lon: string, city = "") =>
       isInVideoRegion(

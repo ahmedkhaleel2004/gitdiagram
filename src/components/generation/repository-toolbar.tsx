@@ -71,7 +71,7 @@ export function RepositoryToolbar({
           aria-controls={historyId}
           onClick={toggleHistory}
         >
-          Activity <ChevronDown size={12} aria-hidden="true" />
+          Info <ChevronDown size={12} aria-hidden="true" />
         </button>
         <button
           type="button"

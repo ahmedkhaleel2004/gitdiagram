@@ -81,7 +81,7 @@ describe("repository generation workspace", () => {
     expect(
       screen.queryByRole("heading", { name: "Drawing your diagram" }),
     ).not.toBeInTheDocument();
-    const activity = screen.getByRole("button", { name: "Activity" });
+    const activity = screen.getByRole("button", { name: "Info" });
     expect(activity).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(activity);
     expect(activity).toHaveAttribute("aria-expanded", "true");
@@ -93,7 +93,7 @@ describe("repository generation workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Exit zoom" }));
     expect(renders.get("old")?.zoomingEnabled).toBe(false);
   });
-  it("keeps saved generation time and cost in Activity, including after a cancelled replacement", () => {
+  it("keeps saved generation time and cost in Info, including after a cancelled replacement", () => {
     const savedAt = new Date("2026-09-18T08:32:40Z");
     const cost = {
       kind: "actual" as const,
@@ -115,17 +115,17 @@ describe("repository generation workspace", () => {
     ).not.toBeInTheDocument();
     finish("old");
     expect(
-      screen.queryByRole("region", { name: "Generation activity" }),
+      screen.queryByRole("region", { name: "Info" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
-    expect(
-      screen.getByRole("region", { name: "Generation activity" }),
-    ).toHaveTextContent("Actual cost: $0.0076 USD");
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    expect(screen.getByRole("region", { name: "Info" })).toHaveTextContent(
+      "Actual cost: $0.0076 USD",
+    );
     expect(document.querySelector("time")).toHaveAttribute(
       "dateTime",
       savedAt.toISOString(),
     );
-    expect(screen.getByRole("button", { name: "Activity" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Info" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
@@ -153,7 +153,7 @@ describe("repository generation workspace", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading diagram");
     expect(screen.queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Activity" }),
+      screen.queryByRole("button", { name: "Info" }),
     ).not.toBeInTheDocument();
   });
   it("presents the repository as a direct link without an edit control", () => {

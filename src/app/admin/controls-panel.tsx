@@ -7,6 +7,7 @@ import { setAdminTools, useAdminTools } from "~/features/admin/tools";
 import type {
   AdminState,
   LiveControls,
+  PriorityPlaces,
   VideoAudience,
 } from "~/features/admin/types";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -18,43 +19,64 @@ import { Panel, TOUCH } from "./ui";
 
 type Change = (patch: Partial<LiveControls>) => Promise<string | null>;
 
-const AUDIENCES: Array<{ value: VideoAudience; label: string; hint: string }> =
-  [
-    {
-      value: "priority",
-      label: "Priority places",
-      hint: "Any device in CA, WA, NY, Ontario, BC, London and Paris",
-    },
-    {
-      value: "desktop",
-      label: "All desktops",
-      hint: "Priority places, plus any desktop",
-    },
-    { value: "everyone", label: "Everyone", hint: "Every device, anywhere" },
-  ];
+interface Choice<T> {
+  value: T;
+  label: string;
+  hint: string;
+}
+
+const AUDIENCES: Array<Choice<VideoAudience>> = [
+  {
+    value: "priority",
+    label: "Priority places",
+    hint: "Any device in the priority places below",
+  },
+  {
+    value: "desktop",
+    label: "All desktops",
+    hint: "Priority places, plus any desktop",
+  },
+  { value: "everyone", label: "Everyone", hint: "Every device, anywhere" },
+];
+
+const PLACES: Array<Choice<PriorityPlaces>> = [
+  {
+    value: "cities",
+    label: "Cities",
+    hint: "CA, WA, NY, Ontario, BC, London and Paris",
+  },
+  {
+    value: "countries",
+    label: "US, Canada & UK",
+    hint: "All of all three, plus Paris",
+  },
+];
 
 /**
- * Who can make new videos, as a radio group. Arrow keys, Home and End move
- * between the choices; Space or Enter picks one. (Moving does not pick, as
- * it would in a form, because each pick goes live at once.)
+ * A live setting as a radio group. Arrow keys, Home and End move between
+ * the choices; Space or Enter picks one. (Moving does not pick, as it would
+ * in a form, because each pick goes live at once.)
  */
-function AudiencePicker({
+function ChoicePicker<T extends string>({
+  label,
+  options,
   value,
   disabled,
-  change,
+  onPick,
 }: {
-  value: VideoAudience;
+  label: string;
+  options: Array<Choice<T>>;
+  value: T;
   disabled: boolean;
-  change: Change;
+  onPick: (value: T) => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
   const [focused, setFocused] = useState<number | null>(null);
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
-  const selected = AUDIENCES.findIndex((option) => option.value === value);
+  const selected = options.findIndex((option) => option.value === value);
   const tabStop = focused ?? selected;
 
   const move = (event: React.KeyboardEvent, index: number) => {
-    const last = AUDIENCES.length - 1;
+    const last = options.length - 1;
     const next =
       event.key === "ArrowRight" || event.key === "ArrowDown"
         ? index === last
@@ -75,51 +97,72 @@ function AudiencePicker({
     buttons.current[next]?.focus();
   };
 
-  const pick = (option: VideoAudience) => {
-    if (option === value) return;
-    if (option === "everyone") setConfirming(true);
-    else void change({ videoAudience: option });
-  };
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className={`grid gap-2 ${options.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+          setFocused(null);
+      }}
+    >
+      {options.map((option, index) => {
+        const checked = index === selected;
+        return (
+          <button
+            key={option.value}
+            ref={(element) => {
+              buttons.current[index] = element;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            tabIndex={index === tabStop ? 0 : -1}
+            disabled={disabled}
+            onClick={() => {
+              if (option.value !== value) onPick(option.value);
+            }}
+            onKeyDown={(event) => move(event, index)}
+            onFocus={() => setFocused(index)}
+            className={`rounded-md border-[3px] border-black p-3 text-left transition-transform active:scale-[0.98] ${
+              checked
+                ? "bg-purple-400 shadow-[4px_4px_0_0_#000] dark:bg-[hsl(var(--neo-button))] dark:text-black"
+                : "bg-white hover:bg-purple-100 dark:bg-black/20 dark:hover:bg-black/30"
+            }`}
+          >
+            <div className="font-bold">{option.label}</div>
+            <div className="text-xs opacity-80">{option.hint}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
+/** Who can make new videos; opening it to everyone asks first. */
+function AudiencePicker({
+  value,
+  disabled,
+  change,
+}: {
+  value: VideoAudience;
+  disabled: boolean;
+  change: Change;
+}) {
+  const [confirming, setConfirming] = useState(false);
   return (
     <>
-      <div
-        role="radiogroup"
-        aria-label="Who can make new videos"
-        className="grid gap-2 sm:grid-cols-3"
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-            setFocused(null);
+      <ChoicePicker
+        label="Who can make new videos"
+        options={AUDIENCES}
+        value={value}
+        disabled={disabled}
+        onPick={(option) => {
+          if (option === "everyone") setConfirming(true);
+          else void change({ videoAudience: option });
         }}
-      >
-        {AUDIENCES.map((option, index) => {
-          const checked = index === selected;
-          return (
-            <button
-              key={option.value}
-              ref={(element) => {
-                buttons.current[index] = element;
-              }}
-              type="button"
-              role="radio"
-              aria-checked={checked}
-              tabIndex={index === tabStop ? 0 : -1}
-              disabled={disabled}
-              onClick={() => pick(option.value)}
-              onKeyDown={(event) => move(event, index)}
-              onFocus={() => setFocused(index)}
-              className={`rounded-md border-[3px] border-black p-3 text-left transition-transform active:scale-[0.98] ${
-                checked
-                  ? "bg-purple-400 shadow-[4px_4px_0_0_#000] dark:bg-[hsl(var(--neo-button))] dark:text-black"
-                  : "bg-white hover:bg-purple-100 dark:bg-black/20 dark:hover:bg-black/30"
-              }`}
-            >
-              <div className="font-bold">{option.label}</div>
-              <div className="text-xs opacity-80">{option.hint}</div>
-            </button>
-          );
-        })}
-      </div>
+      />
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
@@ -265,6 +308,21 @@ export function ControlsPanel({
               change={change}
             />
           </div>
+          <div className="flex flex-col gap-2">
+            <div className="text-sm font-semibold">Priority places</div>
+            <p className="text-xs text-[hsl(var(--neo-soft-text))]">
+              People here get more videos a day, and their first one each day is
+              made with Claude Opus. Everyone else gets GPT-6 Sol, except on
+              repositories with 10,000+ stars.
+            </p>
+            <ChoicePicker
+              label="Priority places"
+              options={PLACES}
+              value={controls.priorityPlaces}
+              disabled={saving}
+              onPick={(option) => void change({ priorityPlaces: option })}
+            />
+          </div>
           <label className="flex items-center justify-between gap-4 rounded-md border-2 border-black bg-white/70 p-3 dark:bg-black/20">
             <span>
               <span className="block font-semibold">Pause all new videos</span>
@@ -312,6 +370,15 @@ export function ControlsPanel({
               effective={video?.videos.personLimit}
               disabled={saving}
               onSave={(value) => change({ videoPersonDailyLimit: value })}
+            />
+            <LimitField
+              label="Per priority person per day"
+              override={controls.videoPriorityPersonDailyLimit}
+              effective={video?.videos.priorityPersonLimit}
+              disabled={saving}
+              onSave={(value) =>
+                change({ videoPriorityPersonDailyLimit: value })
+              }
             />
             <LimitField
               label="Per connection per day (backstop)"

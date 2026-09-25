@@ -34,6 +34,7 @@ export function RepositoryWorkspace({
   regenerateDisabled = false,
   recovery,
   video,
+  info,
 }: {
   repository: string;
   state: DiagramStreamState;
@@ -46,6 +47,8 @@ export function RepositoryWorkspace({
   recovery?: ReactNode;
   /** Optional explainer video panel; the diagram stays the default view. */
   video?: ReactNode;
+  /** More lines for the Info panel, mounted only while it is open. */
+  info?: ReactNode;
 }) {
   const {
     presented,
@@ -198,7 +201,7 @@ export function RepositoryWorkspace({
       <div
         id={historyId}
         role="region"
-        aria-label="Generation activity"
+        aria-label="Info"
         className={styles.fold}
         data-open={historyVisible}
         aria-hidden={!historyVisible}
@@ -215,6 +218,7 @@ export function RepositoryWorkspace({
                 />
               </>
             )}
+            {historyVisible && info}
           </div>
         </div>
       </div>

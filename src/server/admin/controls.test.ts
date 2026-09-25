@@ -26,19 +26,32 @@ describe("live controls", () => {
         "2",
         "videoNetworkDailyLimit",
         "3",
+        "priorityPlaces",
+        "countries",
+        "videoPriorityPersonDailyLimit",
+        "4",
       ]),
     ).toEqual({
       videoAudience: "everyone",
+      priorityPlaces: "countries",
       videosPaused: true,
       videoDailyLimit: 200,
       videoPersonDailyLimit: 2,
+      videoPriorityPersonDailyLimit: 4,
       videoNetworkDailyLimit: 3,
     });
   });
 
   it("ignores values it does not understand", () => {
     expect(
-      parseControls(["videoAudience", "martians", "videoDailyLimit", "-4"]),
+      parseControls([
+        "videoAudience",
+        "martians",
+        "priorityPlaces",
+        "moon",
+        "videoDailyLimit",
+        "-4",
+      ]),
     ).toEqual(DEFAULT_CONTROLS);
   });
 });

@@ -1,12 +1,19 @@
-// The early-access places for making new videos: anyone, on any device, in
-// California, Washington, New York, Ontario, British Columbia, or within
-// 60 km of London or Paris (Paris also matches all of Île-de-France).
+// The priority places for making new videos. Two definitions, picked live
+// in /admin:
+// - "cities": California, Washington, New York, Ontario, British Columbia,
+//   or within 60 km of London or Paris (Paris also matches all of
+//   Île-de-France).
+// - "countries": all of the US, Canada and the UK, plus the Paris area.
 //
 // Pure data and geometry, so the server's rule and the operator dashboard's
 // "Priority places" count can share one definition. The server reads
 // Vercel's IP geolocation headers; the dashboard reads the presence worker's
 // (Cloudflare's) geolocation. Both are country, ISO 3166-2 region code, city
 // and coordinates.
+
+import type { PriorityPlaces } from "./types";
+
+const PRIORITY_COUNTRIES: readonly string[] = ["US", "CA", "GB"];
 
 const PRIORITY_REGIONS: Readonly<Record<string, readonly string[]>> = {
   US: ["CA", "WA", "NY"],
@@ -49,8 +56,13 @@ interface Place {
   lon: number | null;
 }
 
-/** Whether a geolocated place is one of the early-access places. */
-export function isPriorityPlace(place: Place): boolean {
+/** Whether a geolocated place is one of the priority places. */
+export function isPriorityPlace(
+  place: Place,
+  places: PriorityPlaces = "cities",
+): boolean {
+  if (places === "countries" && PRIORITY_COUNTRIES.includes(place.country))
+    return true;
   if (PRIORITY_REGIONS[place.country]?.includes(place.region)) return true;
   const metro = PRIORITY_METROS.find((each) => each.country === place.country);
   if (!metro) return false;

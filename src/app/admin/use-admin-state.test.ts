@@ -6,9 +6,11 @@ import { useAdminState } from "./use-admin-state";
 
 const controls = (overrides: Partial<LiveControls> = {}): LiveControls => ({
   videoAudience: "priority",
+  priorityPlaces: "cities",
   videosPaused: false,
   videoDailyLimit: null,
   videoPersonDailyLimit: null,
+  videoPriorityPersonDailyLimit: null,
   videoNetworkDailyLimit: null,
   ...overrides,
 });

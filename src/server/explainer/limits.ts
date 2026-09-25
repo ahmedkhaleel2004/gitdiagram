@@ -6,10 +6,12 @@ import { isOperatorToken, verifyAdminRequest } from "~/server/admin/operator";
 import { toRateLimitBucket } from "~/server/generate/rate-limit";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
-// Every new video spends real money (Claude plus ElevenLabs), so the public
-// path is budgeted per UTC day: overall, per person (one browser, see
+// Every new video spends real money (Claude or GPT plus ElevenLabs), so the
+// public path is budgeted per UTC day: overall, per person (one browser, see
 // visitor.ts), and per internet connection. The per-person limit is the one
-// people normally meet. The per-connection limit is a looser backstop, high
+// people normally meet; people in the priority places get a higher one, and
+// their first video of the day is made with the premium model (see
+// takePremiumVideo). The per-connection limit is a looser backstop, high
 // enough that an office or a university can share one connection, and it
 // stops one person from clearing cookies for more. Unlike the diagram limiter
 // this fails closed: the daily budget lives in Redis too, so without Redis
@@ -35,22 +37,30 @@ interface Limits {
 
 /**
  * New videos the public may create per UTC day: across everyone, per person
- * and per connection. The operator can override each live from /admin. For
- * admission the overrides must be read (it throws without Redis); for
- * display the last known ones do.
+ * (higher for someone in a priority place) and per connection. The operator
+ * can override each live from /admin. For admission the overrides must be
+ * read (it throws without Redis); for display the last known ones do.
  */
-async function videoLimits(admission: boolean): Promise<Limits> {
+async function videoLimits(
+  admission: boolean,
+): Promise<Limits & { priorityPerson: number }> {
   const controls = await (admission ? readAdmissionControls() : readControls());
   return {
     daily: controls.videoDailyLimit ?? readLimit("VIDEO_DAILY_LIMIT", 25),
     person:
       controls.videoPersonDailyLimit ??
       readLimit("VIDEO_PERSON_DAILY_LIMIT", 1),
+    priorityPerson:
+      controls.videoPriorityPersonDailyLimit ??
+      readLimit("VIDEO_PRIORITY_PERSON_DAILY_LIMIT", 3),
     network:
       controls.videoNetworkDailyLimit ??
       readLimit("VIDEO_NETWORK_DAILY_LIMIT", 10),
   };
 }
+
+/** Premium-model videos per priority person per UTC day. */
+const premiumPerPerson = () => readLimit("VIDEO_PREMIUM_PERSON_DAILY_LIMIT", 1);
 /** MP4 renders started per UTC day. Finished renders are cached and free to download. */
 const renderLimits = (): Limits => ({
   daily: readLimit("VIDEO_RENDER_DAILY_LIMIT", 300),
@@ -188,8 +198,59 @@ async function reserve(
   };
 }
 
-export async function reserveVideoSlot(requester: Requester) {
-  return reserve("generate", requester, await videoLimits(true));
+/** A place in today's video budget; someone in a priority place gets more. */
+export async function reserveVideoSlot(
+  requester: Requester,
+  options: { priority: boolean },
+) {
+  const limits = await videoLimits(true);
+  return reserve("generate", requester, {
+    ...limits,
+    person: options.priority ? limits.priorityPerson : limits.person,
+  });
+}
+
+// KEYS: this person's premium count. ARGV: the limit, the TTL. Returns 1 when
+// one was taken.
+const TAKE_PREMIUM_SCRIPT = `
+if tonumber(redis.call("GET", KEYS[1]) or "0") >= tonumber(ARGV[1]) then
+  return 0
+end
+redis.call("INCR", KEYS[1])
+redis.call("EXPIRE", KEYS[1], ARGV[2])
+return 1
+`;
+
+/**
+ * One of this person's premium-model videos for today, with a way to give it
+ * back, or null when they have used theirs. It counts in the same epoch as
+ * the video budget, so a reset in /admin starts it over too.
+ */
+export async function takePremiumVideo(
+  visitorId: string,
+): Promise<{ refund: () => Promise<void> } | null> {
+  const [epoch] = await currentEpochs(["generate"]);
+  const key = `video:v1:premium:who:${encodeURIComponent(visitorId)}:${period(today(), epoch!)}`;
+  const taken = await upstashEval<number>({
+    script: TAKE_PREMIUM_SCRIPT,
+    keys: [key],
+    args: [premiumPerPerson(), DAY_SECONDS * 2],
+  });
+  if (taken !== 1) return null;
+  return {
+    refund: async () => {
+      try {
+        await upstashEval<number>({ script: REFUND_SCRIPT, keys: [key] });
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: "video.premium.refund_failed",
+            error: error instanceof Error ? error.message : "unknown",
+          }),
+        );
+      }
+    },
+  };
 }
 
 export function reserveRenderSlot(requester: Requester) {
@@ -229,6 +290,7 @@ export async function videoUsageToday() {
       used: videos!,
       limit: limits.daily,
       personLimit: limits.person,
+      priorityPersonLimit: limits.priorityPerson,
       networkLimit: limits.network,
     },
     renders: {

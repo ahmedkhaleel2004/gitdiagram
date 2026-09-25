@@ -52,4 +52,16 @@ describe("priority places", () => {
     );
     expect(isPriorityPlace(place("FR", "", "Paris"))).toBe(true);
   });
+
+  it("widens to all of the US, Canada and the UK, keeping Paris", () => {
+    const wide = (p: Parameters<typeof isPriorityPlace>[0]) =>
+      isPriorityPlace(p, "countries");
+    expect(wide(place("US", "TX", "Austin"))).toBe(true);
+    expect(wide(place("CA", "QC", "Montreal"))).toBe(true);
+    expect(wide(place("GB", "SCT", "Edinburgh", 55.95, -3.19))).toBe(true);
+    expect(wide(place("FR", "IDF", "Versailles"))).toBe(true);
+    expect(wide(place("FR", "ARA", "Lyon", 45.76, 4.84))).toBe(false);
+    expect(wide(place("DE", "BE", "Berlin"))).toBe(false);
+    expect(isPriorityPlace(place("US", "TX", "Austin"))).toBe(false);
+  });
 });

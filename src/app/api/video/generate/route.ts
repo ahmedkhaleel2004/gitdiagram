@@ -13,7 +13,11 @@ import {
 } from "~/server/http/same-origin-json";
 import { readAdmissionControls } from "~/server/admin/controls";
 import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
-import { audienceBlock, audienceMessage } from "~/server/explainer/audience";
+import {
+  audienceBlock,
+  audienceMessage,
+  isInVideoRegion,
+} from "~/server/explainer/audience";
 import {
   purgeVideoResponse,
   refreshVideoPages,
@@ -31,11 +35,13 @@ import {
   isVideoAdmin,
   limitMessage,
   reserveVideoSlot,
+  takePremiumVideo,
   tryPaidVideoRun,
   tryVideoLock,
   type Reservation,
 } from "~/server/explainer/limits";
 import { hasNarrationCredits } from "~/server/explainer/narration";
+import { choosePlanner } from "~/server/explainer/planner";
 import { storePoster } from "~/server/explainer/posters";
 import { VideoInputError } from "~/server/explainer/repository";
 import { readVideoArtifact } from "~/server/explainer/store";
@@ -110,6 +116,9 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   const mayReplace = !production || (await isVideoAdmin(request));
   const gated = (reason: string) =>
     reportHeldBack(request, { username, repo, reason, step: "start" });
+  // Someone in a priority place may make more videos a day, and their first
+  // is made with the premium model (see planner.ts).
+  let priority = false;
   if (!trusted) {
     // The page's first request (GET /api/video) names the browser. Without
     // that name the per-person budget cannot count this caller.
@@ -128,11 +137,16 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       gated("paused");
       return jsonErrorResponse(limitMessage("daily"), 503);
     }
-    const blocked = audienceBlock(request, controls.videoAudience);
+    const blocked = audienceBlock(
+      request,
+      controls.videoAudience,
+      controls.priorityPlaces,
+    );
     if (blocked) {
       gated(blocked);
       return jsonErrorResponse(audienceMessage(blocked), 403);
     }
+    priority = isInVideoRegion(request, controls.priorityPlaces);
   }
 
   const alreadyMade = () =>
@@ -159,10 +173,10 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
         gated("credits");
         return jsonErrorResponse(limitMessage("daily"), 503);
       }
-      reservation = await reserveVideoSlot({
-        visitorId: visitor.id,
-        clientIp: getClientIp(request),
-      });
+      reservation = await reserveVideoSlot(
+        { visitorId: visitor.id, clientIp: getClientIp(request) },
+        { priority },
+      );
       if (!reservation.ok) {
         gated(reservation.reason);
         return jsonErrorResponse(
@@ -224,6 +238,8 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   let confirmedPublic = false;
   // A model has been called: from here on the run costs real money.
   let paid = false;
+  // The visitor's premium video for today, if this run took it.
+  let refundPremium: (() => Promise<void>) | undefined;
   let closed = false;
   let job: Promise<void> = Promise.resolve();
 
@@ -253,6 +269,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
             repo: repository,
             operator: trusted,
             job: { id: jobId, state: "start", label: repository },
+            model: event.progress?.model,
             ...origin,
           });
         }
@@ -267,6 +284,16 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
         onEvent,
         onPaidWork: () => {
           paid = true;
+        },
+        choosePlanner: async ({ stars }) => {
+          const choice = await choosePlanner({
+            operator: trusted,
+            stars,
+            priority,
+            takePremium: () => takePremiumVideo(visitor.id),
+          });
+          refundPremium = choice.refund;
+          return choice.planner;
         },
         signal: deadline,
       })
@@ -298,7 +325,10 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
             // Only a failure before any model call is refunded. After that the
             // run was paid for, and a refund would let one failing repository
             // be retried for free again and again.
-            if (!paid && reservation?.ok) await reservation.refund();
+            if (!paid) {
+              if (reservation?.ok) await reservation.refund();
+              await refundPremium?.();
+            }
           },
         )
         .catch((error: unknown) => {

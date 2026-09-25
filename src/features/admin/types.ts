@@ -2,11 +2,17 @@
 
 export type VideoAudience = "priority" | "desktop" | "everyone";
 
+/** Which places count as priority (see features/admin/priority-places.ts). */
+export type PriorityPlaces = "cities" | "countries";
+
 export interface LiveControls {
   videoAudience: VideoAudience;
+  priorityPlaces: PriorityPlaces;
   videosPaused: boolean;
   videoDailyLimit: number | null;
   videoPersonDailyLimit: number | null;
+  /** Videos a day for someone in a priority place. */
+  videoPriorityPersonDailyLimit: number | null;
   videoNetworkDailyLimit: number | null;
 }
 
@@ -15,6 +21,10 @@ interface DailyBudget {
   limit: number;
   personLimit: number;
   networkLimit: number;
+}
+
+interface VideoBudget extends DailyBudget {
+  priorityPersonLimit: number;
 }
 
 /** Claude API credit: the balance last entered from the Console, and spend since. */
@@ -28,7 +38,7 @@ export interface AdminState {
   now: number;
   controls: LiveControls;
   video: {
-    videos: DailyBudget;
+    videos: VideoBudget;
     renders: DailyBudget;
   } | null;
   voiceCredits: number | null;

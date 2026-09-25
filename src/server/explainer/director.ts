@@ -1,6 +1,7 @@
 import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { claudeCostUsd, claudePrice } from "~/server/anthropic-pricing";
 import type { RepositoryContextInput } from "./repository";
 import {
@@ -21,7 +22,55 @@ import {
   type Script,
 } from "./shots";
 
-const DEFAULT_VIDEO_MODEL = "claude-opus-5-5";
+/** Which model writes and designs a film, and how hard it thinks. */
+export interface Planner {
+  model: string;
+  effort: "low" | "medium" | "high";
+}
+
+type Effort = Planner["effort"];
+
+function readEffort(name: string, fallback: Effort): Effort {
+  const value = process.env[name]?.trim();
+  return value === "low" || value === "medium" || value === "high"
+    ? value
+    : fallback;
+}
+
+/**
+ * Claude Opus: the better storyteller (see experiments/video-models). It
+ * makes the films the most people will watch: big repositories, a priority
+ * visitor's first video each day, and the operator's.
+ */
+export function premiumPlanner(): Planner {
+  return {
+    model: process.env.VIDEO_PLANNER_MODEL?.trim() || "claude-opus-5-5",
+    effort: readEffort("VIDEO_PLANNER_EFFORT", "low"),
+  };
+}
+
+/** GPT-6 Sol at medium effort: close behind, for every other film. */
+export function standardPlanner(): Planner {
+  return {
+    model: process.env.VIDEO_STANDARD_MODEL?.trim() || "gpt-6-sol",
+    effort: readEffort("VIDEO_STANDARD_EFFORT", "medium"),
+  };
+}
+
+/** Whether the standard planner can run here (it needs an OpenAI key). */
+export function hasStandardPlanner(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY?.trim());
+}
+
+const isOpenAIModel = (model: string) => /^gpt-/i.test(model);
+
+// OpenAI list prices in USD per million tokens; cached input is billed at
+// 0.1× input, with no charge for writing the cache. Checked 2026-09-25.
+const OPENAI_PRICES: Record<string, { input: number; output: number }> = {
+  "gpt-6-sol": { input: 2, output: 10 },
+  "gpt-6-luna": { input: 0.1, output: 0.5 },
+};
+
 // Thinking counts against max_tokens too, so leave it room beyond the tool call.
 const MAX_TOKENS = 32_000;
 // A script over SCRIPT_WORD_LIMIT goes back once to be shortened. If neither
@@ -47,25 +96,33 @@ export class VideoRefusalError extends Error {}
  */
 class UnusableReplyError extends Error {}
 
-function videoModel(): string {
-  return process.env.VIDEO_PLANNER_MODEL?.trim() || DEFAULT_VIDEO_MODEL;
-}
-
 /**
  * Every call sends the same tools, system prompt and repository block, and marks
  * the repository block for caching, so the designers after the director pay
  * cache-read prices for the bulk of their input.
  */
-async function callTool(params: {
-  client: Anthropic;
+interface ToolCall {
   model: string;
   context: string;
   task: string;
   tool: string;
-  effort: "low" | "medium";
+  effort: Effort;
   usage: ModelUsage;
   signal?: AbortSignal;
-}): Promise<Json> {
+}
+
+async function callTool(
+  params: ToolCall & { client: Anthropic | OpenAI },
+): Promise<Json> {
+  const { client } = params;
+  return client instanceof OpenAI
+    ? callOpenAITool({ ...params, client })
+    : callClaudeTool({ ...params, client });
+}
+
+async function callClaudeTool(
+  params: ToolCall & { client: Anthropic },
+): Promise<Json> {
   const { client, model, usage } = params;
   const stream = client.messages.stream(
     {
@@ -124,6 +181,78 @@ async function callTool(params: {
   return call.input as Json;
 }
 
+/**
+ * The same call on the OpenAI Responses API: the same tools (not strict: the
+ * shot schema is too large for strict mode), instructions and repository
+ * block. OpenAI caches the shared prefix on its own.
+ */
+async function callOpenAITool(
+  params: ToolCall & { client: OpenAI },
+): Promise<Json> {
+  const { client, model, usage } = params;
+  const response = await client.responses.create(
+    {
+      model,
+      instructions: SHOT_SYSTEM,
+      tools: [SCRIPT_TOOL, SHOTS_TOOL].map((tool) => ({
+        type: "function" as const,
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.input_schema,
+        strict: false,
+      })),
+      tool_choice: { type: "function", name: params.tool },
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: params.context },
+            { type: "input_text", text: params.task },
+          ],
+        },
+      ],
+      reasoning: { effort: params.effort },
+      max_output_tokens: MAX_TOKENS,
+    },
+    { signal: params.signal },
+  );
+  const u = response.usage;
+  const cached = u?.input_tokens_details?.cached_tokens ?? 0;
+  const price = OPENAI_PRICES[model];
+  usage.calls += 1;
+  usage.inputTokens += u?.input_tokens ?? 0;
+  usage.outputTokens += u?.output_tokens ?? 0;
+  if (price && u && usage.costUsd !== null)
+    usage.costUsd +=
+      ((u.input_tokens - cached) * price.input +
+        cached * price.input * 0.1 +
+        u.output_tokens * price.output) /
+      1_000_000;
+  else usage.costUsd = null;
+  const refused = response.output.some(
+    (item) =>
+      item.type === "message" &&
+      item.content.some((part) => part.type === "refusal"),
+  );
+  if (refused)
+    throw new VideoRefusalError("The model declined this repository.");
+  if (response.status !== "completed")
+    throw new UnusableReplyError(
+      `The model stopped early in ${params.tool}: ${response.incomplete_details?.reason ?? response.status}.`,
+    );
+  const call = response.output.find(
+    (item): item is OpenAI.Responses.ResponseFunctionToolCall =>
+      item.type === "function_call" && item.name === params.tool,
+  );
+  if (!call)
+    throw new UnusableReplyError(`The model did not call ${params.tool}.`);
+  try {
+    return JSON.parse(call.arguments) as Json;
+  } catch {
+    throw new UnusableReplyError(`The model sent broken ${params.tool} JSON.`);
+  }
+}
+
 async function withRetry<T>(run: () => Promise<T>, signal?: AbortSignal) {
   try {
     return await run();
@@ -169,9 +298,12 @@ export function pickScript(drafts: Array<Script | null>): Script | null {
     : null;
 }
 
-export function createFilmWriters(input: RepositoryContextInput) {
-  const client = new Anthropic();
-  const model = videoModel();
+export function createFilmWriters(
+  input: RepositoryContextInput,
+  planner: Planner = premiumPlanner(),
+) {
+  const { model, effort } = planner;
+  const client = isOpenAIModel(model) ? new OpenAI() : new Anthropic();
   const context = repositoryContext(input);
   const usage: ModelUsage = {
     calls: 0,
@@ -194,7 +326,7 @@ export function createFilmWriters(input: RepositoryContextInput) {
             context,
             task,
             tool: SCRIPT_TOOL.name,
-            effort: "low",
+            effort,
             usage,
             signal,
           });
@@ -279,7 +411,7 @@ export function createFilmWriters(input: RepositoryContextInput) {
                     beats: group.beats,
                   }),
                   tool: SHOTS_TOOL.name,
-                  effort: "low",
+                  effort,
                   usage,
                   signal,
                 }),

@@ -1,23 +1,34 @@
 import "server-only";
 
-import type { LiveControls, VideoAudience } from "~/features/admin/types";
+import type {
+  LiveControls,
+  PriorityPlaces,
+  VideoAudience,
+} from "~/features/admin/types";
 import { upstashCommand } from "~/server/storage/upstash";
 
 // Switches the operator flips from /admin while the site is running. They live
 // in Redis so every server instance sees a change within a second, with no
 // redeploy. Anything unset falls back to the deployment's environment:
-// - videoAudience: who may make new videos: the early-access places on any
+// - videoAudience: who may make new videos: the priority places on any
 //   device ("priority"), those plus any desktop, or everyone.
+// - priorityPlaces: which places are priority: a few cities and states, or
+//   all of the US, Canada and the UK. People there may make more videos a
+//   day, the first of them with the premium model.
 // - videosPaused: stop every new video, whoever asks.
-// - videoDailyLimit, videoPersonDailyLimit, videoNetworkDailyLimit: override
-//   VIDEO_DAILY_LIMIT, VIDEO_PERSON_DAILY_LIMIT and VIDEO_NETWORK_DAILY_LIMIT.
+// - videoDailyLimit, videoPersonDailyLimit, videoPriorityPersonDailyLimit,
+//   videoNetworkDailyLimit: override VIDEO_DAILY_LIMIT,
+//   VIDEO_PERSON_DAILY_LIMIT, VIDEO_PRIORITY_PERSON_DAILY_LIMIT and
+//   VIDEO_NETWORK_DAILY_LIMIT.
 // Starting a new video needs them read: if Redis is down, nothing new starts.
 
 export const DEFAULT_CONTROLS: LiveControls = {
   videoAudience: "priority",
+  priorityPlaces: "cities",
   videosPaused: false,
   videoDailyLimit: null,
   videoPersonDailyLimit: null,
+  videoPriorityPersonDailyLimit: null,
   videoNetworkDailyLimit: null,
 };
 
@@ -26,6 +37,7 @@ const KEY = "admin:v1:controls";
 // flipped switch reaches every instance within about a second.
 const CACHE_MS = 1_000;
 const AUDIENCES = new Set<VideoAudience>(["priority", "desktop", "everyone"]);
+const PLACES = new Set<PriorityPlaces>(["cities", "countries"]);
 
 let cache: { at: number; controls: Promise<LiveControls> } | null = null;
 
@@ -40,14 +52,20 @@ export function parseControls(fields: string[] | null): LiveControls {
   for (let index = 0; index + 1 < (fields?.length ?? 0); index += 2)
     map.set(fields![index]!, fields![index + 1]!);
   const audience = map.get("videoAudience") as VideoAudience | undefined;
+  const places = map.get("priorityPlaces") as PriorityPlaces | undefined;
   return {
     videoAudience:
       audience && AUDIENCES.has(audience)
         ? audience
         : DEFAULT_CONTROLS.videoAudience,
+    priorityPlaces:
+      places && PLACES.has(places) ? places : DEFAULT_CONTROLS.priorityPlaces,
     videosPaused: map.get("videosPaused") === "1",
     videoDailyLimit: parseLimit(map.get("videoDailyLimit")),
     videoPersonDailyLimit: parseLimit(map.get("videoPersonDailyLimit")),
+    videoPriorityPersonDailyLimit: parseLimit(
+      map.get("videoPriorityPersonDailyLimit"),
+    ),
     videoNetworkDailyLimit: parseLimit(map.get("videoNetworkDailyLimit")),
   };
 }
