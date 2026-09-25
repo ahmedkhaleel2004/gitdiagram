@@ -5,6 +5,9 @@ interface GitHubRepoResponse {
   default_branch?: string;
   private?: boolean;
   stargazers_count?: number;
+  description?: string | null;
+  language?: string | null;
+  topics?: unknown;
 }
 
 interface GitHubTreeItem {
@@ -39,6 +42,10 @@ export interface GithubData {
   /** Metadata/tree were authorized as public after a stale caller token failed. */
   usedPublicFallback?: boolean;
   stargazerCount: number | null;
+  /** Display metadata from the same repository read; absent when unset. */
+  description?: string;
+  language?: string;
+  topics?: string[];
   pathTypes: ReadonlyMap<string, RepositoryPathType>;
   sourceBlobs?: ReadonlyMap<string, SourceBlob>;
 }
@@ -53,12 +60,12 @@ export const REPOSITORY_TOO_LARGE_ERROR =
 const GITHUB_REQUEST_TIMEOUT_ERROR = "GitHub request timed out. Please retry.";
 export const REPOSITORY_NOT_FOUND_ERROR = "Repository not found.";
 const FILE_TREE_UNAVAILABLE_ERROR = "Could not fetch repository file tree.";
-const EMPTY_REPOSITORY_ERROR =
+export const EMPTY_REPOSITORY_ERROR =
   "Could not fetch repository file tree. Repository might be empty or inaccessible.";
 function buildGithubRequestFailedError(status: number): string {
   return `GitHub request failed (${status}). Please retry.`;
 }
-const PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR =
+export const PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR =
   "A GitHub token is required to analyze a private repository.";
 export const MAX_INCLUDED_FILE_TREE_CHARACTERS = 780_000;
 export const MAX_README_BYTES = 750_000;
@@ -241,11 +248,17 @@ async function getRepoMetadata(
   repo: string,
   headers: HeadersInit,
   signal?: AbortSignal,
-): Promise<{
-  defaultBranch: string;
-  isPrivate: boolean;
-  stargazerCount: number | null;
-}> {
+): Promise<
+  Pick<
+    GithubData,
+    | "defaultBranch"
+    | "isPrivate"
+    | "stargazerCount"
+    | "description"
+    | "language"
+    | "topics"
+  >
+> {
   const data = await fetchJson<GitHubRepoResponse>(
     `https://api.github.com/repos/${username}/${repo}`,
     headers,
@@ -258,6 +271,11 @@ async function getRepoMetadata(
     isPrivate: Boolean(data.private),
     stargazerCount:
       typeof data.stargazers_count === "number" ? data.stargazers_count : null,
+    description: data.description || undefined,
+    language: data.language || undefined,
+    topics: Array.isArray(data.topics)
+      ? data.topics.filter((topic) => typeof topic === "string")
+      : undefined,
   };
 }
 
@@ -428,12 +446,8 @@ async function fetchGithubData(
 ): Promise<GithubData> {
   const hasCallerGithubPat = Boolean(githubPat?.trim());
   const headers = await getGitHubApiHeaders({ githubPat });
-  const { defaultBranch, isPrivate, stargazerCount } = await getRepoMetadata(
-    username,
-    repo,
-    headers,
-    signal,
-  );
+  const metadata = await getRepoMetadata(username, repo, headers, signal);
+  const { defaultBranch, isPrivate } = metadata;
 
   // GitHub App installation tokens and the server PAT pool may be able to read
   // private repositories. They improve public API rate limits, but they must
@@ -463,11 +477,9 @@ async function fetchGithubData(
   }
 
   return {
-    defaultBranch,
+    ...metadata,
     fileTree: tree.fileTree,
     readme: readmeResult.ok ? readmeResult.value : "",
-    isPrivate,
-    stargazerCount,
     pathTypes: tree.pathTypes,
     sourceBlobs: tree.sourceBlobs,
   };

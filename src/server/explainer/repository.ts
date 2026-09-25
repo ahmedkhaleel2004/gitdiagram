@@ -1,9 +1,11 @@
 import "server-only";
 
-import { getGitHubApiHeaders } from "~/server/github-auth";
 import {
+  EMPTY_REPOSITORY_ERROR,
   getGithubData,
+  PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR,
   REPOSITORY_NOT_FOUND_ERROR,
+  REPOSITORY_TOO_LARGE_ERROR,
 } from "~/server/generate/github";
 import { prepareRepositoryContext } from "~/server/generate/repository-context";
 import { fetchSourceContext } from "~/server/generate/source-context";
@@ -25,10 +27,23 @@ export interface RepositoryContextInput {
   sourceText: string;
 }
 
+/** A repository no video can be made for; asking again will not help. */
 export class VideoInputError extends Error {}
 
 const PUBLIC_ONLY_MESSAGE =
   "Explainer videos are available for public repositories only.";
+const EMPTY_MESSAGE =
+  "This repository looks empty, so there is nothing to explain yet.";
+
+// What the diagram pipeline's GitHub read reports, as told to a video viewer.
+// Videos are read with GitDiagram's own token, never a visitor's, so a
+// private repository reads as missing or as needing a token.
+const INPUT_ERRORS = new Map([
+  [REPOSITORY_NOT_FOUND_ERROR, PUBLIC_ONLY_MESSAGE],
+  [PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR, PUBLIC_ONLY_MESSAGE],
+  [EMPTY_REPOSITORY_ERROR, EMPTY_MESSAGE],
+  [REPOSITORY_TOO_LARGE_ERROR, REPOSITORY_TOO_LARGE_ERROR],
+]);
 
 export interface VideoRepository {
   meta: VideoMeta;
@@ -36,24 +51,6 @@ export interface VideoRepository {
   facts: PlanRepositoryFacts;
   /** Source files whose excerpts the model reads. */
   sourceFileCount: number;
-}
-
-async function readMetadata(
-  username: string,
-  repo: string,
-  signal?: AbortSignal,
-) {
-  const response = await fetch(
-    `https://api.github.com/repos/${encodeURIComponent(username)}/${encodeURIComponent(repo)}`,
-    { headers: await getGitHubApiHeaders(), signal },
-  );
-  if (!response.ok) return null;
-  return (await response.json()) as {
-    description?: string | null;
-    language?: string | null;
-    topics?: string[];
-    stargazers_count?: number;
-  };
 }
 
 /**
@@ -66,20 +63,13 @@ export async function readRepositoryForVideo(params: {
   signal?: AbortSignal;
 }): Promise<VideoRepository> {
   const { username, repo, signal } = params;
-  const [data, metadata] = await Promise.all([
-    // Videos are read with GitDiagram's own token, never a visitor's, so a
-    // private repository looks missing here.
-    getGithubData(username, repo, undefined, signal).catch((error: unknown) => {
-      if (
-        error instanceof Error &&
-        error.message === REPOSITORY_NOT_FOUND_ERROR
-      )
-        throw new VideoInputError(PUBLIC_ONLY_MESSAGE);
-      throw error;
-    }),
-    readMetadata(username, repo, signal),
-  ]);
-  if (data.isPrivate) throw new VideoInputError(PUBLIC_ONLY_MESSAGE);
+  const data = await getGithubData(username, repo, undefined, signal).catch(
+    (error: unknown) => {
+      const message =
+        error instanceof Error ? INPUT_ERRORS.get(error.message) : undefined;
+      throw message ? new VideoInputError(message) : error;
+    },
+  );
   const prepared = prepareRepositoryContext(data);
   const source = await fetchSourceContext({
     username,
@@ -92,9 +82,9 @@ export async function readRepositoryForVideo(params: {
     owner: username,
     repo,
     url: `https://github.com/${username}/${repo}`,
-    description: metadata?.description ?? "",
-    stars: metadata?.stargazers_count ?? data.stargazerCount ?? 0,
-    language: metadata?.language ?? "",
+    description: data.description ?? "",
+    stars: data.stargazerCount ?? 0,
+    language: data.language ?? "",
   };
   return {
     meta,
@@ -106,7 +96,7 @@ export async function readRepositoryForVideo(params: {
       description: meta.description,
       stars: meta.stars,
       language: meta.language,
-      topics: metadata?.topics ?? [],
+      topics: data.topics ?? [],
       readme: prepared.readme,
       fileTree: prepared.fileTree,
       treeTruncated: prepared.treeTruncated,

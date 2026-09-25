@@ -201,6 +201,35 @@ describe("getGithubData repository input bounds", () => {
     });
   });
 
+  it("passes the repository's display metadata through", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/demo")) {
+        return jsonResponse({
+          default_branch: "main",
+          private: false,
+          description: "Demo app",
+          language: "TypeScript",
+          topics: ["cli", 3],
+        });
+      }
+      if (url.includes("/git/trees/main?recursive=1")) {
+        return jsonResponse({
+          truncated: false,
+          tree: [{ path: "src/main.ts", type: "blob" }],
+        });
+      }
+      return jsonResponse({ message: "Not Found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getGithubData("acme", "demo")).resolves.toMatchObject({
+      description: "Demo app",
+      language: "TypeScript",
+      topics: ["cli"],
+    });
+  });
+
   it("still fails when the README exists but is oversized", async () => {
     const fetchMock = createGitHubFetch(
       { truncated: false, tree: [{ path: "src/main.ts", type: "blob" }] },
