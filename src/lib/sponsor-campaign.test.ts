@@ -2,6 +2,8 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import {
   activeSponsorCampaign,
   coderabbitCampaign,
+  lastBookedSponsorCampaign,
+  scheduledSponsorCampaigns,
   sentCampaign,
 } from "./sponsor-campaign";
 import { updateSponsorReadme } from "./sponsor-readme";
@@ -26,6 +28,37 @@ describe("paid sponsor schedule", () => {
     expect(
       end - Date.parse("2026-10-20T00:00:00-04:00"),
     ).toBeGreaterThanOrEqual(30 * 86400000);
+  });
+
+  // activeSponsorCampaign returns the first match, so an overlap would give the
+  // earlier campaign 100% of the shared inventory. Rotation must exist first.
+  it("never schedules overlapping campaigns", () => {
+    const campaigns = [...scheduledSponsorCampaigns].sort(
+      (a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt),
+    );
+    expect(new Set(campaigns.map(({ id }) => id)).size).toBe(campaigns.length);
+    campaigns.forEach((campaign, index) => {
+      expect(Date.parse(campaign.startsAt)).toBeLessThan(
+        Date.parse(campaign.endsAt),
+      );
+      const next = campaigns[index + 1];
+      if (next)
+        expect(Date.parse(campaign.endsAt)).toBeLessThanOrEqual(
+          Date.parse(next.startsAt),
+        );
+    });
+  });
+
+  it("finds the last booked campaign until it ends", () => {
+    expect(
+      lastBookedSponsorCampaign(Date.parse(sentCampaign.startsAt))?.id,
+    ).toBe(coderabbitCampaign.id);
+    expect(
+      lastBookedSponsorCampaign(Date.parse(coderabbitCampaign.endsAt) - 1)?.id,
+    ).toBe(coderabbitCampaign.id);
+    expect(
+      lastBookedSponsorCampaign(Date.parse(coderabbitCampaign.endsAt)),
+    ).toBeUndefined();
   });
 
   it("uses uncached server time and cannot force a preview onto production", async () => {

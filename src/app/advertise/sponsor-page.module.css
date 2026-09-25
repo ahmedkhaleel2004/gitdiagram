@@ -361,22 +361,6 @@
   line-height: 1.8;
   color: var(--muted);
 }
-.price {
-  flex-shrink: 0;
-  font-size: 76px;
-  line-height: 1;
-  font-weight: 700;
-  letter-spacing: -0.065em;
-}
-.price > span {
-  display: block;
-  margin-top: 13px;
-  text-align: right;
-  font-size: 13px;
-  letter-spacing: 0;
-  font-weight: 500;
-  color: var(--muted);
-}
 .offerActions {
   display: flex;
   justify-content: space-between;
@@ -441,9 +425,6 @@
   }
   .offerDescription {
     font-size: 15px;
-  }
-  .price {
-    font-size: 66px;
   }
 }
 @media (max-width: 720px) {
@@ -549,15 +530,6 @@
   .offerDescription {
     margin-top: 17px;
     font-size: 15px;
-  }
-  .price {
-    font-size: 68px;
-  }
-  .price > span {
-    display: inline-block;
-    margin: 0 0 0 5px;
-    text-align: left;
-    font-size: 12px;
   }
   .offerActions {
     flex-direction: column;
