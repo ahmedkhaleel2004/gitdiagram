@@ -100,7 +100,7 @@ interface VideoGenerationStats {
   planMs: number;
   /** Designing and narration run in parallel; this is the longer of the two. */
   voiceMs: number;
-  planner: "api" | "cli";
+  planner: "api";
   model: string;
   /** Model cost at API list prices; null when the backend cannot report it. */
   plannerCostUsd: number | null;
