@@ -12,7 +12,7 @@ import {
   type RenderFormat,
 } from "./render";
 
-// An MP4 is rendered as ~10 s segments by parallel calls to the segment route,
+// An MP4 is rendered as ~5 s segments by parallel calls to the segment route,
 // then joined. Those calls are server to server: each carries an HMAC of its
 // exact job so the public cannot start renders through that route.
 //

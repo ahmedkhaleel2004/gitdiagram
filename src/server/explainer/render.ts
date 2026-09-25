@@ -327,7 +327,7 @@ export async function mixSoundtrack(params: {
 }
 
 /** Frames per segment. Segments render in parallel, each well inside a function's time limit. */
-const SEGMENT_FRAMES = RENDER_FPS * 10;
+const SEGMENT_FRAMES = RENDER_FPS * 5;
 
 /** The frame ranges [from, to) a film is cut into for parallel rendering. */
 export function segmentRanges(

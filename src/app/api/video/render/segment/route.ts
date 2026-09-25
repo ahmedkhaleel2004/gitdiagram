@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 /**
- * Render one ~10 s segment of a film. Called only by the render route, server
+ * Render one ~5 s segment of a film. Called only by the render route, server
  * to server, with a signature over the exact job. The answer streams progress
  * as JSON lines and ends with the segment itself.
  */
