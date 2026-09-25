@@ -8,6 +8,7 @@ import type {
   LiveVisitor,
   PresenceMessage,
 } from "~/features/admin/types";
+import { peopleHere } from "~/features/admin/presence";
 
 // The dashboard's side of the presence worker: one socket that is pushed every
 // visitor arriving, moving and leaving, every running job and every event, as
@@ -51,6 +52,7 @@ function reduce(site: LiveSite, message: PresenceMessage): LiveSite {
             ...visitor,
             ...(message.p !== undefined ? { p: message.p } : {}),
             ...(message.v !== undefined ? { v: message.v } : {}),
+            ...(message.h !== undefined ? { h: message.h } : {}),
           },
         },
       };
@@ -87,7 +89,7 @@ export function useLiveSite(
   const [history, setHistory] = useState<number[]>([]);
   const token = useRef(presence);
   const handler = useRef(onEvent);
-  const count = useRef(0);
+  const visitors = useRef<LiveVisitor[]>([]);
   const url = presence?.url ?? null;
 
   useEffect(() => {
@@ -96,7 +98,7 @@ export function useLiveSite(
   });
 
   useEffect(() => {
-    count.current = Object.keys(site.visitors).length;
+    visitors.current = Object.values(site.visitors);
   }, [site.visitors]);
 
   useEffect(() => {
@@ -144,7 +146,8 @@ export function useLiveSite(
       socket.send("ping");
     }, PING_MS);
     const sample = setInterval(() => {
-      setHistory((points) => [...points, count.current].slice(-HISTORY_POINTS));
+      const here = peopleHere(visitors.current, Date.now()).length;
+      setHistory((points) => [...points, here].slice(-HISTORY_POINTS));
     }, 1_000);
     return () => {
       stopped = true;

@@ -6,8 +6,9 @@ import { useEffect, useRef } from "react";
 // Each open tab holds one small WebSocket to the presence worker
 // (workers/presence), so the operator's dashboard counts exactly who is on the
 // site right now. It sends only the path, whether the tab is in view, desktop
-// or mobile, and the referring site. It opens once the page is idle, never
-// retries hard, and closes on pagehide so the back/forward cache still works.
+// or mobile, the referring site, and a random id this browser keeps so several
+// tabs count as one person. It opens once the page is idle, never retries
+// hard, and closes on pagehide so the back/forward cache still works.
 
 const PRESENCE_URL = process.env.NEXT_PUBLIC_PRESENCE_URL?.replace(/\/$/, "");
 const PING_MS = 30_000;
@@ -25,6 +26,23 @@ function isMobile(): boolean {
 }
 
 const skipped = (path: string) => path.startsWith("/admin");
+
+/** A random id shared by this browser's tabs; nothing else is stored. */
+function browserId(): string {
+  const fresh = () =>
+    crypto
+      .getRandomValues(new Uint32Array(3))
+      .reduce((id, part) => id + part.toString(36), "");
+  try {
+    const stored = localStorage.getItem("gd-presence-id");
+    if (stored && /^[a-z0-9]{8,24}$/.test(stored)) return stored;
+    const id = fresh().slice(0, 16);
+    localStorage.setItem("gd-presence-id", id);
+    return id;
+  } catch {
+    return "";
+  }
+}
 
 export function LivePresence() {
   const pathname = usePathname();
@@ -51,6 +69,7 @@ export function LivePresence() {
         v: visible(),
         d: isMobile() ? "m" : "d",
         r: document.referrer,
+        b: browserId(),
       });
       const ws = new WebSocket(`${PRESENCE_URL}/v?${params.toString()}`);
       socket.current = ws;
@@ -59,7 +78,11 @@ export function LivePresence() {
       };
       ws.onclose = (event) => {
         if (socket.current === ws) socket.current = null;
-        if (stopped || event.code === 1000) return;
+        if (stopped) return;
+        // The worker closes a tab that went quiet (a frozen background tab):
+        // come back as soon as someone looks at it again.
+        if (event.code === 1000 && document.visibilityState !== "visible")
+          return;
         failures += 1;
         if (failures > MAX_FAILURES) return;
         retry = setTimeout(open, Math.min(60_000, 2_000 * 2 ** failures));
@@ -73,7 +96,14 @@ export function LivePresence() {
       socket.current?.close(1000);
       socket.current = null;
     };
-    const onVisibility = () => send(`v:${visible()}`);
+    const onVisibility = () => {
+      if (socket.current) send(`v:${visible()}`);
+      else if (visible() === "1") {
+        failures = 0;
+        clearTimeout(retry);
+        open();
+      }
+    };
     const onPageHide = () => {
       stopped = true;
       close();

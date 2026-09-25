@@ -39,8 +39,12 @@ export interface AdminState {
 /** One open tab, as the presence worker reports it. */
 export interface LiveVisitor {
   id: string;
+  /** The browser, shared by one person's tabs. */
+  b: string;
   p: string;
   v: 0 | 1;
+  /** When the tab went to the background (ms), or 0 while in view. */
+  h: number;
   d: "d" | "m";
   c: string;
   r: string;
@@ -74,7 +78,7 @@ export type PresenceMessage =
       peak: { day: string; count: number; at: number };
     }
   | { type: "join"; visitor: LiveVisitor }
-  | { type: "update"; id: string; p?: string; v?: 0 | 1 }
+  | { type: "update"; id: string; p?: string; v?: 0 | 1; h?: number }
   | { type: "leave"; id: string }
   | { type: "event"; event: LiveFeedEvent }
   | { type: "jobs"; jobs: LiveJob[] }

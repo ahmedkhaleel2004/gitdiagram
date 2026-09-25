@@ -21,10 +21,17 @@ export interface Env {
 
 interface Visitor {
   id: string;
+  /**
+   * The browser: one id shared by all of a person's tabs, so the dashboard
+   * can count people, not tabs. Older tabs without one count on their own.
+   */
+  b: string;
   /** Current path. */
   p: string;
   /** Tab visible (1) or in the background (0). */
   v: 0 | 1;
+  /** When the tab went to the background (ms), or 0 while it is in view. */
+  h: number;
   /** Device: desktop or mobile. */
   d: "d" | "m";
   /** Country, region and city from Cloudflare's IP geolocation. */
@@ -50,7 +57,11 @@ const MAX_PATH = 300;
 const MAX_EVENT_BYTES = 4_000;
 const KEPT_EVENTS = 300;
 // Sockets one network may hold, so a script cannot inflate the count cheaply.
-const MAX_SOCKETS_PER_NETWORK = 16;
+// Generous, because a whole office or campus can share one address.
+const MAX_SOCKETS_PER_NETWORK = 64;
+// Someone who looked at a tab this recently still counts as here: they may
+// have switched to their editor while a diagram generates.
+const RECENT_MS = 120_000;
 // Tabs ping every 30 s (throttled to about once a minute in the background).
 // A socket silent for longer than this lost its network without closing.
 const STALE_MS = 150_000;
@@ -106,10 +117,15 @@ export class Presence extends DurableObject<Env> {
     if (this.ctx.getWebSockets(network).length >= MAX_SOCKETS_PER_NETWORK)
       return new Response("Too many connections", { status: 429 });
 
+    const id = crypto.randomUUID().slice(0, 8);
+    const browser = url.searchParams.get("b") ?? "";
+    const visible = url.searchParams.get("v") !== "0";
     const visitor: Visitor = {
-      id: crypto.randomUUID().slice(0, 8),
+      id,
+      b: /^[a-z0-9]{8,24}$/.test(browser) ? browser : id,
       p: clip(url.searchParams.get("p"), MAX_PATH) || "/",
-      v: url.searchParams.get("v") === "0" ? 0 : 1,
+      v: visible ? 1 : 0,
+      h: visible ? 0 : Date.now(),
       d: url.searchParams.get("d") === "m" ? "m" : "d",
       c: clip(url.searchParams.get("gc"), 2),
       r: clip(url.searchParams.get("gr"), 8),
@@ -143,8 +159,10 @@ export class Presence extends DurableObject<Env> {
     } else if (message === "v:0" || message === "v:1") {
       const v = message === "v:1" ? 1 : 0;
       if (v === state.v) return;
-      ws.serializeAttachment({ ...state, v });
-      this.broadcast({ type: "update", id: state.id, v });
+      const h = v ? 0 : Date.now();
+      ws.serializeAttachment({ ...state, v, h });
+      this.broadcast({ type: "update", id: state.id, v, h });
+      if (v) this.recordPeak();
     }
   }
 
@@ -250,7 +268,8 @@ export class Presence extends DurableObject<Env> {
       const state = ws.deserializeAttachment() as Attachment | null;
       if (state?.k !== "visitor") continue;
       const { k: _, ...visitor } = state;
-      list.push(visitor);
+      // Tabs that connected before browser ids and hidden times existed.
+      list.push({ ...visitor, b: visitor.b || visitor.id, h: visitor.h ?? 0 });
     }
     return list;
   }
@@ -264,7 +283,7 @@ export class Presence extends DurableObject<Env> {
 
   private peak(): { day: string; count: number; at: number } {
     const row = this.ctx.storage.sql
-      .exec<{ v: string }>("SELECT v FROM kv WHERE k = 'peak'")
+      .exec<{ v: string }>("SELECT v FROM kv WHERE k = 'peak-people'")
       .toArray()[0];
     const today = utcDay(Date.now());
     const peak = row
@@ -273,13 +292,22 @@ export class Presence extends DurableObject<Env> {
     return peak?.day === today ? peak : { day: today, count: 0, at: 0 };
   }
 
+  /** People here now: browsers with a tab in view or looked at very recently. */
+  private peopleHere(): number {
+    const now = Date.now();
+    const here = new Set<string>();
+    for (const visitor of this.visitors())
+      if (visitor.v === 1 || now - visitor.h < RECENT_MS) here.add(visitor.b);
+    return here.size;
+  }
+
   private recordPeak() {
-    const count = this.ctx.getWebSockets("visitor").length;
+    const count = this.peopleHere();
     const peak = this.peak();
     if (count <= peak.count) return;
     const next = { day: peak.day, count, at: Date.now() };
     this.ctx.storage.sql.exec(
-      "INSERT OR REPLACE INTO kv (k, v) VALUES ('peak', ?)",
+      "INSERT OR REPLACE INTO kv (k, v) VALUES ('peak-people', ?)",
       JSON.stringify(next),
     );
     this.broadcast({ type: "peak", peak: next });

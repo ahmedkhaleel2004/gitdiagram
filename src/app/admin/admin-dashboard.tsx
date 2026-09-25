@@ -17,6 +17,7 @@ import type {
   LiveVisitor,
   VideoAudience,
 } from "~/features/admin/types";
+import { peopleHere } from "~/features/admin/presence";
 import { useLiveSite, type LinkStatus } from "./use-live-site";
 
 // Counters (budgets, balances) are polled; everything about people and jobs is
@@ -253,7 +254,7 @@ function Sparkline({ points }: { points: number[] }) {
         preserveAspectRatio="none"
         className="h-[72px] w-full"
         role="img"
-        aria-label={`Visitors over the last ${points.length} seconds, peak ${max}`}
+        aria-label={`People here over the last ${points.length} seconds, peak ${max}`}
         onPointerMove={(event) => {
           const box = event.currentTarget.getBoundingClientRect();
           const ratio = (event.clientX - box.left) / box.width;
@@ -291,7 +292,7 @@ function Sparkline({ points }: { points: number[] }) {
         <span>
           {hover === null
             ? "now"
-            : `${points.length - 1 - hover}s ago: ${points[hover]} online`}
+            : `${points.length - 1 - hover}s ago: ${points[hover]} here`}
         </span>
       </div>
     </div>
@@ -692,8 +693,13 @@ export function AdminDashboard() {
     };
   }, [refresh]);
 
-  const visitors = useMemo(() => Object.values(live.visitors), [live.visitors]);
+  // Open tabs, including background tabs nobody is looking at.
+  const tabs = useMemo(() => Object.values(live.visitors), [live.visitors]);
+  // People here now: one per browser, with a tab in view or seen in the last
+  // two minutes. Everything below counts these people, not tabs.
+  const visitors = useMemo(() => peopleHere(tabs, now), [tabs, now]);
   const inView = visitors.filter((visitor) => visitor.v === 1).length;
+  const withTabOpen = new Set(tabs.map((tab) => tab.b)).size;
   const mobile = visitors.filter((visitor) => visitor.d === "m").length;
   const priority = visitors.filter(isPriorityPlace).length;
   const pages = useMemo(() => tally(visitors, (v) => v.p, 8), [visitors]);
@@ -786,7 +792,7 @@ export function AdminDashboard() {
 
       <div className="grid gap-6 lg:grid-cols-5">
         <Panel
-          title="On the site now"
+          title="People here now"
           className="lg:col-span-3"
           aside={
             live.peak
@@ -794,27 +800,31 @@ export function AdminDashboard() {
               : null
           }
         >
-          <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
+          <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
             <div className="text-6xl leading-none font-bold tabular-nums">
               {number.format(visitors.length)}
             </div>
-            <dl className="grid grid-cols-3 gap-x-6 gap-y-1 text-sm">
-              <dt className="text-[hsl(var(--neo-soft-text))]">Looking</dt>
-              <dt className="text-[hsl(var(--neo-soft-text))]">Mobile</dt>
-              <dt className="text-[hsl(var(--neo-soft-text))]">
-                Priority places
-              </dt>
-              <dd className="font-semibold tabular-nums">
-                {number.format(inView)}
-              </dd>
-              <dd className="font-semibold tabular-nums">
-                {number.format(mobile)}
-              </dd>
-              <dd className="font-semibold tabular-nums">
-                {number.format(priority)}
-              </dd>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+              {[
+                ["Looking now", inView],
+                ["Mobile", mobile],
+                ["Priority places", priority],
+                ["Tabs open", tabs.length],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-[hsl(var(--neo-soft-text))]">{label}</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {number.format(Number(value))}
+                  </dd>
+                </div>
+              ))}
             </dl>
           </div>
+          <p className="mt-3 text-xs text-[hsl(var(--neo-soft-text))]">
+            One per browser, with a GitDiagram tab in view or seen in the last
+            two minutes. Browsers with any tab open, background tabs included:{" "}
+            {number.format(withTabOpen)}.
+          </p>
           <div className="mt-4">
             <Sparkline points={live.history} />
           </div>
@@ -1043,7 +1053,7 @@ export function AdminDashboard() {
       <div className="grid gap-6 md:grid-cols-3">
         <Panel
           title="Pages"
-          aside={`${pages.length ? visitors.length : 0} tabs`}
+          aside={`${visitors.length} ${visitors.length === 1 ? "person" : "people"}`}
         >
           <BarList rows={pages} />
         </Panel>
