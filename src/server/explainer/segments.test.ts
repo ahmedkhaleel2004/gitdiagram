@@ -1,25 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as FfmpegModule from "./ffmpeg";
 
 vi.mock("server-only", () => ({}));
-vi.mock("./render", () => ({
-  segmentRanges: () => [
-    { from: 0, to: 300 },
-    { from: 300, to: 400 },
-  ],
-  mixSoundtrack: vi.fn(async () => Buffer.from("sound")),
-  assembleMp4: vi.fn(async ({ segments }: { segments: Buffer[] }) =>
-    Buffer.concat(segments),
-  ),
-}));
+vi.mock("./store", () => ({ readVoiceClip: vi.fn() }));
+vi.mock("./ffmpeg", async (importActual) => {
+  const actual = await importActual<typeof FfmpegModule>();
+  return {
+    untilAborted: actual.untilAborted,
+    segmentRanges: vi.fn(() => [
+      { from: 0, to: 300 },
+      { from: 300, to: 400 },
+    ]),
+    mixSoundtrack: vi.fn(async () => Buffer.from("sound")),
+    assembleMp4: vi.fn(async ({ segments }: { segments: Buffer[] }) =>
+      Buffer.concat(segments),
+    ),
+  };
+});
 
 import { createHmac } from "node:crypto";
 import type { VideoArtifact } from "~/features/explainer/types";
-import { mixSoundtrack } from "./render";
+import { assembleMp4, mixSoundtrack, segmentRanges } from "./ffmpeg";
 import {
   encodeSegmentEvent,
+  isStaleRender,
   RENDER_DEADLINE_MS,
   renderMp4InSegments,
   SEGMENT_BUSY_HEADER,
+  segmentJobSchema,
   SegmentFailure,
   verifySegmentJob,
   withSegmentRetries,
@@ -38,11 +46,22 @@ const job = (): SegmentJob => ({
   to: 600,
   exp: Date.now() + 60_000,
 });
+const fields = (value: SegmentJob) => [
+  value.username.toLowerCase(),
+  value.repo.toLowerCase(),
+  value.v,
+  value.format,
+  value.from,
+  value.to,
+  value.exp,
+];
+// Signed with a key derived for segment jobs alone, never the secret itself.
 const sign = (value: SegmentJob) =>
-  createHmac("sha256", "secret")
-    .update(
-      `video-segment:${[value.username.toLowerCase(), value.repo.toLowerCase(), value.v, value.format, value.from, value.to, value.exp].join("|")}`,
-    )
+  createHmac(
+    "sha256",
+    createHmac("sha256", "secret").update("video-segment-key/v1").digest(),
+  )
+    .update(JSON.stringify(fields(value)))
     .digest("hex");
 
 /** Run a promise to the end, moving the fake clock through its backoffs. */
@@ -58,13 +77,17 @@ async function settle<T>(promise: Promise<T>): Promise<T> {
 
 beforeEach(() => {
   process.env = { ...originalEnv, CACHE_KEY_SECRET: "secret" };
+  delete process.env.VERCEL_DEPLOYMENT_ID;
+  delete process.env.VIDEO_SEGMENT_FAN_OUT;
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  vi.spyOn(console, "info").mockImplementation(() => undefined);
 });
 afterEach(() => {
   process.env = { ...originalEnv };
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("render segment signatures", () => {
@@ -86,6 +109,27 @@ describe("render segment signatures", () => {
     const expired = { ...value, exp: Date.now() - 1 };
     expect(verifySegmentJob(expired, sign(expired))).toBe(false);
     expect(verifySegmentJob(value, "nope")).toBe(false);
+  });
+
+  it("rejects a signature made with the cache secret itself", () => {
+    const value = job();
+    const payload = JSON.stringify(fields(value));
+    const direct = createHmac("sha256", "secret").update(payload).digest("hex");
+    const legacy = createHmac("sha256", "secret")
+      .update(`video-segment:${fields(value).join("|")}`)
+      .digest("hex");
+    expect(verifySegmentJob(value, direct)).toBe(false);
+    expect(verifySegmentJob(value, legacy)).toBe(false);
+  });
+
+  it("only accepts GitHub-shaped owner and repository names", () => {
+    expect(segmentJobSchema.safeParse(job()).success).toBe(true);
+    expect(
+      segmentJobSchema.safeParse({ ...job(), username: "../x" }).success,
+    ).toBe(false);
+    expect(segmentJobSchema.safeParse({ ...job(), repo: ".." }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -200,14 +244,163 @@ describe("rendering in segments", () => {
   it("does not retry a job the segment route refuses", async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) =>
       bodyOf(init).from === 0
+        ? new Response("{}", { status: 403 })
+        : rendering(init.signal!),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(settle(render())).rejects.toThrow(/failed \(403\)/);
+    expect(
+      fetchMock.mock.calls.filter(([, init]) => bodyOf(init).from === 0),
+    ).toHaveLength(1);
+  });
+
+  it("reports a video replaced mid-render as stale, without retrying", async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) =>
+      bodyOf(init).from === 0
         ? new Response("{}", { status: 409 })
         : rendering(init.signal!),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await expect(settle(render())).rejects.toThrow(/failed \(409\)/);
+    const error = await settle(render()).catch((caught: unknown) => caught);
+    expect(isStaleRender(error)).toBe(true);
     expect(
       fetchMock.mock.calls.filter(([, init]) => bodyOf(init).from === 0),
     ).toHaveLength(1);
+  });
+
+  it("keeps at most the fan-out of segment requests in flight", async () => {
+    process.env.VIDEO_SEGMENT_FAN_OUT = "3";
+    vi.mocked(segmentRanges).mockReturnValueOnce(
+      Array.from({ length: 8 }, (_, index) => ({
+        from: index * 150,
+        to: (index + 1) * 150,
+      })),
+    );
+    let inFlight = 0;
+    let most = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        most = Math.max(most, ++inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        inFlight--;
+        return answer([{ type: "ready", sfx: [] }, done("S")]);
+      }),
+    );
+    const mp4 = await settle(render());
+    expect(mp4.toString()).toBe("SSSSSSSS");
+    expect(most).toBe(3);
+  });
+
+  it("pins every segment request to the running deployment", async () => {
+    process.env.VERCEL_DEPLOYMENT_ID = "dpl_123";
+    const fetchMock = vi.fn(async () =>
+      answer([{ type: "ready", sfx: [] }, done("X")]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await settle(render());
+    for (const [, init] of fetchMock.mock.calls as unknown as Array<
+      [string, RequestInit]
+    >)
+      expect(init.headers).toMatchObject({ "x-deployment-id": "dpl_123" });
+  });
+
+  it("logs how many busy answers a render met", async () => {
+    let busy = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        if (bodyOf(init).from === 0 && busy < 2) {
+          busy++;
+          return new Response("{}", {
+            status: 503,
+            headers: { [SEGMENT_BUSY_HEADER]: "1" },
+          });
+        }
+        return answer([{ type: "ready", sfx: [] }, done("X")]);
+      }),
+    );
+    await settle(render());
+    const logged = vi
+      .mocked(console.info)
+      .mock.calls.map(([line]) => JSON.parse(String(line)) as object);
+    expect(logged).toContainEqual(
+      expect.objectContaining({
+        event: "video.render.segments",
+        segments: 2,
+        busyRetries: 2,
+      }),
+    );
+  });
+
+  it("stops a stalled soundtrack when the render's deadline passes", async () => {
+    let mixSignal: AbortSignal | undefined;
+    vi.mocked(mixSoundtrack).mockImplementationOnce(
+      ({ signal }) =>
+        new Promise((_, reject) => {
+          mixSignal = signal;
+          signal?.addEventListener("abort", () => reject(signal.reason));
+        }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => answer([{ type: "ready", sfx: [] }, done("X")])),
+    );
+    const deadline = new AbortController();
+    const running = renderMp4InSegments({
+      artifact,
+      format: "landscape",
+      origin: "https://example.com",
+      signal: deadline.signal,
+    });
+    running.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(5_000);
+    deadline.abort(new Error("The render ran out of time."));
+    await expect(running).rejects.toThrow(/ran out of time/);
+    expect(mixSignal?.aborted).toBe(true);
+    expect(assembleMp4).not.toHaveBeenCalled();
+  });
+
+  it("retries a request timeout, and waits out a rate limit as long as asked", async () => {
+    const refusals = [
+      new Response("{}", { status: 408 }),
+      new Response("{}", { status: 429, headers: { "Retry-After": "7" } }),
+    ];
+    const started = Date.now();
+    const calls: number[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        if (bodyOf(init).from !== 0)
+          return answer([{ type: "ready", sfx: [] }, done("B")]);
+        calls.push(Date.now() - started);
+        return refusals.shift() ?? answer([done("A")]);
+      }),
+    );
+    expect((await settle(render())).toString()).toBe("AB");
+    expect(calls).toHaveLength(3);
+    // The rate limit's own wait, not the short busy backoff.
+    expect(calls[2]! - calls[1]!).toBeGreaterThanOrEqual(7_000);
+  });
+
+  it("hands the deadline to the final join", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => answer([{ type: "ready", sfx: [] }, done("X")])),
+    );
+    const deadline = new AbortController();
+    await settle(
+      renderMp4InSegments({
+        artifact,
+        format: "landscape",
+        origin: "https://example.com",
+        signal: deadline.signal,
+      }),
+    );
+    const { signal } = vi.mocked(assembleMp4).mock.calls[0]![0];
+    expect(signal).toBeDefined();
+    deadline.abort();
+    expect(signal!.aborted).toBe(true);
   });
 
   it("waits out busy render instances without spending retries", async () => {

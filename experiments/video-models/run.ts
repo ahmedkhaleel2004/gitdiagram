@@ -19,9 +19,9 @@ import {
 import {
   assembleMp4,
   mixSoundtrack,
-  renderVideoSegment,
   segmentRanges,
-} from "~/server/explainer/render";
+} from "~/server/explainer/ffmpeg";
+import { renderVideoSegment } from "~/server/explainer/render";
 import { normalizeShots, scriptWordCount } from "~/server/explainer/shots";
 import { videoVersion } from "~/server/explainer/store";
 
@@ -251,16 +251,17 @@ async function render() {
       let sfx: Parameters<typeof mixSoundtrack>[0]["sfx"] | null = null;
       const segments = await Promise.all(
         segmentRanges(artifact).map((range) =>
-          renderSlot(async () => {
-            const result = await renderVideoSegment({
+          renderSlot(() =>
+            renderVideoSegment({
               artifact,
               format: "landscape",
               origin,
               ...range,
-            });
-            sfx ??= result.sfx;
-            return result.mp4;
-          }),
+              onReady: (cues) => {
+                sfx ??= cues;
+              },
+            }),
+          ),
         ),
       );
       const soundtrack = await mixSoundtrack({

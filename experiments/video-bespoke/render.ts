@@ -10,9 +10,9 @@ import type { VideoArtifact } from "~/features/explainer/types";
 import {
   assembleMp4,
   mixSoundtrack,
-  renderVideoSegment,
   segmentRanges,
-} from "~/server/explainer/render";
+} from "~/server/explainer/ffmpeg";
+import { renderVideoSegment } from "~/server/explainer/render";
 
 const [artifactPath, cwd, out] = process.argv
   .slice(2)
@@ -29,14 +29,19 @@ const segments: Buffer[] = [];
 const ranges = segmentRanges(artifact);
 for (let i = 0; i < ranges.length; i += 3) {
   const batch = await Promise.all(
-    ranges
-      .slice(i, i + 3)
-      .map((range) =>
-        renderVideoSegment({ artifact, format: "landscape", origin, ...range }),
-      ),
+    ranges.slice(i, i + 3).map((range, index) =>
+      renderVideoSegment({
+        artifact,
+        format: "landscape",
+        origin,
+        ...range,
+        onReady: (cues) => {
+          if (i === 0 && index === 0) sfx = cues;
+        },
+      }),
+    ),
   );
-  if (i === 0) sfx = batch[0]!.sfx;
-  segments.push(...batch.map((b) => b.mp4));
+  segments.push(...batch);
 }
 const soundtrack = await mixSoundtrack({ artifact, sfx, origin });
 await writeFile(out, await assembleMp4({ segments, soundtrack }));

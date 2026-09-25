@@ -6,6 +6,7 @@ import {
   githubUsernameSchema,
 } from "~/server/generate/types";
 import { getClientIp } from "~/server/http/client-ip";
+import { errorText, logEvent } from "~/server/log";
 import {
   jsonErrorResponse,
   NO_STORE_RESPONSE_HEADERS,
@@ -21,8 +22,12 @@ import {
   tryVideoLock,
   type Reservation,
 } from "~/server/explainer/limits";
+import { untilAborted } from "~/server/explainer/ffmpeg";
+import { internalOrigin } from "~/server/explainer/render-origin";
 import {
+  isStaleRender,
   remakePosterRemotely,
+  RENDER_TOTAL_DEADLINE_MS,
   renderMp4InSegments,
 } from "~/server/explainer/segments";
 import {
@@ -94,7 +99,7 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
     // Rendered on a render instance, so this route never ships Chromium.
     const stored = await remakePosterRemotely(
       artifact,
-      new URL(request.url).origin,
+      internalOrigin(request),
     );
     // The new poster has a new URL; point the pages that show it there.
     if (stored) refreshVideoPages(username, repo);
@@ -145,7 +150,17 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
     );
   }
 
-  const origin = new URL(request.url).origin;
+  const origin = internalOrigin(request);
+  // One deadline for the whole render, storing included, inside maxDuration.
+  const deadline = AbortSignal.timeout(RENDER_TOTAL_DEADLINE_MS);
+  // Once a segment request has gone out, Chromium and ffmpeg are running on
+  // our side. From then on a failure keeps its place in the budget, so a
+  // video that keeps failing (even at the very end, storing the file) cannot
+  // be rendered over and over for free.
+  let computeStarted = false;
+  const refundIfUnspent = async () => {
+    if (reservation?.ok && !computeStarted) await reservation.refund();
+  };
   const encoder = new TextEncoder();
   let closed = false;
   let job: Promise<void> = Promise.resolve();
@@ -171,11 +186,26 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
         format,
         job: { id: jobId, state: "start", label },
       });
+      // The video was regenerated while this rendered, so its file would not
+      // be kept. Only the operator regenerates, so the viewer gets their
+      // place in the budget back.
+      const superseded = async () => {
+        logEvent("info", "video.render.superseded", {
+          repository: artifact.repository,
+          format,
+        });
+        send({ status: "error", error: STALE_MESSAGE });
+        if (reservation?.ok) await reservation.refund();
+      };
       let last = "";
       job = renderMp4InSegments({
         artifact,
         format,
         origin,
+        signal: deadline,
+        onStarted: () => {
+          computeStarted = true;
+        },
         onProgress: ({ fraction, step }) => {
           const percent = Math.floor(fraction * 100);
           if (`${step}:${percent}` === last) return;
@@ -191,47 +221,33 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
             () => artifact,
           );
           if (current?.createdAt !== artifact.createdAt) {
-            console.info(
-              JSON.stringify({
-                event: "video.render.superseded",
-                repository: artifact.repository,
-                format,
-              }),
-            );
-            send({ status: "error", error: STALE_MESSAGE });
-            if (reservation?.ok) await reservation.refund();
+            await superseded();
             return;
           }
-          await writeRender(artifact, name, mp4);
-          console.info(
-            JSON.stringify({
-              event: "video.render.stored",
-              repository: artifact.repository,
-              format,
-              bytes: mp4.byteLength,
-              ms: Date.now() - started,
-            }),
-          );
+          await untilAborted(writeRender(artifact, name, mp4), deadline);
+          logEvent("info", "video.render.stored", {
+            repository: artifact.repository,
+            format,
+            bytes: mp4.byteLength,
+            ms: Date.now() - started,
+          });
           outcome = "complete";
           send({ status: "complete" });
         })
         .catch(async (error: unknown) => {
-          console.error(
-            JSON.stringify({
-              event: "video.render.failed",
-              repository: artifact.repository,
-              format,
-              error:
-                error instanceof Error
-                  ? error.message.slice(0, 300)
-                  : "unknown",
-            }),
-          );
+          // A segment found the video replaced while it rendered.
+          if (isStaleRender(error)) return superseded();
+          logEvent("error", "video.render.failed", {
+            repository: artifact.repository,
+            format,
+            computeStarted,
+            error: errorText(error, 300),
+          });
           send({
             status: "error",
             error: "The MP4 could not be made. Try again.",
           });
-          if (reservation?.ok) await reservation.refund();
+          await refundIfUnspent();
         })
         .finally(async () => {
           if (!closed) {

@@ -35,6 +35,9 @@ vi.mock("~/server/explainer/limits", () => ({
   tryVideoLock: mocks.tryVideoLock,
 }));
 vi.mock("~/server/explainer/segments", () => ({
+  isStaleRender: (error: unknown) =>
+    error instanceof Error && error.message === "stale",
+  RENDER_TOTAL_DEADLINE_MS: 780_000,
   renderMp4InSegments: mocks.renderMp4InSegments,
   remakePosterRemotely: mocks.remakePosterRemotely,
 }));
@@ -75,6 +78,7 @@ beforeEach(() => {
   mocks.tryVideoLock.mockResolvedValue(mocks.release);
   mocks.reserveRenderSlot.mockResolvedValue({ ok: true, refund: mocks.refund });
   mocks.renderMp4InSegments.mockResolvedValue(Buffer.from("mp4"));
+  mocks.writeRender.mockResolvedValue(undefined);
   vi.spyOn(console, "info").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
@@ -125,6 +129,54 @@ describe("POST /api/video/render", () => {
     expect(await response.text()).toContain("Reload the page");
     expect(mocks.writeRender).not.toHaveBeenCalled();
     expect(mocks.refund).toHaveBeenCalled();
+  });
+
+  it("tells the viewer to reload when a segment finds the video replaced", async () => {
+    mocks.renderMp4InSegments.mockImplementation(
+      async ({ onStarted }: { onStarted: () => void }) => {
+        onStarted();
+        throw new Error("stale");
+      },
+    );
+    const response = await POST(request({ format: "landscape", v: createdAt }));
+    const text = await response.text();
+    expect(text).toContain("Reload the page");
+    expect(text).not.toContain("could not be made");
+    expect(mocks.refund).toHaveBeenCalled();
+  });
+
+  it("gives the budget back for a render that failed before any segment ran", async () => {
+    mocks.renderMp4InSegments.mockRejectedValue(new Error("no secret"));
+    const response = await POST(request({ format: "landscape", v: createdAt }));
+    expect(await response.text()).toContain("could not be made");
+    expect(mocks.refund).toHaveBeenCalled();
+  });
+
+  it("keeps the budget spent once segments ran, even if storing fails", async () => {
+    mocks.renderMp4InSegments.mockImplementation(
+      async ({ onStarted }: { onStarted: () => void }) => {
+        onStarted();
+        return Buffer.from("mp4");
+      },
+    );
+    mocks.writeRender.mockRejectedValueOnce(new Error("R2 down"));
+    const response = await POST(request({ format: "landscape", v: createdAt }));
+    expect(await response.text()).toContain("could not be made");
+    expect(mocks.refund).not.toHaveBeenCalled();
+    expect(mocks.release).toHaveBeenCalled();
+  });
+
+  it("gives the render one deadline and calls itself back over loopback in a container", async () => {
+    Object.assign(process.env, { PORT: "3000" });
+    delete process.env.VERCEL;
+    delete process.env.VIDEO_INTERNAL_ORIGIN;
+    await (await POST(request({ format: "landscape", v: createdAt }))).text();
+    const params = mocks.renderMp4InSegments.mock.calls[0]![0] as {
+      origin: string;
+      signal: AbortSignal;
+    };
+    expect(params.origin).toBe("http://127.0.0.1:3000");
+    expect(params.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("remakes a poster on a render instance and refreshes its pages", async () => {
