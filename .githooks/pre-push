@@ -1,0 +1,11 @@
+#!/bin/sh
+# Vercel deploys every push to main, even when CI fails, so run the fast CI
+# checks that most often break main before the push leaves this machine
+# (a few seconds). `bun install` turns this hook on through the "prepare"
+# script. Skip it once with `git push --no-verify`.
+set -e
+
+bun run format:check
+bun run lint
+bun run typecheck
+bun run knip

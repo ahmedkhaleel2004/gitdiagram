@@ -19,7 +19,8 @@
     "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx,css,json,jsonc,yml,yaml}\" --cache",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx,css,json,jsonc,yml,yaml}\" --cache",
     "perf:budget": "node scripts/check-performance-budgets.mjs",
-    "knip": "knip --reporter compact"
+    "knip": "knip --reporter compact",
+    "prepare": "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath .githooks || true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
