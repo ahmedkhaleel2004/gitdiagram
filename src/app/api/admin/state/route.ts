@@ -1,4 +1,4 @@
-import { isAdminRequest } from "~/server/admin/operator";
+import { verifyAdminRequest } from "~/server/admin/operator";
 import { readAdminState } from "~/server/admin/state";
 import {
   jsonErrorResponse,
@@ -11,7 +11,8 @@ export const maxDuration = 15;
 
 /** The dashboard's polled state: switches, today's budgets and balances. */
 export async function GET(request: Request): Promise<Response> {
-  if (!isAdminRequest(request)) return jsonErrorResponse("Sign in first.", 401);
+  if (!(await verifyAdminRequest(request)))
+    return jsonErrorResponse("Sign in first.", 401);
   return Response.json(await readAdminState(), {
     headers: NO_STORE_RESPONSE_HEADERS,
   });

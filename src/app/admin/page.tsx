@@ -1,7 +1,10 @@
 import { type Metadata } from "next";
 import { cookies } from "next/headers";
 
-import { ADMIN_SESSION_COOKIE, isAdminSession } from "~/server/admin/operator";
+import {
+  ADMIN_SESSION_COOKIE,
+  verifyAdminSession,
+} from "~/server/admin/operator";
 import { AdminDashboard } from "./admin-dashboard";
 import { AdminSignIn } from "./admin-sign-in";
 
@@ -15,5 +18,9 @@ export const metadata: Metadata = {
 /** The operator's live dashboard. Only the owner of the operator token gets in. */
 export default async function AdminPage() {
   const session = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
-  return isAdminSession(session) ? <AdminDashboard /> : <AdminSignIn />;
+  return (await verifyAdminSession(session)) ? (
+    <AdminDashboard />
+  ) : (
+    <AdminSignIn />
+  );
 }
