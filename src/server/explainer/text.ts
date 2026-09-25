@@ -41,7 +41,7 @@ export interface PlanRepositoryFacts {
 // Delivery directions the voice (ElevenLabs v3) performs. Any other bracketed
 // tag is dropped: pause tags stretch past a second, and sounds like [laughs]
 // do not belong in an explainer. Punctuation carries the pacing instead.
-export const DELIVERY_TAGS = [
+const DELIVERY_TAGS = [
   "curious",
   "excited",
   "thoughtful",
