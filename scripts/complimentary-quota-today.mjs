@@ -1,4 +1,3 @@
-import { config } from "dotenv";
 import {
   getComplimentaryDailyLimitTokens,
   getComplimentaryQuotaBucket,
@@ -8,8 +7,6 @@ import {
   buildQuotaLeaseKey,
 } from "../src/server/storage/quota-store";
 import { upstashCommand } from "../src/server/storage/upstash";
-
-config({ path: ".env" });
 
 const tokenLimit = getComplimentaryDailyLimitTokens();
 const quotaDateUtc = new Date().toISOString().slice(0, 10);
