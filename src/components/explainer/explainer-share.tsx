@@ -21,6 +21,7 @@ import type {
   VideoRenderStep,
 } from "~/features/explainer/types";
 import controls from "~/components/generation/workspace.module.css";
+import { SITE_URL } from "~/lib/site";
 import { JobRow } from "./explainer-progress";
 import styles from "./explainer-video.module.css";
 
@@ -61,7 +62,8 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
   const [copied, setCopied] = useState<Copied>(null);
   const render = useRef<AbortController | null>(null);
   const copyTimer = useRef<number | undefined>(undefined);
-  const url = `${window.location.origin}${watchPath(owner, repo)}`;
+  // Copied links point at the live site, even from a preview or localhost.
+  const url = `${SITE_URL}${watchPath(owner, repo)}`;
   const canShare = typeof navigator.share === "function";
 
   // Leaving the video stops waiting for its MP4 (and its download).
@@ -121,7 +123,7 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
     }
   };
 
-  const badge = `[![Watch a one-minute video tour of ${repo}](${window.location.origin}/video-badge.svg)](${url})`;
+  const badge = `[![Watch a one-minute video tour of ${repo}](${SITE_URL}/video-badge.svg)](${url})`;
   const label = (format: RenderFormat, idle: string) =>
     job?.format === format ? "Making MP4…" : idle;
 

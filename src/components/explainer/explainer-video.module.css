@@ -219,6 +219,7 @@
   gap: 12px;
 }
 .metaButton {
+  position: relative;
   border: 0;
   background: none;
   padding: 0;
@@ -228,6 +229,24 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
+}
+/* A larger target than the underlined words, drawn nowhere: the buttons keep
+   their look and the line keeps its height. */
+.metaButton::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -4px;
+  right: -4px;
+  height: 24px;
+  transform: translateY(-50%);
+}
+@media (pointer: coarse) {
+  .metaButton::before {
+    left: -6px;
+    right: -6px;
+    height: 44px;
+  }
 }
 
 .error {

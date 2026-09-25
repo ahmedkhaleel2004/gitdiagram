@@ -1,4 +1,5 @@
 import { readSSEStream } from "~/features/diagram/sse";
+import { videoFileUrl, type VideoFileFormat } from "./file-url";
 import type {
   VideoArtifact,
   VideoGenerationEvent,
@@ -20,17 +21,30 @@ export interface ExplainerVideoState {
 
 export type RenderFormat = "landscape" | "vertical";
 
+/**
+ * Why the server turned a video down, when it says: another run holds the
+ * repository's lock, or the repository already has a video.
+ */
+export type VideoRequestReason = "generating" | "exists";
+
 /** A video request the server turned down before any stream started. */
 export class VideoRequestError extends Error {
   readonly status: number;
   /** The video was replaced after this page loaded it. */
   readonly stale: boolean;
+  readonly reason: VideoRequestReason | null;
 
-  constructor(message: string, status: number, stale = false) {
+  constructor(
+    message: string,
+    status: number,
+    stale = false,
+    reason: VideoRequestReason | null = null,
+  ) {
     super(message);
     this.name = "VideoRequestError";
     this.status = status;
     this.stale = stale;
+    this.reason = reason;
   }
 }
 
@@ -92,11 +106,15 @@ async function streamEvents<T extends { status: string }>(
     const body = (await response.json().catch(() => ({}))) as {
       error?: string;
       stale?: boolean;
+      reason?: string;
     };
     throw new VideoRequestError(
       body.error ?? fallbackError,
       response.status,
       body.stale === true,
+      body.reason === "generating" || body.reason === "exists"
+        ? body.reason
+        : null,
     );
   }
   let finished = false;
@@ -147,18 +165,24 @@ export function streamExplainerRender(
   );
 }
 
-/** Where a stored render downloads from; the version pins the exact file. */
+/**
+ * Where a stored render downloads from; the version pins the exact file.
+ * `posterAt` (when the poster was made) stamps poster and still URLs.
+ */
 export function renderFileUrl(
   video: VideoArtifact,
-  format: RenderFormat | "poster" | "still",
+  format: VideoFileFormat,
+  posterAt?: number | null,
 ): string {
-  const params = new URLSearchParams({
-    username: video.meta.owner,
-    repo: video.meta.repo,
+  return videoFileUrl(
+    {
+      owner: video.meta.owner,
+      repo: video.meta.repo,
+      createdAt: video.createdAt,
+      posterAt,
+    },
     format,
-    v: video.createdAt,
-  });
-  return `/api/video/file?${params.toString()}`;
+  );
 }
 
 /** The shareable watch page for a repository's video. */
