@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ChevronDown, Copy, Download, ImageDown } from "lucide-react";
-import { exportMermaidSvgAsPng } from "~/features/diagram/export";
+import { ChevronDown, Copy, Download, FileCode, ImageDown } from "lucide-react";
+import {
+  exportMermaidSvgAsPng,
+  exportMermaidSvgAsSvg,
+} from "~/features/diagram/export";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { ExportAction } from "./export-action";
 import styles from "./workspace.module.css";
@@ -88,6 +91,19 @@ export function DiagramExport({
                   svg,
                   getComputedStyle(document.body).backgroundColor,
                 );
+              }}
+            />
+            <ExportAction
+              label="Download SVG"
+              successLabel="Downloaded"
+              announcement="SVG downloaded"
+              description="Save a scalable vector version of the diagram"
+              errorMessage="Download failed. Try again."
+              icon={FileCode}
+              onAction={async () => {
+                const svg = getSvg();
+                if (!svg) throw new Error("Diagram not ready");
+                exportMermaidSvgAsSvg(svg);
               }}
             />
             <ExportAction
