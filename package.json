@@ -16,8 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "node_modules/typescript-7/bin/tsc --noEmit",
-    "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
+    "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx,css,json,jsonc,yml,yaml}\" --cache",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx,css,json,jsonc,yml,yaml}\" --cache",
     "perf:budget": "node scripts/check-performance-budgets.mjs",
     "knip": "knip --reporter compact"
   },
