@@ -128,13 +128,11 @@ export function GenerationRows({
         count={designed}
         total={scenes}
       />
+      {/* One continuous take: no count to show, just a spinner, then a check. */}
       <Row
         index={3}
         state={at < 2 ? "pending" : at > 2 || voiceDone ? "done" : "running"}
         label="Record the narration"
-        metric={scenes ? `${voiced}/${scenes}` : undefined}
-        count={voiced}
-        total={scenes}
       />
       <Row index={4} state={state("saving")} label="Save the video" />
     </ol>
@@ -151,19 +149,23 @@ export function ScriptPreview({ lines }: { lines: string[] }) {
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
   const [typed, setTyped] = useState(0);
+  const typing = !reduced && typed < text.length;
   useEffect(() => {
-    if (reduced) return;
+    // Stops once the whole script is out; a longer script starts it again.
+    if (!typing) return;
     const timer = window.setInterval(
       () => setTyped((value) => Math.min(text.length, value + 3)),
       28,
     );
     return () => window.clearInterval(timer);
-  }, [text, reduced]);
+  }, [text, typing]);
   const shown = reduced ? text.length : typed;
   return (
     <figure className={styles.script}>
       <figcaption>What you&apos;ll hear</figcaption>
-      <p aria-label={text}>
+      <p>
+        {/* Screen readers get the whole script at once, not the typing. */}
+        <span className="sr-only">{text}</span>
         <span aria-hidden="true">{text.slice(0, shown)}</span>
         {shown < text.length && (
           <span className={styles.caret} aria-hidden="true" />
