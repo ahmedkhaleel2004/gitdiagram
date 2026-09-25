@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getGitHubApiHeaders } from "~/server/github-auth";
 import {
   EMPTY_REPOSITORY_ERROR,
   getGithubData,
@@ -44,6 +45,31 @@ const INPUT_ERRORS = new Map([
   [EMPTY_REPOSITORY_ERROR, EMPTY_MESSAGE],
   [REPOSITORY_TOO_LARGE_ERROR, REPOSITORY_TOO_LARGE_ERROR],
 ]);
+
+/**
+ * Whether GitHub reports the repository as public, for naming it on the
+ * /admin feed. False when unsure (a slow or failed read), so a private name
+ * is never sent. Best effort: a short timeout, never throws.
+ */
+export async function isPublicRepository(
+  username: string,
+  repo: string,
+): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(username)}/${encodeURIComponent(repo)}`,
+      {
+        headers: await getGitHubApiHeaders(),
+        signal: AbortSignal.timeout(3_000),
+      },
+    );
+    if (!response.ok) return false;
+    const body = (await response.json()) as { private?: unknown };
+    return body.private === false;
+  } catch {
+    return false;
+  }
+}
 
 export interface VideoRepository {
   meta: VideoMeta;

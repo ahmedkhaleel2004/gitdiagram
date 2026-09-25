@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+vi.mock("~/server/github-auth", () => ({
+  getGitHubApiHeaders: vi.fn(async () => ({})),
+}));
 vi.mock("~/server/generate/github", () => ({
   REPOSITORY_NOT_FOUND_ERROR: "Repository not found.",
   PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR:
@@ -14,7 +17,34 @@ vi.mock("~/server/generate/source-context", () => ({
 }));
 
 import { getGithubData } from "~/server/generate/github";
-import { readRepositoryForVideo, VideoInputError } from "./repository";
+import {
+  isPublicRepository,
+  readRepositoryForVideo,
+  VideoInputError,
+} from "./repository";
+
+describe("isPublicRepository", () => {
+  it("is true only when GitHub says the repository is public", async () => {
+    const respond = (body: unknown, status = 200) =>
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify(body), { status })),
+      );
+    respond({ private: false });
+    expect(await isPublicRepository("a", "b")).toBe(true);
+    respond({ private: true });
+    expect(await isPublicRepository("a", "b")).toBe(false);
+    respond({}, 404);
+    expect(await isPublicRepository("a", "b")).toBe(false);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("timeout");
+      }),
+    );
+    expect(await isPublicRepository("a", "b")).toBe(false);
+  });
+});
 
 const read = () => readRepositoryForVideo({ username: "a", repo: "b" });
 
