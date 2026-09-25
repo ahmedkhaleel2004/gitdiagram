@@ -6,7 +6,7 @@ import { isOperatorToken, verifyAdminRequest } from "~/server/admin/operator";
 import { toRateLimitBucket } from "~/server/generate/rate-limit";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
-// Every new video spends real money (Claude or GPT plus ElevenLabs), so the
+// Every new video spends real money (Claude or GPT, plus the voice), so the
 // public path is budgeted per UTC day: overall, per person (one browser, see
 // visitor.ts), and per internet connection. The per-person limit is the one
 // people normally meet; people in the priority places get a higher one, and
@@ -315,8 +315,8 @@ export async function resetUsageToday(kind: Kind): Promise<number> {
 }
 
 // Paid runs at once across every instance (VIDEO_MAX_PAID_RUNS, default 10).
-// Each run makes one short voice call, and narration retries when ElevenLabs
-// is at its own concurrency limit, so the voice plan does not cap this.
+// Each run makes one short voice call, which waits out the voice's
+// per-minute limit (gemini-voice.ts), so the voice does not cap this.
 const maxPaidRuns = () => readLimit("VIDEO_MAX_PAID_RUNS", 10);
 const PAID_RUNS_KEY = "video:v1:generate:running";
 

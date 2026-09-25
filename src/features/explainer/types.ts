@@ -128,6 +128,8 @@ interface VideoGenerationStats {
   inputTokens: number | null;
   outputTokens: number | null;
   ttsCharacters: number;
+  /** The voice model that read the narration; missing on older videos. */
+  voice?: string;
   warnings: string[];
 }
 

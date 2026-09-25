@@ -149,6 +149,7 @@ export async function generateExplainerVideo({
       inputTokens: writers.usage.inputTokens,
       outputTokens: writers.usage.outputTokens,
       ttsCharacters: narration.characters,
+      voice: narration.voice,
       warnings,
     },
   };

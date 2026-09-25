@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   readVideoArtifact: vi.fn(),
   isVideoLockHeld: vi.fn(),
   videosLeftToday: vi.fn(),
-  hasNarrationCredits: vi.fn(),
+  isNarrationAvailable: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -28,7 +28,7 @@ vi.mock("~/server/explainer/limits", () => ({
   videosLeftToday: mocks.videosLeftToday,
 }));
 vi.mock("~/server/explainer/narration", () => ({
-  hasNarrationCredits: mocks.hasNarrationCredits,
+  isNarrationAvailable: mocks.isNarrationAvailable,
 }));
 vi.mock("~/server/explainer/store", () => ({
   readVideoArtifact: mocks.readVideoArtifact,
@@ -49,7 +49,7 @@ beforeEach(() => {
   mocks.readVideoArtifact.mockResolvedValue(null);
   mocks.isVideoLockHeld.mockResolvedValue(false);
   mocks.videosLeftToday.mockResolvedValue(5);
-  mocks.hasNarrationCredits.mockResolvedValue(true);
+  mocks.isNarrationAvailable.mockResolvedValue(true);
 });
 
 afterEach(() => {

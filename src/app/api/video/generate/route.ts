@@ -40,7 +40,7 @@ import {
   tryVideoLock,
   type Reservation,
 } from "~/server/explainer/limits";
-import { hasNarrationCredits } from "~/server/explainer/narration";
+import { isNarrationAvailable } from "~/server/explainer/narration";
 import { choosePlanner } from "~/server/explainer/planner";
 import { storePoster } from "~/server/explainer/posters";
 import { VideoInputError } from "~/server/explainer/repository";
@@ -169,8 +169,8 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   };
   try {
     if (!trusted) {
-      if (!(await hasNarrationCredits())) {
-        gated("credits");
+      if (!(await isNarrationAvailable())) {
+        gated("voice");
         return jsonErrorResponse(limitMessage("daily"), 503);
       }
       reservation = await reserveVideoSlot(

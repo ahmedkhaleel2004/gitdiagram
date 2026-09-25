@@ -41,7 +41,8 @@ export interface AdminState {
     videos: VideoBudget;
     renders: DailyBudget;
   } | null;
-  voiceCredits: number | null;
+  /** When new videos can be voiced again (ms); null when they can now or unknown. */
+  voicePausedUntil: number | null;
   /** Null when ANTHROPIC_ADMIN_KEY is missing or a report failed. */
   claudeCredit: ClaudeCredit | null;
   diagramQuota: {

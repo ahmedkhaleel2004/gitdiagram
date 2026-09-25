@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import type { AdminState } from "~/features/admin/types";
 import { ConfirmButton } from "./confirm-dialog";
-import { compact, number, Since, Tile } from "./ui";
+import { compact, Since, Tile } from "./ui";
 
 // Today's budgets and the balances behind them, with the two actions they
 // offer: starting a count over and recording the Claude balance.
@@ -183,16 +183,12 @@ export function BudgetTiles({
       />
       <div className="col-span-2">
         <Tile
-          label="Voice credits"
-          value={
-            state?.voiceCredits == null
-              ? "–"
-              : compact.format(state.voiceCredits)
-          }
+          label="Narration (Gemini 3.8 Flash)"
+          value={state?.voicePausedUntil ? "Paused" : "Ready"}
           sub={
-            state?.voiceCredits == null
-              ? "Balance unreadable"
-              : `≈ ${number.format(Math.floor(state.voiceCredits / 800))} videos left`
+            state?.voicePausedUntil
+              ? `Voice quota used up until ${new Date(state.voicePausedUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+              : "Voicing new videos"
           }
         />
       </div>

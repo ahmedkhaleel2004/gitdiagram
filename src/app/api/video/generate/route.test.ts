@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   reportHeldBack: vi.fn(),
   readAdmissionControls: vi.fn(),
   generateExplainerVideo: vi.fn(),
-  hasNarrationCredits: vi.fn(),
+  isNarrationAvailable: vi.fn(),
   readVideoArtifact: vi.fn(),
   reserveVideoSlot: vi.fn(),
   refund: vi.fn(async () => undefined),
@@ -53,7 +53,7 @@ vi.mock("~/server/explainer/limits", () => ({
   tryVideoLock: mocks.tryVideoLock,
 }));
 vi.mock("~/server/explainer/narration", () => ({
-  hasNarrationCredits: mocks.hasNarrationCredits,
+  isNarrationAvailable: mocks.isNarrationAvailable,
 }));
 vi.mock("~/server/explainer/posters", () => ({
   storePoster: vi.fn(async () => true),
@@ -106,7 +106,7 @@ beforeEach(() => {
     videoAudience: "everyone",
     videosPaused: false,
   });
-  mocks.hasNarrationCredits.mockResolvedValue(true);
+  mocks.isNarrationAvailable.mockResolvedValue(true);
   mocks.readVideoArtifact.mockResolvedValue(null);
   mocks.reserveVideoSlot.mockResolvedValue({ ok: true, refund: mocks.refund });
   mocks.tryVideoLock.mockResolvedValue(mocks.releaseLock);

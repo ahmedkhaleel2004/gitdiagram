@@ -22,7 +22,7 @@ import {
   isVideoLockHeld,
   videosLeftToday,
 } from "~/server/explainer/limits";
-import { hasNarrationCredits } from "~/server/explainer/narration";
+import { isNarrationAvailable } from "~/server/explainer/narration";
 import { readVideoArtifact } from "~/server/explainer/store";
 import { readVisitor, withVisitorCookie } from "~/server/explainer/visitor";
 import type { VideoPausedReason } from "~/features/explainer/api";
@@ -92,11 +92,11 @@ async function videoAvailability(
     }
     const [left, credits] = await Promise.all([
       videosLeftToday(),
-      hasNarrationCredits(),
+      isNarrationAvailable(),
     ]);
     if (left > 0 && credits)
       return { canGenerate: true, paused: null, anyDevice };
-    heldBack(left > 0 ? "credits" : "daily");
+    heldBack(left > 0 ? "voice" : "daily");
     return { canGenerate: false, paused: "limit" };
   } catch {
     // Without Redis nothing new can start (see the generate route).

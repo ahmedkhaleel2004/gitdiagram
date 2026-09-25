@@ -31,7 +31,7 @@ const state: AdminState = {
     videoNetworkDailyLimit: null,
   },
   video: { videos: budget, renders: budget },
-  voiceCredits: 80_000,
+  voicePausedUntil: null,
   claudeCredit: { setUsd: 50, setAt: 0, spentUsd: 5 },
   diagramQuota: null,
   presence: null,

@@ -1,185 +1,42 @@
 import "server-only";
 
 import type { VideoTiming, VideoWord } from "~/features/explainer/types";
+import {
+  isGeminiVoiceConfigured,
+  speakWithGemini,
+  voicePausedUntil,
+} from "./gemini-voice";
 import { normalizeWord } from "./text";
+import type { Alignment } from "./voice-alignment";
 
-const ELEVENLABS_API = "https://api.elevenlabs.io";
-const DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"; // "Chris": warm, conversational
-// eleven_v3 acts: it varies pace and pitch with the sense of a line, runs
-// through lists and holds on an ellipsis, and performs the script's delivery
-// tags. It ignores `speed`, so that only goes to the older models
-// (multilingual_v2 via VIDEO_TTS_MODEL), which read the plain narration
-// because they would speak a tag aloud. v3 takes up to 5,000 characters, far
-// more than a sixty-second script.
-const DEFAULT_TTS_MODEL = "eleven_v3";
-// Natural pace for the older models. Sped-up takes (1.18 was tried) clip the
-// pauses between sentences and sound rushed.
-const DEFAULT_SPEED = 1;
 const LEAD_IN_SECONDS = 0.4;
 const TAIL_SECONDS = 3.6;
-
-interface Alignment {
-  characters: string[];
-  character_start_times_seconds: number[];
-  character_end_times_seconds: number[];
-}
 
 export interface Narration {
   clips: Buffer[];
   timing: VideoTiming;
   voices: Array<{ start: number }>;
   characters: number;
+  /** The model and voice that read the take. */
+  voice: string;
 }
 
 export function isNarrationConfigured(): boolean {
-  return Boolean(process.env.ELEVENLABS_API_KEY?.trim());
-}
-
-// A video takes about 800 credits; keep room for runs already in flight.
-const MIN_CREDITS = Math.max(
-  0,
-  Number.parseInt(process.env.VIDEO_MIN_TTS_CREDITS ?? "", 10) || 2_000,
-);
-const CREDITS_CACHE_MS = 5 * 60_000;
-// A failed read is tried again soon rather than held for the full five minutes.
-const FAILED_READ_CACHE_MS = 30_000;
-// How long a balance read earlier may stand in when a fresh read fails.
-const LAST_KNOWN_MS = 30 * 60_000;
-// One take of a minute's script comes back in well under this.
-const TTS_TIMEOUT_MS = 90_000;
-let creditsCache: { at: number; remaining: number | null } | null = null;
-let lastKnownCredits: { at: number; remaining: number } | null = null;
-
-/**
- * The voice account's remaining credits, read live and cached five minutes
- * per instance; null when the balance cannot be read.
- */
-export async function narrationCreditsRemaining(): Promise<number | null> {
-  const age = creditsCache ? Date.now() - creditsCache.at : Infinity;
-  const maxAge =
-    creditsCache?.remaining === null ? FAILED_READ_CACHE_MS : CREDITS_CACHE_MS;
-  if (age > maxAge) {
-    let remaining: number | null = null;
-    try {
-      const response = await fetch(`${ELEVENLABS_API}/v1/user/subscription`, {
-        headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY?.trim() ?? "" },
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (response.ok) {
-        const body = (await response.json()) as {
-          character_count?: number;
-          character_limit?: number;
-        };
-        if (
-          typeof body.character_count === "number" &&
-          typeof body.character_limit === "number"
-        )
-          remaining = body.character_limit - body.character_count;
-      }
-    } catch {
-      remaining = null;
-    }
-    creditsCache = { at: Date.now(), remaining };
-    if (remaining !== null) lastKnownCredits = { at: Date.now(), remaining };
-  }
-  return creditsCache!.remaining;
+  return isGeminiVoiceConfigured();
 }
 
 /**
- * Whether the voice account can narrate another video, so new videos stop
- * cleanly instead of failing halfway once the credits run out. When the
- * balance cannot be read, a recent reading stands in; with none, the answer
- * is no, since a public video would otherwise be paid for blind.
+ * Whether a new video can be voiced now: false while the day's voice quota is
+ * used up (see gemini-voice.ts), so no run pays for a script it cannot voice.
+ * If Redis cannot say, the budget check that follows fails closed anyway.
  */
-export async function hasNarrationCredits(): Promise<boolean> {
-  let remaining = await narrationCreditsRemaining();
-  if (
-    remaining === null &&
-    lastKnownCredits &&
-    Date.now() - lastKnownCredits.at <= LAST_KNOWN_MS
-  )
-    remaining = lastKnownCredits.remaining;
-  return remaining !== null && remaining >= MIN_CREDITS;
+export async function isNarrationAvailable(): Promise<boolean> {
+  return (await voicePausedUntil().catch(() => null)) === null;
 }
 
-/** Forget cached balances; for tests. */
-export function resetNarrationCreditsCache(): void {
-  creditsCache = null;
-  lastKnownCredits = null;
-}
-
-/** Wait, or stop waiting the moment the signal aborts. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(signal.reason as Error);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal!.reason as Error);
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-const ttsModel = () => process.env.VIDEO_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
-
-async function speak(
-  text: string,
-  signal?: AbortSignal,
-): Promise<{ audio: Buffer; alignment: Alignment }> {
-  const voice = process.env.VIDEO_TTS_VOICE_ID?.trim() || DEFAULT_VOICE_ID;
-  const model = ttsModel();
-  const v3 = model === "eleven_v3";
-  for (let attempt = 0; ; attempt++) {
-    // Each attempt has its own time limit as well as the run's deadline.
-    const timeout = AbortSignal.timeout(TTS_TIMEOUT_MS);
-    const response = await fetch(
-      `${ELEVENLABS_API}/v1/text-to-speech/${voice}/with-timestamps?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": process.env.ELEVENLABS_API_KEY?.trim() ?? "",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          text,
-          model_id: model,
-          seed: 7,
-          // v3 stability is Creative (0), Natural (0.5) or Robust (1). Creative
-          // is livelier but can drift off script, which an unattended run can't catch.
-          voice_settings: v3
-            ? { stability: 0.5, similarity_boost: 0.8, use_speaker_boost: true }
-            : {
-                stability: 0.45,
-                similarity_boost: 0.8,
-                style: 0.15,
-                use_speaker_boost: true,
-                speed: Number(process.env.VIDEO_TTS_SPEED) || DEFAULT_SPEED,
-              },
-        }),
-        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-      },
-    );
-    if ((response.status === 429 || response.status >= 500) && attempt < 5) {
-      await sleep(1200 * 2 ** attempt, signal);
-      continue;
-    }
-    if (!response.ok)
-      throw new Error(
-        `Narration failed (${response.status}): ${(await response.text()).slice(0, 200)}`,
-      );
-    const body = (await response.json()) as {
-      audio_base64: string;
-      alignment: Alignment;
-    };
-    return {
-      audio: Buffer.from(body.audio_base64, "base64"),
-      alignment: body.alignment,
-    };
-  }
+/** When new videos can be voiced again, for /admin; null when they can now. */
+export function narrationPausedUntil(): Promise<number | null> {
+  return voicePausedUntil();
 }
 
 /**
@@ -247,10 +104,10 @@ export async function narrateBeats(
   beats: Array<{ narration: string; spoken: string; scene: string }>,
   signal?: AbortSignal,
 ): Promise<Narration> {
-  const tagged = ttsModel() === "eleven_v3";
+  // The spoken lines keep their delivery tags; the voice takes them as direction.
   let text = "";
   const spans = beats.map((beat, index) => {
-    const said = tagged ? beat.spoken : beat.narration;
+    const said = beat.spoken;
     const last = index === beats.length - 1;
     // A beat may end mid-sentence now that the take runs on, but a scene or
     // the film always ends on a full stop.
@@ -267,7 +124,7 @@ export async function narrateBeats(
     return { from, to: text.length };
   });
 
-  const { audio, alignment } = await speak(text, signal);
+  const { audio, alignment, voice } = await speakWithGemini(text, signal);
   const words = spokenWords(alignment, LEAD_IN_SECONDS);
   const timing: VideoTiming["beats"] = [];
   for (const span of spans) {
@@ -293,5 +150,6 @@ export async function narrateBeats(
     },
     voices: [{ start: LEAD_IN_SECONDS }],
     characters: text.length,
+    voice,
   };
 }

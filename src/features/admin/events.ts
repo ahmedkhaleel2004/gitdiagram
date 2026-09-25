@@ -13,7 +13,7 @@ const HELD_BACK: Record<string, string> = {
   daily: "Today's video limit is used up",
   person: "They already made today's video",
   network: "Their connection hit its daily backstop",
-  credits: "Voice credits are low",
+  voice: "Today's voice quota is used up",
 };
 
 const FAILED = "text-red-700 dark:text-red-400";

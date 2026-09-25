@@ -40,7 +40,7 @@ export interface PlanRepositoryFacts {
   images?: string[];
 }
 
-// Delivery directions the voice (ElevenLabs v3) performs. Any other bracketed
+// Delivery directions the voice takes (gemini-voice.ts). Any other bracketed
 // tag is dropped: pause tags stretch past a second, and sounds like [laughs]
 // do not belong in an explainer. Punctuation carries the pacing instead.
 const DELIVERY_TAGS = [

@@ -8,7 +8,7 @@ import {
   presenceSocketUrl,
 } from "~/server/admin/live-events";
 import { videoUsageToday } from "~/server/explainer/limits";
-import { narrationCreditsRemaining } from "~/server/explainer/narration";
+import { narrationPausedUntil } from "~/server/explainer/narration";
 import { readComplimentaryUsageToday } from "~/server/generate/complimentary-gate";
 
 async function orNull<T>(promise: Promise<T>): Promise<T | null> {
@@ -21,11 +21,11 @@ async function orNull<T>(promise: Promise<T>): Promise<T | null> {
 
 /** Everything the dashboard polls: switches, today's budgets, balances. */
 export async function readAdminState(): Promise<AdminState> {
-  const [controls, video, voiceCredits, claudeCredit, diagramQuota] =
+  const [controls, video, voicePausedUntil, claudeCredit, diagramQuota] =
     await Promise.all([
       readControls({ fresh: true }),
       orNull(videoUsageToday()),
-      orNull(narrationCreditsRemaining()),
+      orNull(narrationPausedUntil()),
       orNull(readClaudeCredit()),
       orNull(readComplimentaryUsageToday()),
     ]);
@@ -35,7 +35,7 @@ export async function readAdminState(): Promise<AdminState> {
     now: Date.now(),
     controls,
     video,
-    voiceCredits,
+    voicePausedUntil,
     claudeCredit,
     diagramQuota,
     presence: url && token ? { url, token } : null,
