@@ -12,6 +12,7 @@ vi.mock("~/server/storage/upstash", () => ({ upstashEval, upstashCommand }));
 import {
   isTrustedVideoCaller,
   isVideoAdmin,
+  limitMessage,
   reserveVideoSlot,
   tryVideoLock,
   videosLeftToday,
@@ -72,11 +73,13 @@ describe("explainer video limits", () => {
     expect(await reserveVideoSlot("203.0.113.9")).toEqual({
       ok: false,
       reason: "daily",
+      limit: 25,
     });
     upstashEval.mockResolvedValueOnce(2);
     expect(await reserveVideoSlot(null)).toEqual({
       ok: false,
       reason: "network",
+      limit: 2,
     });
     expect(
       (upstashEval.mock.calls[2]![0] as { keys: string[] }).keys[1],
@@ -115,5 +118,23 @@ describe("explainer video limits", () => {
       keys: ["video:v1:lock:generate:a/b"],
       args: [token],
     });
+  });
+
+  it("tells people their own limit and when it resets", () => {
+    // 17:00 UTC: seven hours until the budgets reset.
+    const at = Date.UTC(2026, 8, 24, 17, 0);
+    expect(limitMessage("network", 1, at)).toBe(
+      "You've already made your free video for today. You can make another in about 7 hours. Every video that's already been made is still free to watch.",
+    );
+    expect(limitMessage("network", 3, at)).toContain(
+      "You've already made your 3 free videos for today.",
+    );
+    expect(limitMessage("daily", 25, at)).toContain(
+      "New ones open up in about 7 hours.",
+    );
+    expect(limitMessage("network", 1, Date.UTC(2026, 8, 24, 23, 30))).toContain(
+      "in under an hour",
+    );
+    expect(limitMessage("network", 1, at)).not.toMatch(/network/i);
   });
 });

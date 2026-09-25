@@ -15,6 +15,7 @@ import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import {
   isTrustedVideoCaller,
   reserveRenderSlot,
+  timeUntilReset,
   tryVideoLock,
   type Reservation,
 } from "~/server/explainer/limits";
@@ -79,7 +80,7 @@ export async function POST(request: Request): Promise<Response> {
       reservation = await reserveRenderSlot(getClientIp(request));
       if (!reservation.ok)
         return jsonErrorResponse(
-          "Too many downloads from this network today. Try again tomorrow.",
+          `You've reached today's limit for new MP4 downloads. You can download more in ${timeUntilReset()}.`,
           429,
         );
     }

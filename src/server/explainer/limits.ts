@@ -76,7 +76,7 @@ return 0
 
 export type Reservation =
   | { ok: true; refund: () => Promise<void> }
-  | { ok: false; reason: "daily" | "network" };
+  | { ok: false; reason: "daily" | "network"; limit: number };
 
 async function reserve(
   kind: "generate" | "render",
@@ -96,8 +96,9 @@ async function reserve(
     keys,
     args: [dailyLimit, networkLimit, DAY_SECONDS * 2],
   });
-  if (result === 1) return { ok: false, reason: "daily" };
-  if (result === 2) return { ok: false, reason: "network" };
+  if (result === 1) return { ok: false, reason: "daily", limit: dailyLimit };
+  if (result === 2)
+    return { ok: false, reason: "network", limit: networkLimit };
   return {
     ok: true,
     // A run that failed on our side should not use up anyone's budget.
@@ -209,8 +210,28 @@ export async function tryVideoLock(
   };
 }
 
-export function limitMessage(reason: "daily" | "network"): string {
-  return reason === "daily"
-    ? "Today's free videos have all been made. New ones open up tomorrow (UTC); every video already made stays free to watch."
-    : "This network has made its videos for today. Try again tomorrow; every video already made stays free to watch.";
+/** "about 7 hours" until the budgets reset at midnight UTC. */
+export function timeUntilReset(now = Date.now()): string {
+  const hours = Math.ceil(
+    (DAY_SECONDS * 1000 - (now % (DAY_SECONDS * 1000))) / 3_600_000,
+  );
+  return hours <= 1 ? "under an hour" : `about ${hours} hours`;
+}
+
+const STILL_FREE =
+  "Every video that's already been made is still free to watch.";
+
+export function limitMessage(
+  reason: "daily" | "network",
+  limit = 1,
+  now = Date.now(),
+): string {
+  const wait = timeUntilReset(now);
+  if (reason === "daily")
+    return `Today's free videos have all been made. New ones open up in ${wait}. ${STILL_FREE}`;
+  const used =
+    limit === 1
+      ? "You've already made your free video for today"
+      : `You've already made your ${limit} free videos for today`;
+  return `${used}. You can make another in ${wait}. ${STILL_FREE}`;
 }

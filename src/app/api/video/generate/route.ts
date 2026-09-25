@@ -106,7 +106,10 @@ export async function POST(request: Request): Promise<Response> {
       reservation = await reserveVideoSlot(getClientIp(request));
       if (!reservation.ok) {
         gated(reservation.reason);
-        return jsonErrorResponse(limitMessage(reservation.reason), 429);
+        return jsonErrorResponse(
+          limitMessage(reservation.reason, reservation.limit),
+          429,
+        );
       }
     }
     if (production) {
