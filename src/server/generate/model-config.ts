@@ -1,9 +1,10 @@
-export type AIProvider = "openai" | "openrouter";
+export type AIProvider = "openai" | "openrouter" | "requesty";
 export type GenerationServiceTier = "default" | "priority";
 
 const DEFAULT_PROVIDER: AIProvider = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-6-luna";
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-terra";
+const DEFAULT_REQUESTY_MODEL = "openai/gpt-5.6-terra";
 const MANAGED_OPENAI_MODEL_PATTERN =
   /^gpt-(?:5\.6(?:-(?:sol|terra|luna))?|6-luna)(?:-\d{4}-\d{2}-\d{2})?$/i;
 
@@ -17,6 +18,9 @@ function normalizeProvider(value?: string): AIProvider {
   if (normalized === "openrouter") {
     return "openrouter";
   }
+  if (normalized === "requesty") {
+    return "requesty";
+  }
   return DEFAULT_PROVIDER;
 }
 
@@ -25,7 +29,13 @@ export function getProvider(overrideProvider?: string): AIProvider {
 }
 
 export function getProviderLabel(provider: AIProvider): string {
-  return provider === "openrouter" ? "OpenRouter" : "OpenAI";
+  if (provider === "openrouter") {
+    return "OpenRouter";
+  }
+  if (provider === "requesty") {
+    return "Requesty";
+  }
+  return "OpenAI";
 }
 
 export function supportsExactInputTokenCount(provider: AIProvider): boolean {
@@ -79,6 +89,10 @@ export function shouldUseExactInputTokenCount(params: {
 export function getModel(provider = getProvider()): string {
   if (provider === "openrouter") {
     return readEnvValue("OPENROUTER_MODEL") ?? DEFAULT_OPENROUTER_MODEL;
+  }
+
+  if (provider === "requesty") {
+    return readEnvValue("REQUESTY_MODEL") ?? DEFAULT_REQUESTY_MODEL;
   }
 
   return readEnvValue("OPENAI_MODEL") ?? DEFAULT_OPENAI_MODEL;

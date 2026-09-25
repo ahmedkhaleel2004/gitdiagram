@@ -37,7 +37,7 @@ GitDiagram can now turn a repository into a narrated video of about a minute. Th
 
 ## Run locally
 
-Requires [Bun](https://bun.sh/), Cloudflare R2, Upstash Redis, and an OpenAI or OpenRouter API key. See the [setup guide](docs/dev-setup.md) for prerequisites and configuration.
+Requires [Bun](https://bun.sh/), Cloudflare R2, Upstash Redis, and an OpenAI, OpenRouter, or Requesty API key. See the [setup guide](docs/dev-setup.md) for prerequisites and configuration.
 
 ```bash
 git clone https://github.com/ahmedkhaleel2004/gitdiagram.git
