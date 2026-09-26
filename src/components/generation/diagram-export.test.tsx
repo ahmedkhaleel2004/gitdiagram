@@ -1,9 +1,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DiagramExport } from "./diagram-export";
-const { exportPng } = vi.hoisted(() => ({ exportPng: vi.fn() }));
+const { exportPng, exportSvg } = vi.hoisted(() => ({
+  exportPng: vi.fn(),
+  exportSvg: vi.fn(),
+}));
 vi.mock("~/features/diagram/export", () => ({
   exportMermaidSvgAsPng: exportPng,
+  exportMermaidSvgAsSvg: exportSvg,
 }));
 afterEach(() => {
   cleanup();
@@ -59,6 +63,28 @@ describe("diagram export", () => {
     open();
     fireEvent.click(screen.getByRole("button", { name: "Download PNG" }));
     expect(exportPng).toHaveBeenCalledWith(svg, expect.any(String));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Download failed. Try again.",
+    );
+  });
+  it("exports the supplied visible diagram as SVG", async () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    render(<DiagramExport diagram="A-->B" getSvg={() => svg} />);
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "Download SVG" }));
+    expect(exportSvg).toHaveBeenCalledWith(svg);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "SVG downloaded",
+    );
+  });
+  it("reports a failed SVG export", async () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    exportSvg.mockImplementation(() => {
+      throw new Error("no dimensions");
+    });
+    render(<DiagramExport diagram="A-->B" getSvg={() => svg} />);
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "Download SVG" }));
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Download failed. Try again.",
     );
