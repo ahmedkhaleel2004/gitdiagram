@@ -7,7 +7,12 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
-      miniflare: { bindings: { PRESENCE_SECRET: "s".repeat(40) } },
+      miniflare: {
+        bindings: {
+          PRESENCE_SECRET: "s".repeat(40),
+          SITE_ORIGIN: "https://site.example",
+        },
+      },
     }),
   ],
   test: {

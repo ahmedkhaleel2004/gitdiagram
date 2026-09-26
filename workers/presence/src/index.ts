@@ -9,6 +9,7 @@ import {
   ADMIN_PROTOCOL,
   FEED_EVENTS,
   HIDDEN_REPORT_MS,
+  MAX_PARKED_EVENT_AGE_MS,
   MAX_PATH,
   PRESENCE_PROTOCOL,
   SIGNED_OUT_EVERYWHERE,
@@ -51,6 +52,11 @@ import {
 // The object keeps a copy of every tab in memory while awake (rebuilt from
 // the sockets' attachments after it hibernates), so a tab's message costs one
 // attachment read and write, not a pass over every socket.
+//
+// Everything here runs on Cloudflare's free daily requests (the Worker and
+// the object together), so nothing wakes it that need not: while no dashboard
+// is open the site parks its events, and the object fetches them (a
+// subrequest, which is free) when a dashboard connects and at every sweep.
 
 export interface Env {
   PRESENCE: DurableObjectNamespace<Presence>;
@@ -60,6 +66,8 @@ export interface Env {
   ALLOWED_ORIGINS: string;
   /** New visitor sockets per network per minute, checked before the object. */
   CONNECTS?: RateLimit;
+  /** The site, whose /api/admin/presence-feed hands over parked events. */
+  SITE_ORIGIN?: string;
 }
 
 type VisitorAttachment = { k: "visitor" } & LiveVisitor & {
@@ -71,6 +79,13 @@ type VisitorAttachment = { k: "visitor" } & LiveVisitor & {
 /** A dashboard: when it connected, and when its token expires. */
 type AdminAttachment = { k: "admin"; t?: number; x?: number };
 type Attachment = VisitorAttachment | AdminAttachment;
+type FeedEvent = Record<string, unknown> & { kind: string };
+
+const isEvent = (value: unknown): value is FeedEvent =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  typeof (value as { kind?: unknown }).kind === "string";
 
 const MAX_EVENT_BYTES = 4_000;
 // Sockets one network may hold, so a script cannot inflate the count cheaply.
@@ -90,6 +105,9 @@ const MAX_ADMIN_MESSAGE = 200;
 // does not bring the job back.
 const JOB_TTL_MS = 15 * 60_000;
 const FLUSH_MS = 250;
+// How long a dashboard waits on the site for parked events before the
+// snapshot goes without them (the next sweep brings them).
+const DRAIN_TIMEOUT_MS = 3_000;
 // Set only by the Worker below; the object is not reachable any other way.
 const EXPIRY_HEADER = "x-presence-admin-expiry";
 
@@ -123,6 +141,7 @@ export class Presence extends DurableObject<Env> {
   }
 
   private async acceptAdmin(request: Request): Promise<Response> {
+    await this.drainSite();
     const now = Date.now();
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
@@ -275,6 +294,7 @@ export class Presence extends DurableObject<Env> {
    * there to give a network back the places its vanished tabs held.
    */
   async alarm() {
+    if (this.admins().length) await this.drainSite();
     const now = Date.now();
     for (const { ws, visitor } of this.getRoster().values())
       if (!this.isLive(ws, visitor.t, STALE_MS, now)) this.drop(ws);
@@ -373,6 +393,34 @@ export class Presence extends DurableObject<Env> {
     this.scheduleFlush();
   }
 
+  /**
+   * Tells the site a dashboard is watching (so it sends events straight
+   * here for a while) and takes the events it parked while none was.
+   */
+  private async drainSite() {
+    const origin = this.env.SITE_ORIGIN?.replace(/\/$/, "");
+    const secret = this.env.PRESENCE_SECRET ?? "";
+    if (!origin || secret.length < 32) return;
+    let events: unknown;
+    try {
+      const response = await fetch(`${origin}/api/admin/presence-feed`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${secret}` },
+        signal: AbortSignal.timeout(DRAIN_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        return;
+      }
+      ({ events } = (await response.json()) as { events?: unknown });
+    } catch {
+      return; // The next sweep tries again.
+    }
+    if (!Array.isArray(events)) return;
+    for (const event of events.slice(-FEED_EVENTS))
+      if (isEvent(event)) await this.ingest(event, Date.now());
+  }
+
   private async receiveEvent(request: Request): Promise<Response> {
     const tooLarge = () => new Response("Too large", { status: 413 });
     if (Number(request.headers.get("content-length")) > MAX_EVENT_BYTES)
@@ -387,11 +435,21 @@ export class Presence extends DurableObject<Env> {
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
       return new Response("Not an event", { status: 400 });
-    const event = parsed as Record<string, unknown>;
-    if (typeof event.kind !== "string")
-      return new Response("Missing kind", { status: 400 });
-    const now = Date.now();
-    event.at = now;
+    if (!isEvent(parsed)) return new Response("Missing kind", { status: 400 });
+    await this.ingest(parsed, Date.now());
+    return Response.json({ ok: true });
+  }
+
+  /**
+   * Keeps an event for the feed, tracks its job, and pushes it to open
+   * dashboards. It keeps the time the site gave it (an event may have waited
+   * in Redis), unless that is in the future or too old to trust.
+   */
+  private async ingest(event: FeedEvent, now: number) {
+    const stamped = typeof event.at === "number" ? event.at : NaN;
+    const at =
+      stamped >= now - MAX_PARKED_EVENT_AGE_MS ? Math.min(stamped, now) : now;
+    event.at = at;
 
     const sql = this.ctx.storage.sql;
     const job = event.job as
@@ -412,7 +470,7 @@ export class Presence extends DurableObject<Env> {
             id,
             kind: event.kind.split(".")[0] ?? event.kind,
             label: typeof job.label === "string" ? job.label.slice(0, 200) : "",
-            started: now,
+            started: at,
           };
           sql.exec(
             "INSERT OR REPLACE INTO jobs (id, body, started) VALUES (?, ?, ?)",
@@ -424,11 +482,7 @@ export class Presence extends DurableObject<Env> {
         }
       } else {
         sql.exec("DELETE FROM jobs WHERE id = ?", id);
-        sql.exec(
-          "INSERT OR REPLACE INTO ended (id, at) VALUES (?, ?)",
-          id,
-          now,
-        );
+        sql.exec("INSERT OR REPLACE INTO ended (id, at) VALUES (?, ?)", id, at);
         sql.exec("DELETE FROM ended WHERE at < ?", now - JOB_TTL_MS);
         jobsChanged = true;
       }
@@ -453,7 +507,6 @@ export class Presence extends DurableObject<Env> {
     // tokens' short life is the backstop if this event is lost.
     if (event.kind === SIGNED_OUT_EVERYWHERE)
       for (const ws of this.admins()) this.drop(ws, 4001, "Signed out");
-    return Response.json({ ok: true });
   }
 
   private admins() {

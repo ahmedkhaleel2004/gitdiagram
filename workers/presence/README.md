@@ -44,5 +44,9 @@ tab message, sweep alarm and site event wakes the object once (pings answered by
 the runtime cost nothing). So tabs connect only after 15 seconds in view, report
 going out of view only after a minute, dashboards close their socket after a
 minute out of view, and sweeps run every minute while a dashboard watches and
-every 15 minutes otherwise. Check the day's use with the GraphQL datasets
+every 15 minutes otherwise. While no dashboard is open, the site parks its feed
+events in Redis; the object fetches them from the site's
+`/api/admin/presence-feed` (`SITE_ORIGIN`, with `PRESENCE_SECRET`) when a
+dashboard connects and at every sweep. That fetch is a subrequest, which the
+daily limit does not count. Check the day's use with the GraphQL datasets
 `workersInvocationsAdaptive` and `durableObjectsInvocationsAdaptiveGroups`.

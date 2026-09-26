@@ -1,11 +1,12 @@
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ADMIN_PROTOCOL,
   DASHBOARD_TOKEN_PREFIX,
   HIDDEN_REPORT_MS,
+  MAX_PARKED_EVENT_AGE_MS,
   MAX_PATH,
   PRESENCE_PROTOCOL,
   SIGNED_OUT_EVERYWHERE,
@@ -119,7 +120,24 @@ const attachments = (stub: DurableObjectStub, tag?: string) =>
       .map((ws) => ws.deserializeAttachment() as Attachment),
   );
 
+/** What the site hands over when asked for parked events (none, by default). */
+let parked: unknown[] = [];
+const siteCalls = () =>
+  vi
+    .mocked(globalThis.fetch)
+    .mock.calls.filter(([url]) =>
+      String(url).startsWith("https://site.example"),
+    );
+
+beforeEach(() => {
+  parked = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+    Response.json({ events: parked }),
+  );
+});
+
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const name of ["global", "caps"])
     await runInDurableObject(
       env.PRESENCE.get(env.PRESENCE.idFromName(name)),
@@ -182,6 +200,73 @@ describe("the Worker's routes", () => {
 });
 
 describe("dashboards", () => {
+  it("take the events the site parked while none was open, at their own times", async () => {
+    const now = Date.now();
+    parked = [
+      {
+        kind: "diagram.started",
+        at: now - 60_000,
+        repo: "acme/parked",
+        job: { id: "parked-job", state: "start", label: "acme/parked" },
+      },
+      { kind: "diagram.ancient", at: now - MAX_PARKED_EVENT_AGE_MS - 1 },
+      { kind: "diagram.future", at: now + 60_000 },
+      "not an event",
+      { no: "kind" },
+    ];
+    const admin = await dashboard();
+    await vi.waitFor(() => expect(admin.messages[0]?.type).toBe("snapshot"));
+    const snapshot = admin.messages[0]!;
+    if (snapshot.type !== "snapshot") throw new Error("no snapshot");
+    const byKind = Object.fromEntries(
+      snapshot.events.map((event) => [event.kind, event]),
+    );
+    expect(byKind["diagram.started"]?.at).toBe(now - 60_000);
+    expect(byKind["diagram.ancient"]?.at).toBeGreaterThanOrEqual(now);
+    expect(byKind["diagram.future"]?.at).toBeLessThanOrEqual(Date.now());
+    expect(snapshot.events).toHaveLength(
+      new Set(snapshot.events.map((e) => e.id)).size,
+    );
+    const job = snapshot.jobs.find((j) => j.label === "acme/parked");
+    expect(job?.started).toBe(now - 60_000);
+    const [call] = siteCalls();
+    expect(call?.[0]).toBe("https://site.example/api/admin/presence-feed");
+    expect(new Headers(call?.[1]?.headers).get("authorization")).toBe(
+      `Bearer ${SECRET}`,
+    );
+    // Storage outlives the test: finish the job.
+    await postEvent(
+      JSON.stringify({
+        kind: "diagram.finished",
+        job: { id: "parked-job", state: "end" },
+      }),
+    );
+  });
+
+  it("ask the site again at every sweep, and not while none is open", async () => {
+    await visit();
+    expect(await runDurableObjectAlarm(global())).toBe(true);
+    expect(siteCalls()).toHaveLength(0);
+    const admin = await dashboard();
+    expect(siteCalls()).toHaveLength(1);
+    parked = [{ kind: "video.started", at: Date.now() - 5_000 }];
+    expect(await runDurableObjectAlarm(global())).toBe(true);
+    expect(siteCalls()).toHaveLength(2);
+    await vi.waitFor(() =>
+      expect(
+        admin.messages.some(
+          (m) => m.type === "event" && m.event.kind === "video.started",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("still open when the site cannot be reached", async () => {
+    vi.mocked(globalThis.fetch).mockRejectedValue(new Error("offline"));
+    const admin = await dashboard();
+    await vi.waitFor(() => expect(admin.messages[0]?.type).toBe("snapshot"));
+  });
+
   it("get a snapshot that says which protocol the worker speaks", async () => {
     await visit({ p: "/acme/app" });
     const admin = await dashboard();

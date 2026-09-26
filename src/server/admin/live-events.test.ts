@@ -7,17 +7,29 @@ vi.mock("next/server", () => ({
     throw new Error("Outside a request");
   },
 }));
+const redis = vi.hoisted(() => ({
+  upstashEval: vi.fn<(params: unknown) => Promise<unknown>>(),
+}));
+vi.mock("~/server/storage/upstash", () => redis);
 
 import {
   DASHBOARD_TOKEN_MS,
   tokenExpiry,
 } from "~/features/admin/presence-protocol";
-import { createPresenceToken, emitLiveEvent, liveJobId } from "./live-events";
+import {
+  createPresenceToken,
+  drainParkedEvents,
+  emitLiveEvent,
+  isPresenceWorker,
+  liveJobId,
+} from "./live-events";
 
 const SECRET = "p".repeat(40);
 const originalEnv = process.env;
 
 beforeEach(() => {
+  // A dashboard is watching: events go straight to the worker.
+  redis.upstashEval.mockReset().mockResolvedValue(1);
   process.env = {
     ...originalEnv,
     PRESENCE_SECRET: SECRET,
@@ -99,5 +111,61 @@ describe("sending events", () => {
     await expect(
       emitLiveEvent({ kind: "video.started" }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("while no dashboard is watching", () => {
+  it("parks events in Redis, stamped with their own time, instead of sending them", async () => {
+    redis.upstashEval.mockResolvedValue(0);
+    const fetch = vi.spyOn(globalThis, "fetch");
+    const before = Date.now();
+    await emitLiveEvent({ kind: "diagram.started", repo: "acme/app" });
+    expect(fetch).not.toHaveBeenCalled();
+    const { keys, args } = redis.upstashEval.mock.calls[0]![0] as {
+      keys: string[];
+      args: [string, number, number];
+    };
+    expect(keys).toEqual(["admin:v1:feed:watching", "admin:v1:feed:parked"]);
+    const parked = JSON.parse(args[0]) as { kind: string; at: number };
+    expect(parked.kind).toBe("diagram.started");
+    expect(parked.at).toBeGreaterThanOrEqual(before);
+    expect(args[1]).toBe(200);
+  });
+
+  it("sends straight away when Redis cannot be reached", async () => {
+    redis.upstashEval.mockRejectedValue(new Error("down"));
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}"));
+    await emitLiveEvent({ kind: "video.started" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands the worker what was parked, oldest first, skipping anything broken", async () => {
+    redis.upstashEval.mockResolvedValue([
+      JSON.stringify({ kind: "a", at: 1 }),
+      "not json",
+      "[1]",
+      JSON.stringify({ kind: "b", at: 2 }),
+    ]);
+    expect(await drainParkedEvents()).toEqual([
+      { kind: "a", at: 1 },
+      { kind: "b", at: 2 },
+    ]);
+    redis.upstashEval.mockResolvedValue(null);
+    expect(await drainParkedEvents()).toEqual([]);
+  });
+
+  it("knows the worker by its shared secret", () => {
+    const from = (authorization?: string) =>
+      new Request("https://gitdiagram.com/api/admin/presence-feed", {
+        method: "POST",
+        headers: authorization ? { authorization } : {},
+      });
+    expect(isPresenceWorker(from(`Bearer ${SECRET}`))).toBe(true);
+    expect(isPresenceWorker(from(`Bearer ${SECRET}x`))).toBe(false);
+    expect(isPresenceWorker(from())).toBe(false);
+    process.env.PRESENCE_SECRET = "short";
+    expect(isPresenceWorker(from("Bearer short"))).toBe(false);
   });
 });

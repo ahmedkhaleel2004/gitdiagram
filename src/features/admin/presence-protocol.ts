@@ -8,7 +8,7 @@
  * sends it in every snapshot; a dashboard that reads another number (or none,
  * from a worker older than this) shows that one of them needs deploying.
  */
-export const PRESENCE_PROTOCOL = 2;
+export const PRESENCE_PROTOCOL = 3;
 
 /**
  * The dashboard offers this WebSocket subprotocol, followed by its token as a
@@ -53,6 +53,18 @@ export const FEED_EVENTS = 200;
  * as here (RECENT_MS in presence.ts, which must be longer) is unchanged.
  */
 export const HIDDEN_REPORT_MS = 60_000;
+
+/**
+ * While no dashboard is open, the site parks feed events in Redis instead of
+ * sending each to the worker (every one would be two requests Cloudflare
+ * counts). An open dashboard's worker calls the site when it connects and at
+ * every sweep (each minute), which takes the parked events and marks the feed
+ * watched for this long, so events go straight to the worker meanwhile.
+ */
+export const FEED_WATCH_MS = 150_000;
+
+/** The oldest parked event the worker takes; older ones are dropped. */
+export const MAX_PARKED_EVENT_AGE_MS = 24 * 60 * 60_000;
 
 /** The longest path a tab reports; the worker cuts longer ones. */
 export const MAX_PATH = 300;

@@ -1,22 +1,55 @@
 import "server-only";
 
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { after } from "next/server";
 
 import {
   DASHBOARD_TOKEN_MS,
   DASHBOARD_TOKEN_PREFIX,
+  FEED_EVENTS,
+  FEED_WATCH_MS,
   MAX_JOB_ID,
+  MAX_PARKED_EVENT_AGE_MS,
+  SIGNED_OUT_EVERYWHERE,
 } from "~/features/admin/presence-protocol";
 import { isDesktopRequest } from "~/server/explainer/audience";
 import { requestGeo } from "~/server/http/vercel-geo";
 import { logEvent } from "~/server/log";
+import { upstashEval } from "~/server/storage/upstash";
 
 // Sends what the site is doing (generations starting and finishing, visitors
 // held back by the video gate, switches flipped) to the presence worker
 // (workers/presence), which pushes each event to the operator's open dashboard
 // the moment it arrives. Sending is best effort and never slows or fails the
 // request it describes.
+//
+// While no dashboard is open, events wait in Redis instead (the worker runs on
+// Cloudflare's free daily requests, and each event sent is two). The worker
+// takes them when a dashboard connects, and every minute while one is open,
+// through /api/admin/presence-feed, which also marks the feed watched for
+// FEED_WATCH_MS so events meanwhile go straight to it. If Redis cannot be
+// reached, events are sent straight away as before.
+
+const WATCHING_KEY = "admin:v1:feed:watching";
+const PARKED_KEY = "admin:v1:feed:parked";
+
+// Returns 1 while a dashboard is watching; otherwise parks the event (keeping
+// the newest FEED_EVENTS, as the feed does) and returns 0.
+const PARK_SCRIPT = `
+if redis.call('EXISTS', KEYS[1]) == 1 then return 1 end
+redis.call('RPUSH', KEYS[2], ARGV[1])
+redis.call('LTRIM', KEYS[2], -tonumber(ARGV[2]), -1)
+redis.call('PEXPIRE', KEYS[2], tonumber(ARGV[3]))
+return 0
+`;
+
+// Marks the feed watched, and hands over (and forgets) what was parked.
+const DRAIN_SCRIPT = `
+redis.call('SET', KEYS[1], '1', 'PX', tonumber(ARGV[1]))
+local parked = redis.call('LRANGE', KEYS[2], 0, -1)
+redis.call('DEL', KEYS[2])
+return parked
+`;
 
 const SEND_TIMEOUT_MS = 2_000;
 
@@ -66,13 +99,68 @@ export function liveJobId(id: string): string {
   return `sha256:${createHash("sha256").update(id).digest("hex").slice(0, 40)}`;
 }
 
+/** True when the event should be sent now; otherwise it was parked. */
+async function parkUnlessWatched(body: LiveEvent): Promise<boolean> {
+  try {
+    const watched = await upstashEval<number>({
+      script: PARK_SCRIPT,
+      keys: [WATCHING_KEY, PARKED_KEY],
+      args: [JSON.stringify(body), FEED_EVENTS, MAX_PARKED_EVENT_AGE_MS],
+    });
+    return watched === 1;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * For the worker, with a dashboard open: marks the feed watched and returns
+ * the events parked meanwhile, oldest first.
+ */
+export async function drainParkedEvents(): Promise<LiveEvent[]> {
+  const parked = await upstashEval<string[] | null>({
+    script: DRAIN_SCRIPT,
+    keys: [WATCHING_KEY, PARKED_KEY],
+    args: [FEED_WATCH_MS],
+  });
+  return (parked ?? []).flatMap((text) => {
+    try {
+      const event = JSON.parse(text) as unknown;
+      return event && typeof event === "object" && !Array.isArray(event)
+        ? [event as LiveEvent]
+        : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+/** Whether a request carries the worker's shared secret. */
+export function isPresenceWorker(request: Request): boolean {
+  const secret = presenceSecret();
+  if (!secret) return false;
+  const digest = (text: string) => createHash("sha256").update(text).digest();
+  return timingSafeEqual(
+    digest(request.headers.get("authorization") ?? ""),
+    digest(`Bearer ${secret}`),
+  );
+}
+
 async function send(event: LiveEvent): Promise<void> {
   const url = presenceSocketUrl();
   const secret = presenceSecret();
   if (!url || !secret) return;
-  const body = event.job
-    ? { ...event, job: { ...event.job, id: liveJobId(event.job.id) } }
-    : event;
+  // Stamped here, so an event that waited in Redis keeps its own time.
+  const body: LiveEvent = {
+    ...event,
+    at: Date.now(),
+    ...(event.job
+      ? { job: { ...event.job, id: liveJobId(event.job.id) } }
+      : {}),
+  };
+  // Signing out everywhere must close open dashboards now: never parked.
+  if (event.kind !== SIGNED_OUT_EVERYWHERE && !(await parkUnlessWatched(body)))
+    return;
   try {
     const response = await fetch(`${url.replace(/^ws/, "http")}/event`, {
       method: "POST",

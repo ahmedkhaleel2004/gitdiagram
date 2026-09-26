@@ -8,6 +8,8 @@
   "observability": { "enabled": true },
   "vars": {
     "ALLOWED_ORIGINS": "https://gitdiagram.com,https://www.gitdiagram.com",
+    // Hands over the feed events it parked while no dashboard was open.
+    "SITE_ORIGIN": "https://gitdiagram.com",
   },
   // New visitor sockets per network per minute, before they reach the object.
   // Cloudflare counts per location and approximately, which is enough here.
