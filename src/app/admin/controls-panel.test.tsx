@@ -170,9 +170,7 @@ describe("video making controls", () => {
   it("describes who gets which model the way videos are made", () => {
     renderControls();
     expect(
-      screen.getByText(
-        /Opus writes the script and GPT-6 Sol designs the scenes/,
-      ),
+      screen.getByText(/written by Claude Opus and designed by GPT-6 Sol/),
     ).toBeInTheDocument();
   });
 });

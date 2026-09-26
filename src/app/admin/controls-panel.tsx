@@ -388,10 +388,8 @@ export function ControlsPanel({
           <div className="flex flex-col gap-2">
             <div className="text-sm font-semibold">Priority places</div>
             <p className="text-xs text-[hsl(var(--neo-soft-text))]">
-              People here get more videos a day, and their first one each day is
-              made wholly with Claude Opus. For everyone else, Opus writes the
-              script and GPT-6 Sol designs the scenes, except on repositories
-              with 10,000+ stars, which are all Opus.
+              People here get more videos a day. Every video is written by
+              Claude Opus and designed by GPT-6 Sol.
             </p>
             <ChoicePicker
               label="Priority places"

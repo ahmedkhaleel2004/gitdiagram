@@ -5,15 +5,17 @@ import { errorText, logEvent } from "~/server/log";
 import type { Effort, Planner } from "./director";
 
 // Which model makes a video. Claude Opus tells the better story (see
-// experiments/video-models), so it writes and designs where the most people
-// will watch:
+// experiments/video-models), so it writes every script, and GPT-6 Sol designs
+// the scenes, which blind-judged about level with Opus designing (see
+// experiments/video-bespoke). Premium films go where the most people will
+// watch:
 // - the operator's videos,
 // - popular repositories, whoever asks (VIDEO_PREMIUM_MIN_STARS),
 // - a priority visitor's first video of the day (takePremiumVideo).
-// Every other video is written by Opus and designed by GPT-6 Sol, which
-// blind-judged about level (see experiments/video-bespoke). A visitor let in
-// from a limited country (features/admin/limited-countries.ts) always gets the
-// standard planner, even for a popular repository.
+// They are made the same way unless VIDEO_PREMIUM_OPUS_DESIGNS=1, which has
+// Opus design them too. A visitor let in from a limited country
+// (features/admin/limited-countries.ts) always gets the standard planner, even
+// for a popular repository.
 
 /** GPT models run on OpenAI; every other model on the Claude API. */
 export const isOpenAIModel = (model: string) => /^gpt-/i.test(model);
@@ -42,20 +44,19 @@ function standardDesigner() {
 }
 
 /**
- * Claude Opus writes and designs. When it fails for any reason but a refusal
- * (out of credit, overloaded), the standard designer takes over both roles
- * if its key is set, so the film is still made.
+ * Claude Opus writes the script and GPT-6 Sol designs the scenes. With
+ * VIDEO_PREMIUM_OPUS_DESIGNS=1, Opus designs too; when it then fails for any
+ * reason but a refusal (out of credit, overloaded), the standard designer
+ * takes over both roles if its key is set, so the film is still made.
  */
 export function premiumPlanner(): Planner {
   const model = process.env.VIDEO_PLANNER_MODEL?.trim() || "claude-opus-5-5";
-  const fallback = standardDesigner();
-  return {
-    model,
-    effort: readEffort("VIDEO_PLANNER_EFFORT", "low"),
-    ...(fallback.model !== model && hasKeyFor(fallback.model)
-      ? { fallback }
-      : {}),
-  };
+  const effort = readEffort("VIDEO_PLANNER_EFFORT", "low");
+  const sol = standardDesigner();
+  if (sol.model === model) return { model, effort };
+  if (process.env.VIDEO_PREMIUM_OPUS_DESIGNS?.trim() !== "1")
+    return { model, effort, designer: sol };
+  return { model, effort, ...(hasKeyFor(sol.model) ? { fallback: sol } : {}) };
 }
 
 /**

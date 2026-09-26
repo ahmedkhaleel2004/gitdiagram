@@ -137,8 +137,6 @@ describe("the dashboard's warnings", () => {
     expect(priorityHint("priority")).toMatch(/^The only places/);
     expect(priorityHint("desktop")).toMatch(/elsewhere only desktops/);
     expect(priorityHint("everyone")).toMatch(/^Anyone anywhere/);
-    expect(priorityHint(undefined)).toBe(
-      "People here get more videos a day, the first with Claude Opus.",
-    );
+    expect(priorityHint(undefined)).toBe("People here get more videos a day.");
   });
 });

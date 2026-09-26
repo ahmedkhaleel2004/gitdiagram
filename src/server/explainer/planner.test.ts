@@ -9,6 +9,7 @@ const OPUS = { model: "claude-opus-5-5", effort: "low" };
 const SOL = { model: "gpt-6-sol", effort: "medium" };
 // Opus writes the script, Sol designs the scenes.
 const STANDARD = { ...OPUS, designer: SOL };
+// With VIDEO_PREMIUM_OPUS_DESIGNS=1 (set by choose(), so the routing shows):
 // Opus writes and designs; Sol takes over both if Opus fails.
 const PREMIUM = { ...OPUS, fallback: SOL };
 
@@ -19,6 +20,7 @@ afterEach(() => {
 
 function choose(overrides: Partial<Parameters<typeof choosePlanner>[0]> = {}) {
   vi.stubEnv("OPENAI_API_KEY", "sk-test");
+  vi.stubEnv("VIDEO_PREMIUM_OPUS_DESIGNS", "1");
   return choosePlanner({
     operator: false,
     stars: 100,
@@ -86,9 +88,20 @@ describe("choosing the video planner", () => {
     expect((await choose()).planner).toEqual(SOL);
   });
 
+  it("has Sol design premium films by default", () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    expect(premiumPlanner()).toEqual(STANDARD);
+  });
+
   it("gives Opus no stand-in without an OpenAI key", () => {
+    vi.stubEnv("VIDEO_PREMIUM_OPUS_DESIGNS", "1");
     vi.stubEnv("OPENAI_API_KEY", "");
     expect(premiumPlanner()).toEqual(OPUS);
+  });
+
+  it("lets Sol make premium films alone when it is the premium model", () => {
+    vi.stubEnv("VIDEO_PLANNER_MODEL", "gpt-6-sol");
+    expect(premiumPlanner()).toEqual({ ...SOL, effort: "low" });
   });
 });
 

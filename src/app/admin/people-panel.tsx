@@ -117,8 +117,7 @@ function History({ here }: { here: number }) {
 
 /** What being in a priority place means, under the current audience switch. */
 export function priorityHint(audience: VideoAudience | undefined): string {
-  const perks =
-    "People here get more videos a day, the first with Claude Opus.";
+  const perks = "People here get more videos a day.";
   switch (audience) {
     case "priority":
       return `The only places new videos can be made right now, on any device. ${perks}`;
