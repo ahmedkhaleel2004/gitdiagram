@@ -8,7 +8,7 @@
  * chunk that is truly gone can never loop. It never reloads while a diagram
  * is being generated (`data-generating` on <html>): that would cancel the run.
  */
-export function installChunkReload(win: Window) {
+function installChunkReload(win: Window) {
   const key = "gitdiagram:chunk-reload-at";
   const minimumGapMs = 10 * 60 * 1000;
   const pattern =
