@@ -23,6 +23,8 @@ const config = [
       "coverage/**",
       "next-env.d.ts",
       "public/video-engine/assets/**",
+      // Built by scripts/build-mcp-app.mjs.
+      "public/mcp-app/**",
       "workers/**",
       // Historical experiment scripts (see their READMEs), not part of the app.
       "experiments/**",

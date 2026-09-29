@@ -1,0 +1,112 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "gitdiagram",
+  "version": "1.0.0",
+  "description": "Interactive architecture diagrams and explanations of public GitHub repositories.",
+  "author": {
+    "name": "GitDiagram",
+    "email": "ahmed@gitdiagram.com",
+    "url": "https://gitdiagram.com"
+  },
+  "homepage": "https://gitdiagram.com",
+  "repository": "https://github.com/ahmedkhaleel2004/gitdiagram",
+  "license": "MIT",
+  "keywords": [
+    "architecture",
+    "diagram",
+    "github",
+    "codebase",
+    "mermaid",
+    "onboarding"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "GitDiagram",
+        "shortDescription": "Architecture diagrams of repos",
+        "longDescription": "GitDiagram shows how a public GitHub repository is built. Ask about a repository, for example \"Show me the architecture of fastapi/fastapi\", and you get its architecture diagram: an interactive map of the main components and how they connect, which you can pan, zoom and open full screen, and where every component opens its source code on GitHub.\n\nWith the diagram, ChatGPT also receives GitDiagram's written explanation of how the codebase is organized, the list of components with the paths they live in, how they connect, and the Mermaid source, so it can answer follow-up questions about the code and point you to the right files.\n\nYou can also search GitDiagram's library of diagrams by owner or repository name, and get a repository's narrated explainer video and its transcript when one exists.\n\nIt's for anyone getting to know an unfamiliar codebase: onboarding to a project, evaluating an open-source dependency, preparing a first contribution, or explaining how a project works.\n\nLimitations: GitDiagram covers public GitHub repositories only. The plugin reads diagrams GitDiagram has already made; when a repository has none yet, it gives you a link to gitdiagram.com, where the diagram is made in about a minute, and after that the plugin can read it. Diagrams are AI-generated from the repository's files and can miss details, so check anything important against the code. The plugin is read-only, never changes anything on GitHub or elsewhere, and needs no account.",
+        "developerName": "GitDiagram",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Interactive architecture diagrams",
+          "Codebase explanations",
+          "Diagram search",
+          "Explainer videos"
+        ],
+        "websiteURL": "https://gitdiagram.com",
+        "supportURL": "https://gitdiagram.com/support",
+        "privacyPolicyURL": "https://gitdiagram.com/privacy",
+        "termsOfServiceURL": "https://gitdiagram.com/terms",
+        "defaultPrompt": [
+          "Show me the architecture of fastapi/fastapi",
+          "How is vercel/next.js organized? Show me its diagram.",
+          "Which langchain repositories have architecture diagrams?"
+        ],
+        "brandColor": "#9333EA",
+        "brandColorDark": "#C084FC",
+        "composerIcon": "./assets/logo.png",
+        "logo": "./assets/logo.png"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Show a repository's architecture diagram",
+              "prompt": "Show me the architecture of fastapi/fastapi",
+              "tools_triggered": "get_repository_diagram",
+              "expected_behavior": "Shows the interactive GitDiagram view of fastapi/fastapi (pan, zoom, Expand to full screen, Open in GitDiagram) and summarizes the architecture from GitDiagram's explanation, with a link to https://gitdiagram.com/fastapi/fastapi. Clicking a component in the view opens its source file on github.com.",
+              "expected_output_url": "https://gitdiagram.com/fastapi/fastapi"
+            },
+            {
+              "description": "Answer a follow-up question from the diagram",
+              "prompt": "How is vercel/next.js organized? Which folders hold the compiler and the router?",
+              "tools_triggered": "get_repository_diagram",
+              "expected_behavior": "Shows the interactive diagram of vercel/next.js and answers from GitDiagram's explanation and component list, naming the components and citing their source paths in the repository, without inventing paths that are not in the result.",
+              "expected_output_url": "https://gitdiagram.com/vercel/next.js"
+            },
+            {
+              "description": "Resolve a project name, then show its diagram",
+              "prompt": "Show me the architecture diagram of LangGraph",
+              "tools_triggered": "find_repository_diagrams, get_repository_diagram",
+              "expected_behavior": "Finds langchain-ai/langgraph with find_repository_diagrams, then shows its interactive diagram and a short explanation of how it is organized.",
+              "expected_output_url": "https://gitdiagram.com/langchain-ai/langgraph"
+            },
+            {
+              "description": "Search the diagram library",
+              "prompt": "Which langchain repositories have GitDiagram architecture diagrams?",
+              "tools_triggered": "find_repository_diagrams",
+              "expected_behavior": "Lists matching repositories, most-starred first (langchain-ai/langchain, langchain-ai/langgraph, ...), each with its star count and its gitdiagram.com diagram link."
+            },
+            {
+              "description": "Get a repository's explainer video",
+              "prompt": "Is there a short explainer video of facebook/react I can watch?",
+              "tools_triggered": "get_explainer_video",
+              "expected_behavior": "Returns the video's title, length and watch link (https://gitdiagram.com/facebook/react/video) and summarizes the narration transcript.",
+              "expected_output_url": "https://gitdiagram.com/facebook/react/video"
+            }
+          ],
+          "negative": [
+            {
+              "description": "Writing code or changing a repository is out of scope: the plugin is read-only",
+              "prompt": "Open a pull request on fastapi/fastapi that renames the routing module."
+            },
+            {
+              "description": "Local folders and non-GitHub code are not supported: GitDiagram only covers public GitHub repositories",
+              "prompt": "Draw the architecture of the project in my ~/Documents/app folder."
+            },
+            {
+              "description": "Unrelated requests should not trigger the plugin",
+              "prompt": "What's a good recipe for banana bread?"
+            }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "The plugin sells nothing, shows no prices and links to no checkout. It only reads stored diagrams and videos."
+      },
+      "publication": {
+        "countries": [],
+        "release_notes": "First release: interactive architecture diagrams of public GitHub repositories in ChatGPT, GitDiagram's written explanation and component list for follow-up questions, diagram search, and explainer videos."
+      }
+    }
+  }
+}

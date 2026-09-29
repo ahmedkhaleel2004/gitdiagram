@@ -31,7 +31,7 @@ ENV NEXT_PUBLIC_VIDEO_EXPLAINER=$NEXT_PUBLIC_VIDEO_EXPLAINER
 
 # Match the standalone runtime. Bun's Linux ARM64 worker can crash while Next
 # runs its TypeScript build; Bun still handles the frozen dependency install.
-RUN node node_modules/next/dist/bin/next build
+RUN node scripts/build-mcp-app.mjs && node node_modules/next/dist/bin/next build
 
 FROM node:22-bookworm-slim AS runner
 

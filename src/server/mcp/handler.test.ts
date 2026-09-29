@@ -157,6 +157,62 @@ describe("MCP endpoint", () => {
     );
   });
 
+  it("attaches the diagram view to get_repository_diagram only", async () => {
+    const client = await connect();
+    const { tools } = await client.listTools();
+    const byName = new Map(tools.map((tool) => [tool.name, tool]));
+    expect(byName.get("get_repository_diagram")?._meta).toMatchObject({
+      ui: { resourceUri: "ui://gitdiagram/diagram-view-v1.html" },
+      "openai/outputTemplate": "ui://gitdiagram/diagram-view-v1.html",
+    });
+    expect(byName.get("find_repository_diagrams")?._meta?.ui).toBeUndefined();
+    expect(byName.get("get_explainer_video")?._meta?.ui).toBeUndefined();
+
+    const { resources } = await client.listResources();
+    expect(resources).toEqual([
+      expect.objectContaining({
+        uri: "ui://gitdiagram/diagram-view-v1.html",
+        mimeType: "text/html;profile=mcp-app",
+      }),
+    ]);
+    const { contents } = await client.readResource({
+      uri: "ui://gitdiagram/diagram-view-v1.html",
+    });
+    const [view] = contents as unknown as Array<{
+      mimeType: string;
+      text: string;
+      _meta: { ui: { csp: Record<string, string[]>; domain: string } };
+    }>;
+    expect(view?.mimeType).toBe("text/html;profile=mcp-app");
+    expect(view?.text).toContain(
+      '<script type="module" src="https://gitdiagram.com/mcp-app/diagram-view.js"></script>',
+    );
+    expect(view?._meta.ui).toMatchObject({
+      csp: { resourceDomains: ["https://gitdiagram.com"], connectDomains: [] },
+      domain: "https://gitdiagram.com",
+    });
+    await client.close();
+  });
+
+  it("hands the view the diagram in _meta, out of the model's text", async () => {
+    mocks.getPublicDiagramArtifact.mockResolvedValue(ARTIFACT);
+    const client = await connect();
+    const result = await client.callTool({
+      name: "get_repository_diagram",
+      arguments: { repository: "FastAPI/fastapi" },
+    });
+    expect(result._meta?.["com.gitdiagram/diagram"]).toEqual({
+      status: "found",
+      repository: "fastapi/fastapi",
+      diagramUrl: "https://gitdiagram.com/fastapi/fastapi",
+      githubUrl: "https://github.com/fastapi/fastapi",
+      stars: 102536,
+      mermaid: ARTIFACT.diagram,
+    });
+    expect(result.structuredContent).toBeUndefined();
+    await client.close();
+  });
+
   it("never generates: a missing diagram points at the page that does", async () => {
     mocks.getPublicDiagramArtifact.mockResolvedValue(null);
     mocks.getCachedBrowsePage.mockResolvedValue({
@@ -179,6 +235,14 @@ describe("MCP endpoint", () => {
     expect(text).toContain("no diagram of someone/fastapi yet");
     expect(text).toContain("https://gitdiagram.com/someone/fastapi");
     expect(text).toContain("tiangolo/fastapi-utils");
+    expect(result._meta?.["com.gitdiagram/diagram"]).toEqual({
+      status: "missing",
+      repository: "someone/fastapi",
+      diagramUrl: "https://gitdiagram.com/someone/fastapi",
+      githubUrl: "https://github.com/someone/fastapi",
+      stars: null,
+      mermaid: null,
+    });
     await client.close();
     await vi.waitFor(() =>
       expect(mocks.emitLiveEvent).toHaveBeenCalledWith(
@@ -199,6 +263,49 @@ describe("MCP endpoint", () => {
     });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("about 10 minutes");
+    expect(mocks.getPublicDiagramArtifact).not.toHaveBeenCalled();
+    await client.close();
+  });
+
+  it("gives each person ChatGPT calls for their own allowance", async () => {
+    mocks.getPublicDiagramArtifact.mockResolvedValue(ARTIFACT);
+    const client = await connect();
+    await client.callTool({
+      name: "get_repository_diagram",
+      arguments: { repository: "fastapi/fastapi" },
+      _meta: { "openai/subject": "v1/anonymous-user-1" },
+    });
+    const keys = mocks.upstashEval.mock.calls
+      .map(([call]) => (call as { keys: string[] }).keys[0] ?? "")
+      .filter((key) => key.startsWith("ratelimit:"));
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^ratelimit:v2:mcp-caller:203\.0\.113\.9:[0-9a-f]{24}:\d+$/,
+        ),
+        expect.stringMatching(/^ratelimit:v2:mcp-shared:203\.0\.113\.9:\d+$/),
+      ]),
+    );
+    expect(keys.join(" ")).not.toContain("anonymous-user-1");
+    await client.close();
+  });
+
+  it("refuses a named person past their own allowance", async () => {
+    mocks.upstashEval.mockImplementation(
+      async ({ keys }: { keys: string[] }) =>
+        keys[0]?.startsWith("ratelimit:v2:mcp-caller:")
+          ? [0, 120]
+          : keys[0]?.startsWith("ratelimit:")
+            ? [1, 3600]
+            : 0,
+    );
+    const client = await connect();
+    const result = await client.callTool({
+      name: "get_repository_diagram",
+      arguments: { repository: "fastapi/fastapi" },
+      _meta: { "openai/subject": "v1/anonymous-user-2" },
+    });
+    expect(result.isError).toBe(true);
     expect(mocks.getPublicDiagramArtifact).not.toHaveBeenCalled();
     await client.close();
   });

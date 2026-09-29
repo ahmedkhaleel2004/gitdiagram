@@ -124,6 +124,11 @@ const config = {
   async rewrites() {
     return [
       ...indexNowRewrites,
+      // OpenAI's plugin portal proves the MCP server's domain with a token.
+      {
+        source: "/.well-known/openai-apps-challenge",
+        destination: "/api/openai-apps-challenge",
+      },
       {
         source: "/phx9a/static/:path*",
         destination: "https://us-assets.i.posthog.com/static/:path*",
@@ -189,6 +194,25 @@ const config = {
           { key: "Content-Security-Policy", value: videoStagePolicy },
           // Engine code changes with the app, so it always revalidates.
           { key: "Cache-Control", value: "no-cache" },
+        ],
+      },
+      // The diagram view chat apps show (scripts/build-mcp-app.mjs) loads
+      // from their sandboxed frames, on other origins; module scripts need
+      // CORS. The entry keeps its name, so it revalidates; chunks are hashed.
+      {
+        source: "/mcp-app/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          { key: "Cache-Control", value: "no-cache" },
+        ],
+      },
+      {
+        source: "/mcp-app/chunks/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
         ],
       },
       {

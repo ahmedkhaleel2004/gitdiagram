@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { networkOf } from "~/lib/network";
 import {
   consumeRateLimit,
@@ -17,6 +19,8 @@ import { upstashEval } from "~/server/storage/upstash";
 
 const DEFAULT_MAX_CALLS = 120;
 const DEFAULT_WINDOW_SECONDS = 60 * 60;
+/** A network calling for many named people may make this many times more. */
+const SHARED_NETWORK_MULTIPLIER = 20;
 const RETENTION_SECONDS = 120 * 24 * 60 * 60;
 /** One feed line per network, tool and repository at most this often. */
 const NOTICE_SECONDS = 10 * 60;
@@ -44,16 +48,57 @@ function buildMcpRateLimitKey(
   return `ratelimit:v2:mcp:${encodeURIComponent(networkOf(clientIp))}:${windowStartSeconds}`;
 }
 
-export function consumeMcpRateLimit(
+/**
+ * The person a chat app says it is calling for: ChatGPT sends an anonymized
+ * user id (`_meta["openai/subject"]`) with each tool call. Hashed, since it
+ * only needs to tell people apart.
+ */
+export function mcpCallerKey(subject: unknown): string | null {
+  if (typeof subject !== "string") return null;
+  const trimmed = subject.trim();
+  if (!trimmed || trimmed.length > 256) return null;
+  return createHash("sha256").update(trimmed).digest("hex").slice(0, 24);
+}
+
+/**
+ * Takes one tool call's slot. A chat app such as ChatGPT calls from its own
+ * few addresses for everyone using it, so when it names the person (see
+ * mcpCallerKey), that person gets the usual allowance, and the network as a
+ * whole a looser one, instead of everyone sharing one network's allowance.
+ */
+export async function consumeMcpRateLimit(
   clientIp: string | null,
+  caller: string | null = null,
 ): Promise<GenerationRateLimitResult> {
-  return consumeRateLimit({
-    clientIp,
-    buildKey: buildMcpRateLimitKey,
-    max: getMcpRateLimitMax(),
-    windowSeconds: getMcpRateLimitWindowSeconds(),
-    unavailableEvent: "mcp.rate_limit.unavailable",
-  });
+  const max = getMcpRateLimitMax();
+  const windowSeconds = getMcpRateLimitWindowSeconds();
+  if (!caller)
+    return consumeRateLimit({
+      clientIp,
+      buildKey: buildMcpRateLimitKey,
+      max,
+      windowSeconds,
+      unavailableEvent: "mcp.rate_limit.unavailable",
+    });
+  const [person, network] = await Promise.all([
+    consumeRateLimit({
+      clientIp,
+      buildKey: (ip, windowStart) =>
+        `ratelimit:v2:mcp-caller:${encodeURIComponent(networkOf(ip))}:${caller}:${windowStart}`,
+      max,
+      windowSeconds,
+      unavailableEvent: "mcp.rate_limit.unavailable",
+    }),
+    consumeRateLimit({
+      clientIp,
+      buildKey: (ip, windowStart) =>
+        `ratelimit:v2:mcp-shared:${encodeURIComponent(networkOf(ip))}:${windowStart}`,
+      max: max * SHARED_NETWORK_MULTIPLIER,
+      windowSeconds,
+      unavailableEvent: "mcp.rate_limit.unavailable",
+    }),
+  ]);
+  return person.allowed ? network : person;
 }
 
 export function mcpUsageKey(date: string): string {

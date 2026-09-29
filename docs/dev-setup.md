@@ -54,7 +54,9 @@ Optional generation controls include:
 - `OPENROUTER_APP_NAME`
 - `GENERATION_RATE_LIMIT_MAX` / `GENERATION_RATE_LIMIT_WINDOW_SECONDS` (per-IP limit on server-funded runs, default 8 an hour)
 - `GENERATION_INFRASTRUCTURE_RATE_LIMIT_MAX` / `GENERATION_INFRASTRUCTURE_RATE_LIMIT_WINDOW_SECONDS` (per-IP limit on every caller, default 60 an hour)
-- `MCP_RATE_LIMIT_MAX` / `MCP_RATE_LIMIT_WINDOW_SECONDS` (per-network limit on tool calls to the MCP server at `/mcp`, default 120 an hour)
+- `MCP_RATE_LIMIT_MAX` / `MCP_RATE_LIMIT_WINDOW_SECONDS` (per-network limit on tool calls to the MCP server at `/mcp`, default 120 an hour; per person, with 20 times that per network, when a chat app such as ChatGPT names the person)
+- `MCP_APP_ORIGIN` (where the MCP App diagram view's script loads from, default `https://gitdiagram.com`; point it at a tunnel to try the view in ChatGPT's developer mode)
+- `OPENAI_APPS_CHALLENGE` (the domain-verification token from OpenAI's plugin portal, served at `/.well-known/openai-apps-challenge`; or `SET` it in Redis at `openai:v1:apps-challenge`, which needs no redeploy)
 
 Optional GitHub authentication:
 

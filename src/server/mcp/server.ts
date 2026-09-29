@@ -1,10 +1,16 @@
 import "server-only";
 
-import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
+import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
+import {
+  McpServer,
+  type CallToolResult,
+  type ServerContext,
+} from "@modelcontextprotocol/server";
 import { after } from "next/server";
 import { z } from "zod";
 
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
+import type { DiagramViewPayload } from "~/features/mcp-app/diagram-payload";
 import { VIDEOS_ENABLED } from "~/lib/video-flag";
 import { SITE_URL } from "~/lib/site";
 import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
@@ -14,6 +20,12 @@ import { getClientIp } from "~/server/http/client-ip";
 import { errorText, logEvent } from "~/server/log";
 import { getPublicDiagramArtifact } from "~/server/storage/artifact-store";
 import {
+  DIAGRAM_VIEW_TOOL_META,
+  diagramViewResultMeta,
+  registerDiagramView,
+} from "./app";
+import {
+  diagramUrl,
   formatDiagram,
   formatMissingDiagram,
   formatMissingVideo,
@@ -26,6 +38,7 @@ import {
 } from "./format";
 import {
   consumeMcpRateLimit,
+  mcpCallerKey,
   recordMcpCall,
   type McpOutcome,
   type McpToolName,
@@ -35,7 +48,8 @@ import {
 // stored (diagrams in the public R2 namespace, the browse index, explainer
 // videos). Nothing here starts a paid generation or reads a private artifact.
 // The tool descriptions are what make an agent pick GitDiagram, so they say
-// plainly when to call each tool.
+// plainly when to call each tool. get_repository_diagram also carries an
+// interactive diagram view for hosts that show MCP Apps (./app.ts).
 
 export const MCP_SERVER_VERSION = "1.0.0";
 
@@ -84,11 +98,18 @@ interface ToolOutcome {
   /** Named in the /admin feed only when a public artifact confirmed it. */
   repo?: string;
   subject?: string;
+  /** What the diagram view shows (get_repository_diagram only). */
+  view?: DiagramViewPayload;
 }
 
-const text = (value: string, isError = false): CallToolResult => ({
+const text = (
+  value: string,
+  isError = false,
+  view?: DiagramViewPayload,
+): CallToolResult => ({
   content: [{ type: "text", text: value }],
   ...(isError ? { isError: true } : {}),
+  ...(view ? { _meta: diagramViewResultMeta(view) } : {}),
 });
 
 function later(task: () => Promise<unknown>): void {
@@ -142,12 +163,29 @@ async function getRepositoryDiagram(input: string): Promise<ToolOutcome> {
       text: formatMissingDiagram(ref, await similarDiagrams(ref)),
       outcome: "missing",
       subject,
+      view: {
+        status: "missing",
+        repository: subject,
+        diagramUrl: diagramUrl(ref),
+        githubUrl: `https://github.com/${subject}`,
+        stars: null,
+        mermaid: null,
+      },
     };
+  const repository = `${artifact.username}/${artifact.repo}`;
   return {
     text: formatDiagram(artifact, { hasVideo: Boolean(video) }),
     outcome: "found",
-    repo: `${artifact.username}/${artifact.repo}`,
+    repo: repository,
     subject,
+    view: {
+      status: "found",
+      repository,
+      diagramUrl: diagramUrl(artifact),
+      githubUrl: `https://github.com/${repository}`,
+      stars: artifact.stargazerCount ?? null,
+      mermaid: artifact.diagram,
+    },
   };
 }
 
@@ -186,11 +224,15 @@ async function runTool(
   request: Request | undefined,
   tool: McpToolName,
   clientName: string | null,
+  ctx: Pick<ServerContext, "mcpReq"> | undefined,
   work: () => Promise<ToolOutcome>,
 ): Promise<CallToolResult> {
   const clientIp = request ? getClientIp(request) : null;
   let result: ToolOutcome;
-  const limit = await consumeMcpRateLimit(clientIp);
+  const limit = await consumeMcpRateLimit(
+    clientIp,
+    mcpCallerKey(ctx?.mcpReq._meta?.["openai/subject"]),
+  );
   if (!limit.allowed) {
     const minutes = Math.max(Math.ceil(limit.retryAfterSeconds / 60), 1);
     result = {
@@ -233,6 +275,7 @@ async function runTool(
     result.outcome === "limited" ||
       result.outcome === "error" ||
       result.outcome === "invalid",
+    result.view,
   );
 }
 
@@ -246,20 +289,24 @@ export function createGitDiagramMcpServer(
 ): McpServer {
   const server = new McpServer(SERVER_INFO, {
     instructions: INSTRUCTIONS,
-    capabilities: { tools: {} },
+    capabilities: { tools: {}, resources: {} },
   });
 
-  server.registerTool(
+  registerDiagramView(server);
+
+  registerAppTool(
+    server,
     "get_repository_diagram",
     {
       title: "Get a GitHub repository's architecture diagram",
       description:
-        "Get the architecture of a public GitHub repository from GitDiagram (gitdiagram.com): a written explanation of how the codebase is organized, its main components with the source paths they live in, how those components connect, and a Mermaid flowchart of the whole system, plus a link to the interactive diagram, where every component opens its code on GitHub. Use it whenever the user wants to understand, visualize, map or explain a GitHub repository's or open-source project's architecture, structure, main modules or data flow, wants an overview before reading unfamiliar code, or asks for an architecture or system diagram of a repo. Read-only and fast: it returns the diagram GitDiagram has already made. If none exists yet, it returns a link that generates one for free when opened in a browser. Public repositories only.",
+        "Get the architecture of a public GitHub repository from GitDiagram (gitdiagram.com): a written explanation of how the codebase is organized, its main components with the source paths they live in, how those components connect, and a Mermaid flowchart of the whole system, plus a link to the interactive diagram, where every component opens its code on GitHub. Use it whenever the user wants to understand, visualize, map or explain a GitHub repository's or open-source project's architecture, structure, main modules or data flow, wants an overview before reading unfamiliar code, or asks for an architecture or system diagram of a repo. Read-only and fast: it returns the diagram GitDiagram has already made. If none exists yet, it returns a link that makes one when opened in a browser. Public repositories only. In chat apps that show interactive views, the result also appears as a zoomable diagram whose components open their code on GitHub.",
       inputSchema: repositoryInput,
       annotations: { title: "Get architecture diagram", ...READ_ONLY },
+      _meta: DIAGRAM_VIEW_TOOL_META,
     },
-    ({ repository }) =>
-      runTool(request, "get_repository_diagram", clientName, () =>
+    ({ repository }, ctx) =>
+      runTool(request, "get_repository_diagram", clientName, ctx, () =>
         getRepositoryDiagram(repository),
       ),
   );
@@ -290,8 +337,8 @@ export function createGitDiagramMcpServer(
       }),
       annotations: { title: "Search diagrams", ...READ_ONLY },
     },
-    ({ query, limit }) =>
-      runTool(request, "find_repository_diagrams", clientName, () =>
+    ({ query, limit }, ctx) =>
+      runTool(request, "find_repository_diagrams", clientName, ctx, () =>
         findRepositoryDiagrams(query, limit ?? SEARCH_LIMIT),
       ),
   );
@@ -306,8 +353,8 @@ export function createGitDiagramMcpServer(
         inputSchema: repositoryInput,
         annotations: { title: "Get explainer video", ...READ_ONLY },
       },
-      ({ repository }) =>
-        runTool(request, "get_explainer_video", clientName, () =>
+      ({ repository }, ctx) =>
+        runTool(request, "get_explainer_video", clientName, ctx, () =>
           getExplainerVideo(repository),
         ),
     );
