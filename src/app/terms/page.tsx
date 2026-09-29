@@ -19,7 +19,7 @@ const sections: TextPageSection[] = [
     heading: "Using it fairly",
     body: [
       "Use GitDiagram only for repositories you are allowed to read, and follow GitHub's terms when you do. Don't try to get around rate limits or daily limits, overload the service, break its security, or use it to harm others. We may limit or block access that does.",
-      "Diagrams and videos of public repositories are public: anyone who opens the same repository sees them. Diagrams of private repositories are kept separately and can only be read with the token that made them.",
+      "Diagrams and videos of public repositories are public: anyone who opens the same repository sees them. Diagrams of private repositories are kept separately and can only be read again with the same GitHub token, or the same signed-in GitHub account, that made them.",
     ],
   },
   {
