@@ -527,10 +527,10 @@ describe("the director", () => {
 
   it("keeps a slightly long first draft when shortening fails", async () => {
     stream
-      .mockReturnValueOnce(scriptReply(160))
+      .mockReturnValueOnce(scriptReply(164))
       .mockReturnValue(failing(new Error("overloaded")));
     const script = await createFilmWriters(input, OPUS).direct();
-    expect(script.beats[0]!.narration.split(" ")).toHaveLength(40);
+    expect(script.beats[0]!.narration.split(" ")).toHaveLength(41);
   });
 
   it("sends a script with too many beats back to be shortened", async () => {
@@ -623,8 +623,8 @@ describe("the designers", () => {
 
 describe("pickScript", () => {
   it("prefers a draft within the limit, then the shorter within the hard limit", () => {
-    const long = scriptOf(40); // 160 words
-    const longer = scriptOf(41); // 164 words
+    const long = scriptOf(41); // 164 words
+    const longer = scriptOf(42); // 168 words
     const fits = scriptOf(30); // 120 words
     expect(pickScript([long, fits])).toBe(fits);
     expect(pickScript([longer, long])).toBe(long);
