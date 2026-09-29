@@ -18,14 +18,6 @@ export function Footer() {
           <Link href="/advertise" className="neo-link hover:underline">
             Advertise
           </Link>
-          <span className="mx-2 text-black dark:text-neutral-100">/</span>
-          <Link
-            href="/visualize-codebase"
-            className="neo-link hover:underline"
-            title="How to visualize a codebase"
-          >
-            Guide
-          </Link>
         </span>
       </div>
     </footer>
