@@ -21,6 +21,7 @@ export function RepositoryToolbar({
   getSvg,
   pending,
   video,
+  readme,
 }: {
   repository: string;
   diagram: string;
@@ -35,6 +36,7 @@ export function RepositoryToolbar({
   getSvg: () => SVGSVGElement | null;
   pending: boolean;
   video?: { id: string; open: boolean; toggle: () => void };
+  readme?: { owner: string; repo: string };
 }) {
   return (
     <div className={styles.resultToolbar}>
@@ -89,7 +91,12 @@ export function RepositoryToolbar({
           className={styles.exportSlot}
           data-column={video ? "right" : "left"}
         >
-          <DiagramExport diagram={diagram} getSvg={getSvg} disabled={pending} />
+          <DiagramExport
+            diagram={diagram}
+            getSvg={getSvg}
+            disabled={pending}
+            readme={readme}
+          />
         </div>
         <button
           ref={regenerateRef}

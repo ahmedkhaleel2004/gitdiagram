@@ -1,7 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DiagramExport } from "./diagram-export";
-const { exportPng } = vi.hoisted(() => ({ exportPng: vi.fn() }));
+const { exportPng, capture } = vi.hoisted(() => ({
+  exportPng: vi.fn(),
+  capture: vi.fn(),
+}));
+vi.mock("~/lib/analytics-client", () => ({ captureAnalyticsEvent: capture }));
 vi.mock("~/features/diagram/export", () => ({
   exportMermaidSvgAsPng: exportPng,
 }));
@@ -62,5 +66,71 @@ describe("diagram export", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Download failed. Try again.",
     );
+  });
+
+  it("offers README embeds only for a stored public diagram", () => {
+    render(<DiagramExport diagram="A-->B" getSvg={() => null} />);
+    open();
+    expect(
+      screen.queryByRole("button", { name: "README picture" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "README badge" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "README picture",
+      "readme_picture",
+      "[![Architecture diagram of acme/demo](https://gitdiagram.com/acme/demo/diagram.png)](https://gitdiagram.com/acme/demo?utm_source=readme&utm_medium=picture)",
+    ],
+    [
+      "README badge",
+      "readme_badge",
+      "[![Architecture diagram](https://gitdiagram.com/diagram-badge.svg)](https://gitdiagram.com/acme/demo?utm_source=readme&utm_medium=badge)",
+    ],
+  ])(
+    "copies the %s Markdown and counts it",
+    async (label, method, markdown) => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText },
+      });
+      render(
+        <DiagramExport
+          diagram="A-->B"
+          getSvg={() => null}
+          readme={{ owner: "acme", repo: "demo" }}
+        />,
+      );
+      open();
+      fireEvent.click(screen.getByRole("button", { name: label }));
+
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        `${label} copied`,
+      );
+      expect(writeText).toHaveBeenCalledWith(markdown);
+      expect(capture).toHaveBeenCalledWith("diagram_shared", {
+        method,
+        repository: "acme/demo",
+      });
+    },
+  );
+
+  it("counts a copied Mermaid source without naming a private repository", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    render(<DiagramExport diagram="A-->B" getSvg={() => null} />);
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "Copy Mermaid" }));
+    await screen.findByText("Mermaid copied");
+    expect(capture).toHaveBeenCalledWith("diagram_shared", {
+      method: "mermaid",
+      repository: null,
+    });
   });
 });

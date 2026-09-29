@@ -137,6 +137,16 @@ const config = {
           },
         ],
       },
+      // The README badge for diagrams; GitHub's image proxy may keep it a day.
+      {
+        source: "/diagram-badge.svg",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
       // Sponsor logos sit in the first screen, so skip the revalidation round
       // trip on repeat visits. Give a changed logo a new file name.
       {

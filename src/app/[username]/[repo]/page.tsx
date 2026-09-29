@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import { permanentRedirect } from "next/navigation";
+import { isPlaceholderRepo } from "~/lib/placeholder-repo";
 import { SITE_URL } from "~/lib/site";
 import { errorText, logEvent } from "~/server/log";
 import { getStoredDiagramState } from "~/server/storage/artifact-store";
@@ -8,6 +9,7 @@ import {
   getPublicDiagramStateCacheTag,
   getRepoPagePath,
 } from "~/server/storage/repo-page-cache";
+import { PlaceholderRepo, placeholderRepoMetadata } from "./placeholder-repo";
 import RepoPageClient from "./repo-page-client";
 
 type RepoPageProps = {
@@ -61,6 +63,7 @@ export async function generateMetadata({
   params,
 }: RepoPageProps): Promise<Metadata> {
   const { username, repo } = await params;
+  if (isPlaceholderRepo(username, repo)) return placeholderRepoMetadata;
   const repositoryPath = getRepoPagePath(username, repo);
   const image = {
     url: `${SITE_URL}${repositoryPath}/opengraph-image`,
@@ -99,6 +102,10 @@ export default async function Repo({ params }: RepoPageProps) {
   const { username, repo } = await params;
   if (username !== username.toLowerCase() || repo !== repo.toLowerCase()) {
     permanentRedirect(getRepoPagePath(username, repo));
+  }
+  // A copied example address (/user/repo): explain it, read nothing.
+  if (isPlaceholderRepo(username, repo)) {
+    return <PlaceholderRepo username={username} repo={repo} />;
   }
   // A slow or failing R2 must not turn the page into a 500: without a stored
   // state the client loads the diagram itself, as it does for a new repo.

@@ -346,7 +346,7 @@ const toneClassNames = [
   "toneTeal",
 ] as const;
 
-function toneClassForNode(
+export function toneClassForNode(
   node: DiagramGraphNode,
   groupOrder: Map<string, number>,
 ): string {
