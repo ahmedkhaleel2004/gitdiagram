@@ -91,6 +91,9 @@ describe("reading the Claude credit", () => {
   beforeEach(() => {
     vi.resetModules();
     process.env = { ...originalEnv, ANTHROPIC_ADMIN_KEY: "sk-ant-admin-test" };
+    // Mid-hour, so five minutes ago is in the same hour whenever this runs.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-28T12:30:00Z"));
     // Entered five minutes ago, so reading spend takes one report.
     anchor = ["usd", "50", "at", String(Date.now() - 5 * 60_000)];
     upstashCommand.mockReset();
@@ -104,6 +107,7 @@ describe("reading the Claude credit", () => {
   });
   afterEach(() => {
     process.env = originalEnv;
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
