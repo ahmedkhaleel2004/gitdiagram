@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronUp,
   Link2,
+  MessageSquareHeart,
   Network,
   Play,
   Send,
@@ -26,8 +27,11 @@ import {
   shuffled,
 } from "~/features/explainer/reels";
 import type { VideoArtifact } from "~/features/explainer/types";
+import { useCanSendFeedback } from "~/features/explainer/feedback";
 import { captureVideoEvent } from "~/features/explainer/watch-analytics";
 import { formatCompact } from "~/lib/format";
+import controls from "~/components/generation/workspace.module.css";
+import { VideoFeedbackForm } from "../video-feedback";
 import { ReelStage, type ReelInsets } from "./reel-stage";
 import styles from "./reels.module.css";
 
@@ -54,6 +58,12 @@ export function ReelsFeed({ initial }: { initial: VideoPage }) {
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
+  // Feedback on a reel (priority places only): which one, and at what moment.
+  const canFeedback = useCanSendFeedback();
+  const [feedback, setFeedback] = useState<{
+    card: VideoCard;
+    at?: number;
+  } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const topBar = useRef<HTMLDivElement>(null);
   const activeRef = useRef(0);
@@ -281,6 +291,14 @@ export function ReelsFeed({ initial }: { initial: VideoPage }) {
                 showPaused={index === active && started && paused}
                 topInset={topInset}
                 onTap={onTap}
+                onFeedback={
+                  canFeedback
+                    ? (at) => {
+                        setPaused(true);
+                        setFeedback({ card, at });
+                      }
+                    : undefined
+                }
                 onFailed={() =>
                   setFailed((known) => ({ ...known, [key]: true }))
                 }
@@ -310,6 +328,26 @@ export function ReelsFeed({ initial }: { initial: VideoPage }) {
             {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
         </div>
+        {feedback && (
+          <div className={styles.feedbackSheet}>
+            <button
+              type="button"
+              className={styles.feedbackBackdrop}
+              onClick={() => setFeedback(null)}
+              aria-label="Close feedback"
+            />
+            <div
+              className={`${controls.controlsTheme} ${styles.feedbackPanel}`}
+            >
+              <VideoFeedbackForm
+                username={feedback.card.owner}
+                repo={feedback.card.repo}
+                position={() => feedback.at}
+                onClose={() => setFeedback(null)}
+              />
+            </div>
+          </div>
+        )}
         {!started && (
           <button type="button" className={styles.start} onClick={onTap}>
             <span className={styles.startPlay}>
@@ -354,6 +392,7 @@ function ReelSlide({
   showPaused,
   topInset,
   onTap,
+  onFeedback,
   onFailed,
 }: {
   card: VideoCard;
@@ -366,12 +405,15 @@ function ReelSlide({
   showPaused: boolean;
   topInset: () => number;
   onTap: () => void;
+  /** Open feedback on this reel, at the moment on screen. */
+  onFeedback?: (at?: number) => void;
   onFailed: () => void;
 }) {
   const slide = useRef<HTMLElement>(null);
   const info = useRef<HTMLDivElement>(null);
   const rail = useRef<HTMLDivElement>(null);
   const progress = useRef<HTMLDivElement>(null);
+  const fraction = useRef(0);
   const [copied, setCopied] = useState(false);
   const name = `${card.owner}/${card.repo}`;
   const diagram = `/${card.owner.toLowerCase()}/${card.repo.toLowerCase()}`;
@@ -429,9 +471,10 @@ function ReelSlide({
           playing={playing}
           shown={shown}
           insets={insets}
-          onProgress={(fraction) => {
+          onProgress={(played) => {
+            fraction.current = played;
             if (progress.current)
-              progress.current.style.transform = `scaleX(${fraction})`;
+              progress.current.style.transform = `scaleX(${played})`;
           }}
           onFailed={onFailed}
         />
@@ -504,6 +547,23 @@ function ReelSlide({
             {copied ? "Copied" : "Share"}
           </span>
         </button>
+        {onFeedback && (
+          <button
+            type="button"
+            className={styles.railItem}
+            onClick={() =>
+              onFeedback(
+                video ? fraction.current * video.timing.DURATION : undefined,
+              )
+            }
+            aria-label={`Send feedback on the video of ${name}`}
+          >
+            <span className={`${styles.railIcon} ${styles.feedbackIcon}`}>
+              <MessageSquareHeart size={21} />
+            </span>
+            <span className={styles.railLabel}>Feedback</span>
+          </button>
+        )}
       </div>
       <div className={styles.progressTrack} aria-hidden="true">
         <div ref={progress} className={styles.progress} />

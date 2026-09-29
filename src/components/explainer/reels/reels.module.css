@@ -334,6 +334,10 @@
   box-shadow: 2px 2px 0 var(--ink);
   transition: transform 0.12s ease;
 }
+/* Feedback stands out from the other buttons. */
+.feedbackIcon {
+  background: #fbcfe8;
+}
 .railItem:active .railIcon {
   transform: scale(0.92);
 }
@@ -432,4 +436,28 @@
     transition: none;
     animation: none;
   }
+}
+
+/* Feedback on a reel: a card over the bottom of the column. */
+.feedbackSheet {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+}
+.feedbackBackdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(18, 13, 26, 0.45);
+  cursor: default;
+}
+.feedbackPanel {
+  position: relative;
+  width: 100%;
+}
+.feedbackPanel > * {
+  margin: 0 auto;
 }

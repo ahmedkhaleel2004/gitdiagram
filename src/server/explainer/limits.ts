@@ -480,6 +480,14 @@ export function takeVideoAttempt(clientIp: string | null) {
   );
 }
 
+/**
+ * One more feedback email sent from this connection this hour (five), or how
+ * long until it may send another. Throws when Redis fails.
+ */
+export function takeFeedbackSend(clientIp: string | null) {
+  return countInWindow("feedback", clientIp, 5, 3600);
+}
+
 /** GitHub lookups for the /admin feed per connection every ten minutes. */
 const GATE_LOOKUPS = { limit: 5, windowSeconds: 600 };
 

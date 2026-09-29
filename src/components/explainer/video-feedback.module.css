@@ -1,0 +1,132 @@
+/* The feedback button stands out from the share row: pink, with the NEW
+   badge's slow shine passing over it. Doubled to win over the button style
+   it sits on. */
+.button.button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  --feedback-fill: #fbcfe8;
+  background: var(--feedback-fill);
+  color: #261333;
+}
+.button::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: -1;
+  width: 260%;
+  background: linear-gradient(
+    110deg,
+    var(--feedback-fill) 0%,
+    var(--feedback-fill) 40%,
+    #fff1f8 49%,
+    #fde68a 51%,
+    var(--feedback-fill) 60%,
+    var(--feedback-fill) 100%
+  );
+  pointer-events: none;
+  animation: feedback-shine 4.5s ease-in-out infinite;
+}
+@keyframes feedback-shine {
+  0%,
+  45% {
+    transform: translateX(-62%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button::before {
+    animation: none;
+  }
+}
+
+.form {
+  width: min(100%, 520px);
+  margin: 16px auto 0;
+  padding: 16px;
+  border: 2px solid var(--edge);
+  border-radius: 10px;
+  box-shadow: 4px 4px 0 var(--hard-shadow);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.label {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+}
+.label + .input {
+  margin-top: 8px;
+}
+.input + .label {
+  margin-top: 14px;
+}
+.optional {
+  font-weight: 500;
+  color: var(--muted);
+}
+.hint {
+  margin-top: 2px;
+  color: var(--muted);
+}
+.hint + .input {
+  margin-top: 10px;
+}
+.input {
+  display: block;
+  width: 100%;
+  padding: 9px 11px;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  /* 16px keeps iPhone Safari from zooming in on focus. */
+  font-size: 16px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.input:focus-visible {
+  outline: 3px solid hsl(var(--neo-link));
+  outline-offset: 1px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+/* Phones: the two buttons side by side, as the rest of the page's are. */
+@media (max-width: 640px) {
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .actions > :only-child {
+    grid-column: 1 / -1;
+  }
+}
+.actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.error {
+  margin-top: 10px;
+  color: #b3263a;
+}
+.sent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+/* The share row turns a disclosure's last icon over; this one stays put. */
+.button.button[aria-expanded="true"] > svg:last-child {
+  transform: none;
+}

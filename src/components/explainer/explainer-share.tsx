@@ -9,6 +9,7 @@ import {
   Share2,
   Smartphone,
   Code2,
+  MessageSquareHeart,
 } from "lucide-react";
 import {
   renderFileUrl,
@@ -21,11 +22,14 @@ import type {
   VideoArtifact,
   VideoRenderStep,
 } from "~/features/explainer/types";
+import { useCanSendFeedback } from "~/features/explainer/feedback";
 import { captureVideoEvent } from "~/features/explainer/watch-analytics";
 import controls from "~/components/generation/workspace.module.css";
 import { SITE_URL } from "~/lib/site";
 import { JobRow } from "./explainer-progress";
 import styles from "./explainer-video.module.css";
+import feedbackStyles from "./video-feedback.module.css";
+import { VideoFeedbackForm } from "./video-feedback";
 
 type Copied = "link" | "badge" | "picture" | null;
 
@@ -49,9 +53,17 @@ function triggerDownload(href: string) {
 /**
  * Everything a viewer needs to pass a video on: the MP4 for feeds (landscape
  * and 9:16, captions burned in), the watch link, the phone's share sheet, and
- * a README badge or picture.
+ * a README badge or picture. People in the priority places can also send
+ * feedback on it.
  */
-export function ExplainerShare({ video }: { video: VideoArtifact }) {
+export function ExplainerShare({
+  video,
+  position,
+}: {
+  video: VideoArtifact;
+  /** How far into the film the viewer is, in seconds. */
+  position?: () => number;
+}) {
   const { owner, repo } = video.meta;
   const [job, setJob] = useState<{
     format: RenderFormat;
@@ -62,6 +74,8 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
   // The video was replaced after this page loaded; its MP4 is no longer made.
   const [stale, setStale] = useState(false);
   const [copied, setCopied] = useState<Copied>(null);
+  const canFeedback = useCanSendFeedback();
+  const [feedback, setFeedback] = useState(false);
   const render = useRef<AbortController | null>(null);
   const copyTimer = useRef<number | undefined>(undefined);
   // Copied links point at the live site, even from a preview or localhost.
@@ -218,7 +232,26 @@ export function ExplainerShare({ video }: { video: VideoArtifact }) {
           )}
           {copied === "picture" ? "Picture copied" : "README picture"}
         </button>
+        {canFeedback && (
+          <button
+            type="button"
+            className={`${controls.actionButton} ${feedbackStyles.button}`}
+            onClick={() => setFeedback((value) => !value)}
+            aria-expanded={feedback}
+          >
+            <MessageSquareHeart size={15} aria-hidden="true" />
+            Send feedback
+          </button>
+        )}
       </div>
+      {feedback && (
+        <VideoFeedbackForm
+          username={owner}
+          repo={repo}
+          position={position}
+          onClose={() => setFeedback(false)}
+        />
+      )}
       {/* Announces each step once; the percentage beside it is not read out. */}
       <span className="sr-only" role="status">
         {job ? jobLabel(job.format, job.step) : ""}

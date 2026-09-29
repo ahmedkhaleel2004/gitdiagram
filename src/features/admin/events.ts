@@ -87,6 +87,12 @@ export function describeEvent(event: LiveFeedEvent): EventLine {
           String(event.device ?? ""),
         ]),
       };
+    case "video.feedback":
+      return {
+        title: "Video feedback",
+        tone: "text-pink-700 dark:text-pink-300",
+        detail: joined([place, String(event.note ?? "")]),
+      };
     case "render.started":
       return {
         title: "MP4 started",

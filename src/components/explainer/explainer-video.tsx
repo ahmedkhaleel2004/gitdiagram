@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CircleAlert, Clapperboard, RotateCcw } from "lucide-react";
 import type {
@@ -167,6 +167,11 @@ export function ExplainerVideo({
   const state: PanelState = run ?? lookedUpState;
   const canRegenerate = useCanRegenerate();
   const [confirming, setConfirming] = useState(false);
+  // The time on screen, so feedback can say which moment it is about.
+  const position = useRef(0);
+  const onTime = useCallback((time: number) => {
+    position.current = time;
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -247,7 +252,11 @@ export function ExplainerVideo({
           : ` for $${(plannerCostUsd + voiceCostUsd).toFixed(2)}`;
     return (
       <div className={`${styles.panel} ${styles.enter}`}>
-        <ExplainerPlayer key={video.createdAt} artifact={video} />
+        <ExplainerPlayer
+          key={video.createdAt}
+          artifact={video}
+          onTime={onTime}
+        />
         <div className={styles.meta}>
           <span>
             {new Set(video.plan.beats.map((beat) => beat.scene)).size} scenes ·{" "}
@@ -286,7 +295,7 @@ export function ExplainerVideo({
               </button>
             ))}
         </div>
-        <ExplainerShare video={video} />
+        <ExplainerShare video={video} position={() => position.current} />
       </div>
     );
   }

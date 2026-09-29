@@ -93,7 +93,14 @@ function saveCaptionsPreference(on: boolean) {
  * audio mixes in this page, and every frame seeks the scene timeline to the
  * audio clock so picture and sound cannot drift.
  */
-export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
+export function ExplainerPlayer({
+  artifact,
+  onTime,
+}: {
+  artifact: VideoArtifact;
+  /** Told the time on screen whenever it moves (feedback reads it). */
+  onTime?: (time: number) => void;
+}) {
   const shell = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const audio = useRef<ExplainerAudio | null>(null);
@@ -142,6 +149,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
         window.location.origin,
       );
       if (scrubber.current) scrubber.current.value = String(time);
+      onTime?.(time);
       // Runs every frame; the clock text only changes once a second.
       const shown = formatTime(time);
       if (clock.current && shown !== shownTime.current) {
@@ -153,7 +161,7 @@ export function ExplainerPlayer({ artifact }: { artifact: VideoArtifact }) {
         );
       }
     },
-    [totalTime],
+    [onTime, totalTime],
   );
 
   useEffect(() => {
