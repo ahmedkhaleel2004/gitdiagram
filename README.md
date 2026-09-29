@@ -1,6 +1,6 @@
 # GitDiagram
 
-Turn any public or private GitHub repository into an interactive architecture diagram, or watch it explained in a one-minute narrated video.
+Visualize any codebase: turn any public or private GitHub repository into an interactive architecture diagram, or watch it explained in a one-minute narrated video. AI agents can use it too, through the [MCP server](#use-gitdiagram-from-ai-agents) or the Markdown version of any diagram (`gitdiagram.com/owner/repo.md`).
 
 **[Try GitDiagram →](https://gitdiagram.com/)** · Or replace `hub` with `diagram` in any GitHub repository URL.
 
