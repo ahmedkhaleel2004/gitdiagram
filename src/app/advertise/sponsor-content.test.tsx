@@ -1,6 +1,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { coderabbitCampaign, sentCampaign } from "~/lib/sponsor-campaign";
+import {
+  coderabbitCampaign,
+  sentCampaign,
+  type BookedSponsorCampaign,
+} from "~/lib/sponsor-campaign";
 import type { SponsorStats } from "~/server/sponsor-stats";
 import { createSponsorBooking, createSponsorContent } from "./sponsor-content";
 import { SponsorPageContent } from "./sponsor-page-content";
@@ -37,6 +41,40 @@ describe("advertise availability", () => {
         },
       });
     }
+    // A shared booking leaves the other half of the website open sooner.
+    const sharedCodeRabbit: BookedSponsorCampaign = {
+      ...coderabbitCampaign,
+      package: "shared",
+    };
+    expect(
+      createSponsorBooking(Date.parse(sentCampaign.startsAt), [
+        sentCampaign,
+        sharedCodeRabbit,
+      ]),
+    ).toMatchObject({
+      availability:
+        "Shared spot from October 19, 2026. Exclusive from November 19, 2026.",
+      offerTiming:
+        "A shared spot can start from October 19, 2026. Exclusive campaigns start from November 19, 2026, after CodeRabbit’s run.",
+    });
+    expect(
+      createSponsorBooking(Date.parse(coderabbitCampaign.startsAt), [
+        sharedCodeRabbit,
+      ]).availability,
+    ).toBe("Shared spot available now. Exclusive from November 19, 2026.");
+    // Two shared campaigns fill the website until the first one ends.
+    expect(
+      createSponsorBooking(Date.parse(coderabbitCampaign.startsAt), [
+        sharedCodeRabbit,
+        {
+          ...sentCampaign,
+          package: "shared",
+          endsAt: "2026-11-01T04:00:00.000Z",
+        },
+      ]).availability,
+    ).toBe(
+      "Shared spot from November 1, 2026. Exclusive from November 19, 2026.",
+    );
     expect(createSponsorBooking(Date.parse(coderabbitCampaign.endsAt))).toEqual(
       {
         availability: "Available now.",

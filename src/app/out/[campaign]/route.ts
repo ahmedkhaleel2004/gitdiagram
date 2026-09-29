@@ -1,8 +1,8 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import {
-  activeSponsorCampaign,
   findSponsorCampaign,
   isProductionSponsorHost,
+  isSponsorCampaignActive,
   sponsorPlacements,
   type SponsorPlacement,
 } from "~/lib/sponsor-campaign";
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest, context: Context) {
   // misattributed clicks. Previews and the operator's `?test=1` checks keep
   // the real target.
   if (
-    activeSponsorCampaign()?.id !== config.id &&
+    !isSponsorCampaignActive(config.id) &&
     !isTest &&
     isProductionSponsorHost(request.nextUrl.hostname)
   ) {

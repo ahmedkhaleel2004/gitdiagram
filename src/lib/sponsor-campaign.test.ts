@@ -1,10 +1,14 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import {
-  activeSponsorCampaign,
+  activeReadmeSponsorCampaign,
+  activeSponsorCampaigns,
   coderabbitCampaign,
   lastBookedSponsorCampaign,
+  pickSponsorCampaign,
   scheduledSponsorCampaigns,
   sentCampaign,
+  type SponsorCampaign,
+  type SponsorPackage,
 } from "./sponsor-campaign";
 import { updateSponsorReadme } from "./sponsor-readme";
 import { GET } from "~/app/api/sponsor/route";
@@ -14,39 +18,111 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+function campaign(
+  id: string,
+  sponsorPackage: SponsorPackage,
+  start: number,
+  end: number,
+): SponsorCampaign {
+  return {
+    id,
+    sponsor: id,
+    package: sponsorPackage,
+    destination: "https://example.com",
+    utmCampaign: id,
+    startsAt: new Date(start).toISOString(),
+    endsAt: new Date(end).toISOString(),
+  };
+}
+
+// Occupancy only changes when a campaign starts, so checking each start is
+// enough.
+function scheduleProblems(campaigns: readonly SponsorCampaign[]) {
+  return campaigns.flatMap(({ startsAt }) => {
+    const active = activeSponsorCampaigns(Date.parse(startsAt), campaigns);
+    const exclusive = active.some((c) => c.package === "exclusive");
+    return (exclusive && active.length > 1) || active.length > 2
+      ? [`${startsAt}: ${active.map(({ id }) => id).join(", ")}`]
+      : [];
+  });
+}
+
 describe("paid sponsor schedule", () => {
   it("hands over at Sent's exact expiry without overlap, then expires CodeRabbit", () => {
     const start = Date.parse(coderabbitCampaign.startsAt);
     const end = Date.parse(coderabbitCampaign.endsAt);
     expect(
-      activeSponsorCampaign(Date.parse(sentCampaign.startsAt) - 1),
-    ).toBeUndefined();
-    expect(activeSponsorCampaign(start - 1)?.id).toBe(sentCampaign.id);
-    expect(activeSponsorCampaign(start)?.id).toBe(coderabbitCampaign.id);
-    expect(activeSponsorCampaign(end - 1)?.id).toBe(coderabbitCampaign.id);
-    expect(activeSponsorCampaign(end)).toBeUndefined();
+      activeSponsorCampaigns(Date.parse(sentCampaign.startsAt) - 1),
+    ).toEqual([]);
+    expect(activeSponsorCampaigns(start - 1)[0]?.id).toBe(sentCampaign.id);
+    expect(activeSponsorCampaigns(start)[0]?.id).toBe(coderabbitCampaign.id);
+    expect(activeSponsorCampaigns(end - 1)[0]?.id).toBe(coderabbitCampaign.id);
+    expect(activeSponsorCampaigns(end)).toEqual([]);
     expect(
       end - Date.parse("2026-10-20T00:00:00-04:00"),
     ).toBeGreaterThanOrEqual(30 * 86400000);
   });
 
-  // activeSponsorCampaign returns the first match, so an overlap would give the
-  // earlier campaign 100% of the shared inventory. Rotation must exist first.
-  it("never schedules overlapping campaigns", () => {
-    const campaigns = [...scheduledSponsorCampaigns].sort(
-      (a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt),
+  // Rotation splits the website between at most two shared campaigns; an
+  // exclusive campaign, which also holds the README, shares with nobody.
+  it("never overbooks: exclusive runs alone, at most two shared at once", () => {
+    expect(scheduleProblems(scheduledSponsorCampaigns)).toEqual([]);
+    expect(new Set(scheduledSponsorCampaigns.map(({ id }) => id)).size).toBe(
+      scheduledSponsorCampaigns.length,
     );
-    expect(new Set(campaigns.map(({ id }) => id)).size).toBe(campaigns.length);
-    campaigns.forEach((campaign, index) => {
-      expect(Date.parse(campaign.startsAt)).toBeLessThan(
-        Date.parse(campaign.endsAt),
-      );
-      const next = campaigns[index + 1];
-      if (next)
-        expect(Date.parse(campaign.endsAt)).toBeLessThanOrEqual(
-          Date.parse(next.startsAt),
-        );
-    });
+    // The check itself catches both kinds of overbooking.
+    expect(
+      scheduleProblems([
+        campaign("a", "exclusive", 0, 10),
+        campaign("b", "shared", 5, 15),
+      ]),
+    ).toHaveLength(1);
+    expect(
+      scheduleProblems([
+        campaign("a", "shared", 0, 10),
+        campaign("b", "shared", 0, 10),
+        campaign("c", "shared", 9, 20),
+      ]),
+    ).toHaveLength(1);
+    expect(
+      scheduleProblems([
+        campaign("a", "shared", 0, 10),
+        campaign("b", "shared", 5, 15),
+        campaign("c", "shared", 10, 20),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("rotates two shared campaigns evenly, one ad per page view", () => {
+    const shared = [
+      campaign("alpha", "shared", 0, 10),
+      campaign("beta", "shared", 0, 10),
+    ];
+    expect(activeSponsorCampaigns(5, shared).map(({ id }) => id)).toEqual([
+      "alpha",
+      "beta",
+    ]);
+    expect(activeReadmeSponsorCampaign(5, shared)).toBeUndefined();
+    expect(pickSponsorCampaign([shared[0]], "/", 1)).toBe(shared[0]);
+    expect(pickSponsorCampaign([], "/", 1)).toBeUndefined();
+    // Same page and hour, same ad (server HTML and browser agree).
+    expect(pickSponsorCampaign(shared, "/facebook/react", 7)).toBe(
+      pickSponsorCampaign(shared, "/facebook/react", 7),
+    );
+    // A busy page alternates over the hours of a run...
+    const home = Array.from(
+      { length: 720 },
+      (_, hour) => pickSponsorCampaign(shared, "/", hour)!.id,
+    ).filter((id) => id === "alpha").length;
+    expect(home / 720).toBeGreaterThan(0.44);
+    expect(home / 720).toBeLessThan(0.56);
+    // ...and pages split evenly within an hour.
+    const pages = Array.from(
+      { length: 2000 },
+      (_, index) => pickSponsorCampaign(shared, `/owner${index}/repo`, 0)!.id,
+    ).filter((id) => id === "alpha").length;
+    expect(pages / 2000).toBeGreaterThan(0.46);
+    expect(pages / 2000).toBeLessThan(0.54);
   });
 
   it("finds the last booked campaign until it ends", () => {
@@ -68,6 +144,7 @@ describe("paid sponsor schedule", () => {
     const response = GET(new Request("https://gitdiagram.com/api/sponsor"));
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(await response.json()).toMatchObject({
+      campaignIds: [sentCampaign.id],
       campaignId: sentCampaign.id,
       preview: false,
       nextTransition: Date.parse(sentCampaign.endsAt),
@@ -79,14 +156,14 @@ describe("paid sponsor schedule", () => {
         ),
       ).json(),
     ).toMatchObject({
-      campaignId: coderabbitCampaign.id,
+      campaignIds: [coderabbitCampaign.id],
       preview: true,
       nextTransition: null,
     });
     vi.setSystemTime(new Date(coderabbitCampaign.startsAt));
     expect(
       await GET(new Request("https://gitdiagram.com/api/sponsor")).json(),
-    ).toMatchObject({ campaignId: coderabbitCampaign.id });
+    ).toMatchObject({ campaignIds: [coderabbitCampaign.id] });
   });
 
   it("updates only the README sponsor block and retains campaign-specific historic links", () => {

@@ -5,7 +5,14 @@ import {
   SponsorCampaignProvider,
   useSponsorCampaign,
 } from "./use-sponsor-campaign";
-import { coderabbitCampaign, sentCampaign } from "~/lib/sponsor-campaign";
+import {
+  coderabbitCampaign,
+  pickSponsorCampaign,
+  sentCampaign,
+} from "~/lib/sponsor-campaign";
+
+const navigation = vi.hoisted(() => ({ pathname: "/" }));
+vi.mock("next/navigation", () => ({ usePathname: () => navigation.pathname }));
 
 afterEach(() => {
   cleanup();
@@ -17,7 +24,10 @@ afterEach(() => {
 function rendered(campaignId: string | null) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <SponsorCampaignProvider campaignId={campaignId}>
+      <SponsorCampaignProvider
+        campaignIds={campaignId ? [campaignId] : []}
+        rotation={0}
+      >
         {children}
       </SponsorCampaignProvider>
     );
@@ -42,7 +52,7 @@ it("uses server time despite a wrong browser clock and hands over in an already 
     .fn<typeof fetch>()
     .mockResolvedValueOnce(
       Response.json({
-        campaignId: sentCampaign.id,
+        campaignIds: [sentCampaign.id],
         serverTime: boundary - 100,
         nextTransition: boundary,
       }),
@@ -86,7 +96,7 @@ it("keeps the server-rendered campaign unconfirmed until the server answers, wha
   expect(fetcher).toHaveBeenCalledOnce();
   fetcher.mockResolvedValue(
     Response.json({
-      campaignId: sentCampaign.id,
+      campaignIds: [sentCampaign.id],
       serverTime: Date.parse("2026-09-24T12:00:00Z"),
       nextTransition: null,
     }),
@@ -106,7 +116,7 @@ it("starts from the rendered campaign and only confirms it after the schedule ch
   vi.setSystemTime(new Date("2026-09-24T12:00:00Z"));
   const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
     Response.json({
-      campaignId: coderabbitCampaign.id,
+      campaignIds: [coderabbitCampaign.id],
       serverTime: Date.now(),
       nextTransition: null,
     }),
@@ -131,7 +141,7 @@ it("checks once per tab and gives slots mounted later the confirmed campaign", a
   vi.setSystemTime(new Date("2026-10-20T12:00:00Z"));
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
     Response.json({
-      campaignId: coderabbitCampaign.id,
+      campaignIds: [coderabbitCampaign.id],
       serverTime: Date.now(),
       nextTransition: Date.parse(coderabbitCampaign.endsAt),
     }),
@@ -145,7 +155,7 @@ it("checks once per tab and gives slots mounted later the confirmed campaign", a
   }
   // The layout's render-time pick is stale (a cached page from before the boundary).
   const view = render(
-    <SponsorCampaignProvider campaignId={sentCampaign.id}>
+    <SponsorCampaignProvider campaignIds={[sentCampaign.id]} rotation={0}>
       <Slot />
       <Slot />
     </SponsorCampaignProvider>,
@@ -153,7 +163,7 @@ it("checks once per tab and gives slots mounted later the confirmed campaign", a
   await flush();
   seen.length = 0;
   view.rerender(
-    <SponsorCampaignProvider campaignId={sentCampaign.id}>
+    <SponsorCampaignProvider campaignIds={[sentCampaign.id]} rotation={0}>
       <Slot />
       <Slot />
       <Slot />
@@ -172,7 +182,7 @@ it("rechecks on tab focus at most once a minute, unless a boundary is near", asy
   vi.setSystemTime(boundary - 10 * 60_000);
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
     Response.json({
-      campaignId: sentCampaign.id,
+      campaignIds: [sentCampaign.id],
       serverTime: Date.now(),
       nextTransition: boundary,
     }),
@@ -230,4 +240,42 @@ it("times out a hung check without AbortSignal.any and retries", async () => {
     await vi.advanceTimersByTimeAsync(30_000);
   });
   expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("shows one rotating ad per page view that never swaps after the server check", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-24T12:00:00Z"));
+  const ids = [coderabbitCampaign.id, sentCampaign.id];
+  const campaigns = [coderabbitCampaign, sentCampaign];
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
+    Response.json({
+      campaignIds: ids,
+      // Hours after the render: the tab keeps the render's rotation.
+      serverTime: Date.now() + 5 * 3600_000,
+      nextTransition: null,
+    }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const picks = new Set<string>();
+  for (let page = 0; page < 40; page += 1) {
+    navigation.pathname = `/owner${page}/repo`;
+    const seen: Array<string | undefined> = [];
+    function Slot() {
+      seen.push(useSponsorCampaign().campaign?.id);
+      return null;
+    }
+    const view = render(
+      <SponsorCampaignProvider campaignIds={ids} rotation={17}>
+        <Slot />
+        <Slot />
+      </SponsorCampaignProvider>,
+    );
+    await flush();
+    const expected = pickSponsorCampaign(campaigns, navigation.pathname, 17)!;
+    expect(new Set(seen)).toEqual(new Set([expected.id]));
+    picks.add(expected.id);
+    view.unmount();
+  }
+  expect(picks).toEqual(new Set(ids));
+  navigation.pathname = "/";
 });

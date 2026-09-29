@@ -9,6 +9,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push,
   }),
+  usePathname: () => "/",
 }));
 
 describe("MainCard", () => {

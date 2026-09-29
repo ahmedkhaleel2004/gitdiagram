@@ -1,6 +1,9 @@
 // Runs in the README workflow without `bun install`: keep this file and its
 // imports free of packages and path aliases (sponsor-readme.test.ts checks).
-import { activeSponsorCampaign, sponsorClickHref } from "./sponsor-campaign";
+import {
+  activeReadmeSponsorCampaign,
+  sponsorClickHref,
+} from "./sponsor-campaign";
 import { sponsorCreatives } from "./sponsor-creative";
 
 const start = "<!-- sponsor:start -->";
@@ -14,7 +17,7 @@ export function updateSponsorReadme(readme: string, now = Date.now()) {
   ) {
     throw new Error("README must contain exactly one sponsor block.");
   }
-  const campaign = activeSponsorCampaign(now);
+  const campaign = activeReadmeSponsorCampaign(now);
   let block =
     "> **Ad space** · [Advertise your product here.](https://gitdiagram.com/advertise)";
   if (campaign) {

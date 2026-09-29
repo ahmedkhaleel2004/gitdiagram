@@ -1,6 +1,8 @@
 import {
   lastBookedSponsorCampaign,
   scheduledSponsorCampaigns,
+  type BookedSponsorCampaign,
+  type SponsorPackage,
 } from "~/lib/sponsor-campaign";
 import { sponsorCreatives } from "~/lib/sponsor-creative";
 import type { SponsorStats } from "~/server/sponsor-stats";
@@ -67,10 +69,39 @@ const format = (value: number) => numberFormatter.format(value);
 const date = (value: string, includeTime = false) =>
   (includeTime ? updatedAtFormatter : dateFormatter).format(new Date(value));
 
+const RUN_MS = 30 * 24 * 60 * 60 * 1000;
+
+// The first moment (now, or when a booked campaign ends) from which a 30-day
+// run of the given package fits the schedule: an exclusive run needs nothing
+// else booked, a shared run at most one other shared campaign.
+function openFrom(
+  now: number,
+  sponsorPackage: SponsorPackage,
+  campaigns: readonly BookedSponsorCampaign[],
+) {
+  const booked = campaigns.filter(({ endsAt }) => Date.parse(endsAt) > now);
+  const starts = [now, ...booked.map(({ endsAt }) => Date.parse(endsAt))].sort(
+    (a, b) => a - b,
+  );
+  return starts.find((start) => {
+    const overlapping = booked.filter(
+      ({ startsAt, endsAt }) =>
+        Date.parse(startsAt) < start + RUN_MS && Date.parse(endsAt) > start,
+    );
+    return sponsorPackage === "exclusive"
+      ? overlapping.length === 0
+      : overlapping.length < 2 &&
+          overlapping.every((campaign) => campaign.package === "shared");
+  })!;
+}
+
 // Availability and the booking note follow the campaign schedule, so they
 // never outlive a booking.
-export function createSponsorBooking(now = Date.now()) {
-  const campaign = lastBookedSponsorCampaign(now);
+export function createSponsorBooking(
+  now = Date.now(),
+  campaigns: readonly BookedSponsorCampaign[] = scheduledSponsorCampaigns,
+) {
+  const campaign = lastBookedSponsorCampaign(now, campaigns);
   if (!campaign)
     return {
       availability: "Available now.",
@@ -79,11 +110,17 @@ export function createSponsorBooking(now = Date.now()) {
     };
   const creative = sponsorCreatives[campaign.id];
   const nextStart = bookingDateFormatter.format(new Date(campaign.endsAt));
-  const bookedFrom =
-    "bookedFrom" in campaign ? campaign.bookedFrom : campaign.startsAt;
+  const sharedFrom = openFrom(now, "shared", campaigns);
+  const sharedStart = bookingDateFormatter.format(new Date(sharedFrom));
+  const bookedFrom = campaign.bookedFrom ?? campaign.startsAt;
+  const sharedSooner = sharedFrom < Date.parse(campaign.endsAt);
   return {
-    availability: `Next available: ${nextStart}.`,
-    offerTiming: `New campaigns start from ${nextStart}, after ${creative.name}’s run.`,
+    availability: sharedSooner
+      ? `Shared spot ${sharedFrom <= now ? "available now" : `from ${sharedStart}`}. Exclusive from ${nextStart}.`
+      : `Next available: ${nextStart}.`,
+    offerTiming: sharedSooner
+      ? `A shared spot can start ${sharedFrom <= now ? "right away" : `from ${sharedStart}`}. Exclusive campaigns start from ${nextStart}, after ${creative.name}’s run.`
+      : `New campaigns start from ${nextStart}, after ${creative.name}’s run.`,
     bookedBy: {
       label: `${bookingDayFormatter.format(new Date(bookedFrom))} campaign booked by`,
       name: creative.name,

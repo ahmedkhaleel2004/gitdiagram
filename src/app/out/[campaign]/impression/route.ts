@@ -1,8 +1,8 @@
 import { after, type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  activeSponsorCampaign,
   findSponsorCampaign,
+  isSponsorCampaignActive,
   websiteSponsorPlacements,
 } from "~/lib/sponsor-campaign";
 import { getClientIp } from "~/server/http/client-ip";
@@ -42,7 +42,7 @@ export async function POST(
   if (
     !shouldRecordSponsorEvent(request) ||
     !process.env.NEXT_PUBLIC_POSTHOG_KEY ||
-    (!isTest && activeSponsorCampaign()?.id !== campaign.id)
+    (!isTest && !isSponsorCampaignActive(campaign.id))
   )
     return response;
   const visitorId = sponsorVisitor(request, response);

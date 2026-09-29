@@ -10,16 +10,22 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import {
-  activeSponsorCampaign,
+  activeSponsorCampaigns,
   findSponsorCampaign,
+  pickSponsorCampaign,
 } from "~/lib/sponsor-campaign";
 import { trackSponsorPageView } from "~/hooks/use-sponsor-impression";
 
-type SponsorSchedule = { campaignId: string | null; confirmed: boolean };
+type SponsorSchedule = {
+  campaignIds: readonly string[];
+  confirmed: boolean;
+  rotation: number;
+};
 
 const SponsorScheduleContext = createContext<SponsorSchedule>({
-  campaignId: null,
+  campaignIds: [],
   confirmed: false,
+  rotation: 0,
 });
 
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -28,22 +34,27 @@ const RETRY_MS = 30_000;
 const FOCUS_RECHECK_MS = 60_000;
 const MAX_TIMER_MS = 2_147_483_647;
 
-// One schedule per tab. The layout renders the campaign scheduled at render
+// One schedule per tab. The layout renders the campaigns scheduled at render
 // time, so the banner is in the first HTML instead of appearing after
-// hydration. That HTML may be cached, so the campaign is only `confirmed` after
-// a check against server time (independent of page/CDN caches and browser
-// clocks). Slots read this state, so one mounted later starts from the
-// confirmed campaign rather than the render-time one.
+// hydration. That HTML may be cached, so the campaigns are only `confirmed`
+// after a check against server time (independent of page/CDN caches and
+// browser clocks). Slots read this state, so one mounted later starts from the
+// confirmed campaigns rather than the render-time ones. `rotation` is the
+// render's hour and stays fixed for the tab, so the rotation never swaps an ad
+// already on screen; visitors arriving at different times spread it evenly.
 export function SponsorCampaignProvider({
-  campaignId,
+  campaignIds,
+  rotation,
   children,
 }: {
-  campaignId: string | null;
+  campaignIds: readonly string[];
+  rotation: number;
   children: ReactNode;
 }) {
   const [schedule, setSchedule] = useState<SponsorSchedule>({
-    campaignId,
+    campaignIds,
     confirmed: false,
+    rotation,
   });
   const pathname = usePathname();
 
@@ -52,8 +63,10 @@ export function SponsorCampaignProvider({
   }, [pathname]);
 
   useEffect(() => {
-    const confirm = (campaignId: string | null) =>
-      setSchedule({ campaignId, confirmed: true });
+    const confirm = (campaignIds: readonly string[]) =>
+      setSchedule((current) => ({ ...current, campaignIds, confirmed: true }));
+    const activeAt = (now: number) =>
+      activeSponsorCampaigns(now).map(({ id }) => id);
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
@@ -78,7 +91,7 @@ export function SponsorCampaignProvider({
         });
         if (!response.ok) throw new Error("Sponsor schedule unavailable");
         const data = (await response.json()) as {
-          campaignId: string | null;
+          campaignIds: unknown;
           serverTime: number;
           nextTransition: number | null;
         };
@@ -86,19 +99,22 @@ export function SponsorCampaignProvider({
           !Number.isFinite(data.serverTime) ||
           (data.nextTransition !== null &&
             !Number.isFinite(data.nextTransition)) ||
-          (data.campaignId !== null && !findSponsorCampaign(data.campaignId))
+          !Array.isArray(data.campaignIds) ||
+          !data.campaignIds.every(
+            (id) => typeof id === "string" && findSponsorCampaign(id),
+          )
         )
           throw new Error("Invalid sponsor schedule");
         if (stopped) return;
         const offset = data.serverTime - Date.now();
         serverOffset = offset;
         nextTransition = data.nextTransition;
-        confirm(data.campaignId);
+        confirm(data.campaignIds as string[]);
         if (data.nextTransition !== null) {
           timer = setTimeout(
             () => {
               // Switch at the boundary even if the subsequent request fails.
-              confirm(activeSponsorCampaign(serverNow(offset))?.id ?? null);
+              confirm(activeAt(serverNow(offset)));
               void refresh();
             },
             Math.min(
@@ -113,7 +129,7 @@ export function SponsorCampaignProvider({
         // Once server time is known, follow the schedule on the server clock.
         // Before that, keep the server-rendered campaign unconfirmed.
         if (serverOffset !== undefined)
-          confirm(activeSponsorCampaign(serverNow(serverOffset))?.id ?? null);
+          confirm(activeAt(serverNow(serverOffset)));
         timer = setTimeout(() => void refresh(), RETRY_MS);
       } finally {
         clearTimeout(timeout);
@@ -142,10 +158,15 @@ export function SponsorCampaignProvider({
   return createElement(SponsorScheduleContext, { value: schedule }, children);
 }
 
+// The one campaign this page view shows; every slot on the page agrees.
 export function useSponsorCampaign() {
-  const { campaignId, confirmed } = useContext(SponsorScheduleContext);
+  const { campaignIds, confirmed, rotation } = useContext(
+    SponsorScheduleContext,
+  );
+  const pathname = usePathname();
+  const campaigns = campaignIds.flatMap((id) => findSponsorCampaign(id) ?? []);
   return {
-    campaign: campaignId ? findSponsorCampaign(campaignId) : undefined,
+    campaign: pickSponsorCampaign(campaigns, pathname ?? "/", rotation),
     confirmed,
   };
 }

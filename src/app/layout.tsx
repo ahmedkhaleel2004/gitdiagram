@@ -7,7 +7,7 @@ import { Footer } from "~/components/footer";
 import { LivePresence } from "~/components/live-presence";
 import { CSPostHogProvider } from "./providers";
 import { SponsorCampaignProvider } from "~/hooks/use-sponsor-campaign";
-import { activeSponsorCampaign } from "~/lib/sponsor-campaign";
+import { renderedSponsorSchedule } from "~/lib/sponsor-campaign";
 import { SITE_URL } from "~/lib/site";
 
 export const metadata: Metadata = {
@@ -82,9 +82,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-screen flex-col">
         <CSPostHogProvider>
-          <SponsorCampaignProvider
-            campaignId={activeSponsorCampaign()?.id ?? null}
-          >
+          <SponsorCampaignProvider {...renderedSponsorSchedule()}>
             <Header />
             <div className="flex-grow">{children}</div>
             <Footer />
