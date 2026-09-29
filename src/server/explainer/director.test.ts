@@ -329,13 +329,19 @@ describe("the director", () => {
     expect(JSON.stringify(designers[0]!.input.slice(0, 2))).toBe(
       JSON.stringify(prewarm.input),
     );
-    // Nobody reads an Opus cache here, so the director does not write one.
+    // Nobody reads this repository's Opus cache here, so the director does
+    // not write one; the system prompt every film shares is cached for an hour.
     const director = stream.mock.calls[0]![0] as {
+      system: Array<{ cache_control?: unknown }>;
       messages: Array<{ content: Array<{ cache_control?: unknown }> }>;
     };
     expect(
       director.messages[0]!.content.some((block) => block.cache_control),
     ).toBe(false);
+    expect(director.system.at(-1)!.cache_control).toEqual({
+      type: "ephemeral",
+      ttl: "1h",
+    });
     // The prewarm's million cache-written tokens cost 1.25 × $2.
     expect(writers.usage.costUsd).toBeCloseTo(4.2 + 2.5);
   });
@@ -350,6 +356,28 @@ describe("the director", () => {
       type: "ephemeral",
     });
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("prices hour-long and five-minute cache writes apart", async () => {
+    stream.mockReturnValueOnce({
+      finalMessage: async () => ({
+        ...(await scriptReply(120).finalMessage()),
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 2_000_000,
+          cache_creation: {
+            ephemeral_1h_input_tokens: 1_000_000,
+            ephemeral_5m_input_tokens: 1_000_000,
+          },
+          cache_read_input_tokens: 0,
+        },
+      }),
+    });
+    const writers = createFilmWriters(input, PREMIUM);
+    await writers.direct();
+    // Opus 5.5 input is $4 per million: 2 × $4 for the hour, 1.25 × $4 for five minutes.
+    expect(writers.usage.costUsd).toBeCloseTo(8 + 5);
   });
 
   it("has the designers' model write the script when the director fails", async () => {

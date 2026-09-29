@@ -146,6 +146,9 @@ function addUsage(
 /**
  * Every call sends the same tools, system prompt, pictures and repository
  * block in that order, so a cached prefix is shared by every call on one model.
+ * The tools and system prompt (about 6k tokens) are the same for every film,
+ * so they are always cached, for an hour: videos are minutes apart, and the
+ * 2× write pays for itself on the second read.
  */
 async function callClaudeTool(
   params: ToolCall & { client: Anthropic },
@@ -155,7 +158,13 @@ async function callClaudeTool(
     {
       model,
       max_tokens: MAX_TOKENS,
-      system: params.system,
+      system: [
+        {
+          type: "text",
+          text: params.system,
+          cache_control: { type: "ephemeral", ttl: "1h" },
+        },
+      ],
       tools: [SCRIPT_TOOL, SHOTS_TOOL] as Anthropic.Tool[],
       tool_choice: { type: "auto" },
       messages: [
@@ -190,6 +199,9 @@ async function callClaudeTool(
   const u = message.usage;
   const cacheWrite = u.cache_creation_input_tokens ?? 0;
   const cacheRead = u.cache_read_input_tokens ?? 0;
+  // Written for an hour: the tools and system prompt; for the default five
+  // minutes: the repository block.
+  const cacheWrite1h = u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
   const price = claudePrice(model);
   addUsage(
     usage,
@@ -197,8 +209,8 @@ async function callClaudeTool(
     price &&
       claudeCostUsd(price, {
         input: u.input_tokens,
-        // The repository block is cached for the default five minutes.
-        cacheWrite5m: cacheWrite,
+        cacheWrite1h,
+        cacheWrite5m: cacheWrite - cacheWrite1h,
         cacheRead,
         output: u.output_tokens,
       }),
