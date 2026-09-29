@@ -96,9 +96,32 @@ describe("POST /api/diagram-state", () => {
     );
   });
 
+  it("reads a GitHub sign-in's diagrams under its account, not its token", async () => {
+    mocks.resolveRequestCredentials.mockResolvedValueOnce({
+      githubPat: "ghu_rotating",
+      githubStorageKey: "github-user:42",
+    });
+    mocks.getDiagramStateRecord.mockResolvedValue({
+      diagram: null,
+      explanation: null,
+      graph: null,
+      latestSessionAudit: null,
+      lastSuccessfulAt: null,
+    });
+
+    await POST(request({ username: "openai", repo: "private-repo" }));
+
+    expect(mocks.getDiagramStateRecord).toHaveBeenCalledWith(
+      "openai",
+      "private-repo",
+      "github-user:42",
+    );
+  });
+
   it("uses a protected cookie credential when no explicit PAT is sent", async () => {
     mocks.resolveRequestCredentials.mockResolvedValueOnce({
       githubPat: "cookie-github-token",
+      githubStorageKey: "cookie-github-token",
     });
     mocks.getDiagramStateRecord.mockResolvedValue({
       diagram: "flowchart TD\nA-->PRIVATE",

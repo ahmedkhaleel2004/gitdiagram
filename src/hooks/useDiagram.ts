@@ -514,7 +514,10 @@ export function useDiagram(
       let cancelled = false;
       void getCredentialStatus()
         .then((credentials) => {
-          if (!cancelled && credentials.githubPatConfigured) {
+          if (
+            !cancelled &&
+            (credentials.githubPatConfigured || credentials.githubAppConnected)
+          ) {
             void refreshStoredDiagram();
           }
         })

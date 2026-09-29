@@ -18,6 +18,7 @@ interface AdmittedGenerationRequest {
   repo: string;
   apiKey?: string;
   githubPat?: string;
+  githubStorageKey?: string;
   sessionId: string;
   cancelToken?: string;
   cancellationRegistered: boolean;
@@ -85,10 +86,11 @@ export async function admitGenerationRequest(
     session_id: requestedSessionId,
     cancel_token: cancelToken,
   } = parsed.data;
-  const { apiKey, githubPat } = await resolveRequestCredentials(request, {
-    apiKey: parsed.data.api_key,
-    githubPat: parsed.data.github_pat,
-  });
+  const { apiKey, githubPat, githubStorageKey } =
+    await resolveRequestCredentials(request, {
+      apiKey: parsed.data.api_key,
+      githubPat: parsed.data.github_pat,
+    });
   const clientIp = getClientIp(request);
   const infrastructureRateLimit =
     await consumeGenerationInfrastructureRateLimit({ clientIp });
@@ -206,6 +208,7 @@ export async function admitGenerationRequest(
       repo,
       apiKey,
       githubPat,
+      githubStorageKey,
       sessionId,
       cancelToken,
       cancellationRegistered,

@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => mocks.cookieStore),
 }));
@@ -45,6 +46,13 @@ import {
   resolveRequestCredentials,
   setCredential,
 } from "~/server/http/request-credentials";
+import {
+  GITHUB_CONNECTION_COOKIE,
+  readGitHubConnection,
+  resetGitHubConnectionRefreshesForTests,
+  writeGitHubConnection,
+  type GitHubConnection,
+} from "~/server/github-connect/connection";
 
 function request(
   origin = "https://gitdiagram.com",
@@ -85,6 +93,8 @@ describe("request credentials", () => {
     await expect(getCredentialStatus()).resolves.toEqual({
       openaiApiKeyConfigured: true,
       githubPatConfigured: false,
+      githubAppConnected: false,
+      githubLogin: null,
     });
   });
 
@@ -105,6 +115,8 @@ describe("request credentials", () => {
     await expect(getCredentialStatus()).resolves.toEqual({
       openaiApiKeyConfigured: false,
       githubPatConfigured: false,
+      githubAppConnected: false,
+      githubLogin: null,
     });
   });
 
@@ -132,6 +144,7 @@ describe("request credentials", () => {
     ).resolves.toEqual({
       apiKey: "explicit-openai",
       githubPat: "explicit-github",
+      githubStorageKey: "explicit-github",
     });
   });
 
@@ -156,6 +169,7 @@ describe("request credentials", () => {
     await expect(resolveRequestCredentials(request())).resolves.toEqual({
       apiKey: "cookie-openai",
       githubPat: "cookie-github",
+      githubStorageKey: "cookie-github",
     });
   });
 
@@ -167,6 +181,185 @@ describe("request credentials", () => {
     await expect(resolveRequestCredentials(request())).resolves.toEqual({
       apiKey: undefined,
       githubPat: undefined,
+    });
+  });
+
+  describe("with a GitHub sign-in", () => {
+    const connection = (
+      overrides: Partial<GitHubConnection> = {},
+    ): GitHubConnection => ({
+      v: 1,
+      uid: 42,
+      login: "octocat",
+      at: "ghu_current",
+      atx: Date.now() + 8 * 60 * 60_000,
+      rt: "ghr_current",
+      rtx: Date.now() + 180 * 24 * 60 * 60_000,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      vi.stubEnv("CACHE_KEY_SECRET", "test-cache-key-secret");
+      vi.stubEnv("GITHUB_CONNECT_CLIENT_ID", "Iv-test");
+      vi.stubEnv("GITHUB_CONNECT_CLIENT_SECRET", "test-secret");
+      vi.stubEnv("GITHUB_CONNECT_APP_SLUG", "gitdiagram-private-repos");
+      resetGitHubConnectionRefreshesForTests();
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("uses the sign-in's token and stores diagrams under its account", async () => {
+      writeGitHubConnection(mocks.cookieStore, connection());
+
+      await expect(resolveRequestCredentials(request())).resolves.toEqual({
+        apiKey: undefined,
+        githubPat: "ghu_current",
+        githubStorageKey: "github-user:42",
+      });
+      await expect(getCredentialStatus()).resolves.toMatchObject({
+        githubPatConfigured: false,
+        githubAppConnected: true,
+        githubLogin: "octocat",
+      });
+    });
+
+    it("keeps the cookie sealed and ignores a tampered one", async () => {
+      writeGitHubConnection(mocks.cookieStore, connection());
+      const sealed = mocks.values.get(GITHUB_CONNECTION_COOKIE)!;
+      expect(sealed.value).not.toContain("ghu_current");
+      expect(sealed.options).toMatchObject({
+        httpOnly: true,
+        sameSite: "strict",
+        path: "/api",
+      });
+
+      const bytes = Buffer.from(sealed.value, "base64url");
+      bytes[bytes.length - 1]! ^= 1;
+      mocks.values.set(GITHUB_CONNECTION_COOKIE, {
+        value: bytes.toString("base64url"),
+      });
+      await expect(resolveRequestCredentials(request())).resolves.toEqual({
+        apiKey: undefined,
+        githubPat: undefined,
+      });
+    });
+
+    it("refreshes an expiring token once and re-seals the cookie", async () => {
+      writeGitHubConnection(
+        mocks.cookieStore,
+        connection({ atx: Date.now() + 60_000 }),
+      );
+      const fetchMock = vi.fn(async () =>
+        Response.json({
+          access_token: "ghu_next",
+          expires_in: 28_800,
+          refresh_token: "ghr_next",
+          refresh_token_expires_in: 15_897_600,
+          token_type: "bearer",
+          scope: "",
+        }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const [first, second] = await Promise.all([
+        resolveRequestCredentials(request()),
+        resolveRequestCredentials(request()),
+      ]);
+
+      expect(first.githubPat).toBe("ghu_next");
+      expect(second.githubPat).toBe("ghu_next");
+      expect(first.githubStorageKey).toBe("github-user:42");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [
+        string,
+        RequestInit,
+      ];
+      expect(url).toBe("https://github.com/login/oauth/access_token");
+      expect(
+        Object.fromEntries(new URLSearchParams(String(init.body))),
+      ).toEqual({
+        client_id: "Iv-test",
+        client_secret: "test-secret",
+        grant_type: "refresh_token",
+        refresh_token: "ghr_current",
+      });
+      expect(readGitHubConnection(mocks.cookieStore)).toMatchObject({
+        uid: 42,
+        at: "ghu_next",
+        rt: "ghr_next",
+      });
+    });
+
+    it("keeps a still-valid token when a refresh fails", async () => {
+      writeGitHubConnection(
+        mocks.cookieStore,
+        connection({ atx: Date.now() + 60_000 }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => Response.json({ error: "bad_refresh_token" })),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const resolved = await resolveRequestCredentials(request());
+
+      expect(resolved.githubPat).toBe("ghu_current");
+      expect(readGitHubConnection(mocks.cookieStore)?.at).toBe("ghu_current");
+    });
+
+    it("drops a sign-in whose tokens have both expired", async () => {
+      // Written a moment ago, while the refresh token still had seconds left.
+      writeGitHubConnection(
+        mocks.cookieStore,
+        connection({ atx: Date.now() - 1_000, rtx: Date.now() - 1_000 }),
+        Date.now() - 10_000,
+      );
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const resolved = await resolveRequestCredentials(request());
+
+      expect(resolved.githubPat).toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mocks.values.has(GITHUB_CONNECTION_COOKIE)).toBe(false);
+    });
+
+    it("lets a pasted token win and replace the sign-in", async () => {
+      writeGitHubConnection(mocks.cookieStore, connection());
+
+      await setCredential("github_pat", "github_pat_example");
+
+      expect(mocks.values.has(GITHUB_CONNECTION_COOKIE)).toBe(false);
+      await expect(resolveRequestCredentials(request())).resolves.toEqual({
+        apiKey: undefined,
+        githubPat: "github_pat_example",
+        githubStorageKey: "github_pat_example",
+      });
+    });
+
+    it("clears only the sign-in for github_app", async () => {
+      writeGitHubConnection(mocks.cookieStore, connection());
+      await setCredential("openai_api_key", "sk-test");
+      writeGitHubConnection(mocks.cookieStore, connection());
+
+      await expect(clearCredential("github_app")).resolves.toEqual({
+        openaiApiKeyConfigured: true,
+        githubPatConfigured: false,
+        githubAppConnected: false,
+        githubLogin: null,
+      });
+    });
+
+    it("never reads a sign-in for a cross-origin request", async () => {
+      writeGitHubConnection(mocks.cookieStore, connection());
+
+      await expect(
+        resolveRequestCredentials(request("https://evil.example")),
+      ).resolves.toEqual({
+        githubStorageKey: undefined,
+      });
     });
   });
 });
