@@ -185,6 +185,12 @@ function videoJsonLd(username: string, repo: string, summary: VideoSummary) {
     ],
     uploadDate: summary.createdAt,
     url: `${SITE_URL}${watchPath(username, repo)}`,
+    about: {
+      "@type": "SoftwareSourceCode",
+      name: `${username}/${repo}`,
+      codeRepository: `https://github.com/${username}/${repo}`,
+    },
+    publisher: { "@type": "Organization", name: "GitDiagram", url: SITE_URL },
     // Summaries cached before `seconds` was recorded leave it out.
     ...(typeof summary.seconds === "number"
       ? { duration: `PT${summary.seconds}S` }

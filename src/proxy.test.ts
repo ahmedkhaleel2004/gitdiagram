@@ -56,6 +56,68 @@ describe("proxy", () => {
     },
   );
 
+  it.each([
+    ["/fastapi/fastapi.md", {}, "/fastapi/fastapi/llms.txt"],
+    ["/vercel/next.js.md", {}, "/vercel/next.js/llms.txt"],
+    [
+      "/vercel/next.js",
+      { accept: "text/markdown, text/html;q=0.9" },
+      "/vercel/next.js/llms.txt",
+    ],
+    ["/acme/demo", { accept: "text/markdown;q=1" }, "/acme/demo/llms.txt"],
+  ])(
+    "serves the Markdown twin of %s",
+    (path, headers: Record<string, string>, target) => {
+      const response = proxy(
+        new NextRequest(`https://gitdiagram.com${path}`, { headers }),
+      );
+      expect(response.headers.get("x-middleware-rewrite")).toBe(
+        `https://gitdiagram.com${target}`,
+      );
+    },
+  );
+
+  it.each([
+    ["/acme/demo", "text/html,application/xhtml+xml,*/*;q=0.8"],
+    ["/acme/demo", "text/markdownish"],
+    ["/api/diagram-state", "text/markdown"],
+    ["/sitemap/0.xml", "text/markdown"],
+    ["/out/sponsor", "text/markdown"],
+    ["/acme/demo/video", "text/markdown"],
+  ])("leaves %s with Accept %s alone", (path, accept) => {
+    const response = proxy(
+      new NextRequest(`https://gitdiagram.com${path}`, { headers: { accept } }),
+    );
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("lowercases a mixed-case Markdown URL before serving it", () => {
+    const response = proxy(
+      new NextRequest("https://gitdiagram.com/Acme/Demo.md"),
+    );
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://gitdiagram.com/acme/demo.md",
+    );
+  });
+
+  it.each([
+    ["/acme/demo.md", {}, true],
+    ["/acme/demo", { accept: "text/markdown" }, true],
+    ["/acme/demo", { accept: "text/html" }, false],
+    ["/acme/demo", {}, false],
+    ["/api/thing.md", {}, false],
+    ["/llms.txt", { accept: "text/markdown" }, false],
+  ])(
+    "runs for Markdown requests only: %s %o",
+    (url, headers: Record<string, string>, matches) => {
+      expect(unstable_doesMiddlewareMatch({ config, url, headers })).toBe(
+        matches,
+      );
+    },
+  );
+
   it("still matches forged actions on any path", () => {
     expect(
       unstable_doesMiddlewareMatch({

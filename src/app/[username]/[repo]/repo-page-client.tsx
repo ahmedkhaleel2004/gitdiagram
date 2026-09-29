@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { ExternalLink, Key, LockKeyhole } from "lucide-react";
 import { toast } from "sonner";
@@ -46,6 +46,8 @@ type RepoPageClientProps = {
   repo: string;
   initialState?: DiagramStateResponse | null;
   initialStateIsAuthoritative?: boolean;
+  /** Server-rendered text of the stored diagram, shown under the workspace. */
+  readout?: ReactNode;
 };
 
 export default function RepoPageClient({
@@ -53,6 +55,7 @@ export default function RepoPageClient({
   repo,
   initialState = null,
   initialStateIsAuthoritative = false,
+  readout,
 }: RepoPageClientProps) {
   const [showGithubAccess, setShowGithubAccess] = useState(false);
   useStarReminder();
@@ -155,6 +158,7 @@ export default function RepoPageClient({
             </>
           }
         />
+        {readout}
         <ApiKeyDialog
           isOpen={showApiKeyDialog}
           onClose={handleCloseApiKeyDialog}

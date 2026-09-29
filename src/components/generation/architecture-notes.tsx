@@ -1,35 +1,9 @@
 "use client";
 
-import {
-  memo,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 import { ArrowDown, ChevronDown, FileText } from "lucide-react";
+import { architectureLines } from "./architecture-prose";
 import styles from "./generation.module.css";
-
-// A small, safe Markdown subset: no HTML, remote assets or syntax highlighter.
-// Source offsets identify append-only text without remounting on each token.
-function inlineText(text: string): ReactNode[] {
-  return Array.from(
-    text.matchAll(/`[^`]+`|\*\*[^*]+\*\*|[^`*]+|[`*]/g),
-    (match) => {
-      const part = match[0];
-      if (part.startsWith("`") && part.endsWith("`")) {
-        return <code key={match.index}>{part.slice(1, -1)}</code>;
-      }
-      if (part.startsWith("**") && part.endsWith("**")) {
-        return (
-          <strong key={match.index}>{inlineText(part.slice(2, -2))}</strong>
-        );
-      }
-      return part;
-    },
-  );
-}
 
 export const ArchitectureNotes = memo(function ArchitectureNotes({
   text = "",
@@ -91,22 +65,7 @@ export const ArchitectureNotes = memo(function ArchitectureNotes({
           >
             {text ? (
               <div className={styles.prose}>
-                {Array.from(text.matchAll(/[^\n]+/g), (match) => {
-                  const line = match[0];
-                  if (!line.trim()) return null;
-                  if (/^#{1,6}\s/.test(line)) {
-                    return (
-                      <p className={styles.noteHeading} key={match.index}>
-                        {inlineText(line.replace(/^#{1,6}\s+/, ""))}
-                      </p>
-                    );
-                  }
-                  return (
-                    <p key={match.index}>
-                      {inlineText(line.replace(/^[-*]\s+/, "• "))}
-                    </p>
-                  );
-                })}
+                {architectureLines(text, styles.noteHeading)}
                 {streaming && (
                   <span className={styles.cursor} aria-hidden="true" />
                 )}

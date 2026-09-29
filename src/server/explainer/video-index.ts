@@ -150,3 +150,20 @@ export async function fillVideoIndex(
     await writeCards(cards.slice(start, start + 100), "missing");
   if (complete) await upstashCommand(["SET", READY_KEY, "1"]);
 }
+
+/**
+ * Whether the index has a card for the repository: one Redis read, used to
+ * link a repository's video from its Markdown. Throws if Redis fails.
+ */
+export async function hasIndexedVideo(
+  owner: string,
+  repo: string,
+): Promise<boolean> {
+  return (
+    (await upstashCommand<number>([
+      "HEXISTS",
+      INDEX_KEY,
+      field(owner, repo),
+    ])) === 1
+  );
+}
