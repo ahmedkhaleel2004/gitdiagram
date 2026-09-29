@@ -9,7 +9,13 @@ import type { Browser, Page } from "puppeteer-core";
 import type { SfxCue } from "~/features/explainer/audio-mixer";
 import { STAGE_PATH } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
-import { ffmpegPath, RENDER_FPS, type RenderFormat } from "./ffmpeg";
+import { sourceTime, type TimeEdit } from "./feed-edit";
+import {
+  ffmpegPath,
+  RENDER_FPS,
+  videoCodecArgs,
+  type RenderFormat,
+} from "./ffmpeg";
 import { deploymentHeaders, pinToDeployment } from "./render-origin";
 
 // The stage lays out in CSS pixels at its native size; the device scale factor
@@ -19,8 +25,16 @@ const FRAMES: Record<
   { cssWidth: number; cssHeight: number; width: number; height: number }
 > = {
   landscape: { cssWidth: 1920, cssHeight: 1080, width: 1280, height: 720 },
-  vertical: { cssWidth: 1080, cssHeight: 1920, width: 720, height: 1280 },
+  vertical: { cssWidth: 1080, cssHeight: 1920, width: 1080, height: 1920 },
 };
+
+/**
+ * The vertical MP4 is the engine's tall reel layout, as a feed cut (see
+ * stage.js). What Shorts, Reels and TikTok lay over a video's edges (their top
+ * bar, the caption and account under it, the button column on the right),
+ * in pixels of the 1080×1920 frame: the scene and captions keep clear of it.
+ */
+const FEED_INSETS = { top: 140, bottom: 320, right: 150 };
 
 type StageWindow = Window & { __renderSeek: (time: number) => void };
 
@@ -247,9 +261,11 @@ async function openStage(
       meta: artifact.meta,
       timing: artifact.timing,
       captions: options.captions,
-      layout: options.format,
       poster: Boolean(options.poster),
       render: true,
+      ...(options.format === "vertical"
+        ? { layout: "reel", feed: true, height: 1920, insets: FEED_INSETS }
+        : { layout: options.format }),
     },
   );
   return { page, sfx };
@@ -268,6 +284,8 @@ export async function renderVideoSegment(params: {
   origin: string;
   from: number;
   to: number;
+  /** The vertical MP4's feed cut: frame times are on its clock (see feed-edit.ts). */
+  edit?: TimeEdit;
   signal?: AbortSignal;
   /** The stage is built; its effect cues are known. */
   onReady?: (sfx: SfxCue[]) => void;
@@ -308,27 +326,23 @@ export async function renderVideoSegment(params: {
       "mjpeg",
       "-i",
       "pipe:0",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "20",
-      "-pix_fmt",
-      "yuv420p",
+      ...videoCodecArgs(format),
       "-r",
       String(RENDER_FPS),
       out,
     ]);
+    const { edit } = params;
     for (let index = params.from; index < params.to; index++) {
       signal?.throwIfAborted();
+      const time = index / RENDER_FPS;
       await page.evaluate(
-        (time) => (window as unknown as StageWindow).__renderSeek(time),
-        index / RENDER_FPS,
+        (at) => (window as unknown as StageWindow).__renderSeek(at),
+        edit ? sourceTime(edit, time) : time,
       );
       const jpeg = await page.screenshot({
         type: "jpeg",
-        quality: 90,
+        // Thin lines and small text at full 1080×1920 are worth a finer frame.
+        quality: format === "vertical" ? 94 : 90,
         optimizeForSpeed: true,
       });
       await encoder.write(jpeg);

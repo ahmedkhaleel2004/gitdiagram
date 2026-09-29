@@ -1,21 +1,21 @@
 @font-face {
   font-family: "Geist";
-  src: url("assets/fonts/Geist-Variable.woff2?v=20") format("woff2");
+  src: url("assets/fonts/Geist-Variable.woff2?v=21") format("woff2");
   font-weight: 100 900;
 }
 @font-face {
   font-family: "Geist Mono";
-  src: url("assets/fonts/GeistMono-Variable.woff2?v=20") format("woff2");
+  src: url("assets/fonts/GeistMono-Variable.woff2?v=21") format("woff2");
   font-weight: 100 900;
 }
 @font-face {
   font-family: "Instrument Serif";
-  src: url("assets/fonts/InstrumentSerif-Regular.woff2?v=20") format("woff2");
+  src: url("assets/fonts/InstrumentSerif-Regular.woff2?v=21") format("woff2");
   font-style: normal;
 }
 @font-face {
   font-family: "Instrument Serif";
-  src: url("assets/fonts/InstrumentSerif-Italic.woff2?v=20") format("woff2");
+  src: url("assets/fonts/InstrumentSerif-Italic.woff2?v=21") format("woff2");
   font-style: italic;
 }
 
@@ -124,7 +124,7 @@ svg.wires {
   inset: 0;
   opacity: 0.1;
   mix-blend-mode: multiply;
-  background: url("assets/grain.png?v=20") 0 0 / 128px 128px;
+  background: url("assets/grain.png?v=21") 0 0 / 128px 128px;
 }
 
 /* components */
@@ -431,6 +431,50 @@ html.reel #captions span.on {
 }
 html.reel #captions span.now {
   color: var(--purple-deep);
+}
+
+/* feed cut (the vertical MP4): its own header under the platform's top bar,
+   the film's address and a wrapped headline, over a fade so a scene the
+   camera pushes past never runs into the words */
+#feed-head {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 0 48px;
+  z-index: 25;
+}
+#feed-head::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -400px;
+  bottom: -24px;
+  background: linear-gradient(to bottom, var(--paper) 88%, rgba(242, 232, 255, 0));
+  z-index: -1;
+}
+#feed-tag {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 44px;
+  font: 600 32px/1 "Geist Mono", monospace;
+  letter-spacing: -0.01em;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+#feed-glyph {
+  display: block;
+  width: 40px;
+  height: 40px;
+}
+#feed-headline {
+  margin-top: 18px;
+  overflow: hidden;
+  font: 400 96px/1.04 "Instrument Serif", serif;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-wrap: balance;
 }
 
 /* poster: a still with a play button, used for link previews */

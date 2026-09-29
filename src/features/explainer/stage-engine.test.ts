@@ -1090,3 +1090,94 @@ describe("reel layout", () => {
     );
   });
 });
+
+describe("feed cut (the vertical MP4)", () => {
+  const INSETS = { top: 140, bottom: 320, right: 150 };
+  const FEED = { layout: "reel", feed: true, height: 1920, insets: INSETS };
+  const REEL = { layout: "reel", height: 1920, insets: INSETS };
+  const narrations = [
+    "A request reaches the router first.",
+    "The router picks a handler for it.",
+    "Then the handler writes the answer back to the caller and the whole trip is logged for later.",
+  ];
+  const spec = () =>
+    plan([
+      {
+        narration: narrations[0]!,
+        elements: [
+          box("request", 1, 3.5, { at: "request" }),
+          box("router", 6.5, 3.5, { at: "router" }),
+          arrow("a1", "request", "router"),
+        ],
+      },
+      {
+        narration: narrations[1]!,
+        elements: [box("handler", 12, 3.5, { at: "handler" })],
+      },
+      { narration: narrations[2]!, scene: "two" },
+    ]);
+  const endCard = (stage: Stage) => {
+    const sections = stage.window.document.querySelectorAll("#scenes section");
+    return sections[sections.length - 1] as HTMLElement;
+  };
+  const visible = (stage: Stage, node: HTMLElement) =>
+    node.style.visibility === "visible";
+
+  it("opens on its first beat already built, under a header with the whole title", async () => {
+    const timing = timingFor(narrations);
+    const stage = await openStage(spec(), timing, { load: FEED });
+    const { document } = stage.window;
+    // The first frame the cut shows is just before the first word.
+    stage.seek(timing.beats[0]!.start - 0.06);
+    for (const id of ["request", "router"])
+      expect(stage.opacity(stage.node(id))).toBeGreaterThan(0.95);
+    // Later beats still come in on their words.
+    expect(stage.opacity(stage.node("handler"))).toBe(0);
+    expect(document.getElementById("feed-tag")?.textContent).toBe(
+      "gitdiagram.com/acme/demo",
+    );
+    expect(document.getElementById("feed-headline")?.textContent).toBe("Demo");
+    // The scene is laid out below the header.
+    const kit = (
+      stage.window as unknown as { ShotKit: { frame: { TOP: number } } }
+    ).ShotKit;
+    expect(kit.frame.TOP).toBe(140 + 44 + 18 + 200 + 34);
+  });
+
+  it("stands the closing line in for a title that was cut short", async () => {
+    const clipped = { ...spec(), title: "Linux: the layer every…" };
+    const stage = await openStage(clipped, timingFor(narrations), {
+      load: FEED,
+    });
+    expect(
+      stage.window.document.getElementById("feed-headline")?.textContent,
+    ).toBe("Done");
+  });
+
+  it("brings its end card in under the last line, signed with the diagram's address", async () => {
+    const timing = timingFor(narrations);
+    const stage = await openStage(spec(), timing, { load: FEED });
+    const card = endCard(stage);
+    stage.seek(timing.SPEECH_END - 1.2);
+    expect(visible(stage, card)).toBe(false);
+    stage.seek(timing.SPEECH_END);
+    expect(visible(stage, card)).toBe(true);
+    expect(card.textContent).toContain("gitdiagram.com/acme/demo");
+    // Captions still show the last line while it plays.
+    expect(stage.captions()).toContain("later.");
+  });
+
+  it("leaves the live reel as it was: built on its words, end card after the last one", async () => {
+    const timing = timingFor(narrations);
+    const stage = await openStage(spec(), timing, { load: REEL });
+    const { document } = stage.window;
+    expect(document.getElementById("feed-head")).toBeNull();
+    stage.seek(timing.beats[0]!.start - 0.06);
+    expect(stage.opacity(stage.node("request"))).toBe(0);
+    stage.seek(timing.SPEECH_END);
+    expect(visible(stage, endCard(stage))).toBe(false);
+    stage.seek(timing.SPEECH_END + 0.6);
+    expect(visible(stage, endCard(stage))).toBe(true);
+    expect(endCard(stage).textContent).toContain("github.com/acme/demo");
+  });
+});

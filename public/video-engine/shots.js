@@ -73,6 +73,11 @@ function build() {
   });
   var CYCLE = ["slide", "push", "zoom", "slide", "cut", "push", "zoom"];
   var endAt = Math.min(DUR - 2.4, T.SPEECH_END + 0.5);
+  // A feed cut (the vertical MP4, stage.js) opens on its first beat already
+  // built, and its end card comes in under the last spoken line instead of
+  // after it, so the film can stop right after the last word.
+  var FEED = Boolean(K.feed);
+  if (FEED && TB.length) endAt = Math.max(0.5, Math.min(endAt, Math.max(TB[TB.length - 1].start + 1.2, T.SPEECH_END - 1)));
   scenes.forEach(function (sc, k) {
     var first = sc.beats[0];
     sc.tIn = k === 0 ? 0 : TB[first].start - 0.22;
@@ -906,7 +911,10 @@ function build() {
       // Cue times follow the plan's order, but every arrow is built after the
       // elements it joins, wherever the designer listed it.
       var stagger = 0;
+      // A feed cut's first frame already shows its opening beat.
+      var opening = FEED && k === 0 && j === 0;
       var timed = beat.elements.map(function (e) {
+        if (opening) return { e: e, t: 0 };
         var cued = cueTime(bi, e.at);
         return { e: e, t: Math.max(floor, cued == null ? TB[bi].start + 0.06 + 0.13 * stagger++ : cued - 0.04) };
       });
@@ -1011,7 +1019,10 @@ function build() {
     line.appendChild(document.createTextNode(" "));
     return sp;
   });
-  var sign = h("div", "", "margin-top:56px;display:flex;flex-wrap:wrap;align-items:center;gap:18px", endInner, GLYPH + '<span class="mono" style="font:600 28px/1 \'Geist Mono\'">github.com/' + esc(M.owner + "/" + M.repo) + '</span><span style="font:400 24px/1 Geist;color:var(--ink-2);margin-left:6px">· made with GitDiagram</span>');
+  // A feed cut signs off with where to see this diagram, big enough to read on a phone.
+  var sign = FEED
+    ? h("div", "", "margin-top:56px;display:flex;align-items:center;gap:18px;transform-origin:0 50%", endInner, GLYPH + '<span class="mono" style="font:600 42px/1.1 \'Geist Mono\';color:var(--purple-deep);word-break:break-all">gitdiagram.com/' + esc(M.owner + "/" + M.repo) + "</span>")
+    : h("div", "", "margin-top:56px;display:flex;flex-wrap:wrap;align-items:center;gap:18px", endInner, GLYPH + '<span class="mono" style="font:600 28px/1 \'Geist Mono\'">github.com/' + esc(M.owner + "/" + M.repo) + '</span><span style="font:400 24px/1 Geist;color:var(--ink-2);margin-left:6px">· made with GitDiagram</span>');
   tl.set(end, { visibility: "visible" }, endAt);
   words.forEach(function (sp, k) { tl.fromTo(sp, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, endAt + 0.1 + k * 0.06); });
   riseIn(sign, endAt + 0.5, { y: 20, d: 0.5 });

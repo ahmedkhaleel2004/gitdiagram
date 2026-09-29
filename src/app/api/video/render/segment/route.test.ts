@@ -52,6 +52,7 @@ function request(overrides: Partial<SegmentJob> = {}, signal?: AbortSignal) {
         job.from,
         job.to,
         job.exp,
+        ...(job.edit ? [job.edit] : []),
       ]),
     )
     .digest("hex");
@@ -102,6 +103,19 @@ describe("POST /api/video/render/segment", () => {
       events.filter((e) => e.type === "frames").map((e) => e.done),
     ).toEqual([10, 20, 25]);
     expect(events.at(-1)?.type).toBe("done");
+  });
+
+  it("draws a vertical segment on the feed cut it was signed with", async () => {
+    mocks.renderVideoSegment.mockResolvedValue(Buffer.from("mp4"));
+    const edit: SegmentJob["edit"] = [
+      [0.5, 6, 5.5],
+      [6, 7.5, 0.3],
+    ];
+    const response = await POST(request({ format: "vertical", edit }));
+    await response.text();
+    expect(mocks.renderVideoSegment).toHaveBeenCalledWith(
+      expect.objectContaining({ format: "vertical", edit }),
+    );
   });
 
   it("turns a render away with a busy 503 while this instance is full", async () => {
