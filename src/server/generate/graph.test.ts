@@ -7,7 +7,7 @@ import {
   compileDiagramGraph,
   isRepairableWithoutRetry,
   parseDiagramGraph,
-  stripUnknownNodePaths,
+  stripUnknownGraphPaths,
   normalizeKnownGraphPaths,
   validateDiagramGraph,
 } from "~/server/generate/graph";
@@ -37,7 +37,7 @@ describe("in-place graph repair", () => {
     const { issues } = validateDiagramGraph(graph, fileTreeLookup);
     expect(isRepairableWithoutRetry(issues)).toBe(true);
 
-    const repaired = stripUnknownNodePaths(graph, fileTreeLookup);
+    const repaired = stripUnknownGraphPaths(graph, fileTreeLookup);
     expect(repaired.strippedPathCount).toBe(1);
     expect(repaired.graph.nodes[0]?.path).toBeNull();
     expect(validateDiagramGraph(repaired.graph, fileTreeLookup).valid).toBe(
@@ -47,7 +47,7 @@ describe("in-place graph repair", () => {
 
   it("keeps paths that do resolve while dropping only the broken ones", () => {
     const fileTreeLookup = buildFileTreeLookup("src/index.ts\nsrc/api.ts");
-    const repaired = stripUnknownNodePaths(
+    const repaired = stripUnknownGraphPaths(
       {
         groups: [],
         nodes: [
@@ -97,7 +97,7 @@ describe("in-place graph repair", () => {
     const fileTreeLookup = buildFileTreeLookup("src/index.ts");
     expect(isRepairableWithoutRetry([])).toBe(false);
     expect(
-      stripUnknownNodePaths(
+      stripUnknownGraphPaths(
         { groups: [], nodes: [nodeFixture("api", "src/index.ts")], edges: [] },
         fileTreeLookup,
       ).strippedPathCount,
@@ -645,5 +645,91 @@ describe("diagram presentation guarantees", () => {
     const normalized = normalizeKnownGraphPaths(graph, new Set(["src/api"]));
     expect(normalized.nodes[0]?.path).toBe("src/api");
     expect(normalized.nodes[1]?.path).toBe("src/imagined/");
+  });
+});
+
+describe("edge evidence paths", () => {
+  const evidenceEdge = (evidencePath?: string | null) => ({
+    from: "api",
+    to: "db",
+    label: "stores",
+    description: null,
+    style: null,
+    ...(evidencePath === undefined ? {} : { evidencePath }),
+  });
+  const withEdges = (edges: DiagramGraph["edges"]): DiagramGraph => ({
+    groups: [],
+    nodes: [nodeFixture("api", "src/api.ts"), nodeFixture("db", null)],
+    edges,
+  });
+  const lookup = buildFileTreeLookup("src/api.ts\nsrc/db.ts");
+
+  it("parses graphs stored before edges had evidence, defaulting to none", () => {
+    const { graph, issues } = parseDiagramGraph(
+      JSON.stringify(withEdges([evidenceEdge()])),
+    );
+    expect(issues).toEqual([]);
+    expect(graph?.edges[0]?.evidencePath).toBeNull();
+    expect(
+      validateDiagramGraph(withEdges([evidenceEdge()]), lookup).valid,
+    ).toBe(true);
+  });
+
+  it("strips an unknown evidence path in place instead of failing the graph", () => {
+    const graph = withEdges([
+      evidenceEdge("src/api.ts"),
+      evidenceEdge("src/imagined.ts"),
+    ]);
+    const { issues } = validateDiagramGraph(graph, lookup);
+    expect(issues.map((issue) => issue.category)).toEqual([
+      "missing_evidence_path",
+    ]);
+    expect(issues[0]?.path).toBe("edges.1.evidencePath");
+    expect(isRepairableWithoutRetry(issues)).toBe(true);
+    const repaired = stripUnknownGraphPaths(graph, lookup);
+    expect(repaired.strippedEvidenceCount).toBe(1);
+    expect(repaired.strippedPathCount).toBe(0);
+    expect(repaired.graph.edges.map((edge) => edge.evidencePath)).toEqual([
+      "src/api.ts",
+      null,
+    ]);
+    expect(validateDiagramGraph(repaired.graph, lookup).valid).toBe(true);
+  });
+
+  it("keeps structural faults fatal even beside an unknown evidence path", () => {
+    const { issues } = validateDiagramGraph(
+      withEdges([{ ...evidenceEdge("src/imagined.ts"), to: "ghost" }]),
+      lookup,
+    );
+    expect(isRepairableWithoutRetry(issues)).toBe(false);
+  });
+
+  it("canonicalizes a known evidence path and treats an empty one as none", () => {
+    const normalized = normalizeKnownGraphPaths(
+      withEdges([
+        evidenceEdge("./src/db.ts"),
+        evidenceEdge(" "),
+        evidenceEdge(),
+      ]),
+      lookup,
+    );
+    expect(normalized.edges.map((edge) => edge.evidencePath)).toEqual([
+      "src/db.ts",
+      null,
+      undefined,
+    ]);
+  });
+
+  it("compiles the same Mermaid with or without evidence", () => {
+    const compile = (graph: DiagramGraph) =>
+      compileDiagramGraph({
+        graph,
+        username: "acme",
+        repo: "app",
+        branch: "main",
+      });
+    expect(compile(withEdges([evidenceEdge("src/api.ts")]))).toBe(
+      compile(withEdges([evidenceEdge()])),
+    );
   });
 });

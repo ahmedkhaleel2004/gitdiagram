@@ -22,6 +22,7 @@ export type GraphValidationCategory =
   | "duplicate_node_id"
   | "unknown_group_id"
   | "missing_repository_path"
+  | "missing_evidence_path"
   | "unknown_edge_source"
   | "unknown_edge_target";
 
@@ -160,6 +161,15 @@ export function validateDiagramGraph(
         ),
       );
     }
+    if (edge.evidencePath && !fileTreeLookup.has(edge.evidencePath)) {
+      issues.push(
+        buildIssue(
+          "missing_evidence_path",
+          `edges.${index}.evidencePath`,
+          `Evidence path "${edge.evidencePath}" does not exist in the repository file tree.`,
+        ),
+      );
+    }
   });
 
   return {
@@ -174,16 +184,28 @@ export function formatGraphValidationFeedback(
   return issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
 }
 
+const REPAIRABLE_PATH_CATEGORIES = new Set<GraphValidationCategory>([
+  "missing_repository_path",
+  "missing_evidence_path",
+]);
+
 /**
- * A path only drives a node's "open on GitHub" link, so an unresolvable one is
- * cosmetic. Dropping it keeps an otherwise-correct graph instead of spending a
- * whole extra model call to regenerate the entire structure.
+ * A node path only drives its "open on GitHub" link and an edge's evidence
+ * path only its citation, so an unresolvable one is cosmetic. Dropping it keeps
+ * an otherwise-correct graph instead of spending a whole extra model call to
+ * regenerate the entire structure. An edge whose citation is dropped is shown
+ * as unproven in the connections list.
  */
-export function stripUnknownNodePaths(
+export function stripUnknownGraphPaths(
   graph: DiagramGraph,
   fileTreeLookup: Set<string>,
-): { graph: DiagramGraph; strippedPathCount: number } {
+): {
+  graph: DiagramGraph;
+  strippedPathCount: number;
+  strippedEvidenceCount: number;
+} {
   let strippedPathCount = 0;
+  let strippedEvidenceCount = 0;
   const nodes = graph.nodes.map((node) => {
     if (node.path && !fileTreeLookup.has(node.path)) {
       strippedPathCount += 1;
@@ -191,12 +213,23 @@ export function stripUnknownNodePaths(
     }
     return node;
   });
+  const edges = graph.edges.map((edge) => {
+    if (edge.evidencePath && !fileTreeLookup.has(edge.evidencePath)) {
+      strippedEvidenceCount += 1;
+      return { ...edge, evidencePath: null };
+    }
+    return edge;
+  });
 
-  if (!strippedPathCount) {
-    return { graph, strippedPathCount: 0 };
+  if (!strippedPathCount && !strippedEvidenceCount) {
+    return { graph, strippedPathCount: 0, strippedEvidenceCount: 0 };
   }
 
-  return { graph: { ...graph, nodes }, strippedPathCount };
+  return {
+    graph: { ...graph, nodes, edges },
+    strippedPathCount,
+    strippedEvidenceCount,
+  };
 }
 
 export function isRepairableWithoutRetry(
@@ -204,7 +237,7 @@ export function isRepairableWithoutRetry(
 ): boolean {
   return (
     issues.length > 0 &&
-    issues.every((issue) => issue.category === "missing_repository_path")
+    issues.every((issue) => REPAIRABLE_PATH_CATEGORIES.has(issue.category))
   );
 }
 
@@ -375,12 +408,27 @@ export function normalizeKnownGraphPaths(
   graph: DiagramGraph,
   paths: Set<string>,
 ): DiagramGraph {
+  const canonical = (path: string) => {
+    if (paths.has(path)) return path;
+    const repaired = path.replace(/^\.\//, "").replace(/\/+$/, "");
+    return paths.has(repaired) ? repaired : path;
+  };
   return {
     ...graph,
-    nodes: graph.nodes.map((node) => {
-      if (!node.path || paths.has(node.path)) return node;
-      const canonical = node.path.replace(/^\.\//, "").replace(/\/+$/, "");
-      return paths.has(canonical) ? { ...node, path: canonical } : node;
+    nodes: graph.nodes.map((node) =>
+      node.path && !paths.has(node.path)
+        ? { ...node, path: canonical(node.path) }
+        : node,
+    ),
+    edges: graph.edges.map((edge) => {
+      if (edge.evidencePath === undefined) return edge;
+      // An empty citation means none, like a null one.
+      const evidencePath = edge.evidencePath?.trim()
+        ? canonical(edge.evidencePath.trim())
+        : null;
+      return evidencePath === edge.evidencePath
+        ? edge
+        : { ...edge, evidencePath };
     }),
   };
 }

@@ -211,7 +211,10 @@ export function RepositoryWorkspace({
           <div className={styles.resultActivity}>
             {presented && (
               <>
-                <GenerationActivity state={presented.state} />
+                <GenerationActivity
+                  state={presented.state}
+                  repository={repository}
+                />
                 <DiagramMetadata
                   lastGenerated={presented.lastGenerated}
                   cost={presented.state.costSummary}

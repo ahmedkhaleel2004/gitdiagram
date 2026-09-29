@@ -14,11 +14,12 @@ import {
   GRAPH_TEXT_VERBOSITY,
 } from "./generation-policy";
 import { toTaggedMessage } from "./format";
+import { applyEdgeEvidence, type EdgeEvidenceContext } from "./edge-evidence";
 import {
   formatGraphValidationFeedback,
   normalizeKnownGraphPaths,
   isRepairableWithoutRetry,
-  stripUnknownNodePaths,
+  stripUnknownGraphPaths,
   type GraphValidationCategory,
   validateDiagramGraph,
 } from "./graph";
@@ -52,6 +53,8 @@ interface GenerateValidatedGraphParams {
   initialGraph?: DiagramGraph;
   fileTree: string;
   fileTreeLookup: Set<string>;
+  /** The files the model was shown, to check and fill edge citations. */
+  evidence?: EdgeEvidenceContext;
   signal: AbortSignal;
   audit: GenerationSessionAudit;
   complimentaryEstimate: ComplimentaryAdmissionEstimate | null;
@@ -194,15 +197,29 @@ export async function generateValidatedGraph(
       params.validationCategoryCounts[category] =
         (params.validationCategoryCounts[category] ?? 0) + 1;
     }
-    // Unresolvable paths only cost a node its GitHub link, so repair them in
-    // place. Only structural problems are worth another model call.
+    // Unresolvable paths only cost a node its GitHub link (or an edge its
+    // citation), so repair them in place. Only structural problems are worth
+    // another model call.
     const repairableWithoutRetry = isRepairableWithoutRetry(
       graphValidation.issues,
     );
-    const { graph: acceptedGraph, strippedPathCount } = repairableWithoutRetry
-      ? stripUnknownNodePaths(graph, params.fileTreeLookup)
-      : { graph, strippedPathCount: 0 };
+    const stripped = repairableWithoutRetry
+      ? stripUnknownGraphPaths(graph, params.fileTreeLookup)
+      : { graph, strippedPathCount: 0, strippedEvidenceCount: 0 };
     const accepted = graphValidation.valid || repairableWithoutRetry;
+    const cited =
+      accepted && params.evidence
+        ? applyEdgeEvidence(
+            stripped.graph,
+            params.evidence,
+            params.fileTreeLookup,
+          )
+        : null;
+    const acceptedGraph = cited?.graph ?? stripped.graph;
+    const strippedPathCount = stripped.strippedPathCount;
+    const strippedEvidenceCount =
+      stripped.strippedEvidenceCount + (cited?.strippedEvidenceCount ?? 0);
+    const filledEvidenceCount = cited?.filledEvidenceCount ?? 0;
 
     const attemptAudit = {
       attempt,
@@ -215,6 +232,8 @@ export async function generateValidatedGraph(
         ? undefined
         : validationCategories,
       strippedPathCount: strippedPathCount || undefined,
+      strippedEvidenceCount: strippedEvidenceCount || undefined,
+      filledEvidenceCount: filledEvidenceCount || undefined,
       status: accepted ? "succeeded" : "failed",
       createdAt: new Date().toISOString(),
     } satisfies GraphAttemptAudit;
@@ -222,13 +241,14 @@ export async function generateValidatedGraph(
     audit = withGraphAttempt(audit, attemptAudit);
 
     if (accepted) {
-      if (strippedPathCount) {
+      if (strippedPathCount || strippedEvidenceCount) {
         console.info(
           JSON.stringify({
             event: "generate.graph.paths_stripped",
             session_id: params.sessionId,
             attempt,
             stripped_path_count: strippedPathCount,
+            stripped_evidence_count: strippedEvidenceCount,
           }),
         );
       }
