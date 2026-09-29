@@ -54,6 +54,7 @@ Optional generation controls include:
 - `OPENROUTER_APP_NAME`
 - `GENERATION_RATE_LIMIT_MAX` / `GENERATION_RATE_LIMIT_WINDOW_SECONDS` (per-IP limit on server-funded runs, default 8 an hour)
 - `GENERATION_INFRASTRUCTURE_RATE_LIMIT_MAX` / `GENERATION_INFRASTRUCTURE_RATE_LIMIT_WINDOW_SECONDS` (per-IP limit on every caller, default 60 an hour)
+- `MCP_RATE_LIMIT_MAX` / `MCP_RATE_LIMIT_WINDOW_SECONDS` (per-network limit on tool calls to the MCP server at `/mcp`, default 120 an hour)
 
 Optional GitHub authentication:
 

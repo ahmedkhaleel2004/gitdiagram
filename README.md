@@ -35,6 +35,26 @@ GitDiagram can now turn a repository into a narrated video of about a minute. Th
 - **Use private repositories** with a GitHub token via **Private Repos** in the header.
 - **Export diagrams** as PNG or copy the Mermaid source.
 
+## Use GitDiagram from AI agents
+
+GitDiagram is a remote MCP server at `https://gitdiagram.com/mcp` (no key or sign-in). Agents can read a public repository's architecture explanation, components, connections and Mermaid source, search the stored diagrams, and get explainer videos.
+
+```bash
+# Claude Code
+claude mcp add --transport http gitdiagram https://gitdiagram.com/mcp
+
+# Codex
+codex mcp add gitdiagram --url https://gitdiagram.com/mcp
+```
+
+For Cursor, add this to `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
+
+```json
+{ "mcpServers": { "gitdiagram": { "url": "https://gitdiagram.com/mcp" } } }
+```
+
+In Claude and ChatGPT, add a custom connector with the same URL. Then ask something like "how is fastapi/fastapi structured?".
+
 ## Run locally
 
 Requires [Bun](https://bun.sh/), Cloudflare R2, Upstash Redis, and an OpenAI or OpenRouter API key. See the [setup guide](docs/dev-setup.md) for prerequisites and configuration.

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.gitdiagram/gitdiagram",
+  "title": "GitDiagram",
+  "description": "Architecture diagrams, explanations and Mermaid source for public GitHub repositories.",
+  "version": "1.0.0",
+  "websiteUrl": "https://gitdiagram.com",
+  "repository": {
+    "url": "https://github.com/ahmedkhaleel2004/gitdiagram",
+    "source": "github",
+    "id": "903700733"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://gitdiagram.com/mcp"
+    }
+  ]
+}

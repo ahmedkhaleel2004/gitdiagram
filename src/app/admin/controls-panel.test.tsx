@@ -39,6 +39,7 @@ const state: AdminState = {
   voiceCreditUsd: null,
   claudeCredit: { setUsd: 50, setAt: 0, spentUsd: 5 },
   diagramQuota: null,
+  mcp: null,
   presence: null,
   deployment: { commit: null, region: null },
 };

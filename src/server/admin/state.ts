@@ -10,6 +10,7 @@ import {
 import { videoUsageToday } from "~/server/explainer/limits";
 import * as voice from "~/server/explainer/voice";
 import { readComplimentaryUsageToday } from "~/server/generate/complimentary-gate";
+import { getMcpUsage } from "~/server/mcp/usage";
 
 // The dashboard polls this every 5 s. The two balances come from outside
 // services (OpenRouter, Anthropic) that can be slow, so each gets a short
@@ -55,6 +56,20 @@ async function claudeCreditState(): Promise<AdminState["claudeCredit"]> {
   }
 }
 
+/** Agents' MCP calls: today, the last 7 days, and the week's clients. */
+async function mcpUsage(): Promise<AdminState["mcp"]> {
+  const days = await getMcpUsage(7);
+  const clients = new Map<string, number>();
+  for (const day of days)
+    for (const [name, count] of Object.entries(day.clients))
+      clients.set(name, (clients.get(name) ?? 0) + count);
+  return {
+    today: days[0]?.calls ?? 0,
+    week: days.reduce((sum, day) => sum + day.calls, 0),
+    clients: [...clients].sort((left, right) => right[1] - left[1]),
+  };
+}
+
 /** Everything the dashboard polls: switches, today's budgets, balances. */
 export async function readAdminState(): Promise<AdminState> {
   const [
@@ -64,6 +79,7 @@ export async function readAdminState(): Promise<AdminState> {
     voiceCreditUsd,
     claudeCredit,
     diagramQuota,
+    mcp,
   ] = await Promise.all([
     readControlsForDisplay({ fresh: true }),
     orNull(videoUsageToday()),
@@ -71,6 +87,7 @@ export async function readAdminState(): Promise<AdminState> {
     orNull(within(cachedVoiceCredit(), BALANCE_DEADLINE_MS)),
     claudeCreditState(),
     orNull(readComplimentaryUsageToday()),
+    orNull(mcpUsage()),
   ]);
   const url = presenceSocketUrl();
   const token = createPresenceToken();
@@ -83,6 +100,7 @@ export async function readAdminState(): Promise<AdminState> {
     voiceCreditUsd,
     claudeCredit,
     diagramQuota,
+    mcp,
     presence: url && token ? { url, token } : null,
     deployment: {
       commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,

@@ -69,6 +69,16 @@ export interface AdminState {
     reservedTokens: number;
     limitTokens: number;
   } | null;
+  /**
+   * Agents' calls to the MCP server (/mcp): today and the last 7 UTC days
+   * (today included), and the 7 days' sessions by client name, most first.
+   * Null when Redis could not be read.
+   */
+  mcp: {
+    today: number;
+    week: number;
+    clients: Array<[string, number]>;
+  } | null;
   /** Where the dashboard opens its live socket, with a short-lived token. */
   presence: { url: string; token: string } | null;
   deployment: { commit: string | null; region: string | null };

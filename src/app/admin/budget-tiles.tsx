@@ -156,6 +156,7 @@ export function BudgetTiles({
 }) {
   const video = state?.video;
   const quota = state?.diagramQuota;
+  const mcp = state?.mcp;
   const credit =
     typeof state?.claudeCredit === "object" ? state.claudeCredit : null;
   const creditSet = credit?.setUsd != null && credit.setAt != null;
@@ -236,6 +237,29 @@ export function BudgetTiles({
             quota
               ? `${formatCompact(quota.reservedTokens)} held by runs in progress`
               : undefined
+          }
+        />
+      </div>
+      <div className="col-span-2">
+        <Tile
+          label="Agent calls today (MCP)"
+          value={mcp ? formatCompact(mcp.today) : "–"}
+          sub={
+            mcp
+              ? [
+                  `${formatCompact(mcp.week)} in the last 7 days`,
+                  mcp.clients.length
+                    ? `sessions: ${mcp.clients
+                        .slice(0, 4)
+                        .map(([name, count]) => `${name} ${count}`)
+                        .join(", ")}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : state
+                ? "Counts unreadable"
+                : undefined
           }
         />
       </div>

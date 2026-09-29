@@ -55,6 +55,36 @@ describe("the live feed's words", () => {
     ).toBe("Today's MP4s started over. 4 were used today before the reset.");
   });
 
+  it("says what an agent asked the MCP server for", () => {
+    expect(
+      describeEvent(
+        event("mcp.call", {
+          tool: "get_repository_diagram",
+          outcome: "missing",
+          client: "claude-code",
+          country: "CA",
+          region: "ON",
+          city: "Toronto",
+        }),
+      ),
+    ).toMatchObject({
+      title: "MCP call",
+      detail:
+        "Read a diagram · nothing stored · claude-code · 🇨🇦 Toronto, ON, CA",
+    });
+    expect(
+      describeEvent(
+        event("mcp.call", {
+          tool: "find_repository_diagrams",
+          outcome: "limited",
+        }),
+      ),
+    ).toMatchObject({
+      tone: "text-red-700 dark:text-red-400",
+      detail: "Searched diagrams · rate limited",
+    });
+  });
+
   it("falls back to the kind for events it does not know", () => {
     expect(describeEvent(event("new.kind", { note: "hi" }))).toEqual({
       title: "new.kind",
@@ -69,6 +99,7 @@ describe("the live feed's words", () => {
     expect(movesCounters("limits.reset")).toBe(true);
     expect(movesCounters("video.started")).toBe(true);
     expect(movesCounters("render.started")).toBe(true);
+    expect(movesCounters("mcp.call")).toBe(true);
     expect(movesCounters("diagram.started")).toBe(false);
     expect(movesCounters("admin.signed_in")).toBe(false);
     // Nothing counted, or already re-read by the change itself.

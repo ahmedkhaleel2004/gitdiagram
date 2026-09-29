@@ -142,6 +142,18 @@ export async function getStoredDiagramArtifact(params: {
   return null;
 }
 
+/**
+ * The stored diagram for a public repository, read from the public namespace
+ * only. For callers that carry no GitHub token and must never reach a private
+ * artifact (the MCP server).
+ */
+export async function getPublicDiagramArtifact(
+  username: string,
+  repo: string,
+): Promise<DiagramArtifact | null> {
+  return getArtifactForLocation(getPublicLocation(username, repo));
+}
+
 export async function getStoredDiagramState(params: {
   username: string;
   repo: string;

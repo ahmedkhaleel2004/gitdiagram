@@ -27,6 +27,7 @@ const adminState = (overrides: Partial<LiveControls> = {}): AdminState => ({
   voiceCreditUsd: null,
   claudeCredit: "no-key",
   diagramQuota: null,
+  mcp: null,
   presence: null,
   deployment: { commit: null, region: null },
 });

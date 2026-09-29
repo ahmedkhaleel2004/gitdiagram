@@ -28,6 +28,12 @@ vi.mock("~/server/explainer/voice", () => ({
 vi.mock("~/server/generate/complimentary-gate", () => ({
   readComplimentaryUsageToday: async () => null,
 }));
+vi.mock("~/server/mcp/usage", () => ({
+  getMcpUsage: async () => [
+    { calls: 4, clients: { "claude-code": 2, cursor: 1 } },
+    { calls: 6, clients: { cursor: 3 } },
+  ],
+}));
 
 const CONTROLS = { videoAudience: "priority", videosPaused: false };
 const never = () => new Promise<never>(() => undefined);
@@ -64,6 +70,18 @@ async function read(readAdminState: Awaited<ReturnType<typeof load>>) {
 }
 
 describe("the dashboard's state", () => {
+  it("sums agents' MCP calls for today and the week, clients most first", async () => {
+    const readAdminState = await load();
+    expect((await read(readAdminState)).mcp).toEqual({
+      today: 4,
+      week: 10,
+      clients: [
+        ["cursor", 4],
+        ["claude-code", 2],
+      ],
+    });
+  });
+
   it("shows a slow balance as unreadable instead of holding up the poll", async () => {
     const readAdminState = await load();
     mocks.readClaudeCredit.mockImplementation(never);

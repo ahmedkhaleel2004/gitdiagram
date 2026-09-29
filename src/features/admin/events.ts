@@ -19,6 +19,20 @@ const HELD_BACK: Record<string, string> = {
   attempts: "Their connection started too many videos this hour",
 };
 
+/** What an agent asked the MCP server (/mcp) for, and how it went. */
+const MCP_TOOLS: Record<string, string> = {
+  get_repository_diagram: "Read a diagram",
+  find_repository_diagrams: "Searched diagrams",
+  get_explainer_video: "Read a video",
+};
+const MCP_OUTCOMES: Record<string, string> = {
+  found: "",
+  missing: "nothing stored",
+  invalid: "not a repository",
+  limited: "rate limited",
+  error: "failed",
+};
+
 const FAILED = "text-red-700 dark:text-red-400";
 const DONE = "text-green-700 dark:text-green-400";
 
@@ -126,6 +140,20 @@ export function describeEvent(event: LiveFeedEvent): EventLine {
           .replace(/[{}"]/g, "")
           .replace(/,/g, ", "),
       };
+    case "mcp.call":
+      return {
+        title: "MCP call",
+        tone:
+          outcome === "limited" || outcome === "error"
+            ? FAILED
+            : "text-teal-700 dark:text-teal-300",
+        detail: joined([
+          MCP_TOOLS[String(event.tool)] ?? String(event.tool ?? ""),
+          MCP_OUTCOMES[outcome] ?? outcome,
+          String(event.client ?? ""),
+          place,
+        ]),
+      };
     case "admin.signed_in":
       return { title: "You signed in", tone: "", detail: place };
     case "admin.signed_out_everywhere":
@@ -147,7 +175,7 @@ export function describeEvent(event: LiveFeedEvent): EventLine {
  * operator does that, and the dashboard re-reads after each change).
  */
 export function movesCounters(kind: string): boolean {
-  return /^(video\.(started|finished)|render\.|diagram\.finished|limits\.)/.test(
+  return /^(video\.(started|finished)|render\.|diagram\.finished|limits\.|mcp\.)/.test(
     kind,
   );
 }

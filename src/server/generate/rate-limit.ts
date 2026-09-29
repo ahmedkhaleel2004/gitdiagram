@@ -29,7 +29,7 @@ end
 return {1, ttl}
 `;
 
-function readEnvInt(name: string, fallback: number): number {
+export function readEnvInt(name: string, fallback: number): number {
   const value = process.env[name]?.trim();
   if (!value) {
     return fallback;
@@ -145,7 +145,7 @@ export interface GenerationRateLimitResult {
   windowStartSeconds: number;
 }
 
-async function consumeRateLimit(params: {
+export async function consumeRateLimit(params: {
   clientIp: string | null;
   buildKey: (clientIp: string, windowStartSeconds: number) => string;
   max: number;

@@ -38,6 +38,7 @@ const adminState = (overrides: Partial<AdminState> = {}): AdminState => ({
   voiceCreditUsd: null,
   claudeCredit: "no-key",
   diagramQuota: null,
+  mcp: null,
   presence: null,
   deployment: { commit: null, region: null },
   ...overrides,
@@ -139,5 +140,32 @@ describe("the dashboard's warnings", () => {
     expect(priorityHint("desktop")).toMatch(/elsewhere only desktops/);
     expect(priorityHint("everyone")).toMatch(/^Anyone anywhere/);
     expect(priorityHint(undefined)).toBe("People here get more videos a day.");
+  });
+});
+
+describe("the MCP tile", () => {
+  it("shows agents' calls today, the week and the top clients", async () => {
+    vi.mocked(fetch).mockImplementation(async () =>
+      json(
+        adminState({
+          mcp: {
+            today: 12,
+            week: 80,
+            clients: [
+              ["claude-code", 9],
+              ["cursor", 4],
+            ],
+          },
+        }),
+      ),
+    );
+    await renderDashboard();
+    expect(screen.getByText("Agent calls today (MCP)")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "80 in the last 7 days · sessions: claude-code 9, cursor 4",
+      ),
+    ).toBeInTheDocument();
   });
 });
