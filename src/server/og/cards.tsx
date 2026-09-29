@@ -34,7 +34,7 @@ const colors = {
   sky: "#38bdf8",
 } as const;
 
-const geistFontsPromise = Promise.all([
+export const geistFontsPromise = Promise.all([
   readFile(
     path.join(
       process.cwd(),

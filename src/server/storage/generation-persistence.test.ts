@@ -118,6 +118,8 @@ describe("persistGenerationResult", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith(
       "/Acme/Demo/opengraph-image",
     );
+    // The README picture is served only on the lowercase path.
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/acme/demo/diagram.png");
     expect(mocks.revalidateTag).toHaveBeenCalledWith(
       "public-diagram-state:acme:demo",
       { expire: 0 },
@@ -137,10 +139,11 @@ describe("persistGenerationResult", () => {
       await task();
     }
 
-    expect(mocks.revalidatePath).toHaveBeenCalledTimes(2);
+    expect(mocks.revalidatePath).toHaveBeenCalledTimes(3);
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/acme/demo");
     expect(mocks.revalidatePath).toHaveBeenCalledWith(
       "/acme/demo/opengraph-image",
     );
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/acme/demo/diagram.png");
   });
 });

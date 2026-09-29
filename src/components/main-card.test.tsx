@@ -2,6 +2,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MainCard from "~/components/main-card";
+import { recordRecentDiagram } from "~/features/recent/recent-diagrams";
+
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("~/lib/analytics-client", () => ({ captureAnalyticsEvent: capture }));
 
 const push = vi.fn();
 
@@ -19,6 +23,8 @@ describe("MainCard", () => {
 
   afterEach(() => {
     cleanup();
+    localStorage.clear();
+    capture.mockReset();
   });
 
   it("accepts owner/repo shorthand input", () => {
@@ -69,5 +75,39 @@ describe("MainCard", () => {
         "Please enter a valid GitHub repository URL or owner/repo",
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows no recent row to a first-time visitor", () => {
+    render(<MainCard />);
+    expect(screen.queryByText("Recent:")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Clear recent diagrams" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers recent public diagrams, newest first, and can forget them", () => {
+    recordRecentDiagram({ owner: "acme", repo: "older" });
+    recordRecentDiagram({ owner: "facebook", repo: "react" });
+    render(<MainCard />);
+
+    const chips = screen
+      .getAllByRole("button")
+      .filter((button) => button.title.includes("/"));
+    expect(chips.map((chip) => chip.title)).toEqual([
+      "facebook/react",
+      "acme/older",
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "facebook/react" }));
+    expect(push).toHaveBeenCalledWith("/facebook/react");
+    expect(capture).toHaveBeenCalledWith("recent_diagram_clicked", {
+      repository: "facebook/react",
+      position: 0,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear recent diagrams" }),
+    );
+    expect(screen.queryByText("Recent:")).not.toBeInTheDocument();
   });
 });

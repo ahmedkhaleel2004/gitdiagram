@@ -10,6 +10,7 @@ import { loadDiagramRenderer } from "~/components/generation/load-diagram-render
 import { useDiagram } from "~/hooks/useDiagram";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
 import { useStarReminder } from "~/hooks/useStarReminder";
+import { usePublicDiagram } from "~/hooks/use-public-diagram";
 import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { isExampleRepo } from "~/lib/exampleRepos";
@@ -79,6 +80,14 @@ export default function RepoPageClient({
     initialStateIsAuthoritative,
   );
   const hasDiagram = Boolean(diagram);
+  const publicDiagram = usePublicDiagram({
+    owner: normalizedUsername,
+    repo: normalizedRepo,
+    ready: hasDiagram && state.status === "complete",
+    knownPublicAt: initialStateIsAuthoritative
+      ? initialState?.lastSuccessfulAt
+      : null,
+  });
   const showApiKeyCta =
     state.errorCode === "RATE_LIMITED" ||
     Boolean(error?.includes("API key")) ||
@@ -108,6 +117,7 @@ export default function RepoPageClient({
           onCancel={handleCancel}
           onRenderError={handleDiagramRenderError}
           regenerateDisabled={isExampleRepo(normalizedUsername, normalizedRepo)}
+          readme={publicDiagram ?? undefined}
           video={
             VIDEOS_ENABLED ? (
               <ExplainerVideo

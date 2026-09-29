@@ -129,6 +129,8 @@ export async function persistGenerationResult(params: {
             );
             revalidatePath(normalizedPath);
             revalidatePath(`${normalizedPath}/opengraph-image`);
+            // The README picture (diagram.png) always shows the latest diagram.
+            revalidatePath(`${normalizedPath}/diagram.png`);
             if (requestedPath !== normalizedPath) {
               revalidatePath(requestedPath);
               revalidatePath(`${requestedPath}/opengraph-image`);

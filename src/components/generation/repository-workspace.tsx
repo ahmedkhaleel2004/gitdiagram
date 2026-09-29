@@ -35,6 +35,7 @@ export function RepositoryWorkspace({
   recovery,
   video,
   info,
+  readme,
 }: {
   repository: string;
   state: DiagramStreamState;
@@ -49,6 +50,8 @@ export function RepositoryWorkspace({
   video?: ReactNode;
   /** More lines for the Info panel, mounted only while it is open. */
   info?: ReactNode;
+  /** A stored public diagram, which the Export menu offers for READMEs. */
+  readme?: { owner: string; repo: string };
 }) {
   const {
     presented,
@@ -140,6 +143,7 @@ export function RepositoryWorkspace({
             regenerateRef={regenerate}
             getSvg={getSvg}
             pending={!presented}
+            readme={readme}
             video={
               video
                 ? {

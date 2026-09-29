@@ -2,16 +2,28 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, X } from "lucide-react";
 import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
 import { exampleRepos } from "~/lib/exampleRepos";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
 import { SponsorSlot } from "~/components/sponsor-slot";
+import {
+  clearRecentDiagrams,
+  useRecentDiagrams,
+} from "~/features/recent/recent-diagrams";
+import { captureAnalyticsEvent } from "~/lib/analytics-client";
 
-/** The home page's repository form, with example repositories. */
-export default function MainCard() {
+const CHIP_CLASS =
+  "h-9 border-2 border-black bg-purple-400 px-3 text-sm font-semibold text-black hover:bg-purple-300 sm:h-10 sm:px-4 sm:text-base sm:font-medium dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19]";
+
+/**
+ * The home page's repository form, with example repositories and, once this
+ * browser has opened some, its recent public diagrams.
+ */
+export default function MainCard({ sponsor = true }: { sponsor?: boolean }) {
   const [repoUrl, setRepoUrl] = useState("");
+  const recent = useRecentDiagrams();
   const [error, setError] = useState("");
   const router = useRouter();
 
@@ -90,7 +102,7 @@ export default function MainCard() {
                   key={name}
                   type="button"
                   variant="outline"
-                  className={`h-9 border-2 border-black bg-purple-400 px-3 text-sm font-semibold text-black hover:bg-purple-300 sm:h-10 sm:px-4 sm:text-base sm:font-medium dark:border-black dark:bg-[hsl(var(--neo-panel-muted))] dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-button))] dark:hover:text-[#0d0a19] ${
+                  className={`${CHIP_CLASS} ${
                     name === "GitDiagram" ? "hidden sm:inline-flex" : ""
                   }`}
                   onClick={(e) => handleExampleClick(path, e)}
@@ -100,10 +112,52 @@ export default function MainCard() {
               ))}
             </div>
           </div>
-          <SponsorSlot
-            surface="home"
-            className="max-[389px]:mt-7 max-sm:mt-10"
-          />
+          {recent.length > 0 && (
+            <div className="flex items-center gap-2.5 sm:block sm:space-y-3">
+              <div className="shrink-0 text-sm font-medium text-gray-700 sm:text-base dark:text-neutral-300">
+                <span className="sm:hidden">Recent:</span>
+                <span className="hidden sm:inline">Your recent diagrams:</span>
+              </div>
+              <div className="flex min-w-0 gap-2">
+                {recent.slice(0, 4).map((entry, index) => (
+                  <Button
+                    key={`${entry.owner}/${entry.repo}`}
+                    type="button"
+                    variant="outline"
+                    title={`${entry.owner}/${entry.repo}`}
+                    aria-label={`${entry.owner}/${entry.repo}`}
+                    // One line: two on phones, four on wider screens, long names cut short.
+                    className={`${CHIP_CLASS} max-w-[6.5rem] min-w-0 sm:max-w-[9rem] ${index >= 2 ? "hidden sm:inline-flex" : ""}`}
+                    onClick={() => {
+                      captureAnalyticsEvent("recent_diagram_clicked", {
+                        repository: `${entry.owner}/${entry.repo}`,
+                        position: index,
+                      });
+                      router.push(`/${entry.owner}/${entry.repo}`);
+                    }}
+                  >
+                    <span className="truncate">{entry.repo}</span>
+                  </Button>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  title="Clear recent diagrams"
+                  aria-label="Clear recent diagrams"
+                  className="size-9 shrink-0 border-2 border-black bg-transparent p-0 text-black hover:bg-purple-300 sm:size-10 dark:border-black dark:bg-transparent dark:text-[hsl(var(--foreground))] dark:hover:bg-[hsl(var(--neo-panel-muted))]"
+                  onClick={clearRecentDiagrams}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+          )}
+          {sponsor && (
+            <SponsorSlot
+              surface="home"
+              className="max-[389px]:mt-7 max-sm:mt-10"
+            />
+          )}
         </div>
       </form>
 
