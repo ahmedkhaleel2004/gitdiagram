@@ -9,6 +9,7 @@ import { CSPostHogProvider } from "./providers";
 import { SponsorCampaignProvider } from "~/hooks/use-sponsor-campaign";
 import { renderedSponsorSchedule } from "~/lib/sponsor-campaign";
 import { SITE_URL } from "~/lib/site";
+import { chunkReloadScript } from "~/lib/chunk-reload";
 
 export const metadata: Metadata = {
   title: "GitDiagram",
@@ -80,6 +81,10 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${GeistSans.variable}`}
     >
+      <head>
+        {/* Before any chunk loads: reload once if one fails (see chunk-reload.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: chunkReloadScript }} />
+      </head>
       <body className="flex min-h-screen flex-col">
         <CSPostHogProvider>
           <SponsorCampaignProvider {...renderedSponsorSchedule()}>

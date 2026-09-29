@@ -23,6 +23,13 @@ interface StreamBuffers {
   outcome?: GenerationOutcome;
 }
 
+// Tells the chunk-reload guard (src/lib/chunk-reload.ts) not to reload the
+// page, which would cancel the run.
+function markGenerating(active: boolean) {
+  if (typeof document === "undefined") return;
+  document.documentElement.toggleAttribute("data-generating", active);
+}
+
 function toOutcome(
   status: "complete" | "error",
   message: DiagramStreamMessage,
@@ -102,6 +109,7 @@ export function useDiagramStream({
     () => () => {
       activeGenerationRef.current?.abort();
       activeGenerationRef.current = null;
+      markGenerating(false);
       if (explanationFrameRef.current !== null) {
         cancelAnimationFrame(explanationFrameRef.current);
       }
@@ -226,6 +234,7 @@ export function useDiagramStream({
     pendingExplanationRef.current = null;
     const abortController = new AbortController();
     activeGenerationRef.current = abortController;
+    markGenerating(true);
     setState({
       status: "started",
       startedAt: Date.now(),
@@ -265,6 +274,7 @@ export function useDiagramStream({
     } finally {
       if (activeGenerationRef.current === abortController) {
         activeGenerationRef.current = null;
+        markGenerating(false);
       }
     }
     return abortController.signal.aborted || !buffers.outcome
@@ -275,6 +285,7 @@ export function useDiagramStream({
   const cancelGeneration = useCallback(() => {
     activeGenerationRef.current?.abort();
     activeGenerationRef.current = null;
+    markGenerating(false);
     if (explanationFrameRef.current !== null) {
       cancelAnimationFrame(explanationFrameRef.current);
       explanationFrameRef.current = null;

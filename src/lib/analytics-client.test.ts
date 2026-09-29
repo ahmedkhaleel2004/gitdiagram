@@ -54,6 +54,8 @@ describe("replay targeting initialization", () => {
     expect(mocks.init.mock.calls[0]![1]).toMatchObject({
       disable_external_dependency_loading: true,
       disable_session_recording: false,
+      // Drops ResizeObserver and bot-rejection noise (exception-noise.ts).
+      before_send: expect.any(Function),
     });
     expect(mocks.setPersonPropertiesForFlags).toHaveBeenCalledWith(
       { replay_region_country: "US", replay_region_code: "WA" },
