@@ -51,7 +51,7 @@ export function normalizeSearchQuery(query: string): string {
     .replace(/^@/, "");
 }
 
-function diagramUrl({ username, repo }: RepositoryRef): string {
+export function diagramUrl({ username, repo }: RepositoryRef): string {
   return `${SITE_URL}/${username.toLowerCase()}/${repo.toLowerCase()}`;
 }
 
@@ -177,7 +177,7 @@ export function formatMissingDiagram(
   const lines = [
     `GitDiagram has no diagram of ${ref.username}/${ref.repo} yet.`,
     "",
-    `To make one, open ${diagramUrl(ref)} in a browser: if the repository is public, GitDiagram generates its architecture diagram there for free, usually in about a minute. Then call get_repository_diagram again to read it.`,
+    `To make one, open ${diagramUrl(ref)} in a browser: if the repository is public, GitDiagram makes its architecture diagram there, usually in about a minute. Then call get_repository_diagram again to read it.`,
     "",
     "This tool never starts a generation itself. Check the owner/repo spelling if the repository should already have one.",
   ];

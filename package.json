@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun run --bun next build",
+    "build": "bun run build:mcp-app && bun run --bun next build",
+    "build:mcp-app": "node scripts/build-mcp-app.mjs",
     "check": "bun run lint && bun run typecheck",
-    "dev": "./scripts/dev-turbo.sh",
+    "dev": "bun run build:mcp-app && ./scripts/dev-turbo.sh",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0",
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
     "preview": "next build && next start",
@@ -29,6 +30,7 @@
     "@anthropic-ai/sdk": "^0.128.0",
     "@aws-sdk/client-s3": "^3.1140.0",
     "@aws-sdk/s3-request-presigner": "^3.1140.0",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
     "@modelcontextprotocol/server": "^2.2.0",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-switch": "^1.3.7",
@@ -84,6 +86,7 @@
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "esbuild": "0.28.1",
     "eslint": "^10.11.0",
     "eslint-config-next": "^16.3.6",
     "jsdom": "30.1.1",
@@ -98,6 +101,9 @@
     "vitest": "5.0.1"
   },
   "knip": {
+    "entry": [
+      "src/mcp-app/diagram-view.ts"
+    ],
     "ignore": [
       "experiments/**",
       "public/video-engine/**",

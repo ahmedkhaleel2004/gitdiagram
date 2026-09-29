@@ -2,5 +2,8 @@
 # (linted, but not type-checked or formatted); gsap.min.js is vendored.
 public/video-engine/
 
+# The MCP App diagram view, built by scripts/build-mcp-app.mjs.
+public/mcp-app/
+
 # Local output of experiments (videos, reports); ignored by git too.
 experiments/*/out/

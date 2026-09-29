@@ -69,5 +69,8 @@ venv
 # vscode
 .vscode/
 
+# the MCP App diagram view, built by scripts/build-mcp-app.mjs
+/public/mcp-app/
+
 # local explainer video artifacts (development)
 .video-cache/

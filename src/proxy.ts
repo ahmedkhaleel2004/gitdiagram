@@ -19,6 +19,7 @@ const RESERVED_FIRST_SEGMENTS = new Set([
   "sitemap",
   "admin",
   "mcp",
+  "mcp-app",
   ".well-known",
 ]);
 

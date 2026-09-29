@@ -46,6 +46,7 @@
     ".playwright-mcp",
     "experiments",
     "public/video-engine",
+    "public/mcp-app",
     "workers",
     "**/__pycache__"
   ]
