@@ -24,6 +24,7 @@ const requestSchema = z
     limitedCountryAccess: z.enum(["blocked", "some", "open"]),
     limitedCountryShare: limit(100),
     videosPaused: z.boolean(),
+    paidVideos: z.boolean(),
     videoDailyLimit: limit(10_000),
     videoPersonDailyLimit: limit(1_000),
     videoPriorityPersonDailyLimit: limit(1_000),

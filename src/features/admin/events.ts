@@ -66,9 +66,15 @@ export function describeEvent(event: LiveFeedEvent): EventLine {
       };
     case "video.started":
       return {
-        title: "Video started",
+        title: event.bought ? "Paid video started" : "Video started",
         tone: "text-purple-700 dark:text-purple-300",
         detail: joined([place, event.operator ? "you" : ""]),
+      };
+    case "video.checkout":
+      return {
+        title: "Checkout opened",
+        tone: "text-emerald-700 dark:text-emerald-300",
+        detail: place,
       };
     case "video.finished":
       return {

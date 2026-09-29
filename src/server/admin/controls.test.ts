@@ -44,6 +44,7 @@ describe("live controls", () => {
       limitedCountryAccess: "blocked",
       limitedCountryShare: 25,
       videosPaused: true,
+      paidVideos: true,
       videoDailyLimit: 200,
       videoPersonDailyLimit: 2,
       videoPriorityPersonDailyLimit: 4,

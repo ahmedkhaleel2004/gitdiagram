@@ -5,6 +5,10 @@
     {
       "path": "/api/internal/browse-index/drain",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/internal/video-payments/sweep",
+      "schedule": "*/15 * * * *"
     }
   ],
   "functions": {

@@ -488,6 +488,15 @@ export function takeFeedbackSend(clientIp: string | null) {
   return countInWindow("feedback", clientIp, 5, 3600);
 }
 
+/**
+ * One more checkout opened from this connection this hour (twenty), or how
+ * long until it may open another. Each one is a GitHub lookup and a Stripe
+ * call. Throws when Redis fails.
+ */
+export function takeCheckout(clientIp: string | null) {
+  return countInWindow("checkout", clientIp, 20, 3600);
+}
+
 /** GitHub lookups for the /admin feed per connection every ten minutes. */
 const GATE_LOOKUPS = { limit: 5, windowSeconds: 600 };
 

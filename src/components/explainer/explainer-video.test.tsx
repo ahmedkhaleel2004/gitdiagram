@@ -16,6 +16,8 @@ import type { VideoArtifact } from "~/features/explainer/types";
 const api = vi.hoisted(() => ({
   fetchExplainerVideo: vi.fn(),
   streamExplainerVideo: vi.fn(),
+  startVideoCheckout: vi.fn(),
+  formatPrice: (cents: number) => `$${cents / 100}`,
   VideoStreamEndedError: class VideoStreamEndedError extends Error {},
   VideoRequestError: class VideoRequestError extends Error {
     constructor(
@@ -114,6 +116,8 @@ describe("ExplainerVideo regenerate", () => {
       "acme",
       "tiny",
       expect.any(Function),
+      undefined,
+      undefined,
     );
     expect((await screen.findByTestId("player")).textContent).toBe(
       "2026-09-25T00:00:00.000Z",
@@ -314,26 +318,108 @@ describe("ExplainerVideo lookup", () => {
 });
 
 describe("ExplainerVideo cost", () => {
-  const withStats = (stats: Record<string, unknown>) =>
+  it("never shows what a video cost to make", async () => {
     api.fetchExplainerVideo.mockResolvedValue({
       video: {
         ...video("2026-09-24T00:00:00.000Z"),
-        stats: { totalMs: 50_000, model: "claude-opus-5-5", ...stats },
+        stats: {
+          totalMs: 50_000,
+          model: "claude-opus-5-5",
+          plannerCostUsd: 0.4,
+          voiceCostUsd: 0.03,
+        },
       },
       canGenerate: false,
       paused: null,
       anyDevice: false,
     });
+    const { container } = render(
+      <ExplainerVideo username="acme" repo="tiny" />,
+    );
+    await screen.findByTestId("player");
+    expect(container.textContent).toContain("in 50s");
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
 
-  it("counts the narration in what a video cost", async () => {
-    withStats({ plannerCostUsd: 0.4, voiceCostUsd: 0.03 });
-    await showVideo();
-    expect(screen.getByText(/for \$0\.43$/)).toBeTruthy();
+describe("ExplainerVideo purchase", () => {
+  const heldBack = {
+    video: null,
+    canGenerate: false,
+    paused: "audience",
+    anyDevice: false,
+    generating: false,
+    payable: true,
+    priceCents: 300,
+  };
+
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  it("offers the video for a price to someone held back", async () => {
+    api.fetchExplainerVideo.mockResolvedValue(heldBack);
+    api.startVideoCheckout.mockReturnValue(new Promise(() => undefined));
+    render(<ExplainerVideo username="acme" repo="paid" />);
+    const buy = await screen.findByRole("button", { name: "Make it for $3" });
+    expect(
+      screen.getByText(/You can still have this one made for \$3/),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Watch the videos" })).toBeTruthy();
+    fireEvent.click(buy);
+    expect(api.startVideoCheckout).toHaveBeenCalledWith("acme", "paid");
+    expect(
+      screen.getByRole("button", { name: "Opening checkout…" }),
+    ).toHaveProperty("disabled", true);
   });
 
-  it("says an older video's cost is the script and design only", async () => {
-    withStats({ plannerCostUsd: 0.4 });
-    await showVideo();
-    expect(screen.getByText(/for \$0\.40 \(script and design\)$/)).toBeTruthy();
+  it("says why the checkout did not open", async () => {
+    api.fetchExplainerVideo.mockResolvedValue(heldBack);
+    api.startVideoCheckout.mockRejectedValue(
+      new Error("Videos can only be made of public repositories."),
+    );
+    render(<ExplainerVideo username="acme" repo="paid" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Make it for $3" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Videos can only be made of public repositories.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Make it for $3" }),
+    ).toHaveProperty("disabled", false);
+  });
+
+  it("offers no purchase when it cannot be bought", async () => {
+    api.fetchExplainerVideo.mockResolvedValue({
+      ...heldBack,
+      payable: false,
+      priceCents: null,
+    });
+    render(<ExplainerVideo username="acme" repo="paid" />);
+    await screen.findByRole("link", { name: "Watch the videos" });
+    expect(screen.queryByRole("button", { name: /Make it for/ })).toBe(null);
+  });
+
+  it("makes a payer's video when they come back from the checkout", async () => {
+    const session = "cs_live_a1B2c3D4e5F6g7H8";
+    window.history.replaceState(null, "", `/acme/paid/video?paid=${session}`);
+    api.streamExplainerVideo.mockImplementation(
+      async (_user, _repo, onEvent: (event: unknown) => void) =>
+        onEvent({
+          status: "complete",
+          artifact: video("2026-09-29T00:00:00.000Z"),
+        }),
+    );
+    render(<ExplainerVideo username="acme" repo="paid" />);
+    await screen.findByTestId("player");
+    expect(api.streamExplainerVideo).toHaveBeenCalledWith(
+      "acme",
+      "paid",
+      expect.any(Function),
+      undefined,
+      session,
+    );
+    expect(api.fetchExplainerVideo).not.toHaveBeenCalled();
+    // The address is the plain watch page again, fit to share.
+    await waitFor(() => expect(window.location.search).toBe(""));
   });
 });

@@ -21,7 +21,9 @@ import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 //   in the limited countries (features/admin/limited-countries.ts): blocked,
 //   a daily draw letting in limitedCountryShare percent of connections
 //   ("some", the default), or open.
-// - videosPaused: stop every new video, whoever asks.
+// - videosPaused: stop every new free video, whoever asks.
+// - paidVideos: offer anyone held back a video for a price (on unless
+//   switched off; see server/explainer/payments.ts).
 // - videoDailyLimit, videoPersonDailyLimit, videoPriorityPersonDailyLimit,
 //   videoNetworkDailyLimit: override VIDEO_DAILY_LIMIT,
 //   VIDEO_PERSON_DAILY_LIMIT, VIDEO_PRIORITY_PERSON_DAILY_LIMIT and
@@ -34,6 +36,7 @@ export const DEFAULT_CONTROLS: LiveControls = {
   limitedCountryAccess: "some",
   limitedCountryShare: null,
   videosPaused: false,
+  paidVideos: true,
   videoDailyLimit: null,
   videoPersonDailyLimit: null,
   videoPriorityPersonDailyLimit: null,
@@ -86,6 +89,7 @@ export function parseControls(fields: string[] | null): LiveControls {
         : DEFAULT_CONTROLS.limitedCountryAccess,
     limitedCountryShare: parsePercent(map.get("limitedCountryShare")),
     videosPaused: map.get("videosPaused") === "1",
+    paidVideos: map.get("paidVideos") !== "0",
     videoDailyLimit: parseLimit(map.get("videoDailyLimit")),
     videoPersonDailyLimit: parseLimit(map.get("videoPersonDailyLimit")),
     videoPriorityPersonDailyLimit: parseLimit(

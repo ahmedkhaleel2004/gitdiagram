@@ -125,6 +125,21 @@ export async function readVideoArtifact(
   return getJsonObject<VideoArtifact>(bucket(), key);
 }
 
+/**
+ * A video as the site hands it to browsers: what it cost to make stays on
+ * the server (videos are also sold, and the price is not the cost).
+ */
+export function publicVideoArtifact(artifact: VideoArtifact): VideoArtifact {
+  const stats = {
+    ...artifact.stats,
+    plannerCostUsd: null,
+    inputTokens: null,
+    outputTokens: null,
+  };
+  delete stats.voiceCostUsd;
+  return { ...artifact, stats };
+}
+
 export async function readVoiceClip(
   username: string,
   repo: string,

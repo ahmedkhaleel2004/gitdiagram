@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CircleAlert, Clapperboard, RotateCcw } from "lucide-react";
-import type {
-  ExplainerVideoState,
-  VideoPausedReason,
+import {
+  formatPrice,
+  startVideoCheckout,
+  type ExplainerVideoState,
+  type VideoPausedReason,
 } from "~/features/explainer/api";
+import { captureAnalyticsEvent } from "~/lib/analytics-client";
 import { lookUpStoredVideo } from "~/features/explainer/stored-video";
 import {
   clearVideoRun,
@@ -46,6 +49,21 @@ const PAUSED: Record<VideoPausedReason, string> = {
     "Today's free videos have all been made. Check back tomorrow; every video already made is free to watch.",
 };
 
+/** The same, when this visitor can buy the video instead. */
+const PAYABLE: Record<VideoPausedReason, string> = {
+  audience: "Free videos are in early access in a few places for now.",
+  device: "Free videos need a computer here for now.",
+  limit: "Today's free videos are used up.",
+};
+
+// The checkout session Stripe sends a payer back with (see payments.ts).
+const PAID_SESSION = /^cs_(?:live|test)_[A-Za-z0-9]{10,200}$/;
+
+function paidSessionInAddress(): string | undefined {
+  const value = new URLSearchParams(window.location.search).get("paid");
+  return value && PAID_SESSION.test(value) ? value : undefined;
+}
+
 // A stored video belongs to everyone: only the operator, with admin controls
 // turned on in /admin, can replace one (or anyone in local development).
 const DEVELOPMENT = process.env.NODE_ENV === "development";
@@ -81,6 +99,8 @@ type PanelState =
       kind: "empty";
       canGenerate: boolean;
       paused: VideoPausedReason | null;
+      /** What buying the video costs in US cents, when this visitor can. */
+      priceCents: number | null;
     }
   | VideoRun;
 
@@ -91,14 +111,22 @@ function lookedUp({
   paused,
   anyDevice,
   generating,
+  payable,
+  priceCents,
 }: ExplainerVideoState): PanelState {
   if (video) return { kind: "ready", video };
   if (generating) return { kind: "waiting" };
+  const price = payable ? priceCents : null;
   // iPads report a desktop Mac to the server; hold them back when this
-  // visitor was let in only as a desktop.
+  // visitor was let in only as a desktop. They can still buy the video.
   if (isTouchMac() && !anyDevice)
-    return { kind: "empty", canGenerate: false, paused: "device" };
-  return { kind: "empty", canGenerate, paused };
+    return {
+      kind: "empty",
+      canGenerate: false,
+      paused: "device",
+      priceCents: price,
+    };
+  return { kind: "empty", canGenerate, paused, priceCents: price };
 }
 
 function Elapsed({ startedAt }: { startedAt: number }) {
@@ -167,6 +195,12 @@ export function ExplainerVideo({
   const state: PanelState = run ?? lookedUpState;
   const canRegenerate = useCanRegenerate();
   const [confirming, setConfirming] = useState(false);
+  // A payer back from Stripe: their run starts instead of a lookup.
+  const [paid] = useState(paidSessionInAddress);
+  const [checkout, setCheckout] = useState<{
+    opening: boolean;
+    error?: string;
+  }>({ opening: false });
   // The time on screen, so feedback can say which moment it is about.
   const position = useRef(0);
   const onTime = useCallback((time: number) => {
@@ -174,6 +208,10 @@ export function ExplainerVideo({
   }, []);
 
   useEffect(() => {
+    if (paid) {
+      startVideoRun(username, repo, undefined, paid);
+      return () => releaseVideoRun(username, repo);
+    }
     const controller = new AbortController();
     lookUpStoredVideo(username, repo, controller.signal)
       .then((result) => setState(lookedUp(result)))
@@ -191,7 +229,30 @@ export function ExplainerVideo({
       controller.abort();
       releaseVideoRun(username, repo);
     };
-  }, [username, repo, lookup]);
+  }, [username, repo, lookup, paid]);
+
+  // Once the paid video is here, the address is the plain watch page again,
+  // fit to share.
+  const ready = state.kind === "ready";
+  useEffect(() => {
+    if (!paid || !ready) return;
+    const address = new URL(window.location.href);
+    address.searchParams.delete("paid");
+    window.history.replaceState(window.history.state, "", address);
+  }, [paid, ready]);
+
+  // How many people are offered the video for a price, and why.
+  const offered =
+    state.kind === "empty" && !state.canGenerate ? state.priceCents : null;
+  const offeredFor = state.kind === "empty" ? state.paused : null;
+  useEffect(() => {
+    if (offered === null) return;
+    captureAnalyticsEvent("video_paywall_viewed", {
+      video_repo: `${username}/${repo}`,
+      reason: offeredFor,
+      price_cents: offered,
+    });
+  }, [offered, offeredFor, username, repo]);
 
   // A run is under way somewhere (another tab, or before a reload): look for
   // its video until it lands.
@@ -230,7 +291,27 @@ export function ExplainerVideo({
           ? state.previous
           : undefined;
     setConfirming(false);
-    startVideoRun(username, repo, previous);
+    startVideoRun(username, repo, previous, paid);
+  };
+
+  const buy = (priceCents: number) => {
+    captureAnalyticsEvent("video_checkout_clicked", {
+      video_repo: `${username}/${repo}`,
+      reason: offeredFor,
+      price_cents: priceCents,
+    });
+    setCheckout({ opening: true });
+    startVideoCheckout(username, repo)
+      .then((url) => window.location.assign(url))
+      .catch((error: unknown) =>
+        setCheckout({
+          opening: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Could not open the checkout.",
+        }),
+      );
   };
 
   const retryLookup = () => {
@@ -242,14 +323,6 @@ export function ExplainerVideo({
 
   if (state.kind === "ready") {
     const { video } = state;
-    const { plannerCostUsd, voiceCostUsd } = video.stats;
-    // Older videos stored the script and design cost only.
-    const cost =
-      plannerCostUsd === null
-        ? ""
-        : voiceCostUsd === undefined
-          ? ` for $${plannerCostUsd.toFixed(2)} (script and design)`
-          : ` for $${(plannerCostUsd + voiceCostUsd).toFixed(2)}`;
     return (
       <div className={`${styles.panel} ${styles.enter}`}>
         <ExplainerPlayer
@@ -264,7 +337,7 @@ export function ExplainerVideo({
           </span>
           <span>
             Made with {modelLabel(video.stats.model)} in{" "}
-            {(video.stats.totalMs / 1000).toFixed(0)}s{cost}
+            {(video.stats.totalMs / 1000).toFixed(0)}s
           </span>
           {canRegenerate &&
             (confirming ? (
@@ -366,6 +439,7 @@ export function ExplainerVideo({
 
   const failed = state.kind === "error";
   const paused = !failed && !state.canGenerate;
+  const price = paused && state.kind === "empty" ? state.priceCents : null;
   return (
     <div className={`${controls.feedback} ${styles.enter}`}>
       <div className={controls.statusLine}>
@@ -388,17 +462,32 @@ export function ExplainerVideo({
       {!failed && (
         <p className={controls.description}>
           {paused
-            ? PAUSED[state.paused ?? "limit"]
+            ? price !== null
+              ? `${PAYABLE[state.paused ?? "limit"]} You can still have this one made for ${formatPrice(price)}, and it will be free for everyone to watch.`
+              : PAUSED[state.paused ?? "limit"]
             : "A narrated one-minute tour: what the project does, how its parts fit together, and a few of the decisions inside."}
         </p>
       )}
       <div className={styles.cta}>
+        {paused && price !== null && (
+          <button
+            type="button"
+            className={`${controls.actionButton} ${controls.primary}`}
+            onClick={() => buy(price)}
+            disabled={checkout.opening}
+          >
+            <Clapperboard size={15} aria-hidden="true" />
+            {checkout.opening
+              ? "Opening checkout…"
+              : `Make it for ${formatPrice(price)}`}
+          </button>
+        )}
         {paused ? (
           <Link
             href="/videos"
-            className={`${controls.actionButton} ${controls.primary}`}
+            className={`${controls.actionButton} ${price === null ? controls.primary : ""}`}
           >
-            <Clapperboard size={15} aria-hidden="true" />
+            {price === null && <Clapperboard size={15} aria-hidden="true" />}
             Watch the videos
           </Link>
         ) : (
@@ -426,6 +515,11 @@ export function ExplainerVideo({
           </button>
         )}
       </div>
+      {checkout.error && (
+        <p role="alert" className={controls.description}>
+          {checkout.error}
+        </p>
+      )}
     </div>
   );
 }

@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as Store from "~/server/explainer/store";
+
 const mocks = vi.hoisted(() => ({
   readAdmissionControls: vi.fn(),
   reportHeldBack: vi.fn(),
@@ -8,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   isVideoLockHeld: vi.fn(),
   videoLimitReached: vi.fn(),
   isNarrationAvailable: vi.fn(),
+  canSellVideos: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -30,8 +33,14 @@ vi.mock("~/server/explainer/limits", () => ({
 vi.mock("~/server/explainer/narration", () => ({
   isNarrationAvailable: mocks.isNarrationAvailable,
 }));
-vi.mock("~/server/explainer/store", () => ({
+vi.mock("~/server/explainer/store", async (importOriginal) => ({
+  publicVideoArtifact: (await importOriginal<typeof Store>())
+    .publicVideoArtifact,
   readVideoArtifact: mocks.readVideoArtifact,
+}));
+vi.mock("~/server/explainer/payments", () => ({
+  canSellVideos: mocks.canSellVideos,
+  videoPriceCents: () => 300,
 }));
 
 import { GET } from "./route";
@@ -54,6 +63,7 @@ beforeEach(() => {
   mocks.isVideoLockHeld.mockResolvedValue(false);
   mocks.videoLimitReached.mockResolvedValue(null);
   mocks.isNarrationAvailable.mockResolvedValue(true);
+  mocks.canSellVideos.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -76,7 +86,10 @@ describe("GET /api/video", () => {
   it("names a new browser, but never on the cached answer", async () => {
     const fresh = await get();
     expect(fresh.headers.get("set-cookie")).toContain("gd_visitor=");
-    mocks.readVideoArtifact.mockResolvedValue({ repository: "acme/demo" });
+    mocks.readVideoArtifact.mockResolvedValue({
+      repository: "acme/demo",
+      stats: {},
+    });
     const cached = await get();
     expect(cached.headers.get("cache-control")).toContain("s-maxage");
     expect(cached.headers.get("set-cookie")).toBeNull();
@@ -165,5 +178,57 @@ describe("GET /api/video", () => {
     expect(
       await (await get({ "x-vercel-ip-country": "US" })).json(),
     ).toMatchObject({ canGenerate: true });
+  });
+
+  it("offers the video for a price to someone the free rules hold back", async () => {
+    mocks.readAdmissionControls.mockResolvedValue({
+      videoAudience: "everyone",
+      videosPaused: true,
+      paidVideos: true,
+    });
+    expect(await (await get()).json()).toMatchObject({
+      canGenerate: false,
+      paused: "limit",
+      payable: true,
+      priceCents: 300,
+    });
+  });
+
+  it("offers no purchase while selling is unavailable or the video is being made", async () => {
+    mocks.canSellVideos.mockResolvedValue(false);
+    expect(await (await get()).json()).toMatchObject({
+      payable: false,
+      priceCents: null,
+    });
+    mocks.canSellVideos.mockResolvedValue(true);
+    mocks.isVideoLockHeld.mockResolvedValue(true);
+    expect(await (await get()).json()).toMatchObject({
+      generating: true,
+      payable: false,
+    });
+  });
+
+  it("never sends a stored video's cost to the browser", async () => {
+    mocks.readVideoArtifact.mockResolvedValue({
+      repository: "acme/demo",
+      stats: {
+        model: "claude-opus-5-5",
+        plannerCostUsd: 0.31,
+        voiceCostUsd: 0.02,
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalMs: 40_000,
+      },
+    });
+    const body = (await (await get()).json()) as {
+      video: { stats: Record<string, unknown> };
+    };
+    expect(body.video.stats).toEqual({
+      model: "claude-opus-5-5",
+      plannerCostUsd: null,
+      inputTokens: null,
+      outputTokens: null,
+      totalMs: 40_000,
+    });
   });
 });

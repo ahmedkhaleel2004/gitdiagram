@@ -33,9 +33,15 @@ const sections: { heading: string; body: string[] }[] = [
     ],
   },
   {
+    heading: "Payments",
+    body: [
+      "If you buy a video, Stripe handles the payment. Your card details go to Stripe, never to us. We keep the Stripe payment's ID, the repository it was for and your browser's random ID, to make that one video and to refund it automatically if it can't be made.",
+    ],
+  },
+  {
     heading: "Who processes data",
     body: [
-      "Vercel (hosting), Cloudflare (storage and live visitor counts), Upstash (rate-limit counters), PostHog (analytics), Resend (delivering feedback emails), GitHub (repository data), and the AI providers that write diagrams, videos and narration (OpenAI, Anthropic and OpenRouter). Repository content is sent to those AI providers only to make what you asked for.",
+      "Vercel (hosting), Cloudflare (storage and live visitor counts), Upstash (rate-limit counters), PostHog (analytics), Resend (delivering feedback emails), Stripe (payments), GitHub (repository data), and the AI providers that write diagrams, videos and narration (OpenAI, Anthropic and OpenRouter). Repository content is sent to those AI providers only to make what you asked for.",
     ],
   },
   {

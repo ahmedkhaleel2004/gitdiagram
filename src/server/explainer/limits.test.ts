@@ -13,6 +13,7 @@ const { upstashEval, upstashCommand, readAdmissionControls } = vi.hoisted(
 const CONTROLS = {
   videoAudience: "priority",
   videosPaused: false,
+  paidVideos: true,
   videoDailyLimit: null,
   videoPersonDailyLimit: null,
   videoPriorityPersonDailyLimit: null,

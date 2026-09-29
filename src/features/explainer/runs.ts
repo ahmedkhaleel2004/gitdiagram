@@ -104,17 +104,20 @@ export function releaseVideoRun(username: string, repo: string) {
 }
 
 // Refusals that trying again cannot fix today: early access (403), the daily
-// budget (429), paused or unavailable (503), videos turned off (404).
-const DEAD_ENDS = new Set([403, 404, 429, 503]);
+// budget (429), paused or unavailable (503), videos turned off (404), and a
+// payment that cannot make a video (402).
+const DEAD_ENDS = new Set([402, 403, 404, 429, 503]);
 
 /**
  * Start making a repository's video. `previous` is the stored video a failed
- * regeneration should leave one click away.
+ * regeneration should leave one click away; `paid` is the checkout session a
+ * payer came back from.
  */
 export function startVideoRun(
   username: string,
   repo: string,
   previous?: VideoArtifact,
+  paid?: string,
 ) {
   const key = runKey(username, repo);
   if (isVideoRunActive(username, repo)) return;
@@ -149,27 +152,37 @@ export function startVideoRun(
   };
 
   update(key, { kind: "generating", stage: "reading", startedAt, progress });
-  streamExplainerVideo(username, repo, (event) => {
-    if (event.status === "complete") ready(event.artifact);
-    else if (event.status === "error")
-      fail(event.error, event.retryable !== false);
-    else {
-      progress = { ...progress, ...event.progress };
-      update(key, {
-        kind: "generating",
-        stage: event.status,
-        startedAt,
-        progress,
-      });
-    }
-  }).catch(async (error: unknown) => {
+  streamExplainerVideo(
+    username,
+    repo,
+    (event) => {
+      if (event.status === "complete") ready(event.artifact);
+      else if (event.status === "error")
+        fail(event.error, event.retryable !== false);
+      else {
+        progress = { ...progress, ...event.progress };
+        update(key, {
+          kind: "generating",
+          stage: event.status,
+          startedAt,
+          progress,
+        });
+      }
+    },
+    undefined,
+    paid,
+  ).catch(async (error: unknown) => {
     if (error instanceof VideoRequestError) {
       // Turned down before any work started.
       if (error.status === 409) {
         // Another run holds this repository, or its video already exists.
         if (error.reason === "generating") update(key, { kind: "waiting" });
         else await recover(true, () => fail(error.message));
-      } else fail(error.message, !DEAD_ENDS.has(error.status));
+      } else if (paid)
+        // A payment already used (a reload after the video was made) or
+        // refunded: show the video if there is one, else say what happened.
+        await recover(true, () => fail(error.message, false));
+      else fail(error.message, !DEAD_ENDS.has(error.status));
       return;
     }
     // The stream closed before the result, or the connection dropped (fetch

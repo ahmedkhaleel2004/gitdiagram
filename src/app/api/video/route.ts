@@ -29,7 +29,11 @@ import {
   videoLimitReached,
 } from "~/server/explainer/limits";
 import { isNarrationAvailable } from "~/server/explainer/narration";
-import { readVideoArtifact } from "~/server/explainer/store";
+import { canSellVideos, videoPriceCents } from "~/server/explainer/payments";
+import {
+  publicVideoArtifact,
+  readVideoArtifact,
+} from "~/server/explainer/store";
 import {
   readVisitor,
   withVisitorCookie,
@@ -140,7 +144,12 @@ export async function GET(request: Request): Promise<Response> {
   const video = await readVideoArtifact(username, repo);
   if (video)
     return Response.json(
-      { ok: true, video, canGenerate: false, paused: null },
+      {
+        ok: true,
+        video: publicVideoArtifact(video),
+        canGenerate: false,
+        paused: null,
+      },
       {
         headers: {
           // A stored video changes only when the operator regenerates it,
@@ -160,12 +169,23 @@ export async function GET(request: Request): Promise<Response> {
       ? isVideoLockHeld(generationLockName(username, repo))
       : false,
   ]);
+  // Anyone the free rules hold back may buy the video instead. It is
+  // answered even when they may make it free, because an iPad let in only as
+  // a desktop is held back by the page itself (see explainer-video.tsx).
+  const payable = !generating && (await canSellVideos());
   // Never cached, so a waiting page sees the video once it lands. This is
   // also where a browser gets the visitor id that starting a video needs; the
   // cached answer above never carries one.
   return withVisitorCookie(
     Response.json(
-      { ok: true, video: null, generating, ...availability },
+      {
+        ok: true,
+        video: null,
+        generating,
+        ...availability,
+        payable,
+        priceCents: payable ? videoPriceCents() : null,
+      },
       { headers: NO_STORE_RESPONSE_HEADERS },
     ),
     visitor,

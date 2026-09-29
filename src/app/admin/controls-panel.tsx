@@ -424,10 +424,12 @@ export function ControlsPanel({
           </div>
           <label className="flex items-center justify-between gap-4 rounded-md border-2 border-black bg-white/70 p-3 dark:bg-black/20">
             <span>
-              <span className="block font-semibold">Pause all new videos</span>
+              <span className="block font-semibold">
+                Pause all new free videos
+              </span>
               <span className="block text-xs text-[hsl(var(--neo-soft-text))]">
                 Watching and downloading keep working. You can still make
-                videos.
+                videos, and people can still buy one unless selling is off.
               </span>
             </span>
             <Switch
@@ -437,6 +439,23 @@ export function ControlsPanel({
                 void change({ videosPaused: checked })
               }
               aria-label="Pause all new videos"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-4 rounded-md border-2 border-black bg-white/70 p-3 dark:bg-black/20">
+            <span>
+              <span className="block font-semibold">Sell videos</span>
+              <span className="block text-xs text-[hsl(var(--neo-soft-text))]">
+                Anyone the settings above hold back, paused included, can pay to
+                have a video made. A failed one is refunded.
+              </span>
+            </span>
+            <Switch
+              checked={controls.paidVideos}
+              disabled={saving}
+              onCheckedChange={(checked) =>
+                void change({ paidVideos: checked })
+              }
+              aria-label="Sell videos"
             />
           </label>
           <label className="flex items-center justify-between gap-4 rounded-md border-2 border-black bg-white/70 p-3 dark:bg-black/20">

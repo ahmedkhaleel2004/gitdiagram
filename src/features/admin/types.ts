@@ -15,6 +15,8 @@ export interface LiveControls {
   /** Percent of connections let in each day under "some"; null for the default. */
   limitedCountryShare: number | null;
   videosPaused: boolean;
+  /** Sell videos to anyone the rules above hold back (see server/explainer/payments.ts). */
+  paidVideos: boolean;
   videoDailyLimit: number | null;
   videoPersonDailyLimit: number | null;
   /** Videos a day for someone in a priority place. */

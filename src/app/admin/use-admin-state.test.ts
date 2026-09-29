@@ -10,6 +10,7 @@ const controls = (overrides: Partial<LiveControls> = {}): LiveControls => ({
   limitedCountryAccess: "some",
   limitedCountryShare: null,
   videosPaused: false,
+  paidVideos: true,
   videoDailyLimit: null,
   videoPersonDailyLimit: null,
   videoPriorityPersonDailyLimit: null,

@@ -17,6 +17,10 @@ export interface ExplainerVideoState {
   anyDevice: boolean;
   /** No video yet, but one is being made for this repo right now. */
   generating: boolean;
+  /** Held back from free videos, this visitor may buy this one. */
+  payable: boolean;
+  /** What buying it costs, in US cents; null when it cannot be bought. */
+  priceCents: number | null;
 }
 
 export type RenderFormat = "landscape" | "vertical";
@@ -70,6 +74,8 @@ export async function fetchExplainerVideo(
     paused?: VideoPausedReason | null;
     anyDevice?: boolean;
     generating?: boolean;
+    payable?: boolean;
+    priceCents?: number | null;
     error?: string;
   };
   if (!response.ok || !body.ok)
@@ -81,7 +87,34 @@ export async function fetchExplainerVideo(
     paused: body.paused ?? null,
     anyDevice: Boolean(body.anyDevice),
     generating: !video && body.generating === true,
+    payable: !video && body.payable === true,
+    priceCents:
+      !video && typeof body.priceCents === "number" ? body.priceCents : null,
   };
+}
+
+/** A price in US cents as the page shows it: "$3", or "$2.50". */
+export function formatPrice(cents: number): string {
+  return cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
+}
+
+/** Open a checkout for a repository's video; answers where to send the payer. */
+export async function startVideoCheckout(
+  username: string,
+  repo: string,
+): Promise<string> {
+  const response = await fetch("/api/video/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, repo }),
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    url?: string;
+    error?: string;
+  };
+  if (!response.ok || !body.url)
+    throw new Error(body.error ?? "Could not open the checkout.");
+  return body.url;
 }
 
 /**
@@ -127,16 +160,20 @@ async function streamEvents<T extends { status: string }>(
   if (!finished) throw new VideoStreamEndedError(fallbackError);
 }
 
-/** Start generation and relay each server-sent progress event. */
+/**
+ * Start generation and relay each server-sent progress event. `paid` is the
+ * checkout session a payer came back from.
+ */
 export function streamExplainerVideo(
   username: string,
   repo: string,
   onEvent: (event: VideoGenerationEvent) => void,
   signal?: AbortSignal,
+  paid?: string,
 ): Promise<void> {
   return streamEvents(
     "/api/video/generate",
-    { username, repo },
+    paid ? { username, repo, paid } : { username, repo },
     onEvent,
     "Could not start video generation.",
     signal,

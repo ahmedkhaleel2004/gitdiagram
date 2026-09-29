@@ -29,6 +29,9 @@ const mocks = vi.hoisted(() => ({
       _options: { timeoutMs: number },
     ) => true,
   ),
+  claimVideoPayment: vi.fn(),
+  paymentDone: vi.fn(async () => undefined),
+  paymentRefund: vi.fn(async (_reason: string) => true),
   afterTasks: [] as Array<() => Promise<void>>,
 }));
 
@@ -84,6 +87,11 @@ vi.mock("~/server/explainer/segments", () => ({
 }));
 vi.mock("~/server/explainer/store", () => ({
   readVideoArtifact: mocks.readVideoArtifact,
+  publicVideoArtifact: (artifact: unknown) => artifact,
+}));
+vi.mock("~/server/explainer/payments", () => ({
+  PAID_SESSION: /^cs_(?:live|test)_[A-Za-z0-9]{10,200}$/,
+  claimVideoPayment: mocks.claimVideoPayment,
 }));
 
 import { VideoRefusalError } from "~/server/explainer/director";
@@ -95,9 +103,12 @@ import { POST } from "./route";
 
 const VISITOR = "0b6f3a52-6a1f-4a8e-9a3c-2f0d7c1e5b44";
 
+const SESSION = "cs_live_a1B2c3D4e5F6g7H8";
+
 function request(
   cookie: string | null = `${VISITOR_COOKIE}=${VISITOR}`,
   headers: Record<string, string> = {},
+  body: Record<string, unknown> = {},
 ) {
   return new Request("https://gitdiagram.com/api/video/generate", {
     method: "POST",
@@ -108,8 +119,13 @@ function request(
       ...(cookie ? { cookie } : {}),
       ...headers,
     },
-    body: JSON.stringify({ username: "acme", repo: "demo" }),
+    body: JSON.stringify({ username: "acme", repo: "demo", ...body }),
   });
+}
+
+/** A payer back from Stripe, whom every free rule would hold back. */
+function paidRequest() {
+  return request(null, {}, { paid: SESSION });
 }
 
 /** Run a request to the end: its SSE events and the after() work. */
@@ -146,6 +162,15 @@ beforeEach(() => {
   mocks.tryVideoLock.mockResolvedValue(mocks.releaseLock);
   mocks.tryPaidVideoRun.mockResolvedValue(mocks.releaseRun);
   mocks.remakePosterRemotely.mockResolvedValue(true);
+  mocks.claimVideoPayment.mockResolvedValue({
+    ok: true,
+    payment: {
+      sessionId: SESSION,
+      done: mocks.paymentDone,
+      refund: mocks.paymentRefund,
+    },
+  });
+  mocks.paymentRefund.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -500,5 +525,130 @@ describe("POST /api/video/generate", () => {
     expect(mocks.remakePosterRemotely).not.toHaveBeenCalled();
     // The pages still point at the new video.
     expect(mocks.refreshVideoPages).toHaveBeenCalledTimes(1);
+  });
+
+  describe("paid videos", () => {
+    beforeEach(() => {
+      // Every free rule says no: paused, outside the places, no budget.
+      mocks.readAdmissionControls.mockResolvedValue({
+        videoAudience: "priority",
+        priorityPlaces: "cities",
+        limitedCountryAccess: "blocked",
+        videosPaused: true,
+        paidVideos: false,
+      });
+      mocks.reserveVideoSlot.mockResolvedValue({
+        ok: false,
+        reason: "daily",
+        limit: 0,
+      });
+      mocks.takeVideoAttempt.mockResolvedValue({
+        ok: false,
+        retryAfterSeconds: 60,
+      });
+    });
+
+    it("makes the video for a payer the free rules hold back, and spends the payment", async () => {
+      succeed();
+      const { response, events } = await run(paidRequest());
+      expect(response.status).toBe(200);
+      expect(events.at(-1)).toMatchObject({ status: "complete" });
+      expect(mocks.claimVideoPayment).toHaveBeenCalledWith(
+        SESSION,
+        "acme",
+        "demo",
+      );
+      expect(mocks.paymentDone).toHaveBeenCalledTimes(1);
+      expect(mocks.paymentRefund).not.toHaveBeenCalled();
+      // No free budget, attempt or premium place is taken.
+      expect(mocks.reserveVideoSlot).not.toHaveBeenCalled();
+      expect(mocks.takeVideoAttempt).not.toHaveBeenCalled();
+      expect(mocks.takePremiumVideo).not.toHaveBeenCalled();
+      expect(mocks.emitLiveEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "video.started", bought: true }),
+      );
+    });
+
+    it("refunds a payer whose run fails, and says so", async () => {
+      failAfter(new Error("model down"), { paid: true });
+      const { events } = await run(paidRequest());
+      expect(mocks.paymentRefund).toHaveBeenCalledWith("run failed");
+      expect(events.at(-1)).toEqual({
+        status: "error",
+        error:
+          "The explainer video could not be generated. Your payment has been refunded.",
+        retryable: false,
+      });
+      expect(mocks.paymentDone).not.toHaveBeenCalled();
+    });
+
+    it("says a refund is on its way when it could not be made at once", async () => {
+      mocks.paymentRefund.mockResolvedValue(false);
+      failAfter(new VideoInputError("Only public repositories."), {
+        paid: false,
+      });
+      const { events } = await run(paidRequest());
+      expect(events.at(-1)).toMatchObject({
+        error:
+          "Only public repositories. Your payment will be refunded within the hour.",
+        retryable: false,
+      });
+    });
+
+    it("refunds and shows the video when it already exists", async () => {
+      mocks.readVideoArtifact.mockResolvedValue({ repository: "acme/demo" });
+      const { response } = await run(paidRequest());
+      expect(response.status).toBe(409);
+      expect(mocks.paymentRefund).toHaveBeenCalledWith("video exists");
+      expect(mocks.generateExplainerVideo).not.toHaveBeenCalled();
+    });
+
+    it("refunds when another run is making the video", async () => {
+      mocks.tryVideoLock.mockResolvedValue(null);
+      const { response, text } = await run(paidRequest());
+      expect(response.status).toBe(409);
+      expect(JSON.parse(text)).toMatchObject({ reason: "generating" });
+      expect(mocks.paymentRefund).toHaveBeenCalledWith("video being made");
+    });
+
+    it("refunds when the narrator cannot voice the video", async () => {
+      mocks.isNarrationAvailable.mockResolvedValue(false);
+      const { response, text } = await run(paidRequest());
+      expect(response.status).toBe(503);
+      expect(JSON.parse(text).error).toBe(
+        `${pausedMessage("voice")} Your payment has been refunded.`,
+      );
+      expect(mocks.paymentRefund).toHaveBeenCalledTimes(1);
+    });
+
+    it("waits for the run a payment already started", async () => {
+      mocks.claimVideoPayment.mockResolvedValue({
+        ok: false,
+        status: 409,
+        error: "Your video is already being made.",
+      });
+      const { response, text } = await run(paidRequest());
+      expect(response.status).toBe(409);
+      expect(JSON.parse(text)).toMatchObject({ reason: "generating" });
+      expect(mocks.generateExplainerVideo).not.toHaveBeenCalled();
+    });
+
+    it("turns down a payment that cannot make a video", async () => {
+      mocks.claimVideoPayment.mockResolvedValue({
+        ok: false,
+        status: 402,
+        error: "That payment was refunded.",
+      });
+      const { response, text } = await run(paidRequest());
+      expect(response.status).toBe(402);
+      expect(JSON.parse(text).error).toBe("That payment was refunded.");
+      expect(mocks.tryVideoLock).not.toHaveBeenCalled();
+    });
+
+    it("refuses a malformed payment id", async () => {
+      const { response } = await run(request(undefined, {}, { paid: "nope" }));
+      expect(response.status).toBe(400);
+      expect(mocks.claimVideoPayment).not.toHaveBeenCalled();
+    });
   });
 });

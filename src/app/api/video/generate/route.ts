@@ -42,10 +42,18 @@ import {
   type Reservation,
 } from "~/server/explainer/limits";
 import { isNarrationAvailable } from "~/server/explainer/narration";
+import {
+  claimVideoPayment,
+  PAID_SESSION,
+  type ClaimedPayment,
+} from "~/server/explainer/payments";
 import { choosePlanner } from "~/server/explainer/planner";
 import { VideoInputError } from "~/server/explainer/repository";
 import { remakePosterRemotely } from "~/server/explainer/segments";
-import { readVideoArtifact } from "~/server/explainer/store";
+import {
+  publicVideoArtifact,
+  readVideoArtifact,
+} from "~/server/explainer/store";
 import { VoiceUnavailableError } from "~/server/explainer/voice";
 import {
   readVisitor,
@@ -77,6 +85,8 @@ const MIN_POSTER_MS = 20_000;
 const requestSchema = z.strictObject({
   username: githubUsernameSchema,
   repo: githubRepoSchema,
+  /** A paid checkout's session id: the run skips the free rules. */
+  paid: z.string().regex(PAID_SESSION).optional(),
 });
 
 const UNAVAILABLE_MESSAGE =
@@ -85,6 +95,8 @@ const BUSY_MESSAGE =
   "Lots of videos are being made right now. Try again in a few minutes.";
 const NARRATOR_MESSAGE =
   "The narrator is unavailable right now. Try again in a few minutes.";
+const REFUNDED = "Your payment has been refunded.";
+const REFUND_PENDING = "Your payment will be refunded within the hour.";
 
 /** The cap on paid runs at once was reached just before the first model call. */
 class PaidRunsBusyError extends Error {}
@@ -100,7 +112,8 @@ function failureEvent(
     timedOut,
     paid,
     trusted,
-  }: { timedOut: boolean; paid: boolean; trusted: boolean },
+    bought = false,
+  }: { timedOut: boolean; paid: boolean; trusted: boolean; bought?: boolean },
 ): Extract<VideoGenerationEvent, { status: "error" }> {
   if (error instanceof VideoInputError)
     return { status: "error", error: error.message, retryable: false };
@@ -117,6 +130,8 @@ function failureEvent(
   const failed = timedOut
     ? "The explainer video took too long to make."
     : "The explainer video could not be generated.";
+  // A payer is refunded (the caller says so); another try means paying again.
+  if (bought) return { status: "error", error: failed, retryable: false };
   return !paid || trusted
     ? { status: "error", error: `${failed} Try again.`, retryable: true }
     : {
@@ -149,6 +164,9 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   // Only the operator (or anyone, locally) skips the limits, and only they may
   // replace a video: once made, a video is everyone's.
   const trusted = await isTrustedVideoCaller(request);
+  // A payer skips every free rule (see payments.ts). Their payment is claimed
+  // first, and given back whenever the run does not go ahead or fails.
+  const paidSession = trusted ? undefined : parsed.data.paid;
   const production = process.env.NODE_ENV === "production";
   const clientIp = getClientIp(request);
   const requester = { visitorId: visitor.id, clientIp };
@@ -160,7 +178,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   // Someone let in from a limited country makes at most one video a day, with
   // the standard models (see features/admin/limited-countries.ts).
   let limited = false;
-  if (!trusted) {
+  if (!trusted && !paidSession) {
     // The page's first request (GET /api/video) names the browser. Without
     // that name the per-person budget cannot count this caller.
     if (visitor.fresh)
@@ -207,26 +225,47 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       { status: 409, headers: NO_STORE_RESPONSE_HEADERS },
     );
   let reservation: Reservation | null = null;
+  let payment: ClaimedPayment | null = null;
   let releaseLock: (() => Promise<void>) | null = null;
   let releaseRun: (() => Promise<void>) | null = null;
   const release = async () => {
     await releaseRun?.();
     await releaseLock?.();
   };
+  // Gives a claimed payment back, once, and says so to the payer.
+  const refundPayment = async (reason: string) => {
+    if (!payment) return "";
+    const refunded = await payment.refund(reason);
+    payment = null;
+    return ` ${refunded ? REFUNDED : REFUND_PENDING}`;
+  };
   // Hands back what admission took when no run starts after all.
-  const turnAway = async (response: Response) => {
+  const turnAway = async (response: Response, reason = "not started") => {
     if (reservation?.ok) await reservation.refund();
+    await refundPayment(reason);
     await release();
     return response;
   };
   try {
+    if (paidSession) {
+      const claim = await claimVideoPayment(paidSession, username, repo);
+      if (!claim.ok)
+        return claim.status === 409
+          ? Response.json(
+              { ok: false, error: claim.error, reason: "generating" },
+              { status: 409, headers: NO_STORE_RESPONSE_HEADERS },
+            )
+          : jsonErrorResponse(claim.error, claim.status);
+      payment = claim.payment;
+    }
     if (!trusted && (await readVideoArtifact(username, repo)))
-      return alreadyMade();
-    if (!trusted) {
-      if (!(await isNarrationAvailable())) {
-        gated("voice");
-        return jsonErrorResponse(pausedMessage("voice"), 503);
-      }
+      return await turnAway(alreadyMade(), "video exists");
+    if (!trusted && !(await isNarrationAvailable())) {
+      gated("voice");
+      const note = await refundPayment("narrator unavailable");
+      return jsonErrorResponse(pausedMessage("voice") + note, 503);
+    }
+    if (!trusted && !paidSession) {
       reservation = await reserveVideoSlot(requester, { priority, limited });
       if (!reservation.ok) {
         gated(reservation.reason);
@@ -252,13 +291,14 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
             },
             { status: 409, headers: NO_STORE_RESPONSE_HEADERS },
           ),
+          "video being made",
         );
       // Checked again under the lock: a run that finished between the first
       // check and taking the lock has stored its video by now.
       if (!trusted && (await readVideoArtifact(username, repo)))
-        return await turnAway(alreadyMade());
+        return await turnAway(alreadyMade(), "video exists");
     }
-    if (!trusted) {
+    if (!trusted && !paidSession) {
       // The run reads the repository from GitHub next. That read is counted
       // per connection and never refunded, so failing runs cannot repeat it
       // without end (see takeVideoAttempt).
@@ -277,7 +317,8 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     // Redis and storage hold the budget and the videos, so without them
     // nothing new is started.
     logEvent("error", "video.admission_failed", { error: errorText(error) });
-    return turnAway(jsonErrorResponse(UNAVAILABLE_MESSAGE, 503));
+    const note = await refundPayment("admission failed");
+    return turnAway(jsonErrorResponse(UNAVAILABLE_MESSAGE + note, 503));
   }
 
   const siteOrigin = new URL(request.url).origin;
@@ -324,6 +365,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
             operator: trusted,
             job: { id: jobId, state: "start", label: repository },
             model: event.progress?.model,
+            bought: Boolean(paidSession),
             ...origin,
           });
         }
@@ -366,9 +408,13 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
         signal: deadline,
       })
         .then(
-          (artifact) => {
+          async (artifact) => {
             stored = artifact;
-            send({ status: "complete", artifact });
+            await payment?.done();
+            send({
+              status: "complete",
+              artifact: publicVideoArtifact(artifact),
+            });
             clearInterval(heartbeat);
             close();
           },
@@ -379,13 +425,22 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
               timedOut: deadline.aborted,
               error: errorText(error, 300),
             });
-            send(
-              failureEvent(error, {
-                timedOut: deadline.aborted,
-                paid,
-                trusted,
-              }),
-            );
+            const failure = failureEvent(error, {
+              timedOut: deadline.aborted,
+              paid,
+              trusted,
+              bought: payment !== null,
+            });
+            // A payer gets their money back whatever went wrong, and paying
+            // again would not help today.
+            if (payment) {
+              const note = await refundPayment("run failed");
+              send({
+                ...failure,
+                error: failure.error + note,
+                retryable: false,
+              });
+            } else send(failure);
             // Only a failure before any model call is refunded. After that the
             // run was paid for, and a refund would let one failing repository
             // be retried for free again and again. A narrator out of credit is

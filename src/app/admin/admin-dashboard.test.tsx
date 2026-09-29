@@ -24,6 +24,7 @@ const adminState = (overrides: Partial<AdminState> = {}): AdminState => ({
     videoAudience: "priority",
     priorityPlaces: "cities",
     videosPaused: false,
+    paidVideos: true,
     videoDailyLimit: null,
     videoPersonDailyLimit: null,
     videoPriorityPersonDailyLimit: null,

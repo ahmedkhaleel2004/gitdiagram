@@ -27,6 +27,7 @@ const state: AdminState = {
     limitedCountryAccess: "some",
     limitedCountryShare: null,
     videosPaused: false,
+    paidVideos: true,
     videoDailyLimit: 20,
     videoPersonDailyLimit: 2,
     videoPriorityPersonDailyLimit: null,
