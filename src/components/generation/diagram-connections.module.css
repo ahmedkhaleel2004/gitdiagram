@@ -1,0 +1,31 @@
+.note {
+  margin-bottom: 8px;
+}
+.list {
+  list-style: none;
+  margin: 0;
+}
+.list li + li {
+  margin-top: 6px;
+}
+.evidence a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 2px;
+}
+.dashed,
+.unverified {
+  color: var(--muted);
+  font-style: italic;
+}
+@media (hover: hover) and (pointer: fine) {
+  .evidence a:hover {
+    color: var(--ink);
+    text-decoration-color: currentColor;
+  }
+}
+.evidence a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

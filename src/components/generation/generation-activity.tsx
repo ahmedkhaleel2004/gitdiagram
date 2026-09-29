@@ -11,10 +11,18 @@ import {
 import type { DiagramStreamState } from "~/features/diagram/types";
 import { ArchitectureNotes } from "./architecture-notes";
 import { architectureText } from "~/features/diagram/architecture-text";
+import { DiagramConnections } from "./diagram-connections";
 import { generationStep } from "./progress";
 import styles from "./workspace.module.css";
 
-export function GenerationActivity({ state }: { state: DiagramStreamState }) {
+export function GenerationActivity({
+  state,
+  repository,
+}: {
+  state: DiagramStreamState;
+  /** "owner/repo", to link each connection's evidence on GitHub. */
+  repository?: string;
+}) {
   const step = generationStep(state.status);
   const streaming = [
     "explanation_sent",
@@ -60,6 +68,9 @@ export function GenerationActivity({ state }: { state: DiagramStreamState }) {
           {excerpt && <p>{excerpt}</p>}
           <ArchitectureNotes text={explanation} streaming={streaming} />
         </div>
+      )}
+      {repository && state.status === "complete" && state.graph && (
+        <DiagramConnections graph={state.graph} repository={repository} />
       )}
     </>
   );

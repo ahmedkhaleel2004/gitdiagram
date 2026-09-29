@@ -30,7 +30,13 @@ const readout: DiagramReadout = {
     },
   ],
   connections: [
-    { from: "User", to: "API", label: "calls", description: "Over HTTPS" },
+    {
+      from: "User",
+      to: "API",
+      label: "calls",
+      description: "Over HTTPS",
+      evidencePath: "src/client.ts",
+    },
   ],
   componentCount: 2,
   lastSuccessfulAt: "2026-09-19T12:00:00Z",
@@ -63,7 +69,9 @@ describe("repositoryMarkdown", () => {
       "- [API](https://github.com/acme/demo/blob/main/api/server.py): service · Answers requests · `api/server.py`",
     );
     expect(markdown).toContain("- **User**\n");
-    expect(markdown).toContain("- User → API: calls · Over HTTPS");
+    expect(markdown).toContain(
+      "- User → API: calls · Over HTTPS (evidence: `src/client.ts`)",
+    );
     expect(markdown.endsWith("\n")).toBe(true);
   });
 

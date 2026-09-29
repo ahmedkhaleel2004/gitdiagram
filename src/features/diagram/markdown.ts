@@ -106,8 +106,11 @@ export function repositoryMarkdown(params: {
         .filter((value): value is string => Boolean(value))
         .map(inline)
         .join(" · ");
+      const evidence = connection.evidencePath
+        ? ` (evidence: \`${connection.evidencePath.replaceAll("`", "")}\`)`
+        : "";
       lines.push(
-        `- ${inline(connection.from)} → ${inline(connection.to)}${what ? `: ${what}` : ""}`,
+        `- ${inline(connection.from)} → ${inline(connection.to)}${what ? `: ${what}` : ""}${evidence}`,
       );
     }
     lines.push("");

@@ -108,6 +108,7 @@ function formatComponents(graph: DiagramGraph): string[] {
     if (edge.label) line += `: ${inline(edge.label)}`;
     if (edge.description) line += ` (${inline(edge.description)})`;
     if (edge.style === "dashed") line += " [dashed]";
+    if (edge.evidencePath) line += ` — evidence: ${edge.evidencePath}`;
     lines.push(line);
   }
   lines.push("");

@@ -1,3 +1,4 @@
+import { zodTextFormat } from "openai/helpers/zod";
 import { describe, expect, it } from "vitest";
 import {
   architectureOutputSchema,
@@ -54,6 +55,65 @@ it("accepts compact model output while preserving colored, linked, stored graphs
     "https://github.com/owner/repo/blob/main/src/worker.ts",
   );
   expect(mermaid).toContain("dispatches");
+});
+
+it("requires a nullable evidence path on every model edge and keeps it when expanded", () => {
+  const schema = zodTextFormat(
+    architectureOutputSchema,
+    "repository_architecture",
+  ).schema as {
+    properties: {
+      graph: {
+        properties: {
+          edges: {
+            items: {
+              required: string[];
+              properties: Record<string, { anyOf?: Array<{ type: string }> }>;
+            };
+          };
+        };
+      };
+    };
+  };
+  const edge = schema.properties.graph.properties.edges.items;
+  expect(edge.required).toContain("evidencePath");
+  expect(
+    edge.properties.evidencePath?.anyOf?.map((option) => option.type),
+  ).toEqual(["string", "null"]);
+  const { graph } = architectureOutputSchema.parse({
+    explanation: "The worker stores results.",
+    graph: {
+      groups: [],
+      nodes: [
+        {
+          id: "worker",
+          label: "Worker",
+          groupId: null,
+          path: "src/worker.ts",
+          shape: null,
+        },
+        {
+          id: "db",
+          label: "Database",
+          groupId: null,
+          path: null,
+          shape: "database",
+        },
+      ],
+      edges: [
+        {
+          from: "worker",
+          to: "db",
+          label: "stores",
+          style: null,
+          evidencePath: "src/worker.ts",
+        },
+      ],
+    },
+  });
+  expect(expandArchitectureGraph(graph).edges[0]?.evidencePath).toBe(
+    "src/worker.ts",
+  );
 });
 
 describe("streaming architecture overview", () => {

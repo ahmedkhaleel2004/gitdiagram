@@ -406,6 +406,8 @@ export async function POST(request: Request) {
             repo,
             githubData,
             selectedPaths: context.selectedPaths,
+            referencePaths: context.referencePaths,
+            listedPaths: context.listedPaths,
             githubPat,
             signal: generationAbortController.signal,
           });
@@ -566,7 +568,7 @@ export async function POST(request: Request) {
           send({
             status: "explanation",
             session_id: audit.sessionId,
-            source_file_count: sources.paths.length,
+            source_file_count: (sources.readPaths ?? sources.paths).length,
             message: "Analyzing repository structure...",
           });
 
@@ -761,6 +763,10 @@ export async function POST(request: Request) {
               : undefined,
             fileTree: context.fileTree,
             fileTreeLookup,
+            evidence: {
+              readPaths: sources.readPaths ?? sources.paths,
+              references: sources.references ?? {},
+            },
             signal: generationAbortController.signal,
             audit,
             complimentaryEstimate,

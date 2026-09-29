@@ -104,6 +104,12 @@ export function RepositoryReadout({
                   <strong>{connection.to}</strong>
                   {connection.label && <>: {connection.label}</>}
                   {connection.description && <> · {connection.description}</>}
+                  {connection.evidencePath && (
+                    <>
+                      {" "}
+                      <code>{connection.evidencePath}</code>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

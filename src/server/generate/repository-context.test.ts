@@ -3,8 +3,10 @@ import type { GithubData } from "./github";
 import {
   isArchitectureSource,
   prepareRepositoryContext,
+  rankSourcePaths,
   selectAnalysisModel,
   selectSourcePaths,
+  MAX_REFERENCE_FILES,
   MAX_SOURCE_FILE_BYTES,
 } from "./repository-context";
 
@@ -113,6 +115,14 @@ describe("repository evidence preparation", () => {
     "bench/index.js",
     "docs_src/tutorial/main.py",
     "examples_src/server/main.py",
+    "e2e/SipSmoke/Program.cs",
+    "cypress/support/index.ts",
+    "src/__mocks__/api.ts",
+    "demo/app.py",
+    "src/Button.stories.tsx",
+    "Resources/Dictionary.Designer.cs",
+    "api/service_pb2.py",
+    "api/service.pb.go",
   ])("excludes sensitive, generated and maintenance source %s", (path) => {
     expect(isArchitectureSource(path)).toBe(false);
   });
@@ -131,6 +141,65 @@ describe("repository evidence preparation", () => {
     expect(context.fileTree.split("\n")).toContain("src/main.ts");
     expect(data.pathTypes.size).toBe(5001);
     expect(context.treeTruncated).toBe(true);
+  });
+  it("keeps a file-based app's screens and libraries beside its many routes", () => {
+    // One folder per route used to hand every slot to route.ts files
+    // (devgroves/bigjsontool, #213), hiding the editor the routes serve.
+    const routes = Array.from(
+      { length: 12 },
+      (_, index) => `app/api/route_${index}/route.ts`,
+    );
+    const selected = selectSourcePaths(
+      repository([
+        ...routes,
+        "app/page.tsx",
+        "app/components/JsonEditor.tsx",
+        "app/lib/buildIndex.ts",
+      ]),
+    );
+    expect(selected).toContain("app/page.tsx");
+    expect(
+      selected.filter((path) => path.endsWith("route.ts")).length,
+    ).toBeLessThan(12);
+  });
+  it("prefers the module that implements behavior over a small barrel naming it", () => {
+    // ProxyAuth (#218): each src/*/mod.rs only declared its siblings, and
+    // took the slot that src/network/proxy.rs needed.
+    const data = repository([
+      "src/network/mod.rs",
+      "src/network/proxy.rs",
+      "src/token/mod.rs",
+      "src/token/auth.rs",
+    ]);
+    data.sourceBlobs = new Map([
+      ["src/network/mod.rs", { sha: "a".repeat(40), size: 742 }],
+      ["src/network/proxy.rs", { sha: "b".repeat(40), size: 127_299 }],
+      ["src/token/mod.rs", { sha: "c".repeat(40), size: 672 }],
+      ["src/token/auth.rs", { sha: "d".repeat(40), size: 16_792 }],
+    ]);
+    const ranked = rankSourcePaths(data, 4);
+    expect(ranked.indexOf("src/network/proxy.rs")).toBeLessThan(
+      ranked.indexOf("src/network/mod.rs"),
+    );
+  });
+  it("hands the next-ranked files to reference reading and listing", () => {
+    const paths = Array.from(
+      { length: 80 },
+      (_, index) => `src/feature_${index}/engine.ts`,
+    );
+    const context = prepareRepositoryContext(repository(paths));
+    expect(context.selectedPaths).toHaveLength(12);
+    expect(context.referencePaths).toHaveLength(MAX_REFERENCE_FILES);
+    expect(context.listedPaths.length).toBeGreaterThan(0);
+    const all = [
+      ...context.selectedPaths,
+      ...context.referencePaths,
+      ...context.listedPaths,
+    ];
+    expect(new Set(all).size).toBe(all.length);
+    // Everything the index may name is in the tree excerpt the model sees.
+    const tree = new Set(context.fileTree.split("\n"));
+    expect(all.every((path) => tree.has(path))).toBe(true);
   });
   it("reports GitHub's partial listing even when every listed path fits", () => {
     const data = repository(["src/main.ts"]);

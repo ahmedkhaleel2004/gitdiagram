@@ -4,13 +4,15 @@ import {
   isArchitectureSource,
   MAX_SOURCE_FILE_BYTES,
   MAX_SOURCE_FILES,
+  rankSourcePaths,
   selectSourcePaths,
 } from "./repository-context";
 
 // The source selection as it was before it was rewritten for speed: it
 // re-sorted every candidate, recomputing scores, for each of the 12 picks
 // (1.3 s for 50k paths, 2.9 s for 100k). Kept here only to prove the rewrite
-// picks exactly the same files in the same order.
+// picks exactly the same files in the same order. Later rule changes (page
+// files, small module barrels, the sibling-area penalty) are mirrored here.
 const MANIFEST =
   /(?:^|\/)(?:package\.json|Cargo\.toml|go\.mod|pyproject\.toml|requirements\.txt|build\.gradle(?:\.kts)?|mix\.exs|composer\.json|Gemfile|CMakeLists\.txt)$/i;
 
@@ -22,6 +24,7 @@ function legacyScore(path: string): number {
   if (/^(?:route|\+server|\+page\.server)\.[cm]?[jt]sx?$/i.test(name))
     value += 32;
   if (/page-client\.[cm]?[jt]sx?$/i.test(name)) value += 22;
+  if (/^page\.[jt]sx$/i.test(name)) value += 16;
   if (/^use[A-Z].*\.[cm]?[jt]sx?$/.test(name)) value += 22;
   if (/^(?:index|lib|mod)\./i.test(name))
     value += path.split("/").length <= 3 ? 22 : 2;
@@ -72,6 +75,11 @@ function legacySelectSourcePaths(
     .sort((a, b) => legacyScore(b) - legacyScore(a) || a.localeCompare(b));
   const selected: string[] = [];
   const directories = new Map<string, number>();
+  const areas = new Map<string, number>();
+  const directoryOf = (path: string) =>
+    path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const areaOf = (path: string) =>
+    directoryOf(path).split("/").slice(0, 2).join("/");
   const remaining = new Set(candidates);
   let manifests = 0;
   while (remaining.size && selected.length < MAX_SOURCE_FILES) {
@@ -83,25 +91,27 @@ function legacySelectSourcePaths(
           (data.sourceBlobs?.get(path)?.size !== undefined &&
           data.sourceBlobs.get(path)!.size < 250
             ? 15
+            : 0) -
+          (data.sourceBlobs?.get(path)?.size !== undefined &&
+          data.sourceBlobs.get(path)!.size < 2000 &&
+          /(?:^|\/)(?:index|mod|__init__)\.[^/]+$/i.test(path)
+            ? 18
             : 0) +
           Math.min(
             10,
             Math.log2(1 + (data.sourceBlobs?.get(path)?.size ?? 0) / 1000),
           ) -
-          5 *
-            (directories.get(
-              path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "",
-            ) ?? 0);
+          5 * (directories.get(directoryOf(path)) ?? 0) -
+          3 * (areas.get(areaOf(path)) ?? 0);
         return priority(b) - priority(a) || a.localeCompare(b);
       });
     const path = ranked[0];
     if (!path) break;
     remaining.delete(path);
     selected.push(path);
-    const directory = path.includes("/")
-      ? path.slice(0, path.lastIndexOf("/"))
-      : "";
+    const directory = directoryOf(path);
     directories.set(directory, (directories.get(directory) ?? 0) + 1);
+    areas.set(areaOf(path), (areas.get(areaOf(path)) ?? 0) + 1);
     if (MANIFEST.test(path)) manifests++;
   }
   return selected;
@@ -307,6 +317,16 @@ describe("source selection rewrite", () => {
     const elapsed = performance.now() - started;
     expect(selected).toHaveLength(MAX_SOURCE_FILES);
     // The previous implementation took about 3 s here.
+    expect(elapsed).toBeLessThan(2_000);
+  });
+
+  it("extends the same ranking for the files read only for references", () => {
+    const data = randomRepository(11, 20_000);
+    const started = performance.now();
+    const ranked = rankSourcePaths(data, 60);
+    const elapsed = performance.now() - started;
+    expect(ranked.slice(0, MAX_SOURCE_FILES)).toEqual(selectSourcePaths(data));
+    expect(new Set(ranked).size).toBe(ranked.length);
     expect(elapsed).toBeLessThan(2_000);
   });
 });

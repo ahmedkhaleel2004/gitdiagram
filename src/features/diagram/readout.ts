@@ -33,6 +33,8 @@ interface ReadoutConnection {
   to: string;
   label: string | null;
   description: string | null;
+  /** The repo file the arrow was read from, when the graph cites one. */
+  evidencePath: string | null;
 }
 
 export interface DiagramReadout {
@@ -153,6 +155,7 @@ export function diagramReadout(
             to,
             label: cleanText(edge.label),
             description: cleanText(edge.description),
+            evidencePath: edge.evidencePath ?? null,
           },
         ]
       : [];

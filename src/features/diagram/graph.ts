@@ -81,6 +81,16 @@ const diagramEdgeSchema = z.object({
   label: renderableDiagramTextSchema(MAX_GRAPH_LABEL_LENGTH).nullable(),
   description: z.string().trim().max(MAX_GRAPH_DESCRIPTION_LENGTH).nullable(),
   style: diagramEdgeStyleSchema.nullable(),
+  // The repository file where the relationship is visible (an import, call,
+  // route or config). Required-but-nullable for strict structured output; the
+  // default keeps graphs from before this field (and lenient providers) valid.
+  // An empty string means "none"; unknown paths are stripped, never fatal.
+  evidencePath: z
+    .string()
+    .trim()
+    .max(MAX_GRAPH_PATH_LENGTH)
+    .nullable()
+    .default(null),
 });
 
 export const diagramGraphSchema = z.object({
@@ -90,8 +100,14 @@ export const diagramGraphSchema = z.object({
 });
 
 export type DiagramGraphNode = z.infer<typeof diagramNodeSchema>;
-export type DiagramGraphEdge = z.infer<typeof diagramEdgeSchema>;
-export type DiagramGraph = z.infer<typeof diagramGraphSchema>;
+/** Stored graphs made before edge evidence existed have no `evidencePath`. */
+export type DiagramGraphEdge = Omit<
+  z.infer<typeof diagramEdgeSchema>,
+  "evidencePath"
+> & { evidencePath?: string | null };
+export type DiagramGraph = Omit<z.infer<typeof diagramGraphSchema>, "edges"> & {
+  edges: DiagramGraphEdge[];
+};
 
 export interface GraphAttemptAudit {
   attempt: number;
@@ -101,6 +117,10 @@ export interface GraphAttemptAudit {
   validationCategories?: string[];
   /** Node paths dropped because they did not resolve in the repository tree. */
   strippedPathCount?: number;
+  /** Edge evidence paths dropped as unknown, or as files the model never saw. */
+  strippedEvidenceCount?: number;
+  /** Edges whose evidence GitDiagram filled from the files it read. */
+  filledEvidenceCount?: number;
   status: "failed" | "succeeded";
   createdAt: string;
 }

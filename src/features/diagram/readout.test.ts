@@ -106,6 +106,7 @@ describe("diagramReadout", () => {
         to: "API server",
         label: "calls",
         description: "Over HTTPS",
+        evidencePath: null,
       },
     ]);
   });
