@@ -122,6 +122,11 @@ export function RepositoryWorkspace({
       data-repository-workspace
       data-ready={ready}
       data-has-diagram={Boolean(presented)}
+      // The server-rendered readout under the workspace follows these
+      // (readout.module.css): it waits for the stored diagram to be drawn and
+      // steps aside once a new run starts on the page.
+      data-opening={opening}
+      data-live-run={state.startedAt !== undefined}
     >
       <div
         className={`${styles.fold} ${styles.toolbarFold}`}

@@ -7,9 +7,9 @@ import { upstashPipeline } from "~/server/storage/upstash";
 
 // Counts fetches by search-engine crawlers and AI agents, per UTC day and bot
 // family, in one Redis hash a day: `<family>` is the day's total and
-// `<family>@<surface>` the part one route saw. Only requests that reach a
-// function are counted: pages served from the CDN's cache (ISR) and static
-// files never run code, so this undercounts crawls of cached repo pages.
+// `<family>@<surface>` the part one route saw. src/proxy.ts counts search and
+// AI crawlers on every page, cached ones included (its matcher only admits
+// their user agents); routes like /api/video/file count their own fetches.
 
 const KEY_PREFIX = "agents:v1:";
 const KEEP_SECONDS = 200 * 24 * 60 * 60;

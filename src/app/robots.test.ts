@@ -56,6 +56,35 @@ describe("robots.txt", () => {
     expect(everyone!.allow).toContain("/api/video/file");
   });
 
+  it("names the AI search and assistant crawlers with the same rules", async () => {
+    const [everyone, ai, bulk] = (await robots()).rules as Array<{
+      userAgent: string | string[];
+      allow: string | string[];
+      disallow: string[];
+    }>;
+    expect(ai!.userAgent).toEqual(
+      expect.arrayContaining([
+        "OAI-SearchBot",
+        "ChatGPT-User",
+        "GPTBot",
+        "ClaudeBot",
+        "Claude-SearchBot",
+        "Claude-User",
+        "PerplexityBot",
+        "Perplexity-User",
+        "Google-Extended",
+        "Applebot-Extended",
+        "bingbot",
+      ]),
+    );
+    // Pages, /llms.txt and /{owner}/{repo}.md are all under "/".
+    expect(ai!.allow).toEqual(everyone!.allow);
+    expect(ai!.disallow).toEqual(everyone!.disallow);
+    // The bulk crawlers stay off repository pages.
+    expect(bulk!.userAgent).toEqual(["Amazonbot", "Brightbot"]);
+    expect(bulk!.disallow).toContain("/*/*");
+  });
+
   it("lists every sitemap shard, video pages included", async () => {
     store.browse = Array.from({ length: 5 }, (_, index) => entry(index));
     store.videos = Array.from({ length: 5 }, (_, index) => ({
@@ -71,9 +100,9 @@ describe("robots.txt", () => {
   });
 
   it("does not list an empty shard when videos are off", async () => {
-    // Three fixed pages and seven repositories fill exactly one page of ten.
+    // Four fixed pages and six repositories fill exactly one page of ten.
     store.videosOn = false;
-    store.browse = Array.from({ length: 7 }, (_, index) => entry(index));
+    store.browse = Array.from({ length: 6 }, (_, index) => entry(index));
     expect(await generateSitemaps()).toHaveLength(1);
     store.videosOn = true;
     expect(await generateSitemaps()).toHaveLength(2);
@@ -86,6 +115,7 @@ describe("sitemap", () => {
       (route) => route.url,
     );
     expect(urls).toContain("https://gitdiagram.com/videos");
+    expect(urls).toContain("https://gitdiagram.com/visualize-codebase");
 
     store.videosOn = false;
     const without = (await sitemap({ id: Promise.resolve("0") })).map(

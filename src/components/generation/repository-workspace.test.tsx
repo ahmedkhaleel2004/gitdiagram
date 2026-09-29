@@ -64,6 +64,25 @@ const visible = (chart: string) =>
   );
 
 describe("repository generation workspace", () => {
+  it("tells the readout below when the stored diagram is drawn and when a run starts", () => {
+    const { container, rerender } = render(
+      <RepositoryWorkspace {...props} state={cached} />,
+    );
+    const workspace = container.querySelector("[data-repository-workspace]")!;
+    expect(workspace).toHaveAttribute("data-opening", "true");
+    expect(workspace).toHaveAttribute("data-live-run", "false");
+    finish("old");
+    expect(workspace).toHaveAttribute("data-opening", "false");
+    rerender(
+      <RepositoryWorkspace
+        {...props}
+        loading
+        state={{ status: "started", startedAt: 1 }}
+      />,
+    );
+    expect(workspace).toHaveAttribute("data-live-run", "true");
+  });
+
   it("restores a saved diagram without replaying generation activity", () => {
     render(<RepositoryWorkspace {...props} state={cached} />);
     expect(

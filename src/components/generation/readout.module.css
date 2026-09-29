@@ -1,0 +1,127 @@
+.readout {
+  width: 100%;
+  max-width: 768px;
+  margin-inline: auto;
+  padding: 8px 24px 56px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* The first screen stays as it was: while the stored diagram is still being
+   drawn the readout would sit right under the empty canvas, and after a new
+   run on this page it would describe the previous diagram. Without scripts
+   (and for crawlers reading the HTML) it is always shown. */
+@media (scripting: enabled) {
+  [data-repository-workspace][data-opening="true"] ~ .readout,
+  [data-repository-workspace][data-live-run="true"] ~ .readout {
+    display: none;
+  }
+}
+.title {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.prose {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.prose p + p {
+  margin-top: 8px;
+}
+.prose .subheading {
+  color: var(--ink);
+  font-weight: 550;
+  margin: 16px 0 6px;
+}
+.prose strong {
+  color: var(--ink);
+  font-weight: 550;
+}
+.prose code,
+.detailBody code {
+  font-size: 0.9em;
+  background: var(--wash);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.details {
+  margin-top: 12px;
+}
+.details summary {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: fit-content;
+  min-height: 36px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  list-style: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.details summary::-webkit-details-marker {
+  display: none;
+}
+.details summary svg {
+  transition: transform 180ms var(--ease-out);
+}
+.details[open] summary svg {
+  transform: rotate(180deg);
+}
+.details summary:focus-visible,
+.readout a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.count {
+  font-weight: 450;
+  font-variant-numeric: tabular-nums;
+}
+.detailBody {
+  padding: 4px 0 4px 13px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.detailBody ul {
+  display: grid;
+  gap: 4px;
+}
+.detailBody strong {
+  color: var(--ink);
+  font-weight: 550;
+}
+.group + .group {
+  margin-top: 14px;
+}
+.group h3 {
+  color: var(--ink);
+  font-weight: 600;
+}
+.group p {
+  margin-bottom: 2px;
+}
+.readout a {
+  color: var(--accent);
+  font-weight: 550;
+  text-underline-offset: 3px;
+}
+.meta {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .details summary:hover {
+    color: var(--ink);
+  }
+  .readout a:hover {
+    text-decoration: underline;
+  }
+}

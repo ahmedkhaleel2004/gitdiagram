@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { unstable_cache } from "next/cache";
 import { getCachedBrowseIndex } from "~/server/browse-index-cache";
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
+import { GUIDE_UPDATED } from "~/features/guide/content";
 import { SITE_URL } from "~/lib/site";
 import { getSitemapCount, SITEMAP_PAGE_SIZE } from "~/lib/sitemaps";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
@@ -71,6 +72,12 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
           },
         ]
       : []),
+    {
+      url: `${SITE_URL}/visualize-codebase`,
+      lastModified: new Date(GUIDE_UPDATED),
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
     {
       url: `${SITE_URL}/advertise`,
       lastModified: new Date("2026-09-19"),

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import type { DiagramStreamState } from "~/features/diagram/types";
 import { ArchitectureNotes } from "./architecture-notes";
-import { architectureText } from "./architecture-text";
+import { architectureText } from "~/features/diagram/architecture-text";
 import { generationStep } from "./progress";
 import styles from "./workspace.module.css";
 

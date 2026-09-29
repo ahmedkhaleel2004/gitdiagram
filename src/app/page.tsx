@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import MainCard from "~/components/main-card";
 import Hero from "~/components/hero";
+import { JsonLd } from "~/components/json-ld";
 import { NewBadge } from "~/components/new-badge";
+import { GITHUB_REPO_URL, SITE_URL } from "~/lib/site";
 import { cn } from "~/lib/utils";
 import { VIDEOS_ENABLED } from "~/lib/video-flag";
 
@@ -10,14 +12,55 @@ import { VIDEOS_ENABLED } from "~/lib/video-flag";
 // is scheduled) refresh every five minutes instead of freezing at build time.
 export const revalidate = 300;
 
+const HOME_DESCRIPTION = VIDEOS_ENABLED
+  ? "Turn any GitHub repository into an interactive architecture diagram or a one-minute explainer video for quick codebase understanding."
+  : "Turn any GitHub repository into an interactive architecture diagram for quick codebase understanding.";
+
 export const metadata: Metadata = {
   title: "GitDiagram - Visualize Any GitHub Repository",
-  description: VIDEOS_ENABLED
-    ? "Turn any GitHub repository into an interactive architecture diagram or a one-minute explainer video for quick codebase understanding."
-    : "Turn any GitHub repository into an interactive architecture diagram for quick codebase understanding.",
+  description: HOME_DESCRIPTION,
   alternates: {
     canonical: "/",
   },
+};
+
+/** schema.org: the site as a free web application, and how to use it. */
+const applicationJsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebApplication",
+      "@id": `${SITE_URL}/#app`,
+      name: "GitDiagram",
+      url: SITE_URL,
+      description: `${HOME_DESCRIPTION} Replace "hub" with "diagram" in any GitHub URL (github.com/owner/repo becomes gitdiagram.com/owner/repo) to open the repository's diagram.`,
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "Any (web browser)",
+      browserRequirements: "Requires JavaScript.",
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      featureList: [
+        "Interactive architecture diagram of any GitHub repository",
+        "Components link to their source files on GitHub",
+        "Export as PNG or Mermaid",
+        "Private repositories with your own GitHub token",
+        ...(VIDEOS_ENABLED ? ["Narrated one-minute explainer videos"] : []),
+        "Markdown for AI agents at gitdiagram.com/owner/repo.md",
+      ],
+      sameAs: [GITHUB_REPO_URL],
+      creator: {
+        "@type": "Person",
+        name: "Ahmed Khaleel",
+        url: "https://ahmedkhaleel.com",
+      },
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      name: "GitDiagram",
+      url: SITE_URL,
+    },
+  ],
 };
 
 export default function HomePage() {
@@ -25,6 +68,7 @@ export default function HomePage() {
     // Clipped sideways at the screen's edge: the banner's glow reaches past it
     // on narrow phones and would otherwise let the page scroll sideways.
     <main className="flex min-h-[calc(100svh-9.75rem)] flex-col justify-center overflow-x-clip px-4 pt-6 pb-3 sm:block sm:min-h-0 sm:px-8 sm:py-8 md:p-8">
+      <JsonLd data={applicationJsonLd} />
       {/* The banner borrows its room from the surrounding gaps so the page
           still fits one screen. */}
       <div

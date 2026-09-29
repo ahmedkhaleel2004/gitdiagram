@@ -244,10 +244,9 @@ function Crawlers({ days }: { days: AgentFetchDay[] | null }) {
   return (
     <div className="flex flex-col gap-3">
       <p className={`text-xs ${SOFT}`}>
-        {number.format(today)} today. Counts only requests that reach a function
-        (llms.txt, Markdown pages, video files, the IndexNow key). Repo pages
-        served from the CDN cache never run code, so crawls of them are not
-        counted here.
+        {number.format(today)} today. Counted in the proxy for search and AI
+        crawlers on every page (cached repo pages too), plus video files and the
+        IndexNow key. Social link previews are counted only on video files.
       </p>
       <div>
         <h3 className="mb-1.5 text-xs font-bold uppercase">AI agents</h3>
