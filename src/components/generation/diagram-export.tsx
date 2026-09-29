@@ -9,7 +9,10 @@ import {
   Image as ImageIcon,
   ImageDown,
 } from "lucide-react";
-import { exportMermaidSvgAsPng } from "~/features/diagram/export";
+import {
+  exportMermaidSvgAsPng,
+  withGitDiagramCredit,
+} from "~/features/diagram/export";
 import { readmeMarkdown, type ReadmeEmbed } from "~/features/diagram/readme";
 import { captureAnalyticsEvent } from "~/lib/analytics-client";
 import { TooltipProvider } from "~/components/ui/tooltip";
@@ -17,11 +20,14 @@ import { ExportAction } from "./export-action";
 import styles from "./workspace.module.css";
 
 export function DiagramExport({
+  repository,
   diagram,
   getSvg,
   disabled = false,
   readme,
 }: {
+  /** owner/repo: both exports link back to its page. */
+  repository: string;
   diagram: string;
   getSvg: () => SVGSVGElement | null;
   disabled?: boolean;
@@ -111,6 +117,7 @@ export function DiagramExport({
                 await exportMermaidSvgAsPng(
                   svg,
                   getComputedStyle(document.body).backgroundColor,
+                  repository,
                 );
                 shared("png");
               }}
@@ -123,7 +130,9 @@ export function DiagramExport({
               errorMessage="Copy failed. Try again."
               icon={Copy}
               onAction={async () => {
-                await navigator.clipboard.writeText(diagram);
+                await navigator.clipboard.writeText(
+                  withGitDiagramCredit(diagram, repository),
+                );
                 shared("mermaid");
               }}
             />

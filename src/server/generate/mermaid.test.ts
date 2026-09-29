@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { JSDOM } from "jsdom";
 
+import { withGitDiagramCredit } from "~/features/diagram/export";
 import { validateMermaidSyntax } from "~/server/generate/mermaid";
 
 function createDeferred<T>() {
@@ -43,6 +44,16 @@ async function expectRejectionWithin(
 describe("validateMermaidSyntax", () => {
   it("accepts valid Mermaid flowchart syntax", async () => {
     const result = await validateMermaidSyntax("flowchart TD\nA-->B");
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts the credit line Copy Mermaid puts on top", async () => {
+    const result = await validateMermaidSyntax(
+      withGitDiagramCredit(
+        'flowchart TD\nA["API"]-->B\nclick A "https://github.com/acme/demo"',
+        "acme/demo",
+      ),
+    );
     expect(result.valid).toBe(true);
   });
 

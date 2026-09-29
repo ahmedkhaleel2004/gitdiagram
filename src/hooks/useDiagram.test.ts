@@ -13,13 +13,17 @@ const {
   runGeneration,
   cancelGeneration,
   setStreamState,
+  captureAnalyticsEvent,
 } = vi.hoisted(() => ({
   getCredentialStatus: vi.fn(),
   getDiagramState: vi.fn(),
   runGeneration: vi.fn(),
   cancelGeneration: vi.fn(),
   setStreamState: vi.fn(),
+  captureAnalyticsEvent: vi.fn(),
 }));
+
+vi.mock("~/lib/analytics-client", () => ({ captureAnalyticsEvent }));
 
 type StreamCompletePayload = {
   diagram: string;
@@ -551,5 +555,219 @@ describe("useDiagram", () => {
     expect(result.current.diagram).toContain("flowchart TD");
     expect(result.current.loading).toBe(false);
     expect(runGeneration).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDiagram analytics", () => {
+  const storedDiagram = {
+    diagram: "flowchart TD\nA-->B",
+    explanation: "saved",
+    graph: null,
+    latestSessionAudit: null,
+    lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+  };
+  const empty = {
+    diagram: null,
+    explanation: null,
+    graph: null,
+    latestSessionAudit: null,
+    lastSuccessfulAt: null,
+  };
+  const events = (name: string) =>
+    captureAnalyticsEvent.mock.calls
+      .filter(([event]) => event === name)
+      .map(([, properties]) => properties as Record<string, unknown>);
+
+  function completeWith(outcome: Record<string, unknown>) {
+    runGeneration.mockImplementationOnce(async () => {
+      await streamOptions?.onComplete({
+        diagram: "flowchart TD\nA-->B",
+        explanation: "done",
+        graph: undefined,
+        latestSessionAudit: undefined,
+      });
+      return outcome;
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    streamOptions = undefined;
+    getCredentialStatus.mockResolvedValue({
+      openaiApiKeyConfigured: false,
+      githubPatConfigured: false,
+    });
+    getDiagramState.mockResolvedValue(empty);
+    runGeneration.mockResolvedValue({ status: "aborted" });
+  });
+
+  it("reports a server-rendered diagram as viewed once", async () => {
+    const { result, rerender } = renderHook(() =>
+      useDiagram("acme", "demo", storedDiagram, true),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    rerender();
+
+    expect(events("diagram_viewed")).toEqual([
+      { source: "stored", repo: "acme/demo", is_private: false },
+    ]);
+    expect(events("diagram_generation_started")).toEqual([]);
+  });
+
+  it("reports a private saved diagram without its name", async () => {
+    getDiagramState.mockResolvedValueOnce({
+      ...storedDiagram,
+      visibility: "private",
+    });
+    const { result } = renderHook(() => useDiagram("acme", "secret"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(events("diagram_viewed")).toEqual([
+      { source: "stored", repo: null, is_private: true },
+    ]);
+  });
+
+  it("reports the start and success of a first generation", async () => {
+    completeWith({
+      status: "complete",
+      usedOwnKey: true,
+      visibility: "public",
+    });
+    const { result } = renderHook(() => useDiagram("acme", "demo"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // The name is unknown until GitHub has confirmed the repository public.
+    expect(events("diagram_generation_started")).toEqual([
+      { repo: null, regenerate: false, trigger: "auto" },
+    ]);
+    expect(events("diagram_generated")).toEqual([
+      {
+        repo: "acme/demo",
+        duration_ms: expect.any(Number),
+        is_private: false,
+        byok: true,
+        regenerate: false,
+        trigger: "auto",
+      },
+    ]);
+    expect(events("diagram_failed")).toEqual([]);
+  });
+
+  it("never reports a private repository's name", async () => {
+    completeWith({ status: "complete", visibility: "private" });
+    const { result } = renderHook(() => useDiagram("acme", "secret"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(events("diagram_generated")).toEqual([
+      expect.objectContaining({ repo: null, is_private: true, byok: false }),
+    ]);
+    act(() => result.current.handleDiagramRenderError("Parse error: secret"));
+    expect(events("diagram_render_failed")).toEqual([
+      {
+        repo: null,
+        is_private: true,
+        source: "generated",
+        stage: "browser_render",
+        error_message: null,
+      },
+    ]);
+  });
+
+  it("reports a failure from the stream once, with its code and stage", async () => {
+    runGeneration.mockResolvedValueOnce({
+      status: "error",
+      errorCode: "GITHUB_NOT_FOUND",
+      failureStage: "started",
+    });
+    const { result } = renderHook(() => useDiagram("acme", "demo"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(events("diagram_failed")).toEqual([
+      {
+        repo: null,
+        duration_ms: expect.any(Number),
+        error_code: "GITHUB_NOT_FOUND",
+        stage: "started",
+        regenerate: false,
+        trigger: "auto",
+      },
+    ]);
+    expect(events("diagram_generated")).toEqual([]);
+  });
+
+  it("reports a rejected regeneration of a known public diagram", async () => {
+    runGeneration.mockRejectedValueOnce(
+      new DiagramStreamHttpError("Slow down", 429, "RATE_LIMITED"),
+    );
+    const { result } = renderHook(() =>
+      useDiagram("acme", "demo", storedDiagram, true),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.handleRegenerate();
+    });
+
+    expect(events("diagram_generation_started")).toEqual([
+      { repo: "acme/demo", regenerate: true, trigger: "regenerate" },
+    ]);
+    expect(events("diagram_failed")).toEqual([
+      expect.objectContaining({
+        repo: "acme/demo",
+        error_code: "RATE_LIMITED",
+        stage: "request",
+        regenerate: true,
+      }),
+    ]);
+  });
+
+  it("reports a stopped generation once", async () => {
+    const pending = createDeferred<unknown>();
+    runGeneration.mockReturnValueOnce(pending.promise);
+    const { result } = renderHook(() => useDiagram("acme", "demo"));
+    await waitFor(() => expect(runGeneration).toHaveBeenCalledOnce());
+    act(() => result.current.handleCancel());
+    await act(async () => pending.resolve({ status: "aborted" }));
+    act(() => result.current.handleCancel());
+
+    expect(events("diagram_failed")).toEqual([
+      expect.objectContaining({
+        error_code: "GENERATION_CANCELLED",
+        stage: "cancelled",
+      }),
+    ]);
+  });
+
+  it("reports a saved-state lookup failure without a start", async () => {
+    getDiagramState.mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useDiagram("acme", "demo"));
+    await waitFor(() => expect(result.current.state.status).toBe("error"));
+
+    expect(events("diagram_generation_started")).toEqual([]);
+    expect(events("diagram_failed")).toEqual([
+      expect.objectContaining({
+        repo: null,
+        error_code: "DIAGRAM_STATE_UNAVAILABLE",
+        stage: "stored_state",
+      }),
+    ]);
+  });
+
+  it("reports a render failure once per diagram, with the message for public repos", async () => {
+    const { result } = renderHook(() =>
+      useDiagram("acme", "demo", storedDiagram, true),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.handleDiagramRenderError("Parse error on line 3"));
+    act(() => result.current.handleDiagramRenderError("Parse error on line 3"));
+
+    expect(events("diagram_render_failed")).toEqual([
+      {
+        repo: "acme/demo",
+        is_private: false,
+        source: "stored",
+        stage: "browser_render",
+        error_message: "Parse error on line 3",
+      },
+    ]);
   });
 });

@@ -9,6 +9,7 @@ import { MermaidDiagramToolbar } from "~/components/mermaid-diagram-toolbar";
 import {
   createHiddenRenderTarget,
   withDomNodesSerializingSafely,
+  ZOOM_STEP,
 } from "~/components/mermaid-diagram-helpers";
 import {
   enforceSafeMermaidLinks,
@@ -260,9 +261,9 @@ const MermaidChart = ({
           <MermaidDiagramToolbar
             formattedZoom={formattedZoom}
             isPanZoomReady={isPanZoomReady}
-            onFit={() => fitDiagram(true)}
-            onZoomIn={() => stepZoom(1.18)}
-            onZoomOut={() => stepZoom(1 / 1.18)}
+            onFit={() => fitDiagram(true, true)}
+            onZoomIn={() => stepZoom(ZOOM_STEP)}
+            onZoomOut={() => stepZoom(1 / ZOOM_STEP)}
           />
         )}
         <div

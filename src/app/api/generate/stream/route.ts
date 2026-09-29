@@ -921,6 +921,12 @@ export async function POST(request: Request) {
                 cost_summary:
                   terminalAudit.finalCost ?? terminalAudit.estimatedCost,
                 latest_session_audit: toTerminalSessionAudit(terminalAudit),
+                // For the visitor's own analytics: a repository name is only
+                // reported once GitHub has confirmed it public.
+                used_own_key: Boolean(apiKey),
+                ...(repositoryVerified
+                  ? { repository_visibility: storageVisibility }
+                  : {}),
                 ...(persistenceWarning
                   ? { persistence_warning: persistenceWarning }
                   : {}),

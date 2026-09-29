@@ -13,7 +13,12 @@ import {
 import {
   clampViewState,
   getDefaultDiagramScale,
+  getDiagramFontSize,
+  getReadableScale,
   getSvgDimensions,
+  getTopNodeCenterX,
+  getZoomLimits,
+  ZOOM_STEP,
   type ViewState,
 } from "~/components/mermaid-diagram-helpers";
 
@@ -21,6 +26,8 @@ import { useDiagramPointerGestures } from "~/hooks/use-diagram-pointer-gestures"
 import { useDiagramWheelGestures } from "~/hooks/use-diagram-wheel-gestures";
 
 const ZOOM_LABEL_UPDATE_INTERVAL_MS = 100;
+// A diagram opened readable starts below the zoom toolbar (12px + 40px tall).
+const READABLE_TOP_INSET = 64;
 
 interface UseMermaidViewportOptions {
   fitPadding: number;
@@ -245,8 +252,14 @@ export function useMermaidViewport({
     resizeObserverRef.current = null;
   }, []);
 
+  /**
+   * `whole` (the Fit button) shows the entire diagram. Otherwise the viewer
+   * opens readable: a diagram whose text would be too small when fitted
+   * whole opens at a readable size instead, on the topmost node (where the
+   * flow starts), to pan around from there.
+   */
   const fitDiagram = useCallback(
-    (animate = false) => {
+    (animate = false, whole = false) => {
       const containerElement = interactionLayerRef.current;
       const svgElement = diagramRef.current?.querySelector("svg");
       if (!(containerElement instanceof HTMLDivElement)) return;
@@ -255,19 +268,39 @@ export function useMermaidViewport({
       const bounds = getViewportBounds(containerElement);
       const { height, width } = getSvgDimensions(svgElement);
       if (bounds.width <= 0 || bounds.height <= 0) return;
-      const scale = getFitScale(bounds, { width, height }, fitPadding);
+      const fitScale = getFitScale(bounds, { width, height }, fitPadding);
+      const scale =
+        zoomingEnabled && !whole
+          ? getReadableScale(fitScale, getDiagramFontSize(svgElement))
+          : fitScale;
+      const position =
+        scale === fitScale
+          ? {
+              x: (bounds.width - width * scale) / 2,
+              y: (bounds.height - height * scale) / 2,
+            }
+          : clampViewState({
+              containerHeight: bounds.height,
+              containerWidth: bounds.width,
+              contentHeight: height,
+              contentWidth: width,
+              nextScale: scale,
+              nextX:
+                bounds.width / 2 -
+                (getTopNodeCenterX(svgElement, width) ?? width / 2) * scale,
+              nextY: READABLE_TOP_INSET,
+            });
 
       userInteractedRef.current = false;
       (animate ? animateViewState : commitViewState)({
-        fitScale: scale,
+        fitScale,
         height,
         scale,
         width,
-        x: (bounds.width - width * scale) / 2,
-        y: (bounds.height - height * scale) / 2,
+        ...position,
       });
     },
-    [animateViewState, commitViewState, fitPadding],
+    [animateViewState, commitViewState, fitPadding, zoomingEnabled],
   );
 
   const scaleDiagramForReading = useCallback(() => {
@@ -301,8 +334,9 @@ export function useMermaidViewport({
       const bounds = getViewportBounds(containerElement);
       const localX = clientX - bounds.left;
       const localY = clientY - bounds.top;
-      const minScale = currentView.fitScale * 0.6;
-      const maxScale = currentView.fitScale * 12;
+      const { min: minScale, max: maxScale } = getZoomLimits(
+        currentView.fitScale,
+      );
       const nextScale = Math.min(
         maxScale,
         Math.max(minScale, currentView.scale * scaleFactor),
@@ -379,8 +413,7 @@ export function useMermaidViewport({
       const localStartY = startClientY - bounds.top;
       const localX = clientX - bounds.left;
       const localY = clientY - bounds.top;
-      const minScale = baseView.fitScale * 0.6;
-      const maxScale = baseView.fitScale * 12;
+      const { min: minScale, max: maxScale } = getZoomLimits(baseView.fitScale);
       const nextScale = Math.min(
         maxScale,
         Math.max(minScale, baseView.scale * scaleFactor),
@@ -440,14 +473,14 @@ export function useMermaidViewport({
       switch (event.key) {
         case "+":
         case "=":
-          stepZoom(1.18);
+          stepZoom(ZOOM_STEP);
           break;
         case "-":
-          stepZoom(1 / 1.18);
+          stepZoom(1 / ZOOM_STEP);
           break;
         case "0":
         case "Home":
-          fitDiagram(true);
+          fitDiagram(true, true);
           break;
         case "ArrowLeft":
           cancelViewAnimation();
@@ -580,9 +613,10 @@ export function useMermaidViewport({
         if (zoomingEnabled && userInteractedRef.current && current) {
           resetInteractionState();
           const fitScale = getFitScale(bounds, current, fitPadding);
+          const limits = getZoomLimits(fitScale);
           const scale = Math.min(
-            fitScale * 12,
-            Math.max(fitScale * 0.6, current.scale),
+            limits.max,
+            Math.max(limits.min, current.scale),
           );
           const centerX = (previous.width / 2 - current.x) / current.scale;
           const centerY = (previous.height / 2 - current.y) / current.scale;

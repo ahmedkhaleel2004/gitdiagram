@@ -92,6 +92,7 @@ export function RepositoryToolbar({
           data-column={video ? "right" : "left"}
         >
           <DiagramExport
+            repository={repository}
             diagram={diagram}
             getSvg={getSvg}
             disabled={pending}

@@ -59,7 +59,13 @@ export interface DiagramStreamMessage {
   latest_session_audit?: GenerationSessionAudit;
   generated_at?: string;
   persistence_warning?: string;
+  /** Terminal messages only: whether the run used the visitor's own AI key. */
+  used_own_key?: boolean;
+  /** Terminal messages only, once GitHub has confirmed the repository. */
+  repository_visibility?: RepositoryVisibility;
 }
+
+export type RepositoryVisibility = "public" | "private";
 
 export interface StreamGenerationParams {
   username: string;
@@ -73,4 +79,6 @@ export interface DiagramStateResponse {
   graph: DiagramGraph | null;
   latestSessionAudit: GenerationSessionAudit | null;
   lastSuccessfulAt: string | null;
+  /** Which store a saved diagram came from (absent when nothing is saved). */
+  visibility?: RepositoryVisibility;
 }

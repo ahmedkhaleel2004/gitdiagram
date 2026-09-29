@@ -1,5 +1,7 @@
 import type { PostHog } from "posthog-js";
 
+import { dropNoiseExceptions } from "~/lib/exception-noise";
+
 const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 let posthogPromise: Promise<PostHog> | null = null;
 
@@ -73,6 +75,7 @@ function getPostHog() {
         capture_unhandled_rejections: true,
         capture_console_errors: false,
       },
+      before_send: dropNoiseExceptions,
       // Extensions are bundled above; config, flags and events still use the proxy.
       disable_external_dependency_loading: true,
       disable_session_recording: false,

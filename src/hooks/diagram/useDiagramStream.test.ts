@@ -210,7 +210,7 @@ describe("useDiagramStream", () => {
       }),
     );
 
-    let firstRun!: Promise<void>;
+    let firstRun!: Promise<unknown>;
     act(() => {
       firstRun = result.current.runGeneration();
     });
@@ -250,7 +250,7 @@ it("cancels the active request and ignores late stream messages", async () => {
   const { result } = renderHook(() =>
     useDiagramStream({ username: "acme", repo: "demo", onComplete }),
   );
-  let pending!: Promise<void>;
+  let pending!: Promise<unknown>;
   act(() => {
     pending = result.current.runGeneration();
   });
@@ -262,11 +262,13 @@ it("cancels the active request and ignores late stream messages", async () => {
   expect(signal?.aborted).toBe(true);
   expect(result.current.state.errorCode).toBe("GENERATION_CANCELLED");
   expect(result.current.state.explanation).toBe("Repository analysis");
+  let outcome: unknown;
   await act(async () => {
     await send?.({ status: "complete", diagram: "late" });
     finish();
-    await pending;
+    outcome = await pending;
   });
+  expect(outcome).toEqual({ status: "aborted" });
   expect(result.current.state.errorCode).toBe("GENERATION_CANCELLED");
   expect(result.current.state.diagram).toBeUndefined();
   expect(onComplete).not.toHaveBeenCalled();
@@ -282,6 +284,9 @@ it("retains useful analysis when the server reports a failure", async () => {
       status: "error",
       error: "Connection failed",
       error_code: "STREAM_FAILED",
+      failure_stage: "graph",
+      used_own_key: false,
+      repository_visibility: "public",
     });
   });
   const { result } = renderHook(() =>
@@ -291,7 +296,17 @@ it("retains useful analysis when the server reports a failure", async () => {
       onComplete: async () => undefined,
     }),
   );
-  await act(async () => result.current.runGeneration());
+  let outcome: unknown;
+  await act(async () => {
+    outcome = await result.current.runGeneration();
+  });
+  expect(outcome).toEqual({
+    status: "error",
+    errorCode: "STREAM_FAILED",
+    failureStage: "graph",
+    usedOwnKey: false,
+    visibility: "public",
+  });
   expect(result.current.state.status).toBe("error");
   expect(result.current.state.explanation).toBe("Useful architecture analysis");
 });

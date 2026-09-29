@@ -19,6 +19,8 @@ import MermaidChart from "~/components/mermaid-diagram";
 import {
   getDefaultDiagramScale,
   getPinchScaleFactor,
+  getReadableScale,
+  getZoomLimits,
   getWheelZoomScaleFactor,
   isLikelyTrackpadGesture,
   normalizeWheelDelta,
@@ -316,7 +318,7 @@ describe("MermaidChart", () => {
     fireEvent.click(zoomInButton);
 
     await waitFor(() => {
-      expect(screen.getByText("118%")).toBeInTheDocument();
+      expect(screen.getByText("150%")).toBeInTheDocument();
     });
 
     const initialTransform = (mermaid as HTMLDivElement).style.transform;
@@ -402,6 +404,18 @@ describe("MermaidChart", () => {
     ).toBeCloseTo(0.625);
   });
 
+  it("opens the viewer whole only when its text stays readable", () => {
+    // Fitted whole, 16px labels at 1.5x: unchanged.
+    expect(getReadableScale(1.5, 16)).toBe(1.5);
+    // Fitted whole they would be 4px: open at 12px instead.
+    expect(getReadableScale(0.25, 16)).toBeCloseTo(0.75);
+    // Smaller source text needs a bigger scale for the same 12px.
+    expect(getReadableScale(0.25, 12)).toBeCloseTo(1);
+    // A huge diagram can still be read up close.
+    expect(getZoomLimits(0.05).max).toBe(3);
+    expect(getReadableScale(0.05, 16)).toBeCloseTo(0.75);
+  });
+
   it("zooms the diagram with the toolbar controls", async () => {
     render(<MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />);
 
@@ -417,7 +431,32 @@ describe("MermaidChart", () => {
     fireEvent.click(zoomInButton);
 
     await waitFor(() => {
-      expect(screen.getByText("118%")).toBeInTheDocument();
+      expect(screen.getByText("150%")).toBeInTheDocument();
+    });
+  });
+
+  it("opens a large diagram readable instead of shrinking it whole", async () => {
+    // 4000 wide in a 1000 x 600 viewer: fitting it whole would draw its 16px
+    // labels at under 4px. It opens at 12px text, top and centre, instead.
+    renderMock.mockResolvedValueOnce({
+      svg: "<svg viewBox='0 0 4000 1000'><rect width='4000' height='1000' /></svg>",
+    });
+    const { container } = render(
+      <MermaidChart chart="flowchart TD\nA-->B" zoomingEnabled />,
+    );
+    const fitScale = (1000 - 48) / 4000;
+    const readable = Math.round((0.75 / fitScale) * 100);
+
+    await waitFor(() => {
+      expect(screen.getByText(`${readable}%`)).toBeInTheDocument();
+    });
+    const mermaid = container.querySelector(".mermaid") as HTMLDivElement;
+    expect(mermaid.style.transform).toContain("scale(0.75)");
+    expect(mermaid.style.transform).toContain("-1000px, 64px");
+
+    fireEvent.click(screen.getByRole("button", { name: /fit/i }));
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
     });
   });
 
@@ -439,7 +478,7 @@ describe("MermaidChart", () => {
     fireEvent.click(zoomInButton);
 
     await waitFor(() => {
-      expect(screen.getByText("118%")).toBeInTheDocument();
+      expect(screen.getByText("150%")).toBeInTheDocument();
     });
 
     const fitButton = screen.getByRole("button", { name: /fit/i });
