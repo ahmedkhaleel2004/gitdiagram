@@ -1,5 +1,7 @@
 import "server-only";
 
+import { viewAsCountry } from "~/server/admin/view-as";
+
 /** Where Vercel's edge placed the caller. Off Vercel every field is empty. */
 export interface RequestGeo {
   country: string;
@@ -10,6 +12,10 @@ export interface RequestGeo {
 }
 
 export function requestGeo(request: Request): RequestGeo {
+  // The operator previewing the site as a visitor from another country.
+  const viewAs = viewAsCountry(request);
+  if (viewAs)
+    return { country: viewAs, region: "", city: "", lat: null, lon: null };
   const headers = request.headers;
   const lat = Number.parseFloat(headers.get("x-vercel-ip-latitude") ?? "");
   const lon = Number.parseFloat(headers.get("x-vercel-ip-longitude") ?? "");

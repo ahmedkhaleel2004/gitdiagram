@@ -14,6 +14,7 @@ import {
   isVideoExplainerEnabled,
 } from "~/server/explainer/config";
 import { readAdmissionControls } from "~/server/admin/controls";
+import { viewAsCountry } from "~/server/admin/view-as";
 import { videoResponseTag } from "~/server/explainer/cache";
 import {
   anyDeviceHere,
@@ -185,6 +186,8 @@ export async function GET(request: Request): Promise<Response> {
         ...availability,
         payable,
         priceCents: payable ? videoPriceCents() : null,
+        // The operator previewing the page as a visitor from this country.
+        viewingAs: viewAsCountry(request),
       },
       { headers: NO_STORE_RESPONSE_HEADERS },
     ),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Switch } from "~/components/ui/switch";
 import {
@@ -232,6 +232,73 @@ function LimitedCountriesPicker({
         onConfirm={() => change({ limitedCountryAccess: "open" })}
       />
     </>
+  );
+}
+
+// Countries to preview video pages from (see server/admin/view-as.ts): one
+// outside the priority places, and one of the limited countries.
+const VIEW_AS: Array<Choice<string>> = [
+  { value: "", label: "Off", hint: "Your own place, with admin powers" },
+  { value: "DE", label: "Germany", hint: "Outside the priority places" },
+  { value: "IN", label: "India", hint: "A limited country" },
+  { value: "BR", label: "Brazil", hint: "A limited country" },
+];
+
+/**
+ * Sees video pages as a visitor from another country does, in this browser,
+ * without a VPN. It lasts 12 hours.
+ */
+function ViewAsPicker() {
+  const [country, setCountry] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/admin/view-as", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) => response.json() as Promise<{ country?: string }>)
+      .then((body) => setCountry(body.country ?? ""))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  const pick = (next: string) => {
+    setError(null);
+    fetch("/api/admin/view-as", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ country: next || null }),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not change it.");
+        setCountry(next);
+      })
+      .catch((failure: unknown) =>
+        setError(
+          failure instanceof Error ? failure.message : "Could not change it.",
+        ),
+      );
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-sm font-semibold">
+        See video pages as a visitor from
+      </div>
+      <p className="text-xs text-[hsl(var(--neo-soft-text))]">
+        In this browser only, for 12 hours: that country&apos;s rules, limits
+        and $3 offer, with no admin powers on video pages. No VPN needed.
+      </p>
+      <ChoicePicker
+        label="See video pages as a visitor from"
+        options={VIEW_AS}
+        value={country ?? ""}
+        disabled={country === null}
+        onPick={pick}
+      />
+      {error && (
+        <p className="text-xs text-red-700 dark:text-red-400">{error}</p>
+      )}
+    </div>
   );
 }
 
@@ -474,6 +541,7 @@ export function ControlsPanel({
               aria-label="Show admin controls on video pages"
             />
           </label>
+          <ViewAsPicker />
           <div className="grid gap-4 sm:grid-cols-2">
             <LimitField
               label="New videos per day"

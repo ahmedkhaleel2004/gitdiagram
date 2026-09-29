@@ -90,8 +90,7 @@ export function limitedCountryRule(
   now = Date.now(),
 ): "limited" | "blocked" | null {
   if (controls.limitedCountryAccess === "open") return null;
-  if (!isLimitedCountry(request.headers.get("x-vercel-ip-country") ?? ""))
-    return null;
+  if (!isLimitedCountry(requestGeo(request).country)) return null;
   if (controls.limitedCountryAccess === "blocked") return "blocked";
   const share = controls.limitedCountryShare ?? DEFAULT_LIMITED_COUNTRY_SHARE;
   const day = Math.floor(now / 86_400_000);

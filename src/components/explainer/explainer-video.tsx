@@ -59,6 +59,14 @@ const PAYABLE: Record<VideoPausedReason, string> = {
 // The checkout session Stripe sends a payer back with (see payments.ts).
 const PAID_SESSION = /^cs_(?:live|test)_[A-Za-z0-9]{10,200}$/;
 
+function countryName(code: string): string {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
 function paidSessionInAddress(): string | undefined {
   const value = new URLSearchParams(window.location.search).get("paid");
   return value && PAID_SESSION.test(value) ? value : undefined;
@@ -101,6 +109,8 @@ type PanelState =
       paused: VideoPausedReason | null;
       /** What buying the video costs in US cents, when this visitor can. */
       priceCents: number | null;
+      /** The operator is previewing the page as a visitor from this country. */
+      viewingAs?: string | null;
     }
   | VideoRun;
 
@@ -113,6 +123,7 @@ function lookedUp({
   generating,
   payable,
   priceCents,
+  viewingAs,
 }: ExplainerVideoState): PanelState {
   if (video) return { kind: "ready", video };
   if (generating) return { kind: "waiting" };
@@ -125,8 +136,9 @@ function lookedUp({
       canGenerate: false,
       paused: "device",
       priceCents: price,
+      viewingAs,
     };
-  return { kind: "empty", canGenerate, paused, priceCents: price };
+  return { kind: "empty", canGenerate, paused, priceCents: price, viewingAs };
 }
 
 function Elapsed({ startedAt }: { startedAt: number }) {
@@ -518,6 +530,16 @@ export function ExplainerVideo({
       {checkout.error && (
         <p role="alert" className={controls.description}>
           {checkout.error}
+        </p>
+      )}
+      {state.kind === "empty" && state.viewingAs && (
+        <p className={controls.description}>
+          You&apos;re seeing this as a visitor from{" "}
+          {countryName(state.viewingAs)}.{" "}
+          <Link href="/admin" className="underline">
+            Turn it off in /admin
+          </Link>
+          .
         </p>
       )}
     </div>

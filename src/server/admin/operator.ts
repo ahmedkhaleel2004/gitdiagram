@@ -85,6 +85,21 @@ function sign(token: string, payload: string): string {
   return createHmac("sha256", token).update(payload).digest("base64url");
 }
 
+/** A signature only the operator's server can make, or null without a token. */
+export function operatorSignature(payload: string): string | null {
+  const token = operatorToken();
+  return token ? sign(token, payload) : null;
+}
+
+/** Whether `signature` is the operator's signature of `payload`. */
+export function isOperatorSignature(
+  payload: string,
+  signature: string,
+): boolean {
+  const expected = operatorSignature(payload);
+  return expected !== null && sameText(signature, expected);
+}
+
 export async function createAdminSession(now = Date.now()): Promise<{
   value: string;
   maxAgeSeconds: number;

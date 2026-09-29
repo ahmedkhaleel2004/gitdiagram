@@ -21,6 +21,8 @@ export interface ExplainerVideoState {
   payable: boolean;
   /** What buying it costs, in US cents; null when it cannot be bought. */
   priceCents: number | null;
+  /** The operator is previewing the page as a visitor from this country. */
+  viewingAs: string | null;
 }
 
 export type RenderFormat = "landscape" | "vertical";
@@ -76,6 +78,7 @@ export async function fetchExplainerVideo(
     generating?: boolean;
     payable?: boolean;
     priceCents?: number | null;
+    viewingAs?: string | null;
     error?: string;
   };
   if (!response.ok || !body.ok)
@@ -90,6 +93,7 @@ export async function fetchExplainerVideo(
     payable: !video && body.payable === true,
     priceCents:
       !video && typeof body.priceCents === "number" ? body.priceCents : null,
+    viewingAs: typeof body.viewingAs === "string" ? body.viewingAs : null,
   };
 }
 

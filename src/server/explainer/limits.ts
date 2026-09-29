@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { networkOf } from "~/lib/network";
 import { readAdmissionControls, readControls } from "~/server/admin/controls";
 import { verifyAdminRequest } from "~/server/admin/operator";
+import { viewAsCountry } from "~/server/admin/view-as";
 import { verifyOperatorBearer } from "~/server/admin/sign-in-guard";
 import { readIntEnv } from "~/server/env";
 import { errorText, logEvent } from "~/server/log";
@@ -95,6 +96,8 @@ export async function isVideoAdmin(request: Request): Promise<boolean> {
   const header = request.headers.get("authorization") ?? "";
   if (header.startsWith("Bearer "))
     return verifyOperatorBearer(request, header.slice("Bearer ".length));
+  // Previewing the site as a visitor from elsewhere: treated as one.
+  if (viewAsCountry(request)) return false;
   return verifyAdminRequest(request);
 }
 
