@@ -243,6 +243,56 @@ export function isLikelyTrackpadGesture(
   return absX > 0 || absY < 40 || !Number.isInteger(event.deltaY);
 }
 
+// The zoom buttons (and + / - keys) step by half again: from a whole-diagram
+// fit, two presses make small text readable. Smaller steps drew rage clicks.
+export const ZOOM_STEP = 1.5;
+// Text smaller than this on screen cannot be read without zooming.
+const MIN_READABLE_TEXT_PX = 12;
+const DEFAULT_FONT_SIZE = 16;
+
+/** How far the interactive viewer may zoom out and in, from its whole fit. */
+export function getZoomLimits(fitScale: number) {
+  // Very large diagrams fit at a tiny scale; still allow reading them up close.
+  return { min: fitScale * 0.6, max: Math.max(fitScale * 12, 3) };
+}
+
+/** The typical label size, in the diagram's own units. */
+export function getDiagramFontSize(svgElement: SVGSVGElement) {
+  const sizes = Array.from(
+    svgElement.querySelectorAll("g.node text, g.cluster-label text"),
+    (element) => parseFloat(getComputedStyle(element).fontSize),
+  )
+    .filter((size) => Number.isFinite(size) && size > 0)
+    .sort((a, b) => a - b);
+  return sizes[Math.floor(sizes.length / 2)] ?? DEFAULT_FONT_SIZE;
+}
+
+/**
+ * The scale the interactive viewer opens at: the whole diagram when its text
+ * is readable that way, otherwise just big enough to read (pan for the rest).
+ */
+export function getReadableScale(fitScale: number, fontSize: number) {
+  const readable = MIN_READABLE_TEXT_PX / fontSize;
+  if (!(readable > fitScale)) return fitScale;
+  return Math.min(readable, getZoomLimits(fitScale).max);
+}
+
+/**
+ * Where the flow starts: the horizontal centre of the topmost node, in the
+ * diagram's own units (null when it cannot be measured).
+ */
+export function getTopNodeCenterX(svgElement: SVGSVGElement, width: number) {
+  const svgRect = svgElement.getBoundingClientRect();
+  if (!(svgRect.width > 0)) return null;
+  let top: DOMRect | null = null;
+  for (const node of svgElement.querySelectorAll("g.node")) {
+    const rect = node.getBoundingClientRect();
+    if (rect.width > 0 && (!top || rect.top < top.top)) top = rect;
+  }
+  if (!top) return null;
+  return ((top.left + top.width / 2 - svgRect.left) / svgRect.width) * width;
+}
+
 // Normal reading follows the page's width and can scroll vertically. Fitting
 // both axes here turned detailed maps into thumbnails on short laptop screens;
 // the interactive viewer and browse previews have their own explicit fit mode.
