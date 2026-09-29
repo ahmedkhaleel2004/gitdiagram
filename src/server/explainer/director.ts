@@ -56,7 +56,7 @@ export interface Planner extends Role {
 const MAX_TOKENS = 32_000;
 // A script over SCRIPT_WORD_LIMIT goes back once to be shortened. If neither
 // version fits, one a little over (a few seconds more film) is still used.
-export const SCRIPT_HARD_WORD_LIMIT = Math.round(SCRIPT_WORD_LIMIT * 1.2);
+export const SCRIPT_HARD_WORD_LIMIT = 168;
 // Every call writing the script (first draft, retries, the shortening and a
 // fallback model's draft) counts; each can run to MAX_TOKENS.
 const MAX_DIRECTOR_CALLS = 3;

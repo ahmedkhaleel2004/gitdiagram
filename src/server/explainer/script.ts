@@ -23,8 +23,11 @@ export interface Script {
 
 // At a natural speaking pace (about 2.1 words a second, with pauses) this
 // keeps the film near a minute. Longer scripts go back to the director once.
+// The prompt asks for 110 to 130; the limit leaves room for drafts a little
+// over, since a shortening call resends the whole repository (about a third
+// of first drafts ran 141 to 150 words at a limit of 140).
 export const SCRIPT_WORD_TARGET = 125;
-export const SCRIPT_WORD_LIMIT = 140;
+export const SCRIPT_WORD_LIMIT = 150;
 /** The prompt asks for twelve to sixteen beats; more also goes back once. */
 export const MAX_BEATS = 22;
 // Far past anything a director writes; only bounds a runaway reply.

@@ -518,12 +518,19 @@ describe("the director", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("keeps a draft a little past the prompt's range without shortening it", async () => {
+    stream.mockReturnValueOnce(scriptReply(148));
+    const script = await createFilmWriters(input, OPUS).direct();
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(script.beats[0]!.narration.split(" ")).toHaveLength(37);
+  });
+
   it("keeps a slightly long first draft when shortening fails", async () => {
     stream
-      .mockReturnValueOnce(scriptReply(148))
+      .mockReturnValueOnce(scriptReply(160))
       .mockReturnValue(failing(new Error("overloaded")));
     const script = await createFilmWriters(input, OPUS).direct();
-    expect(script.beats[0]!.narration.split(" ")).toHaveLength(37);
+    expect(script.beats[0]!.narration.split(" ")).toHaveLength(40);
   });
 
   it("sends a script with too many beats back to be shortened", async () => {
