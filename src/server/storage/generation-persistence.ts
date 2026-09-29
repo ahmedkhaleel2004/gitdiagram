@@ -1,6 +1,8 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 
+import { SITE_URL } from "~/lib/site";
 import { revalidateBrowseIndexCache } from "~/server/browse-index-cache";
+import { notifyIndexNow } from "~/server/visibility/indexnow";
 import type {
   DiagramGraph,
   GenerationSessionAudit,
@@ -153,6 +155,13 @@ export async function persistGenerationResult(params: {
             );
           }
         });
+        // Tell Bing and the other IndexNow engines the page changed. It
+        // never throws, so a refused ping cannot fail the generation.
+        params.postResponseTasks.push(() =>
+          notifyIndexNow([
+            `${SITE_URL}${getRepoPagePath(params.username, params.repo)}`,
+          ]),
+        );
       }
     } else {
       const auditPersistenceStartedAt = performance.now();

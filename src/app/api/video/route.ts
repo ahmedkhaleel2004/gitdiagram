@@ -41,6 +41,7 @@ import {
   type Visitor,
 } from "~/server/explainer/visitor";
 import type { VideoPausedReason } from "~/features/explainer/api";
+import { recordAgentFetch } from "~/server/visibility/agent-fetch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,6 +134,7 @@ async function videoAvailability(
 }
 
 export async function GET(request: Request): Promise<Response> {
+  void recordAgentFetch(request.headers.get("user-agent"), "video-state");
   if (!isVideoExplainerEnabled())
     return jsonErrorResponse("Explainer videos are not enabled.", 404);
   const url = new URL(request.url);

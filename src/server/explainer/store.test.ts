@@ -16,6 +16,11 @@ vi.mock("./cache", () => ({
     mocks.calls.push("purge");
   }),
 }));
+vi.mock("~/server/visibility/indexnow", () => ({
+  notifyIndexNow: vi.fn(async (urls: string[]) => {
+    mocks.calls.push(`indexnow ${urls.join(" ")}`);
+  }),
+}));
 vi.mock("./video-index", () => ({
   indexVideo: vi.fn(async () => {
     mocks.calls.push("index");
@@ -143,6 +148,7 @@ describe("explainer video storage", () => {
       `put ${root}/artifact.json`,
       "index",
       "purge",
+      "indexnow https://gitdiagram.com/acme/widget/video",
       "list",
       `delete ${root}/1780000000000/beat-00.mp3`,
     ]);

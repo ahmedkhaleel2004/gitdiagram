@@ -67,6 +67,13 @@ const chromiumFiles = ["./node_modules/@sparticuz/chromium/bin/**"];
 const ffmpegFiles = ["./node_modules/ffmpeg-static/ffmpeg"];
 const videoRenderFiles = [...chromiumFiles, ...ffmpegFiles];
 
+// IndexNow proves ownership with a key file at the site root: /<key>.txt is
+// served by /api/indexnow-key (src/server/visibility/indexnow.ts).
+const indexNowKey = process.env.INDEXNOW_KEY?.trim() ?? "";
+const indexNowRewrites = /^[A-Za-z0-9-]{8,128}$/.test(indexNowKey)
+  ? [{ source: `/${indexNowKey}.txt`, destination: "/api/indexnow-key" }]
+  : [];
+
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: false,
@@ -116,6 +123,7 @@ const config = {
   },
   async rewrites() {
     return [
+      ...indexNowRewrites,
       {
         source: "/phx9a/static/:path*",
         destination: "https://us-assets.i.posthog.com/static/:path*",

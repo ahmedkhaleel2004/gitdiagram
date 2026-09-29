@@ -45,6 +45,9 @@ vi.mock("next/cache", () => ({
 vi.mock("~/server/browse-index-cache", () => ({
   revalidateBrowseIndexCache: vi.fn(),
 }));
+vi.mock("~/server/visibility/indexnow", () => ({
+  notifyIndexNow: vi.fn(async () => undefined),
+}));
 vi.mock("~/server/storage/artifact-store", () => ({
   writePublicDiagramPreview: mocks.writePublicPreview,
 }));
