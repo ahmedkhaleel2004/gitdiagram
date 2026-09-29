@@ -28,6 +28,7 @@ vi.mock("~/server/storage/artifact-store", () => ({ getStoredDiagramState }));
 vi.mock("./repo-page-client", () => ({ default: () => null }));
 
 import Repo, { generateMetadata } from "./page";
+import { PlaceholderRepo } from "./placeholder-repo";
 
 describe("repository cache URLs", () => {
   beforeEach(() => {
@@ -99,5 +100,25 @@ describe("repository cache URLs", () => {
       repository: "acme/demo",
       error: "R2 timed out",
     });
+  });
+
+  it("explains a copied /user/repo without reading storage", async () => {
+    const page = await Repo({
+      params: Promise.resolve({ username: "user", repo: "repo" }),
+    });
+
+    expect(page.type).toBe(PlaceholderRepo);
+    expect(page.props).toEqual({ username: "user", repo: "repo" });
+    expect(getStoredDiagramState).not.toHaveBeenCalled();
+    expect(cachedReads).toEqual([]);
+  });
+
+  it("keeps the placeholder page out of search results", async () => {
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ username: "owner", repo: "repo" }),
+    });
+
+    expect(metadata.robots).toEqual({ index: false, follow: true });
+    expect(metadata.openGraph).toBeUndefined();
   });
 });
