@@ -93,7 +93,13 @@ describe("diagram export", () => {
   });
 
   it("offers README embeds only for a stored public diagram", () => {
-    render(<DiagramExport diagram="A-->B" getSvg={() => null} />);
+    render(
+      <DiagramExport
+        repository="acme/demo"
+        diagram="A-->B"
+        getSvg={() => null}
+      />,
+    );
     open();
     expect(
       screen.queryByRole("button", { name: "README picture" }),
@@ -124,6 +130,7 @@ describe("diagram export", () => {
       });
       render(
         <DiagramExport
+          repository="acme/demo"
           diagram="A-->B"
           getSvg={() => null}
           readme={{ owner: "acme", repo: "demo" }}
@@ -148,7 +155,13 @@ describe("diagram export", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
-    render(<DiagramExport diagram="A-->B" getSvg={() => null} />);
+    render(
+      <DiagramExport
+        repository="acme/demo"
+        diagram="A-->B"
+        getSvg={() => null}
+      />,
+    );
     open();
     fireEvent.click(screen.getByRole("button", { name: "Copy Mermaid" }));
     await screen.findByText("Mermaid copied");
