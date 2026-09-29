@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),
   revalidateBrowseIndexCache: vi.fn(),
+  notifyIndexNow: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("next/cache", () => ({
@@ -26,6 +27,9 @@ vi.mock("~/server/storage/diagram-state", () => ({
     mocks.clearSuccessfulDiagramFailureSummary,
   updatePublicBrowseIndexForSuccessfulDiagram:
     mocks.updatePublicBrowseIndexForSuccessfulDiagram,
+}));
+vi.mock("~/server/visibility/indexnow", () => ({
+  notifyIndexNow: mocks.notifyIndexNow,
 }));
 vi.mock("~/server/storage/artifact-store", () => ({
   writePublicDiagramPreview: mocks.writePublicDiagramPreview,
@@ -89,15 +93,21 @@ describe("persistGenerationResult", () => {
   });
 
   it("persists a private repository when the caller supplied a token", async () => {
-    await persistGenerationResult({
+    const params = {
       ...baseParams(),
-      visibility: "private",
+      visibility: "private" as const,
       githubPat: "caller-token",
-    });
+    };
+    await persistGenerationResult(params);
+    for (const task of params.postResponseTasks) {
+      await task();
+    }
 
     expect(mocks.saveSuccessfulDiagramState).toHaveBeenCalledWith(
       expect.objectContaining({ visibility: "private" }),
     );
+    // A private repository's page is never announced to search engines.
+    expect(mocks.notifyIndexNow).not.toHaveBeenCalled();
   });
 
   it("expires saved diagram data and revalidates pages for both URL casings", async () => {
@@ -124,6 +134,11 @@ describe("persistGenerationResult", () => {
       "public-diagram-state:acme:demo",
       { expire: 0 },
     );
+    // Search engines hear about the page once, at its canonical address.
+    expect(mocks.notifyIndexNow).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyIndexNow).toHaveBeenCalledWith([
+      "https://gitdiagram.com/acme/demo",
+    ]);
   });
 
   it("revalidates each route once when the request was already normalized", async () => {

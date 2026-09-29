@@ -17,6 +17,7 @@ import {
   renderDownloadUrl,
   type RenderName,
 } from "~/server/explainer/store";
+import { recordAgentFetch } from "~/server/visibility/agent-fetch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +55,7 @@ const FILES: Record<"landscape" | "vertical" | "poster" | "still", RenderName> =
  * through a function.
  */
 export async function GET(request: Request): Promise<Response> {
+  void recordAgentFetch(request.headers.get("user-agent"), "video-file");
   if (!isVideoExplainerEnabled())
     return jsonErrorResponse("Explainer videos are not enabled.", 404);
   const url = new URL(request.url);

@@ -17,6 +17,7 @@ const PRICES: Record<string, ClaudePrice> = {
   "claude-fable-5": { input: 10, output: 50, cacheRead: 1 },
   "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2 },
   "claude-opus-5": { input: 5, output: 25, cacheRead: 0.5 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2 },
   "claude-sonnet-5": { input: 2, output: 10, cacheRead: 0.2 },
   "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.1 },
 };

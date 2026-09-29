@@ -15,6 +15,7 @@ import { PeoplePanel, usePeopleClock } from "./people-panel";
 import { StatusPill, TOUCH } from "./ui";
 import { useAdminState } from "./use-admin-state";
 import { useLiveSite } from "./use-live-site";
+import { VisibilityPanel } from "./visibility-panel";
 
 // Counters (budgets, balances) are polled (use-admin-state.ts); everything
 // about people and jobs is pushed over the live socket (use-live-site.ts).
@@ -212,6 +213,8 @@ export function AdminDashboard() {
       </div>
 
       <AudiencePanels people={people} mismatched={mismatched} />
+
+      <VisibilityPanel />
 
       <LiveFeed events={live.events} />
     </main>

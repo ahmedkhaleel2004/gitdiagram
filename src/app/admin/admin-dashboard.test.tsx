@@ -11,6 +11,9 @@ import type { AdminState } from "~/features/admin/types";
 import { AdminDashboard } from "./admin-dashboard";
 import { priorityHint } from "./people-panel";
 
+// The Search & AI panel reads its own report (visibility-panel.test.tsx).
+vi.mock("./visibility-panel", () => ({ VisibilityPanel: () => null }));
+
 vi.mock("./use-live-site", async () => {
   const { EMPTY_SITE } = await import("~/features/admin/live-link");
   return {

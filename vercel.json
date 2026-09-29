@@ -9,6 +9,10 @@
     {
       "path": "/api/internal/video-payments/sweep",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/internal/ai-visibility",
+      "schedule": "0 13 * * *"
     }
   ],
   "functions": {

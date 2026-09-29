@@ -53,6 +53,27 @@ export async function upstashCommand<T>(command: unknown[]): Promise<T> {
   return execute<T>("", command);
 }
 
+/**
+ * Several commands in one request (Upstash's /pipeline endpoint). Not a
+ * transaction: each command's result or error comes back in order.
+ */
+export async function upstashPipeline(
+  commands: unknown[][],
+): Promise<Array<{ result?: unknown; error?: string }>> {
+  assertLiveStorageAllowedForTests("Upstash");
+  const response = await fetch(`${getBaseUrl()}/pipeline`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(UPSTASH_REQUEST_TIMEOUT_MS),
+  });
+  if (!response.ok)
+    throw new Error(
+      `Upstash pipeline failed (${response.status}): ${await response.text()}`,
+    );
+  return (await response.json()) as Array<{ result?: unknown; error?: string }>;
+}
+
 export async function upstashEval<T>(params: {
   script: string;
   keys?: string[];
