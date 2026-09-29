@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gitdiagram": {
+      "type": "http",
+      "url": "https://gitdiagram.com/mcp"
+    }
+  }
+}

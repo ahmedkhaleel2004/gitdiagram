@@ -269,7 +269,7 @@ export function createGitDiagramMcpServer(
     {
       title: "Search GitDiagram's architecture diagrams",
       description:
-        'Search GitDiagram\'s library of ready-made architecture diagrams of public GitHub repositories by owner or repository name. Matches any part of "owner/repo" (e.g. "langchain", "vercel/", "react-native") and returns up to 10 repositories, most-starred first, each with its interactive diagram link. Use it to resolve a project name to its exact owner/repo before calling get_repository_diagram, or to list which repositories of an owner or topic already have diagrams. It searches repository names only, not code or file contents.',
+        'Search GitDiagram\'s library of ready-made architecture diagrams of public GitHub repositories by owner or repository name. Matches any part of "owner/repo" (e.g. "langchain", "vercel/", "react-native") and returns up to 10 repositories, most-starred first, each with its interactive diagram link. Use it to find a project\'s exact owner/repo from its name, or to list which repositories of an owner or topic already have diagrams. It searches repository names only, not code or file contents.',
       inputSchema: z.object({
         query: z
           .string()

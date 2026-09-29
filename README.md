@@ -39,21 +39,29 @@ GitDiagram can now turn a repository into a narrated video of about a minute. Th
 
 GitDiagram is a remote MCP server at `https://gitdiagram.com/mcp` (no key or sign-in). Agents can read a public repository's architecture explanation, components, connections and Mermaid source, search the stored diagrams, and get explainer videos.
 
+[![Add to Claude](https://img.shields.io/badge/Claude-Add_connector-D97757?style=flat-square&logo=claude&logoColor=white)](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=GitDiagram&connectorUrl=https%3A%2F%2Fgitdiagram.com%2Fmcp)
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_Server-000000?style=flat-square&logo=cursor&logoColor=white)](https://cursor.com/link/mcp/install?name=gitdiagram&config=eyJ1cmwiOiJodHRwczovL2dpdGRpYWdyYW0uY29tL21jcCJ9)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=gitdiagram&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fgitdiagram.com%2Fmcp%22%7D)
+[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=gitdiagram&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fgitdiagram.com%2Fmcp%22%7D&quality=insiders)
+
 ```bash
-# Claude Code
+# Claude Code: the plugin adds the MCP server and a /gitdiagram skill
+claude plugin marketplace add ahmedkhaleel2004/gitdiagram
+claude plugin install gitdiagram@gitdiagram
+# ...or just the MCP server
 claude mcp add --transport http gitdiagram https://gitdiagram.com/mcp
 
 # Codex
 codex mcp add gitdiagram --url https://gitdiagram.com/mcp
+
+# Gemini CLI
+gemini extensions install https://github.com/ahmedkhaleel2004/gitdiagram
+
+# GitHub Copilot CLI
+copilot mcp add --transport http gitdiagram https://gitdiagram.com/mcp
 ```
 
-For Cursor, add this to `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
-
-```json
-{ "mcpServers": { "gitdiagram": { "url": "https://gitdiagram.com/mcp" } } }
-```
-
-In Claude and ChatGPT, add a custom connector with the same URL. Then ask something like "how is fastapi/fastapi structured?".
+In other clients (ChatGPT, Windsurf, Zed, LM Studio, Goose and more), add a remote MCP server with the URL `https://gitdiagram.com/mcp`. Then ask something like "how is fastapi/fastapi structured?".
 
 ## Run locally
 
