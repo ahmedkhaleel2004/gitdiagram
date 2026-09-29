@@ -257,6 +257,12 @@ describe("POST /api/generate/stream", () => {
 
     expect(body).toContain("REPOSITORY_NOT_FOUND");
     expect(body).toContain("GitHub access");
+    // Unverified, so the client must not report the repository's name.
+    const terminal = readSseEvents(body).find(
+      (event) => event.status === "error",
+    );
+    expect(terminal).toMatchObject({ used_own_key: false });
+    expect(terminal).not.toHaveProperty("repository_visibility");
     // The caller reached a model call for nothing, so the slot goes back.
     expect(mocks.refundRateLimit).toHaveBeenCalledWith({
       clientIp: "203.0.113.7",
@@ -717,6 +723,8 @@ describe("POST /api/generate/stream", () => {
       status: "complete",
       explanation: "Hello-world request flow.",
       graph,
+      used_own_key: false,
+      repository_visibility: "public",
     });
     expect(terminal?.diagram).toEqual(expect.stringContaining("flowchart TD"));
     expect(terminal).not.toHaveProperty("graph_attempts");

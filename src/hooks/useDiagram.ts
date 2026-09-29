@@ -2,17 +2,60 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
 import { getCredentialStatus } from "~/features/credentials/api";
 import {
+  captureDiagramEvent,
+  reportableRepo,
+} from "~/features/diagram/analytics";
+import {
   DiagramStreamHttpError,
   getDiagramState,
 } from "~/features/diagram/api";
 import type {
   DiagramStateResponse,
   DiagramStreamState,
+  RepositoryVisibility,
 } from "~/features/diagram/types";
-import { useDiagramStream } from "~/hooks/diagram/useDiagramStream";
+import {
+  type GenerationOutcome,
+  useDiagramStream,
+} from "~/hooks/diagram/useDiagramStream";
 import { isExampleRepo } from "~/lib/exampleRepos";
 
 type DiagramStateSyncMode = "foreground" | "background";
+
+/** What started a generation: the page itself, or the visitor. */
+type GenerationTrigger = "auto" | "regenerate" | "api_key";
+
+interface GenerationAttempt {
+  repository: string;
+  startedAt: number;
+  trigger: GenerationTrigger;
+  settled: boolean;
+}
+
+/** What analytics knows about the repository on screen. */
+interface RepositoryAnalytics {
+  repository: string;
+  visibility?: RepositoryVisibility;
+  viewed: boolean;
+  diagramSource?: "stored" | "generated";
+  renderFailure?: string;
+}
+
+// Errors are reported by code; a thrown request carries no stream code.
+function toFailureOutcome(error: unknown): GenerationOutcome {
+  if (error instanceof DiagramStreamHttpError) {
+    return {
+      status: "error",
+      errorCode: error.errorCode ?? `HTTP_${error.status}`,
+      failureStage: "request",
+    };
+  }
+  return {
+    status: "error",
+    errorCode: "STREAM_FAILED",
+    failureStage: "stream",
+  };
+}
 
 function toInitialStreamState(
   stateRecord: DiagramStateResponse | null | undefined,
@@ -146,12 +189,106 @@ export function useDiagram(
     },
   );
 
+  const repository = `${username}/${repo}`;
+  const analyticsRef = useRef<RepositoryAnalytics>({
+    repository,
+    viewed: false,
+  });
+  const attemptRef = useRef<GenerationAttempt | null>(null);
+
+  // Resets when the page moves to another repository without remounting.
+  const repositoryAnalytics = useCallback(() => {
+    if (analyticsRef.current.repository !== repository) {
+      analyticsRef.current = { repository, viewed: false };
+    }
+    return analyticsRef.current;
+  }, [repository]);
+
+  const reportStoredView = useCallback(
+    (visibility: RepositoryVisibility | undefined) => {
+      const analytics = repositoryAnalytics();
+      if (visibility) analytics.visibility = visibility;
+      analytics.diagramSource = "stored";
+      if (analytics.viewed) return;
+      analytics.viewed = true;
+      captureDiagramEvent("diagram_viewed", {
+        source: "stored",
+        repo: reportableRepo(repository, analytics.visibility),
+        is_private: analytics.visibility !== "public",
+      });
+    },
+    [repository, repositoryAnalytics],
+  );
+
+  const settleAttempt = useCallback(
+    (attempt: GenerationAttempt, outcome: GenerationOutcome | undefined) => {
+      // A run replaced by a newer one, or unmounted, reports nothing.
+      if (attempt.settled || !outcome || outcome.status === "aborted") return;
+      attempt.settled = true;
+      const analytics = repositoryAnalytics();
+      if (analytics.repository !== attempt.repository) return;
+      if (outcome.visibility) analytics.visibility = outcome.visibility;
+      const common = {
+        repo: reportableRepo(attempt.repository, analytics.visibility),
+        duration_ms: Math.max(0, Math.round(Date.now() - attempt.startedAt)),
+        regenerate: attempt.trigger !== "auto",
+        trigger: attempt.trigger,
+      };
+      if (outcome.status === "complete") {
+        analytics.diagramSource = "generated";
+        captureDiagramEvent("diagram_generated", {
+          ...common,
+          is_private: analytics.visibility !== "public",
+          byok: outcome.usedOwnKey ?? false,
+        });
+        return;
+      }
+      captureDiagramEvent("diagram_failed", {
+        ...common,
+        error_code: outcome.errorCode ?? "UNKNOWN",
+        stage: outcome.failureStage ?? "unknown",
+      });
+    },
+    [repositoryAnalytics],
+  );
+
+  /** Runs one generation, reporting its start and how it ended once. */
+  const runTrackedGeneration = useCallback(
+    async (trigger: GenerationTrigger) => {
+      const attempt: GenerationAttempt = {
+        repository,
+        startedAt: Date.now(),
+        trigger,
+        settled: false,
+      };
+      attemptRef.current = attempt;
+      captureDiagramEvent("diagram_generation_started", {
+        repo: reportableRepo(repository, repositoryAnalytics().visibility),
+        regenerate: trigger !== "auto",
+        trigger,
+      });
+      let outcome: GenerationOutcome | undefined;
+      try {
+        outcome = await runGeneration();
+      } catch (error) {
+        settleAttempt(attempt, toFailureOutcome(error));
+        throw error;
+      }
+      settleAttempt(attempt, outcome);
+    },
+    [repository, repositoryAnalytics, runGeneration, settleAttempt],
+  );
+
   const applyStoredState = useCallback(
     (stateRecord: DiagramStateResponse) => {
       const storedDiagram = stateRecord.diagram;
       const latestAudit = stateRecord.latestSessionAudit;
       const failureMessage = getFailureMessage(latestAudit);
       const shouldExposeFailure = !storedDiagram && Boolean(failureMessage);
+
+      if (storedDiagram && stateRecord.visibility) {
+        repositoryAnalytics().visibility = stateRecord.visibility;
+      }
 
       if (stateRecord.lastSuccessfulAt) {
         setLastGenerated(new Date(stateRecord.lastSuccessfulAt));
@@ -192,7 +329,7 @@ export function useDiagram(
 
       return Boolean(storedDiagram);
     },
-    [setState],
+    [repositoryAnalytics, setState],
   );
 
   const syncDiagramState = useCallback(
@@ -222,6 +359,8 @@ export function useDiagram(
         }));
       }
 
+      const startedAt = Date.now();
+      let generationStarted = false;
       try {
         const stateRecord = await getDiagramState(username, repo);
         if (!isCurrentSync()) {
@@ -229,13 +368,31 @@ export function useDiagram(
         }
         const hasStoredDiagram = applyStoredState(stateRecord);
 
+        if (hasStoredDiagram && mode === "foreground") {
+          reportStoredView(stateRecord.visibility);
+        }
         if (hasStoredDiagram || mode === "background") {
           return;
         }
 
-        await runGeneration();
+        generationStarted = true;
+        await runTrackedGeneration("auto");
       } catch (error) {
         if (mode === "foreground" && isCurrentSync()) {
+          if (!generationStarted) {
+            // The saved diagram could not be read, so nothing was shown.
+            captureDiagramEvent("diagram_failed", {
+              repo: reportableRepo(
+                repository,
+                repositoryAnalytics().visibility,
+              ),
+              error_code: "DIAGRAM_STATE_UNAVAILABLE",
+              stage: "stored_state",
+              duration_ms: Math.max(0, Date.now() - startedAt),
+              regenerate: false,
+              trigger: "auto",
+            });
+          }
           const failure = toGenerationFailure(
             error,
             "Something went wrong. Please try again later.",
@@ -261,7 +418,10 @@ export function useDiagram(
       isActiveBackgroundSync,
       isActiveForegroundOperation,
       repo,
-      runGeneration,
+      reportStoredView,
+      repository,
+      repositoryAnalytics,
+      runTrackedGeneration,
       setState,
       username,
     ],
@@ -276,7 +436,7 @@ export function useDiagram(
   }, [syncDiagramState]);
 
   const runGenerationOperation = useCallback(
-    async (failureMessage: string) => {
+    async (failureMessage: string, trigger: GenerationTrigger) => {
       const operationId = beginForegroundOperation();
       setState((prev) => ({
         ...prev,
@@ -284,7 +444,7 @@ export function useDiagram(
       }));
 
       try {
-        await runGeneration();
+        await runTrackedGeneration(trigger);
       } catch (error) {
         if (isActiveForegroundOperation(operationId)) {
           const failure = toGenerationFailure(error, failureMessage);
@@ -303,7 +463,7 @@ export function useDiagram(
       beginForegroundOperation,
       finishForegroundOperation,
       isActiveForegroundOperation,
-      runGeneration,
+      runTrackedGeneration,
       setState,
     ],
   );
@@ -318,6 +478,7 @@ export function useDiagram(
 
     await runGenerationOperation(
       "Something went wrong. Please try again later.",
+      "regenerate",
     );
   }, [getDiagram, repo, runGenerationOperation, state.status, username]);
 
@@ -326,12 +487,23 @@ export function useDiagram(
     // paid generation after the user has pressed Stop.
     foregroundOperationRef.current.activeId = null;
     backgroundSyncRevisionRef.current += 1;
+    const attempt = attemptRef.current;
+    if (attempt) {
+      settleAttempt(attempt, {
+        status: "error",
+        errorCode: "GENERATION_CANCELLED",
+        failureStage: "cancelled",
+      });
+    }
     cancelGeneration();
     setLoading(false);
-  }, [cancelGeneration]);
+  }, [cancelGeneration, settleAttempt]);
 
   useEffect(() => {
     if (initialState?.diagram) {
+      reportStoredView(
+        initialStateIsAuthoritative ? "public" : initialState.visibility,
+      );
       if (!initialStateIsAuthoritative) {
         void refreshStoredDiagram();
         return;
@@ -360,8 +532,10 @@ export function useDiagram(
   }, [
     getDiagram,
     initialState?.diagram,
+    initialState?.visibility,
     initialStateIsAuthoritative,
     refreshStoredDiagram,
+    reportStoredView,
   ]);
 
   const diagram = state.diagram ?? "";
@@ -370,6 +544,7 @@ export function useDiagram(
   const handleApiKeySaved = async () => {
     await runGenerationOperation(
       "Failed to generate diagram with provided API key.",
+      "api_key",
     );
   };
 
@@ -383,6 +558,21 @@ export function useDiagram(
 
   const handleDiagramRenderError = useCallback(
     (renderMessage: string) => {
+      const analytics = repositoryAnalytics();
+      const failure = state.diagram ?? "";
+      // Once per diagram text, however often the renderer retries it.
+      if (analytics.renderFailure !== failure) {
+        analytics.renderFailure = failure;
+        const repoName = reportableRepo(repository, analytics.visibility);
+        captureDiagramEvent("diagram_render_failed", {
+          repo: repoName,
+          is_private: analytics.visibility !== "public",
+          source: analytics.diagramSource ?? "unknown",
+          stage: "browser_render",
+          // Mermaid's message can quote diagram text: public repos only.
+          error_message: repoName ? renderMessage.slice(0, 200) : null,
+        });
+      }
       setState((prev) => ({
         ...prev,
         status: "error",
@@ -391,7 +581,7 @@ export function useDiagram(
         validationError: renderMessage,
       }));
     },
-    [setState],
+    [repository, repositoryAnalytics, setState, state.diagram],
   );
 
   return {

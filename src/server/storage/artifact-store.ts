@@ -115,6 +115,7 @@ function toDiagramStateResponse(
     // plus the entire event timeline. Normalize reads without rewriting R2.
     latestSessionAudit: toStoredSessionSummary(artifact.latestSessionSummary),
     lastSuccessfulAt: artifact.lastSuccessfulAt,
+    visibility: artifact.visibility,
   };
 }
 

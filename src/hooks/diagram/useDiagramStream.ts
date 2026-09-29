@@ -4,7 +4,37 @@ import { streamDiagramGeneration } from "~/features/diagram/api";
 import type {
   DiagramStreamMessage,
   DiagramStreamState,
+  RepositoryVisibility,
 } from "~/features/diagram/types";
+
+/** How one generation run ended, for the caller's analytics. */
+export type GenerationOutcome =
+  | {
+      status: "complete" | "error";
+      errorCode?: string;
+      failureStage?: string;
+      usedOwnKey?: boolean;
+      visibility?: RepositoryVisibility;
+    }
+  | { status: "aborted" };
+
+interface StreamBuffers {
+  explanation: string;
+  outcome?: GenerationOutcome;
+}
+
+function toOutcome(
+  status: "complete" | "error",
+  message: DiagramStreamMessage,
+): GenerationOutcome {
+  return {
+    status,
+    errorCode: message.error_code,
+    failureStage: message.failure_stage,
+    usedOwnKey: message.used_own_key,
+    visibility: message.repository_visibility,
+  };
+}
 
 interface UseDiagramStreamOptions {
   username: string;
@@ -82,13 +112,9 @@ export function useDiagramStream({
   );
 
   const handleStreamMessage = useCallback(
-    async (
-      data: DiagramStreamMessage,
-      buffers: {
-        explanation: string;
-      },
-    ) => {
+    async (data: DiagramStreamMessage, buffers: StreamBuffers) => {
       if (data.error) {
+        buffers.outcome = toOutcome("error", data);
         flushPendingExplanation();
         setState((prev) => ({
           ...prev,
@@ -140,6 +166,7 @@ export function useDiagramStream({
           }
           break;
         case "complete": {
+          buffers.outcome = toOutcome("complete", data);
           flushPendingExplanation();
           const explanation = data.explanation ?? buffers.explanation;
           const diagram = data.diagram ?? "";
@@ -168,6 +195,7 @@ export function useDiagramStream({
           return false;
         }
         case "error":
+          buffers.outcome = toOutcome("error", data);
           flushPendingExplanation();
           setState((prev) => ({
             ...prev,
@@ -189,7 +217,7 @@ export function useDiagramStream({
     [flushPendingExplanation, onComplete, scheduleExplanationUpdate],
   );
 
-  const runGeneration = useCallback(async () => {
+  const runGeneration = useCallback(async (): Promise<GenerationOutcome> => {
     activeGenerationRef.current?.abort();
     if (explanationFrameRef.current !== null) {
       cancelAnimationFrame(explanationFrameRef.current);
@@ -204,7 +232,7 @@ export function useDiagramStream({
       message: "Starting generation process...",
       costSummary: undefined,
     });
-    const buffers = {
+    const buffers: StreamBuffers = {
       explanation: "",
     };
     let lastActivityUpdate = 0;
@@ -239,6 +267,9 @@ export function useDiagramStream({
         activeGenerationRef.current = null;
       }
     }
+    return abortController.signal.aborted || !buffers.outcome
+      ? { status: "aborted" }
+      : buffers.outcome;
   }, [handleStreamMessage, repo, username]);
 
   const cancelGeneration = useCallback(() => {
