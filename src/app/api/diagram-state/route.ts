@@ -35,13 +35,13 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const { githubPat } = await resolveRequestCredentials(request, {
+    const { githubStorageKey } = await resolveRequestCredentials(request, {
       githubPat: parsed.data.github_pat,
     });
     const state = await getDiagramStateRecord(
       parsed.data.username,
       parsed.data.repo,
-      githubPat,
+      githubStorageKey,
     );
     return Response.json(state, { headers: NO_STORE_RESPONSE_HEADERS });
   } catch {

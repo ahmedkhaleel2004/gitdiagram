@@ -6,7 +6,14 @@ import type * as RequestCredentialsModule from "~/server/http/request-credential
 const mocks = vi.hoisted(() => ({
   clearCredential: vi.fn(),
   getCredentialStatus: vi.fn(),
+  readGitHubConnectionToken: vi.fn(),
+  revokeUserToken: vi.fn(),
   setCredential: vi.fn(),
+}));
+
+vi.mock("server-only", () => ({}));
+vi.mock("~/server/github-connect/oauth", () => ({
+  revokeUserToken: mocks.revokeUserToken,
 }));
 
 vi.mock("~/server/http/request-credentials", async (importOriginal) => {
@@ -15,6 +22,7 @@ vi.mock("~/server/http/request-credentials", async (importOriginal) => {
     ...original,
     clearCredential: mocks.clearCredential,
     getCredentialStatus: mocks.getCredentialStatus,
+    readGitHubConnectionToken: mocks.readGitHubConnectionToken,
     setCredential: mocks.setCredential,
   };
 });
@@ -108,5 +116,33 @@ describe("POST /api/credentials", () => {
       ),
     ).resolves.toMatchObject({ status: 400 });
     expect(mocks.setCredential).not.toHaveBeenCalled();
+  });
+
+  it("disconnects a GitHub sign-in and revokes its token", async () => {
+    vi.stubEnv("GITHUB_CONNECT_CLIENT_ID", "Iv-test");
+    vi.stubEnv("GITHUB_CONNECT_CLIENT_SECRET", "test-secret");
+    vi.stubEnv("GITHUB_CONNECT_APP_SLUG", "gitdiagram-private-repos");
+    mocks.readGitHubConnectionToken.mockResolvedValue("ghu_current");
+
+    const response = await POST(
+      request({ action: "clear", credential: "github_app" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.clearCredential).toHaveBeenCalledWith("github_app");
+    expect(mocks.revokeUserToken).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: "Iv-test" }),
+      "ghu_current",
+    );
+    expect(JSON.stringify(await response.json())).not.toContain("ghu_");
+    vi.unstubAllEnvs();
+  });
+
+  it("cannot set a GitHub sign-in by hand", async () => {
+    await expect(
+      POST(
+        request({ action: "set", credential: "github_app", value: "ghu_x" }),
+      ),
+    ).resolves.toMatchObject({ status: 400 });
   });
 });

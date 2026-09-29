@@ -8,6 +8,7 @@ import type { DiagramStateResponse } from "~/features/diagram/types";
 import { RepositoryWorkspace } from "~/components/generation/repository-workspace";
 import { loadDiagramRenderer } from "~/components/generation/load-diagram-renderer";
 import { useDiagram } from "~/hooks/useDiagram";
+import { useGitHubConnectResult } from "~/hooks/use-github-connect-result";
 import { ApiKeyDialog } from "~/components/api-key-dialog";
 import { useStarReminder } from "~/hooks/useStarReminder";
 import { Toaster } from "~/components/ui/sonner";
@@ -55,6 +56,7 @@ export default function RepoPageClient({
   initialStateIsAuthoritative = false,
 }: RepoPageClientProps) {
   const [showGithubAccess, setShowGithubAccess] = useState(false);
+  const [connectResult, dismissConnectResult] = useGitHubConnectResult("repo");
   useStarReminder();
   const normalizedUsername = username.toLowerCase();
   const normalizedRepo = repo.toLowerCase();
@@ -88,6 +90,16 @@ export default function RepoPageClient({
   useEffect(() => {
     if (hasDiagram || loading) void loadDiagramRenderer();
   }, [hasDiagram, loading]);
+  // Back from "Continue with GitHub": the page load already retries the
+  // diagram with the new sign-in; a sign-in that did not finish reopens the
+  // dialog with the reason.
+  useEffect(() => {
+    if (connectResult?.status === "connected") {
+      toast.success("GitHub connected");
+    } else if (connectResult?.status === "failed") {
+      setShowGithubAccess(true);
+    }
+  }, [connectResult]);
   useEffect(() => {
     if (!state.persistenceWarning) return;
     toast.warning("Diagram generated, but not saved", {
@@ -164,7 +176,15 @@ export default function RepoPageClient({
           <PrivateReposDialog
             isOpen
             repository={repository}
-            onClose={() => setShowGithubAccess(false)}
+            connectError={
+              connectResult?.status === "failed"
+                ? connectResult.reason
+                : undefined
+            }
+            onClose={() => {
+              setShowGithubAccess(false);
+              dismissConnectResult();
+            }}
             onSaved={() => void handleRegenerate()}
           />
         )}

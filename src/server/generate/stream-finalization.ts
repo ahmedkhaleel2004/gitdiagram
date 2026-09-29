@@ -21,7 +21,8 @@ export interface FinalizeGenerationStreamParams {
   accounting: GenerationUsageAccounting;
   apiKey?: string;
   audit: GenerationSessionAudit;
-  githubPat?: string;
+  /** Where a private result is stored (see RequestCredentials.githubStorageKey). */
+  githubStorageKey?: string;
   postResponseTasks: PostResponseTask[];
   quotaReservation: ComplimentaryQuotaReservation | null;
   rateLimitedClientIp: string | null;
@@ -103,7 +104,7 @@ export async function finalizeGenerationStream(
     persistenceWarning = await persistGenerationResult({
       username: params.username,
       repo: params.repo,
-      githubPat: params.githubPat,
+      githubPat: params.githubStorageKey,
       visibility: params.storageVisibility,
       audit,
       successfulDiagramState: params.successfulDiagramState,

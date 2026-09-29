@@ -1,14 +1,20 @@
 export type CredentialKind = "openai_api_key" | "github_pat";
 
+/** A pasted credential, or "github_app" for a "Continue with GitHub" sign-in. */
+export type ClearableCredential = CredentialKind | "github_app";
+
 export interface CredentialStatus {
   openaiApiKeyConfigured: boolean;
   githubPatConfigured: boolean;
+  /** Signed in with "Continue with GitHub". Absent from older servers. */
+  githubAppConnected?: boolean;
+  githubLogin?: string | null;
 }
 
 type CredentialAction =
   | { action: "status" }
   | { action: "set"; credential: CredentialKind; value: string }
-  | { action: "clear"; credential: CredentialKind };
+  | { action: "clear"; credential: ClearableCredential };
 
 interface CredentialResponse {
   ok: true;
@@ -158,12 +164,14 @@ function removeLegacyCredentialStorage(credential: CredentialKind): void {
 }
 
 async function performExplicitCredentialMutation(
-  action: Extract<CredentialAction, { credential: CredentialKind }>,
+  action: Extract<CredentialAction, { credential: ClearableCredential }>,
 ): Promise<CredentialStatus> {
   await migrateLegacyCredentialStorage();
   return withOriginWideCredentialLock(async () => {
     const status = await performCredentialActionRaw(action);
-    removeLegacyCredentialStorage(action.credential);
+    if (action.credential !== "github_app") {
+      removeLegacyCredentialStorage(action.credential);
+    }
     return status;
   });
 }
@@ -185,7 +193,7 @@ export async function saveCredential(
 }
 
 export async function clearCredential(
-  credential: CredentialKind,
+  credential: ClearableCredential,
 ): Promise<CredentialStatus> {
   return performExplicitCredentialMutation({
     action: "clear",

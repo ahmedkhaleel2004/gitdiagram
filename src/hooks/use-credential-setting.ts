@@ -10,12 +10,16 @@ import {
   type CredentialStatus,
 } from "~/features/credentials/api";
 
-export type CredentialSettingError = "load" | "save" | "clear" | null;
+type CredentialSettingError = "load" | "save" | "clear" | "disconnect" | null;
+
+type CredentialMutation = Exclude<CredentialSettingError, "load" | null>;
 
 interface CredentialSettingState {
   error: CredentialSettingError;
   isConfigured: boolean;
-  pendingAction: "save" | "clear" | null;
+  pendingAction: CredentialMutation | null;
+  /** The last status read, for extras such as a GitHub sign-in. */
+  status: CredentialStatus | null;
   value: string;
 }
 
@@ -33,6 +37,7 @@ const INITIAL_STATE: CredentialSettingState = {
   error: null,
   isConfigured: false,
   pendingAction: null,
+  status: null,
   value: "",
 };
 
@@ -59,6 +64,7 @@ export function useCredentialSetting({
         setState((current) => ({
           ...current,
           isConfigured: status[CREDENTIAL_STATUS_KEYS[credential]],
+          status,
         }));
       })
       .catch(() => {
@@ -77,7 +83,7 @@ export function useCredentialSetting({
   }, [credential, isOpen]);
 
   const mutateCredential = useCallback(
-    async (action: Exclude<CredentialSettingError, "load" | null>) => {
+    async (action: CredentialMutation) => {
       const requestRevision = requestRevisionRef.current + 1;
       requestRevisionRef.current = requestRevision;
       setState((current) => ({
@@ -90,12 +96,15 @@ export function useCredentialSetting({
         const status =
           action === "save"
             ? await saveCredential(credential, state.value)
-            : await clearCredential(credential);
+            : await clearCredential(
+                action === "disconnect" ? "github_app" : credential,
+              );
         if (requestRevisionRef.current === requestRevision) {
           setState((current) => ({
             ...current,
             isConfigured: status[CREDENTIAL_STATUS_KEYS[credential]],
-            value: "",
+            status,
+            value: action === "disconnect" ? current.value : "",
           }));
         }
         return requestRevisionRef.current === requestRevision;
@@ -124,11 +133,16 @@ export function useCredentialSetting({
     () => mutateCredential("clear"),
     [mutateCredential],
   );
+  const disconnectGitHub = useCallback(
+    () => mutateCredential("disconnect"),
+    [mutateCredential],
+  );
 
   return {
     ...state,
     isPending: state.pendingAction !== null,
     clear,
+    disconnectGitHub,
     save,
     setValue: (value: string) => {
       setState((current) => ({ ...current, value }));

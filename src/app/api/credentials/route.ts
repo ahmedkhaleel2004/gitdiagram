@@ -1,9 +1,13 @@
 import { z } from "zod";
 
+import { readGitHubConnectConfig } from "~/server/github-connect/config";
+import { revokeUserToken } from "~/server/github-connect/oauth";
 import {
+  clearableCredentialSchema,
   clearCredential,
   credentialKindSchema,
   getCredentialStatus,
+  readGitHubConnectionToken,
   setCredential,
   storedCredentialSchema,
 } from "~/server/http/request-credentials";
@@ -26,9 +30,17 @@ const credentialActionSchema = z.discriminatedUnion("action", [
   }),
   z.strictObject({
     action: z.literal("clear"),
-    credential: credentialKindSchema,
+    credential: clearableCredentialSchema,
   }),
 ]);
+
+async function disconnectGitHub() {
+  const token = await readGitHubConnectionToken();
+  const status = await clearCredential("github_app");
+  const config = readGitHubConnectConfig();
+  if (token && config) await revokeUserToken(config, token);
+  return status;
+}
 
 export async function POST(request: Request): Promise<Response> {
   const parsed = await parseSameOriginJsonRequest(request, {
@@ -41,12 +53,15 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    const action = parsed.data;
     const status =
-      parsed.data.action === "status"
+      action.action === "status"
         ? await getCredentialStatus()
-        : parsed.data.action === "set"
-          ? await setCredential(parsed.data.credential, parsed.data.value)
-          : await clearCredential(parsed.data.credential);
+        : action.action === "set"
+          ? await setCredential(action.credential, action.value)
+          : action.credential === "github_app"
+            ? await disconnectGitHub()
+            : await clearCredential(action.credential);
 
     return Response.json(
       { ok: true, credentials: status },

@@ -60,6 +60,7 @@ Optional GitHub authentication:
 - `GITHUB_PAT` for one token
 - `GITHUB_PATS` for a comma- or newline-separated token pool
 - `GITHUB_APP_ID` or `GITHUB_CLIENT_ID`, plus `GITHUB_PRIVATE_KEY` and `GITHUB_INSTALLATION_ID`, for GitHub App authentication
+- `GITHUB_CONNECT_CLIENT_ID`, `GITHUB_CONNECT_CLIENT_SECRET`, `GITHUB_CONNECT_APP_SLUG` and `NEXT_PUBLIC_GITHUB_CONNECT=1` for "Continue with GitHub" on private repositories (a separate GitHub App; see `.env.example`)
 
 Optional browser analytics:
 

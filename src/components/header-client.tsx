@@ -1,12 +1,13 @@
 "use client";
 
-import { Suspense, use, useState } from "react";
+import { Suspense, use, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
 import { GitHubIcon } from "~/components/icons/github-icon";
+import { useGitHubConnectResult } from "~/hooks/use-github-connect-result";
 import { formatCompact } from "~/lib/format";
 import { GITHUB_REPO_URL } from "~/lib/site";
 import { VIDEOS_ENABLED } from "~/lib/video-flag";
@@ -63,6 +64,12 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
   const [isPrivateReposDialogOpen, setIsPrivateReposDialogOpen] =
     useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
+  const [connectResult, dismissConnectResult] = useGitHubConnectResult("menu");
+  // Back from a GitHub sign-in started here: reopen the dialog, which shows
+  // the connected account or why the sign-in did not finish.
+  useEffect(() => {
+    if (connectResult) setIsPrivateReposDialogOpen(true);
+  }, [connectResult]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // pathname is identical on server and client for full-page loads (the proxy
   // never rewrites URLs), so these can render at SSR without mismatch risk.
@@ -259,7 +266,17 @@ export function HeaderClient({ starCount }: HeaderClientProps) {
         {isPrivateReposDialogOpen ? (
           <PrivateReposDialog
             isOpen
-            onClose={() => setIsPrivateReposDialogOpen(false)}
+            source="menu"
+            returnTo={pathname}
+            connectError={
+              connectResult?.status === "failed"
+                ? connectResult.reason
+                : undefined
+            }
+            onClose={() => {
+              setIsPrivateReposDialogOpen(false);
+              dismissConnectResult();
+            }}
           />
         ) : null}
         {isApiKeyDialogOpen ? (
