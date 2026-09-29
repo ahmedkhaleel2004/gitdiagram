@@ -158,6 +158,63 @@
   var REEL_W = 1080;
   var CAPTION_ROOM = 190;
   var CAPTION_GAP = 44;
+
+  // ---------- feed cut: the vertical MP4 for Shorts, Reels and TikTok ----------
+  // It has no page around it, so it carries its own header under the
+  // platform's top bar: the film's address and a headline, wrapped to fit
+  // (never cut short), above the scene.
+  var FEED_TAG = 44;
+  var FEED_TAG_GAP = 18;
+  var FEED_HEADLINE_H = 200;
+  var FEED_HEAD_GAP = 34;
+  var CLIPPED = /(…|\.\.\.)$/;
+
+  // Stored titles are clipped with an ellipsis at 28 characters, which reads
+  // as broken on a feed; the film's closing line stands in for a clipped one.
+  function feedHeadline(spec, meta) {
+    var title = String(spec.title || "").trim();
+    if (title && !CLIPPED.test(title)) return title;
+    var outro = String(spec.outro || "").trim();
+    if (outro && !CLIPPED.test(outro)) return outro;
+    return title.replace(CLIPPED, "").trim() || String(meta.repo || "");
+  }
+
+  function setupFeedHead(top) {
+    var meta = window.META || {};
+    var head = el("div", "feed-head", document.getElementById("root"));
+    head.style.top = top + "px";
+    var tag = el("div", "feed-tag", head);
+    el("span", "feed-glyph", tag).innerHTML = GLYPH;
+    el("span", "", tag, "gitdiagram.com/" + (meta.owner || "") + "/" + (meta.repo || ""));
+    var line = el("div", "feed-headline", head);
+    line.style.height = FEED_HEADLINE_H + "px";
+    line.innerHTML = window.ShotKit.accentHtml(feedHeadline(window.SPEC || {}, meta));
+    return line;
+  }
+
+  // Sized once the fonts are in (the engine waits for them before it
+  // builds): the largest size at which the whole headline fits its box.
+  function fitFeedHeadline(line) {
+    var kit = window.ShotKit;
+    var text = (line.textContent || "").trim();
+    var size = kit.fitSize(
+      text,
+      function (s) {
+        return "400 " + s + 'px "Instrument Serif"';
+      },
+      REEL_W - 2 * 48,
+      FEED_HEADLINE_H,
+      1.04,
+      104,
+      52,
+    );
+    line.style.fontSize = size + "px";
+    while (size > 40 && (line.scrollHeight > FEED_HEADLINE_H + 1 || line.scrollWidth > line.clientWidth + 1)) {
+      size -= 2;
+      line.style.fontSize = size + "px";
+    }
+  }
+
   function setupReel(options) {
     var root = document.documentElement;
     root.classList.add("reel");
@@ -183,8 +240,14 @@
     var L = 48;
     var R = REEL_W - 48;
     var TOP = top + 40;
+    if (options.feed) {
+      reel.headline = setupFeedHead(top);
+      TOP = top + FEED_TAG + FEED_TAG_GAP + FEED_HEADLINE_H + FEED_HEAD_GAP;
+    }
     var BOT = Math.max(TOP + 700, h - bottom - CAPTION_GAP - CAPTION_ROOM - 30);
     var kit = window.ShotKit;
+    // The engine opens a feed cut already built and closes it sooner.
+    kit.feed = Boolean(options.feed);
     kit.frame = {
       w: REEL_W,
       h: h,
@@ -255,6 +318,7 @@
     timeline = built;
     var captionHost = options.layout === "vertical" ? setupVertical() : document.getElementById("root");
     setupCaptions(captionHost);
+    if (reel && reel.headline) fitFeedHeadline(reel.headline);
     captions.on = captionsWanted === null ? options.captions : captionsWanted;
     if (options.poster) showPoster();
     seek(0);
@@ -301,7 +365,8 @@
       // A reel re-lays the plan for its tall canvas before the engine builds it.
       if (message.layout === "reel") {
         try {
-          setupReel({ insets: message.insets, height: message.height });
+          // A feed cut is only ever rendered offline, never shown in a page.
+          setupReel({ insets: message.insets, height: message.height, feed: message.feed === true && window.parent === window });
         } catch (error) {
           fail(error && error.message ? error.message : error);
           return;

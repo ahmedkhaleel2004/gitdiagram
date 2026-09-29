@@ -12,6 +12,14 @@ import {
 } from "~/features/explainer/engine";
 import type { VideoArtifact } from "~/features/explainer/types";
 import { runProcess } from "~/server/child-process";
+import {
+  audioPieces,
+  editDuration,
+  outputTime,
+  parseSilences,
+  planFeedEdit,
+  type TimeEdit,
+} from "./feed-edit";
 import { deploymentHeaders } from "./render-origin";
 import { readVoiceClip } from "./store";
 
@@ -27,11 +35,55 @@ export const RENDER_FPS = 30;
 /** Frames per segment. Segments render in parallel, each well inside a function's time limit. */
 const SEGMENT_FRAMES = RENDER_FPS * 5;
 
-/** The frame ranges [from, to) a film is cut into for parallel rendering. */
+/**
+ * How a segment's frames are encoded. Every segment of a film uses the same
+ * settings, so they join without re-encoding. The vertical MP4 goes to
+ * Shorts, Reels and TikTok, which re-encode whatever they get: it is made at
+ * full 1080×1920 with room for thin lines and small text to survive that
+ * (quality-targeted, capped at 8 Mbps; flat motion graphics land well below).
+ */
+export function videoCodecArgs(format: RenderFormat): string[] {
+  if (format === "landscape")
+    return [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+    ];
+  return [
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-tune",
+    "animation",
+    "-crf",
+    "14",
+    "-maxrate",
+    "8M",
+    "-bufsize",
+    "16M",
+    "-profile:v",
+    "high",
+    "-level:v",
+    "4.2",
+    "-pix_fmt",
+    "yuv420p",
+  ];
+}
+
+/** The frame ranges [from, to) a film (or its feed cut) is cut into for parallel rendering. */
 export function segmentRanges(
   artifact: VideoArtifact,
+  edit?: TimeEdit,
 ): Array<{ from: number; to: number }> {
-  const frames = Math.ceil(artifact.timing.DURATION * RENDER_FPS);
+  const frames = edit
+    ? Math.ceil(editDuration(edit) * RENDER_FPS - 1e-6)
+    : Math.ceil(artifact.timing.DURATION * RENDER_FPS);
   const ranges: Array<{ from: number; to: number }> = [];
   for (let from = 0; from < frames; from += SEGMENT_FRAMES)
     ranges.push({ from, to: Math.min(frames, from + SEGMENT_FRAMES) });
@@ -88,6 +140,12 @@ export function soundtrackGraph(params: {
   effects: ReadonlyMap<string, string>;
   cues: SfxCue[];
   duration: number;
+  /**
+   * A feed cut (the vertical MP4): the narration is laid out on the film's
+   * clock, then only the stretches the cut keeps are placed on its own
+   * clock, and each effect hit moves to where its moment lands in the cut.
+   */
+  edit?: TimeEdit;
 }): { inputs: string[]; graph: string } {
   const inputs: string[] = [];
   const chains: string[] = [];
@@ -98,17 +156,53 @@ export function soundtrackGraph(params: {
     chains.push(`${source}${chain}${label}`);
     labels.push(label);
   };
-  for (const voice of params.voices) {
-    const index = addInput(voice.path);
-    const ms = Math.round(voice.start * 1000);
-    mixIn(
-      `[${index}:a]`,
-      `aresample=48000,aformat=channel_layouts=stereo,adelay=${ms}|${ms},volume=${MASTER_GAIN}`,
+  const { edit } = params;
+  if (edit) {
+    const voices = params.voices.map((voice, k) => {
+      const index = addInput(voice.path);
+      const ms = Math.round(voice.start * 1000);
+      chains.push(
+        `[${index}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${ms}|${ms}[v${k}]`,
+      );
+      return `[v${k}]`;
+    });
+    const pieces = audioPieces(edit);
+    const parts = pieces.map((_, k) => `[p${k}]`);
+    chains.push(
+      `${voices.join("")}amix=inputs=${voices.length}:normalize=0:duration=longest,volume=${MASTER_GAIN},asplit=${pieces.length}${parts.join("")}`,
     );
-  }
+    for (const [k, piece] of pieces.entries()) {
+      const length = piece.to - piece.from;
+      const ms = Math.round(piece.at * 1000);
+      // Every cut falls in a silence; the short fades only guard against a click.
+      const fades =
+        length > 0.05
+          ? `,afade=t=in:d=0.005,afade=t=out:st=${(length - 0.005).toFixed(3)}:d=0.005`
+          : "";
+      mixIn(
+        parts[k]!,
+        `atrim=start=${piece.from.toFixed(3)}:end=${piece.to.toFixed(3)},asetpts=PTS-STARTPTS${fades},adelay=${ms}|${ms}`,
+      );
+    }
+  } else
+    for (const voice of params.voices) {
+      const index = addInput(voice.path);
+      const ms = Math.round(voice.start * 1000);
+      mixIn(
+        `[${index}:a]`,
+        `aresample=48000,aformat=channel_layouts=stereo,adelay=${ms}|${ms},volume=${MASTER_GAIN}`,
+      );
+    }
   const cuesBySound = new Map<string, SfxCue[]>();
-  for (const cue of params.cues) {
-    if (!params.effects.has(cue.name)) continue;
+  for (const source of params.cues) {
+    if (!params.effects.has(source.name)) continue;
+    let cue = source;
+    if (edit) {
+      const t = outputTime(edit, source.t);
+      // A hit before the cut starts or after it ends is left out.
+      if (t === null) continue;
+      cue = { ...source, t };
+    }
     const list = cuesBySound.get(cue.name) ?? [];
     list.push(cue);
     cuesBySound.set(cue.name, list);
@@ -129,18 +223,17 @@ export function soundtrackGraph(params: {
       );
     }
   }
-  const duration = params.duration.toFixed(3);
+  const duration = (edit ? editDuration(edit) : params.duration).toFixed(3);
   const graph = `${chains.join(";")};${labels.join("")}amix=inputs=${labels.length}:normalize=0:duration=longest,apad=whole_dur=${Number(duration) + 2},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,atrim=0:${duration}[mix]`;
   return { inputs, graph };
 }
 
-async function mixSoundtrackInto(
+/** A film's narration clips, written into `dir`, with where each starts. */
+async function writeVoiceClips(
   dir: string,
   artifact: VideoArtifact,
-  sfx: SfxCue[],
-  origin: string,
   signal: AbortSignal | undefined,
-): Promise<string> {
+): Promise<Array<{ path: string; start: number }>> {
   const clips = await untilAborted(
     Promise.all(
       artifact.voices.map((_, index) =>
@@ -161,6 +254,71 @@ async function mixSoundtrackInto(
     await writeFile(path, clip);
     voices.push({ path, start: artifact.voices[index]!.start });
   }
+  return voices;
+}
+
+/** Quieter than this for long enough is a pause (the voice is alone in its clips). */
+const SILENCE_FILTER = "silencedetect=noise=-40dB:d=0.2";
+
+/**
+ * Where the narration is silent, on the film's clock: its clips laid out as
+ * the soundtrack places them and measured by ffmpeg. A silence that runs to
+ * the end of the narration ends at Infinity.
+ */
+export async function voiceSilences(
+  artifact: VideoArtifact,
+  signal?: AbortSignal,
+): Promise<Array<[number, number]>> {
+  const dir = await mkdtemp(join(tmpdir(), "explainer-"));
+  try {
+    const voices = await writeVoiceClips(dir, artifact, signal);
+    const placed = voices.map((voice, k) => {
+      const ms = Math.round(voice.start * 1000);
+      return `[${k}:a]aresample=48000,aformat=channel_layouts=mono,adelay=${ms}|${ms}[v${k}]`;
+    });
+    const graph = `${placed.join(";")};${voices.map((_, k) => `[v${k}]`).join("")}amix=inputs=${voices.length}:normalize=0:duration=longest,${SILENCE_FILTER},ametadata=mode=print:file=-[out]`;
+    const printed = await runProcess(
+      await ffmpegPath(),
+      [
+        "-loglevel",
+        "error",
+        ...voices.flatMap((voice) => ["-i", voice.path]),
+        "-filter_complex",
+        graph,
+        "-map",
+        "[out]",
+        "-f",
+        "null",
+        "-",
+      ],
+      { signal, stdout: true, label: "ffmpeg" },
+    );
+    return parseSilences(printed.toString("utf8"));
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+/** The feed cut the vertical MP4 is made from (see feed-edit.ts). */
+export async function planVerticalEdit(
+  artifact: VideoArtifact,
+  signal?: AbortSignal,
+): Promise<TimeEdit> {
+  return planFeedEdit({
+    timing: artifact.timing,
+    silences: await voiceSilences(artifact, signal),
+  });
+}
+
+async function mixSoundtrackInto(
+  dir: string,
+  artifact: VideoArtifact,
+  sfx: SfxCue[],
+  origin: string,
+  signal: AbortSignal | undefined,
+  edit: TimeEdit | undefined,
+): Promise<string> {
+  const voices = await writeVoiceClips(dir, artifact, signal);
   const effects = new Map<string, string>();
   for (const name of new Set(sfx.map((cue) => cue.name))) {
     if (!isKnownEffect(name)) continue;
@@ -178,6 +336,7 @@ async function mixSoundtrackInto(
     effects,
     cues: sfx,
     duration: artifact.timing.DURATION,
+    ...(edit ? { edit } : {}),
   });
   const out = join(dir, "soundtrack.m4a");
   await ffmpeg(
@@ -210,6 +369,8 @@ export async function mixSoundtrack(params: {
   sfx: SfxCue[];
   origin: string;
   signal?: AbortSignal;
+  /** The vertical MP4's feed cut, whose clock the soundtrack then follows. */
+  edit?: TimeEdit;
 }): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), "explainer-"));
   try {
@@ -219,6 +380,7 @@ export async function mixSoundtrack(params: {
       params.sfx,
       params.origin,
       params.signal,
+      params.edit,
     );
     return await readFile(out);
   } finally {

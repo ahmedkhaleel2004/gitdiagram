@@ -12,6 +12,11 @@ vi.mock("./ffmpeg", async (importActual) => {
       { from: 300, to: 400 },
     ]),
     mixSoundtrack: vi.fn(async () => Buffer.from("sound")),
+    planVerticalEdit: vi.fn(async () => [
+      [0.5, 6, 5.5],
+      [6, 7.5, 0.3],
+      [7.5, 12, 4.5],
+    ]),
     assembleMp4: vi.fn(async ({ segments }: { segments: Buffer[] }) =>
       Buffer.concat(segments),
     ),
@@ -20,7 +25,12 @@ vi.mock("./ffmpeg", async (importActual) => {
 
 import { createHmac } from "node:crypto";
 import type { VideoArtifact } from "~/features/explainer/types";
-import { assembleMp4, mixSoundtrack, segmentRanges } from "./ffmpeg";
+import {
+  assembleMp4,
+  mixSoundtrack,
+  planVerticalEdit,
+  segmentRanges,
+} from "./ffmpeg";
 import {
   encodeSegmentEvent,
   isStaleRender,
@@ -111,6 +121,39 @@ describe("render segment signatures", () => {
     expect(verifySegmentJob(value, "nope")).toBe(false);
   });
 
+  it("signs a feed cut's edit with the job, so no frame can be moved", () => {
+    const value: SegmentJob = {
+      ...job(),
+      format: "vertical",
+      edit: [
+        [0.5, 6, 5.5],
+        [6, 7.5, 0.3],
+      ],
+    };
+    const signature = createHmac(
+      "sha256",
+      createHmac("sha256", "secret").update("video-segment-key/v1").digest(),
+    )
+      .update(JSON.stringify([...fields(value), value.edit]))
+      .digest("hex");
+    expect(verifySegmentJob(value, signature)).toBe(true);
+    const moved: SegmentJob = {
+      ...value,
+      edit: [
+        [0.5, 6, 5.5],
+        [6, 7.5, 1.3],
+      ],
+    };
+    expect(verifySegmentJob(moved, signature)).toBe(false);
+    expect(verifySegmentJob({ ...value, edit: undefined }, signature)).toBe(
+      false,
+    );
+    expect(segmentJobSchema.safeParse(value).success).toBe(true);
+    expect(
+      segmentJobSchema.safeParse({ ...value, edit: [[0, 1, 0]] }).success,
+    ).toBe(false);
+  });
+
   it("rejects a signature made with the cache secret itself", () => {
     const value = job();
     const payload = JSON.stringify(fields(value));
@@ -197,6 +240,50 @@ describe("rendering in segments", () => {
     // Every attempt's signature outlives the render's deadline.
     const signed = bodyOf(fetchMock.mock.calls[0]![1]);
     expect(signed.exp).toBeGreaterThanOrEqual(Date.now() + RENDER_DEADLINE_MS);
+  });
+
+  it("cuts the vertical MP4 once and hands the same cut to every segment and the soundtrack", async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) =>
+      answer([{ type: "ready", sfx: [] }, done(String(bodyOf(init).from))]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await settle(
+      renderMp4InSegments({
+        artifact,
+        format: "vertical",
+        origin: "https://example.com",
+      }),
+    );
+    expect(planVerticalEdit).toHaveBeenCalledTimes(1);
+    const edit = await vi.mocked(planVerticalEdit).mock.results[0]!.value;
+    expect(segmentRanges).toHaveBeenCalledWith(artifact, edit);
+    for (const [, init] of fetchMock.mock.calls) {
+      const sent = bodyOf(init);
+      expect(sent.format).toBe("vertical");
+      expect(sent.edit).toEqual(edit);
+      expect(
+        verifySegmentJob(
+          sent,
+          String(new Headers(init.headers).get("X-Video-Segment")),
+        ),
+      ).toBe(true);
+    }
+    expect(mixSoundtrack).toHaveBeenCalledWith(
+      expect.objectContaining({ edit }),
+    );
+  });
+
+  it("leaves the landscape MP4 uncut", async () => {
+    const fetchMock = vi.fn(async () =>
+      answer([{ type: "ready", sfx: [] }, done("A")]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await settle(render());
+    expect(planVerticalEdit).not.toHaveBeenCalled();
+    expect(segmentRanges).toHaveBeenCalledWith(artifact, undefined);
+    expect(mixSoundtrack).toHaveBeenCalledWith(
+      expect.not.objectContaining({ edit: expect.anything() }),
+    );
   });
 
   it("never moves the progress bar backwards when a segment is retried", async () => {

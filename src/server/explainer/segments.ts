@@ -11,9 +11,11 @@ import {
 } from "~/server/generate/types";
 import { logEvent } from "~/server/log";
 import { readRequiredEnv } from "~/server/storage/config";
+import type { TimeEdit } from "./feed-edit";
 import {
   assembleMp4,
   mixSoundtrack,
+  planVerticalEdit,
   segmentRanges,
   untilAborted,
   type RenderFormat,
@@ -43,6 +45,15 @@ export const segmentJobSchema = z.strictObject({
   from: z.number().int().min(0),
   to: z.number().int().min(1),
   exp: z.number().int(),
+  // The vertical MP4's feed cut (feed-edit.ts), worked out once by the render
+  // that sends the job so every segment draws the same film.
+  edit: z
+    .array(
+      z.tuple([z.number().min(0), z.number().min(0), z.number().positive()]),
+    )
+    .min(1)
+    .max(512)
+    .optional(),
 });
 
 export type SegmentJob = z.infer<typeof segmentJobSchema>;
@@ -94,6 +105,8 @@ function sign(job: SegmentJob): string {
     job.from,
     job.to,
     job.exp,
+    // Only a feed cut carries an edit; it is signed with the rest.
+    ...(job.edit ? [job.edit] : []),
   ]);
   return createHmac("sha256", signingKey()).update(payload).digest("hex");
 }
@@ -343,7 +356,13 @@ export async function renderMp4InSegments(params: {
   const deadline = started + RENDER_DEADLINE_MS;
   // Valid for every attempt the deadline allows (none outlasts it).
   const exp = deadline + 60_000;
-  const ranges = segmentRanges(artifact);
+  // The vertical MP4 is a feed cut: its pauses are measured in the narration
+  // before any frame is drawn, since the cut decides how many frames there are.
+  const edit: TimeEdit | undefined =
+    format === "vertical"
+      ? await planVerticalEdit(artifact, params.signal)
+      : undefined;
+  const ranges = segmentRanges(artifact, edit);
   const total = ranges.reduce((sum, range) => sum + range.to - range.from, 0);
   // The most frames each segment has reported, across its attempts: a retry
   // starts over, but the bar holds its place until it catches up.
@@ -380,6 +399,7 @@ export async function renderMp4InSegments(params: {
           from: range.from,
           to: range.to,
           exp,
+          ...(edit ? { edit } : {}),
         };
         const onEvent = (event: SegmentEvent) => {
           if (event.type === "ready") {
@@ -388,6 +408,7 @@ export async function renderMp4InSegments(params: {
               sfx: event.sfx,
               origin,
               signal,
+              ...(edit ? { edit } : {}),
             });
             // Awaited below; a failed mix stops the segments rather than
             // going unhandled until they finish.

@@ -122,6 +122,7 @@ export async function POST(request: Request): Promise<Response> {
             origin,
             from: job.from,
             to: job.to,
+            ...(job.edit ? { edit: job.edit } : {}),
             signal,
             onReady: (sfx) => send({ type: "ready", sfx }),
             onFrame: (done) => {
