@@ -1,7 +1,9 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { z } from "zod";
+
+import { readRequiredEnv } from "~/server/storage/config";
 
 import { readGitHubConnectConfig } from "./config";
 import {
@@ -124,8 +126,16 @@ export function clearGitHubConnection(cookies: CookieWriter): void {
  * diagrams survive the 8-hourly token refresh and a later reconnect. Only a
  * sealed cookie can carry an account id, and only the OAuth callback seals one.
  */
-function githubConnectionStorageKey(userId: number): string {
-  return `github-user:${userId}`;
+/**
+ * Where a sign-in's private diagrams are stored. It stands in for a token in
+ * the private namespace (cache-key.ts HMACs it again), and a pasted "token"
+ * can be any string, so it must not be guessable from the public account id:
+ * it is keyed with the server secret, never `github-user:<id>`.
+ */
+export function githubConnectionStorageKey(userId: number): string {
+  return createHmac("sha256", readRequiredEnv("CACHE_KEY_SECRET"))
+    .update(`gitdiagram:github-account-storage:v1:${userId}`)
+    .digest("hex");
 }
 
 const recentRefreshes = new Map<

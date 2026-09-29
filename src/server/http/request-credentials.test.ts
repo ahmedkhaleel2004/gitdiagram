@@ -48,6 +48,7 @@ import {
 } from "~/server/http/request-credentials";
 import {
   GITHUB_CONNECTION_COOKIE,
+  githubConnectionStorageKey,
   readGitHubConnection,
   resetGitHubConnectionRefreshesForTests,
   writeGitHubConnection,
@@ -210,13 +211,24 @@ describe("request credentials", () => {
       vi.unstubAllGlobals();
     });
 
+    it("keys a sign-in's diagrams so a pasted token cannot reach them", async () => {
+      const key = githubConnectionStorageKey(42);
+      // A pasted "token" may be any string and GitHub account ids are public,
+      // so the key must not be derivable from the id without the secret.
+      expect(key).toMatch(/^[0-9a-f]{64}$/);
+      expect(key).not.toContain("42");
+      vi.stubEnv("CACHE_KEY_SECRET", "another-secret");
+      expect(githubConnectionStorageKey(42)).not.toBe(key);
+      vi.stubEnv("CACHE_KEY_SECRET", "test-cache-key-secret");
+    });
+
     it("uses the sign-in's token and stores diagrams under its account", async () => {
       writeGitHubConnection(mocks.cookieStore, connection());
 
       await expect(resolveRequestCredentials(request())).resolves.toEqual({
         apiKey: undefined,
         githubPat: "ghu_current",
-        githubStorageKey: "github-user:42",
+        githubStorageKey: githubConnectionStorageKey(42),
       });
       await expect(getCredentialStatus()).resolves.toMatchObject({
         githubPatConfigured: false,
@@ -270,7 +282,7 @@ describe("request credentials", () => {
 
       expect(first.githubPat).toBe("ghu_next");
       expect(second.githubPat).toBe("ghu_next");
-      expect(first.githubStorageKey).toBe("github-user:42");
+      expect(first.githubStorageKey).toBe(githubConnectionStorageKey(42));
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0] as unknown as [
         string,
