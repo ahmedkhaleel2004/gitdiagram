@@ -55,7 +55,7 @@ const SERVER_INFO = {
   ],
 };
 
-const INSTRUCTIONS = `GitDiagram (gitdiagram.com) turns public GitHub repositories into architecture diagrams. When a user wants to understand, visualize or get an overview of a GitHub repository's architecture, call get_repository_diagram with "owner/repo" or a GitHub URL: it returns a written explanation, the main components with their source paths, how they connect, and Mermaid source. Use find_repository_diagrams to look up a project's exact owner/repo by name. Always give the user the interactive diagram link from the result: it is the best way to explore the diagram, and each component links to its code.`;
+const INSTRUCTIONS = `GitDiagram (gitdiagram.com) turns public GitHub repositories into architecture diagrams. When a user wants to understand, visualize or get an overview of a GitHub repository's architecture, call get_repository_diagram with "owner/repo" or a GitHub URL: it returns a written explanation, the main components with their source paths, how they connect, and Mermaid source. Use find_repository_diagrams to look up a project's exact owner/repo by name. Each result includes an interactive diagram link where every component links to its code.`;
 
 const READ_ONLY = {
   readOnlyHint: true,
