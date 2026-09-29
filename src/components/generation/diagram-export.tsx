@@ -2,16 +2,22 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Copy, Download, ImageDown } from "lucide-react";
-import { exportMermaidSvgAsPng } from "~/features/diagram/export";
+import {
+  exportMermaidSvgAsPng,
+  withGitDiagramCredit,
+} from "~/features/diagram/export";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { ExportAction } from "./export-action";
 import styles from "./workspace.module.css";
 
 export function DiagramExport({
+  repository,
   diagram,
   getSvg,
   disabled = false,
 }: {
+  /** owner/repo: both exports link back to its page. */
+  repository: string;
   diagram: string;
   getSvg: () => SVGSVGElement | null;
   disabled?: boolean;
@@ -87,6 +93,7 @@ export function DiagramExport({
                 await exportMermaidSvgAsPng(
                   svg,
                   getComputedStyle(document.body).backgroundColor,
+                  repository,
                 );
               }}
             />
@@ -97,7 +104,11 @@ export function DiagramExport({
               description="Copy the editable Mermaid diagram code"
               errorMessage="Copy failed. Try again."
               icon={Copy}
-              onAction={() => navigator.clipboard.writeText(diagram)}
+              onAction={() =>
+                navigator.clipboard.writeText(
+                  withGitDiagramCredit(diagram, repository),
+                )
+              }
             />
           </div>
         </TooltipProvider>

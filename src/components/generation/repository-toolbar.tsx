@@ -89,7 +89,12 @@ export function RepositoryToolbar({
           className={styles.exportSlot}
           data-column={video ? "right" : "left"}
         >
-          <DiagramExport diagram={diagram} getSvg={getSvg} disabled={pending} />
+          <DiagramExport
+            repository={repository}
+            diagram={diagram}
+            getSvg={getSvg}
+            disabled={pending}
+          />
         </div>
         <button
           ref={regenerateRef}
