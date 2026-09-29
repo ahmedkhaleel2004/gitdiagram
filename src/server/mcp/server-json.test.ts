@@ -30,3 +30,37 @@ describe("server.json", () => {
     expect(manifest.description.length).toBeLessThanOrEqual(100);
   });
 });
+
+// The agent plugins (Claude Code, Cursor, Gemini CLI) install this same
+// server; keep their endpoint and version in step with it.
+describe("agent plugin manifests", () => {
+  const read = (path: string) =>
+    JSON.parse(readFileSync(join(process.cwd(), path), "utf8")) as {
+      version?: string;
+      mcpServers: Record<string, Record<string, string>>;
+    };
+  const url = "https://gitdiagram.com/mcp";
+
+  it("point at the running server", () => {
+    expect(read("plugins/gitdiagram/.mcp.json").mcpServers.gitdiagram).toEqual({
+      type: "http",
+      url,
+    });
+    expect(
+      read("plugins/gitdiagram/.cursor-plugin/plugin.json").mcpServers
+        .gitdiagram,
+    ).toEqual({ url });
+    expect(read("gemini-extension.json").mcpServers.gitdiagram).toEqual({
+      httpUrl: url,
+    });
+  });
+
+  it("carry the server's version", () => {
+    for (const path of [
+      "plugins/gitdiagram/.claude-plugin/plugin.json",
+      "plugins/gitdiagram/.cursor-plugin/plugin.json",
+      "gemini-extension.json",
+    ])
+      expect(read(path).version, path).toBe(MCP_SERVER_VERSION);
+  });
+});

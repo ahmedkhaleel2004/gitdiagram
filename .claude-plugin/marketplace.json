@@ -1,0 +1,19 @@
+{
+  "name": "gitdiagram",
+  "owner": {
+    "name": "GitDiagram",
+    "email": "ahmed@gitdiagram.com"
+  },
+  "metadata": {
+    "description": "GitDiagram's plugin: architecture diagrams of any public GitHub repository."
+  },
+  "plugins": [
+    {
+      "name": "gitdiagram",
+      "source": "./plugins/gitdiagram",
+      "description": "Architecture diagrams, explanations and Mermaid source for any public GitHub repository, from gitdiagram.com.",
+      "category": "development",
+      "tags": ["architecture", "diagram", "mermaid", "github"]
+    }
+  ]
+}

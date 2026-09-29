@@ -1,0 +1,23 @@
+{
+  "name": "gitdiagram",
+  "displayName": "GitDiagram",
+  "version": "1.0.0",
+  "description": "Architecture diagrams, explanations and Mermaid source for any public GitHub repository, from gitdiagram.com.",
+  "author": {
+    "name": "GitDiagram",
+    "email": "ahmed@gitdiagram.com",
+    "url": "https://gitdiagram.com"
+  },
+  "homepage": "https://gitdiagram.com",
+  "repository": "https://github.com/ahmedkhaleel2004/gitdiagram",
+  "license": "MIT",
+  "keywords": [
+    "architecture",
+    "diagram",
+    "mermaid",
+    "github",
+    "codebase",
+    "visualization",
+    "mcp"
+  ]
+}

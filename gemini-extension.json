@@ -1,0 +1,10 @@
+{
+  "name": "gitdiagram",
+  "version": "1.0.0",
+  "description": "Architecture diagrams, explanations and Mermaid source for any public GitHub repository, from gitdiagram.com.",
+  "mcpServers": {
+    "gitdiagram": {
+      "httpUrl": "https://gitdiagram.com/mcp"
+    }
+  }
+}
