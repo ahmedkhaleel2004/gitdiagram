@@ -10,7 +10,7 @@ import type { SponsorStats } from "~/server/sponsor-stats";
 export const SPONSOR_EMAIL_ADDRESS = "ahmed@gitdiagram.com";
 export const SPONSOR_EMAIL = `mailto:${SPONSOR_EMAIL_ADDRESS}?subject=Advertising%20on%20GitDiagram`;
 export const SPONSOR_PRICE = "$999";
-export const SPONSOR_EXCLUSIVE_PRICE = "$2,499";
+export const SPONSOR_EXCLUSIVE_PRICE = "$3,499";
 export const sponsorFits = [
   "AI coding tools and repo agents",
   "Code review, security, and dependency tools",
