@@ -19,5 +19,8 @@
     "codebase",
     "visualization",
     "mcp"
-  ]
+  ],
+  "privacyPolicyUrl": "https://gitdiagram.com/privacy",
+  "supportUrl": "mailto:ahmed@gitdiagram.com",
+  "documentationUrl": "https://github.com/ahmedkhaleel2004/gitdiagram#use-gitdiagram-from-ai-agents"
 }
