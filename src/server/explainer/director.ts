@@ -298,8 +298,8 @@ function openAIRequest(
 }
 
 /**
- * List-price cost of a response: cache reads at 0.1× input and cache writes
- * at 1.25× (GPT-5.6 and later), the rest at the input rate.
+ * List-price cost of a response: cache reads at 0.1× input (0.05× on GPT-6.1
+ * Sol) and cache writes at 1.25× (GPT-5.6 and later), the rest at the input rate.
  */
 function openAICostUsd(
   model: string,

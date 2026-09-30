@@ -17,6 +17,13 @@ describe("resolvePricingModel", () => {
     );
   });
 
+  it("keeps GPT-6.1 Sol apart from GPT-6 Sol, dated snapshots included", () => {
+    expect(resolvePricingModel("gpt-6.1-sol")).toBe("gpt-6.1-sol");
+    expect(resolvePricingModel("gpt-6.1-sol-2026-09-20")).toBe("gpt-6.1-sol");
+    expect(resolvePricingModel("openai/gpt-6.1-sol")).toBe("gpt-6.1-sol");
+    expect(resolvePricingModel("gpt-6-sol")).toBe("gpt-6-sol");
+  });
+
   it("prices the GPT-5.6 alias as Sol", () => {
     expect(resolvePricingModel("gpt-5.6")).toBe("gpt-5.6-sol");
   });
@@ -110,6 +117,30 @@ describe("mixed-model measured costs", () => {
     // 400 ordinary at $2 + 400 reads at $0.20 + 200 writes at $2.50 + output at $12, then Fast 2x.
     expect(cost.amountUsd).toBeCloseTo(
       ((400 * 2 + 400 * 0.2 + 200 * 2.5 + 100 * 12) * 2) / 1e6,
+      10,
+    );
+  });
+  it("prices GPT-6.1 Sol cache reads at 0.05× input, GPT-6 Sol at 0.1×", () => {
+    const cost = (model: string) =>
+      createCostSummary({
+        kind: "actual",
+        model,
+        approximate: false,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 100,
+          totalTokens: 1100,
+          cachedInputTokens: 400,
+          cacheWriteTokens: 200,
+        },
+      }).amountUsd;
+    // 400 ordinary at $2 + 400 reads + 200 writes at $2.50 + output at $10.
+    expect(cost("gpt-6.1-sol")).toBeCloseTo(
+      (400 * 2 + 400 * 0.1 + 200 * 2.5 + 100 * 10) / 1e6,
+      10,
+    );
+    expect(cost("gpt-6-sol")).toBeCloseTo(
+      (400 * 2 + 400 * 0.2 + 200 * 2.5 + 100 * 10) / 1e6,
       10,
     );
   });

@@ -71,7 +71,7 @@ Optional browser analytics:
 
 Optional explainer videos, operator dashboard and live presence:
 
-- `VIDEO_EXPLAINER_ENABLED=1` and `NEXT_PUBLIC_VIDEO_EXPLAINER=1` turn videos on. They need `OPENAI_API_KEY` (GPT-6 Sol and whisper-1) and `OPENROUTER_API_KEY` (the voice), plus `ANTHROPIC_API_KEY` while a configured video model is a Claude model (the default).
+- `VIDEO_EXPLAINER_ENABLED=1` and `NEXT_PUBLIC_VIDEO_EXPLAINER=1` turn videos on. They need `OPENAI_API_KEY` (GPT-6.1 Sol and whisper-1) and `OPENROUTER_API_KEY` (the voice), plus `ANTHROPIC_API_KEY` while a configured video model is a Claude model (the default).
 - `VIDEO_ADMIN_TOKEN` (32+ characters) signs in to `/admin` and skips the video limits. `ANTHROPIC_ADMIN_KEY` lets `/admin` show the Claude credit left.
 - `NEXT_PUBLIC_PRESENCE_URL` and `PRESENCE_SECRET` connect the site to the presence worker (see [workers/presence/README.md](../workers/presence/README.md)).
 - Local MP4 renders need `VIDEO_RENDER_CHROME_PATH` and must run `next dev` under Node, not Bun.

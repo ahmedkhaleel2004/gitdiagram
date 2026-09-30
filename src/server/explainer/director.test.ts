@@ -61,7 +61,7 @@ const input: RepositoryContextInput = {
 };
 
 const OPUS: Planner = { model: "claude-opus-5-5", effort: "low" };
-const SOL: Planner = { model: "gpt-6-sol", effort: "medium" };
+const SOL: Planner = { model: "gpt-6.1-sol", effort: "medium" };
 const STANDARD: Planner = { ...OPUS, designer: SOL };
 const PREMIUM: Planner = { ...OPUS, fallback: SOL };
 const PICTURE = {
@@ -236,7 +236,7 @@ describe("the director", () => {
     expect(writers.usage.costUsd).toBeCloseTo(4.2);
   });
 
-  it("writes with GPT-6 Sol through the Responses API", async () => {
+  it("writes with GPT-6.1 Sol through the Responses API", async () => {
     create.mockResolvedValueOnce(openAIScriptReply(120));
     const writers = createFilmWriters(input, SOL);
     const script = await writers.direct();
@@ -247,11 +247,11 @@ describe("the director", () => {
       reasoning: { effort: string };
       tool_choice: { name: string };
     };
-    expect(request.model).toBe("gpt-6-sol");
+    expect(request.model).toBe("gpt-6.1-sol");
     expect(request.reasoning.effort).toBe("medium");
     expect(request.tool_choice.name).toBe("write_script");
-    // A million uncached ($2), a million cached ($0.20), 100k out ($1).
-    expect(writers.usage.costUsd).toBeCloseTo(3.2);
+    // A million uncached ($2), a million cached ($0.10 on 6.1), 100k out ($1).
+    expect(writers.usage.costUsd).toBeCloseTo(3.1);
   });
 
   it("prices OpenAI cache writes at 1.25× input", async () => {
@@ -268,8 +268,8 @@ describe("the director", () => {
     });
     const writers = createFilmWriters(input, SOL);
     await writers.direct();
-    // A million ordinary ($2), a million read ($0.20), a million written ($2.50).
-    expect(writers.usage.costUsd).toBeCloseTo(4.7);
+    // A million ordinary ($2), a million read ($0.10), a million written ($2.50).
+    expect(writers.usage.costUsd).toBeCloseTo(4.6);
   });
 
   it("caches only the shared prefix on OpenAI, never a designer's own task", async () => {
@@ -300,13 +300,13 @@ describe("the director", () => {
     expect(new Set(prefixes).size).toBe(1);
   });
 
-  it("lets Opus write the script and GPT-6 Sol design the scenes, warming Sol's cache meanwhile", async () => {
+  it("lets Opus write the script and GPT-6.1 Sol design the scenes, warming Sol's cache meanwhile", async () => {
     stream.mockReturnValueOnce(scriptReply(120));
     create.mockImplementation(async (request: OpenAIRequest) =>
       isPrewarm(request) ? PREWARM_REPLY : openAIShotsReply(request),
     );
     const writers = createFilmWriters(input, STANDARD);
-    expect(writers.model).toBe("claude-opus-5-5+gpt-6-sol");
+    expect(writers.model).toBe("claude-opus-5-5+gpt-6.1-sol");
     const script = await writers.direct();
     // The prewarm was the only OpenAI call while Opus directed.
     expect(openAIRequests().map(isPrewarm)).toEqual([true]);
@@ -321,7 +321,7 @@ describe("the director", () => {
     const designers = openAIRequests().slice(1);
     expect(designers).toHaveLength(designGroups(script).length);
     expect(designers[0]).toMatchObject({
-      model: "gpt-6-sol",
+      model: "gpt-6.1-sol",
       reasoning: { effort: "medium" },
       tool_choice: { name: "write_shots" },
     });
@@ -391,9 +391,9 @@ describe("the director", () => {
     const script = await writers.direct();
     expect(script.beats).toHaveLength(4);
     expect(openAIRequests().filter((r) => !isPrewarm(r))[0]).toMatchObject({
-      model: "gpt-6-sol",
+      model: "gpt-6.1-sol",
     });
-    expect(writers.model).toBe("gpt-6-sol");
+    expect(writers.model).toBe("gpt-6.1-sol");
   });
 
   it("hands a premium film to Sol, script and scenes, when Opus fails", async () => {
@@ -408,12 +408,12 @@ describe("the director", () => {
     const writers = createFilmWriters(input, PREMIUM);
     expect(writers.model).toBe("claude-opus-5-5");
     const script = await writers.direct();
-    expect(writers.model).toBe("gpt-6-sol");
+    expect(writers.model).toBe("gpt-6.1-sol");
     const designed = await writers.design(script);
     expect(designed.size).toBe(script.beats.length);
     expect(stream).toHaveBeenCalledTimes(1);
     expect(
-      openAIRequests().every((request) => request.model === "gpt-6-sol"),
+      openAIRequests().every((request) => request.model === "gpt-6.1-sol"),
     ).toBe(true);
   });
 

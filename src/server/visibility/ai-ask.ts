@@ -31,8 +31,11 @@ export interface AskResult {
 
 // USD per million tokens. Unknown models are priced as the dearest listed, so
 // the cost guard errs high.
-const OPENAI_PRICES: Record<string, { input: number; output: number }> = {
-  "gpt-6.1-sol": { input: 2, output: 10 },
+const OPENAI_PRICES: Record<
+  string,
+  { input: number; output: number; cachedRead?: number }
+> = {
+  "gpt-6.1-sol": { input: 2, output: 10, cachedRead: 0.05 },
   "gpt-6-sol": { input: 2, output: 10 },
   "gpt-6-luna": { input: 0.1, output: 0.5 },
   "gpt-6-astra": { input: 10, output: 50 },
@@ -75,7 +78,7 @@ function openAICost(
   return (
     ((plain * price.input +
       written * price.input * 1.25 +
-      cached * price.input * 0.1 +
+      cached * price.input * (price.cachedRead ?? 0.1) +
       usage.output_tokens * price.output) *
       (flex ? 0.5 : 1)) /
     1_000_000

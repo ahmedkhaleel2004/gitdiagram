@@ -456,7 +456,7 @@ export function ControlsPanel({
             <div className="text-sm font-semibold">Priority places</div>
             <p className="text-xs text-[hsl(var(--neo-soft-text))]">
               People here get more videos a day. Every video is written by
-              Claude Opus and designed by GPT-6 Sol.
+              Claude Opus and designed by GPT-6.1 Sol.
             </p>
             <ChoicePicker
               label="Priority places"

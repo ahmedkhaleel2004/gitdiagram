@@ -61,7 +61,7 @@ beforeEach(() => {
     createdAt: "2026-09-25T12:00:00.000Z",
     meta: { owner: "Acme", repo: "Widgets" },
     timing: { DURATION: 64 },
-    stats: { model: "claude-opus-5-5+gpt-6-sol" },
+    stats: { model: "claude-opus-5-5+gpt-6.1-sol" },
   });
   vi.spyOn(console, "info").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -89,7 +89,7 @@ describe("POST /api/video/feedback", () => {
         at: 42.5,
         duration: 64,
         createdAt: "2026-09-25T12:00:00.000Z",
-        model: "Claude Opus 5.5 and GPT-6 Sol",
+        model: "Claude Opus 5.5 and GPT-6.1 Sol",
       },
       expect.any(Request),
     );

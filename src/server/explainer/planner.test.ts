@@ -6,7 +6,7 @@ import { canGenerateVideos } from "./config";
 import { choosePlanner, premiumPlanner } from "./planner";
 
 const OPUS = { model: "claude-opus-5-5", effort: "low" };
-const SOL = { model: "gpt-6-sol", effort: "medium" };
+const SOL = { model: "gpt-6.1-sol", effort: "medium" };
 // Opus writes the script, Sol designs the scenes.
 const STANDARD = { ...OPUS, designer: SOL };
 // With VIDEO_PREMIUM_OPUS_DESIGNS=1 (set by choose(), so the routing shows):
@@ -84,7 +84,7 @@ describe("choosing the video planner", () => {
   });
 
   it("lets Sol write the standard script too when configured", async () => {
-    vi.stubEnv("VIDEO_STANDARD_DIRECTOR_MODEL", "gpt-6-sol");
+    vi.stubEnv("VIDEO_STANDARD_DIRECTOR_MODEL", "gpt-6.1-sol");
     expect((await choose()).planner).toEqual(SOL);
   });
 
@@ -100,7 +100,7 @@ describe("choosing the video planner", () => {
   });
 
   it("lets Sol make premium films alone when it is the premium model", () => {
-    vi.stubEnv("VIDEO_PLANNER_MODEL", "gpt-6-sol");
+    vi.stubEnv("VIDEO_PLANNER_MODEL", "gpt-6.1-sol");
     expect(premiumPlanner()).toEqual({ ...SOL, effort: "low" });
   });
 });
@@ -121,8 +121,8 @@ describe("whether videos can be made", () => {
 
   it("needs no Claude key when every model is a GPT", () => {
     keys("", "sk-test");
-    vi.stubEnv("VIDEO_PLANNER_MODEL", "gpt-6-sol");
-    vi.stubEnv("VIDEO_STANDARD_DIRECTOR_MODEL", "gpt-6-sol");
+    vi.stubEnv("VIDEO_PLANNER_MODEL", "gpt-6.1-sol");
+    vi.stubEnv("VIDEO_STANDARD_DIRECTOR_MODEL", "gpt-6.1-sol");
     expect(canGenerateVideos()).toBe(true);
   });
 });

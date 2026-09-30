@@ -5,7 +5,7 @@ import { errorText, logEvent } from "~/server/log";
 import type { Effort, Planner } from "./director";
 
 // Which model makes a video. Claude Opus tells the better story (see
-// experiments/video-models), so it writes every script, and GPT-6 Sol designs
+// experiments/video-models), so it writes every script, and GPT-6.1 Sol designs
 // the scenes, which blind-judged about level with Opus designing (see
 // experiments/video-bespoke). Premium films go where the most people will
 // watch:
@@ -38,13 +38,13 @@ function readEffort(name: string, fallback: Effort): Effort {
 /** The standard films' designer, and the model that stands in for Opus. */
 function standardDesigner() {
   return {
-    model: process.env.VIDEO_STANDARD_MODEL?.trim() || "gpt-6-sol",
+    model: process.env.VIDEO_STANDARD_MODEL?.trim() || "gpt-6.1-sol",
     effort: readEffort("VIDEO_STANDARD_EFFORT", "medium"),
   };
 }
 
 /**
- * Claude Opus writes the script and GPT-6 Sol designs the scenes. With
+ * Claude Opus writes the script and GPT-6.1 Sol designs the scenes. With
  * VIDEO_PREMIUM_OPUS_DESIGNS=1, Opus designs too; when it then fails for any
  * reason but a refusal (out of credit, overloaded), the standard designer
  * takes over both roles if its key is set, so the film is still made.
@@ -61,7 +61,7 @@ export function premiumPlanner(): Planner {
 
 /**
  * Claude Opus writes the script (one call, where the story is made) and
- * GPT-6 Sol at medium effort designs the scenes. Blind-judged about level
+ * GPT-6.1 Sol at medium effort designs the scenes. Blind-judged about level
  * with Opus alone and faster than Sol alone (see experiments/video-bespoke).
  * VIDEO_STANDARD_DIRECTOR_MODEL set to the standard model makes Sol do both.
  * When the director fails (but not on a refusal), Sol writes the script too.
