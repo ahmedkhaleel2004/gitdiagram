@@ -35,13 +35,21 @@ interface TraceItem {
   } | null;
 }
 
+// Error-level lines that are not failures of the site: a visitor asking for
+// a repository that does not exist, and two renders of one page racing to
+// store it (one wins; R2 refuses the other).
+const EXPECTED =
+  /REPOSITORY_NOT_FOUND|Reduce your concurrent request rate for the same object/;
+
 const clip = (value: unknown, length: number) =>
   (typeof value === "string" ? value : JSON.stringify(value)).slice(0, length);
 
 /** What is worth keeping from one invocation, or null for a healthy one. */
 export function failure(item: TraceItem): Record<string, unknown> | null {
   const status = item.event?.response?.status ?? null;
-  const errors = item.logs.filter((log) => log.level === "error");
+  const errors = item.logs.filter(
+    (log) => log.level === "error" && !EXPECTED.test(clip(log.message, 2000)),
+  );
   // "canceled" is a visitor closing the tab: not a failure.
   const badOutcome = item.outcome !== "ok" && item.outcome !== "canceled";
   if (
