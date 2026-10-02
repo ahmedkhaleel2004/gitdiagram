@@ -111,6 +111,11 @@ export function formatSourceIndex(
   return [header, ...lines.map((entry) => entry.line), footer].join("\n");
 }
 
+// Source reads never follow a redirect: `redirect: "manual"` hands a 3xx back
+// as a response that is not `ok`, which every read treats as "no file".
+// (`redirect: "error"` meant the same on Node, but Cloudflare Workers rejects
+// that option with a TypeError: every diagram made there read no source files
+// at all until this was changed.)
 async function readBoundedBytes(
   response: Response,
   limit: number,
@@ -162,7 +167,7 @@ async function readBlob(params: {
       headers: params.headers,
       signal: params.signal,
       cache: "no-store",
-      redirect: "error",
+      redirect: "manual",
     },
   );
   if (!response.ok || !response.body) {
@@ -205,7 +210,7 @@ async function readPublicSource(params: {
   const response = await fetch(url, {
     signal: params.signal,
     cache: "no-store",
-    redirect: "error",
+    redirect: "manual",
   });
   const bytes = await readBoundedBytes(response, MAX_SOURCE_FILE_BYTES);
   if (!bytes || bytes.includes(0)) return null;

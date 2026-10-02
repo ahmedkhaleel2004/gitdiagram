@@ -62,7 +62,7 @@ describe("bounded source ingestion", () => {
       `https://api.github.com/repos/owner/repo/git/blobs/${blobHash(source)}`,
     );
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-      redirect: "error",
+      redirect: "manual",
       cache: "no-store",
       headers: { Authorization: "Bearer private-caller-token" },
     });
@@ -161,7 +161,7 @@ describe("bounded source ingestion", () => {
       "https://raw.githubusercontent.com/owner/repo/main/src/main.ts",
     );
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toBeUndefined();
-    expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("error");
+    expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("manual");
   });
   it("rejects changed or malformed public content instead of mixing file versions", async () => {
     for (const bytes of [
@@ -195,7 +195,7 @@ describe("bounded source ingestion", () => {
     expect(result.paths).toEqual([path]);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://raw.githubusercontent.com/owner/repo/release%2Fv2/src/a%20file.ts",
-      expect.objectContaining({ redirect: "error" }),
+      expect.objectContaining({ redirect: "manual" }),
     );
   });
   it("recovers immutable source after a branch move without leaking credentials to the CDN", async () => {
@@ -217,7 +217,7 @@ describe("bounded source ingestion", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       `https://api.github.com/repos/owner/repo/git/blobs/${blobHash(source)}`,
       expect.objectContaining({
-        redirect: "error",
+        redirect: "manual",
         headers: { Authorization: "Bearer public-server-token" },
       }),
     );
