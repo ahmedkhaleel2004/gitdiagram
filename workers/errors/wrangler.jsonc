@@ -7,5 +7,13 @@
   // A Tail Worker has no address of its own.
   "workers_dev": false,
   "preview_urls": false,
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  // Keep every line this Worker writes (the failures), but not a log entry
+  // for each of its own runs: it runs once per request of the site, healthy
+  // or not, and at 47,000 entries an hour that alone went past the 20M
+  // stored log events a month the plan includes.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false },
+  },
 }
