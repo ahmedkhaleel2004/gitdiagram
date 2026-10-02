@@ -153,11 +153,11 @@ if [[ " $* " == *" --secrets "* ]]; then
   for config in "${server_configs[@]}" "$front_config"; do
     node scripts/cf-secrets.mjs | bunx wrangler secret bulk -c "$config"
   done
-  # The edge Worker needs one: what it shows the server when it rechecks a
-  # page (src/lib/colo-cache.ts).
+  # The edge Worker needs three: what it shows the server when it rechecks a
+  # page (src/lib/colo-cache.ts), and Redis, where it counts crawler fetches.
   if [[ -n "$edge_config" ]]; then
     node scripts/cf-secrets.mjs |
-      node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const {CRON_SECRET}=JSON.parse(s);process.stdout.write(JSON.stringify({CRON_SECRET}))})' |
+      node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const {CRON_SECRET,UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN}=JSON.parse(s);process.stdout.write(JSON.stringify({CRON_SECRET,UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN}))})' |
       bunx wrangler secret bulk -c "$edge_config"
   fi
 fi

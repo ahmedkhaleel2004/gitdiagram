@@ -16,8 +16,10 @@
 // - a page it does not hold, with one hop to the placed server
 //   (`gitdiagram-server`), which hands over its cache entry or renders;
 // - the two calls every page makes (`/api/sponsor`, `/api/analytics-context`).
-// A request the Next.js proxy has a say in (a crawler to count, a Markdown
-// twin, a mixed-case address) is the site's Worker's.
+// It also refuses what the firewall refuses outright (a blocked crawler, a
+// scanner's path) and counts known crawlers on the pages it answers. A
+// request the Next.js proxy would answer or rewrite itself (a Markdown twin,
+// a mixed-case address) is the site's Worker's.
 //
 // Not part of the Vercel build; wrangler bundles it. The root tsconfig skips
 // this folder: .open-next only exists after a build.
@@ -26,6 +28,7 @@
 // (scripts/cf-asset-headers.mjs).
 import build from "../.open-next/build.json";
 import siteHeaders from "../.open-next/site-headers.json";
+import { agentFetchCommands } from "../src/lib/agent-families";
 import {
   analyticsContext,
   edgeDecision,
@@ -46,7 +49,7 @@ import {
   answerFromEntry,
   plainPageKey,
 } from "../src/lib/colo-cache";
-import { entersProxy } from "../src/lib/proxy-rules";
+import { entersProxy, proxyDecision } from "../src/lib/proxy-rules";
 import {
   SPONSOR_ANSWER_HEADERS,
   sponsorAnswer,
@@ -71,6 +74,8 @@ interface Env extends RateLimits {
   SERVER_VERSION_OVERRIDE?: string;
   SPONSOR_PREVIEW_CAMPAIGN?: string;
   NEXT_INC_CACHE_R2_PREFIX?: string;
+  UPSTASH_REDIS_REST_URL?: string;
+  UPSTASH_REDIS_REST_TOKEN?: string;
   CRON_SECRET?: string;
   SITE_ORIGIN?: string;
 }
@@ -128,6 +133,37 @@ function notModified(request: Request, response: Response): Response {
   return new Response(null, { status: 304, headers });
 }
 
+/**
+ * Counts a page fetch by a known crawler or AI agent (one Redis pipeline,
+ * after the response), as the Next.js proxy does on Vercel and the site's
+ * Worker does for what it answers. Never throws, never slows the answer.
+ */
+function countAgentFetch(
+  env: Env,
+  ctx: Context,
+  userAgent: string | null,
+  surface: string,
+): void {
+  const commands = agentFetchCommands(userAgent, surface);
+  const base = env.UPSTASH_REDIS_REST_URL?.replace(/\/$/, "");
+  if (!commands || !base || !env.UPSTASH_REDIS_REST_TOKEN) return;
+  ctx.waitUntil(
+    fetch(`${base}/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`,
+        "Content-Type": "application/json",
+        "User-Agent": "node",
+      },
+      body: JSON.stringify(commands),
+      signal: AbortSignal.timeout(5_000),
+    }).then(
+      (response) => response.body?.cancel(),
+      () => undefined,
+    ),
+  );
+}
+
 /** The firewall rules Vercel ran in front of the app; null lets it through. */
 async function firewall(
   request: Request,
@@ -169,6 +205,34 @@ async function firewall(
 }
 
 /**
+ * The firewall's refusals that need nothing but the request (a blocked
+ * crawler, a scanner's path): answered here, so the junk a site attracts
+ * goes no further. The rate limits are the site's Worker's.
+ */
+function refusal(request: Request, url: URL): Response | null {
+  if (url.hostname === `www.${SITE_HOSTNAME}`) return null;
+  const decision = edgeDecision(
+    url.pathname,
+    request.headers.get("user-agent"),
+    Boolean(
+      (request as Request & { cf?: { verifiedBotCategory?: unknown } }).cf
+        ?.verifiedBotCategory,
+    ),
+  );
+  if (decision?.action === "deny")
+    return new Response("Forbidden", {
+      status: 403,
+      headers: { "Cache-Control": "no-store" },
+    });
+  if (decision?.action === "missing")
+    return new Response("Not Found", {
+      status: 404,
+      headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
+    });
+  return null;
+}
+
+/**
  * This Worker's own answer to a request, or null when the site's Worker
  * answers it.
  */
@@ -197,15 +261,38 @@ async function ownAnswer(
       ),
       { headers: { "Cache-Control": "private, no-store" } },
     );
-  // The Next.js proxy's rules (and its count of crawler fetches) are applied
-  // by the site's Worker.
-  if (entersProxy(url.pathname, request.headers)) return null;
+  // The Next.js proxy's rules (src/lib/proxy-rules.ts). What the proxy would
+  // answer or rewrite itself (a forged Server Action, a mixed-case address,
+  // a Markdown twin) is the site's Worker's; a known crawler on an ordinary
+  // page is only counted, here, once this Worker knows it will answer.
+  let crawled: string | null = null;
+  if (entersProxy(url.pathname, request.headers)) {
+    const { decision, surface } = proxyDecision(
+      request.method,
+      url.pathname,
+      request.headers,
+    );
+    if (decision.action !== "next") return null;
+    crawled = surface;
+  }
+  const counted = () => {
+    if (crawled !== null)
+      countAgentFetch(env, ctx, request.headers.get("user-agent"), crawled);
+  };
   const key = plainPageKey(request, url);
   if (!key) return null;
   const held = await answerFromCopy(request, url, env, ctx, build.buildId);
   // The page is here; the firewall still has its say (a blocked crawler, the
   // per-address limit on repository pages), and counts the request once.
-  if (held) return (await firewall(request, env, url.pathname)) ?? held;
+  if (held) {
+    const refused = await firewall(request, env, url.pathname);
+    if (refused) {
+      void held.body?.cancel();
+      return refused;
+    }
+    counted();
+    return held;
+  }
   // Not here. A page goes straight to the placed server, which answers with
   // its cache entry or renders: one hop, without the site's Worker (whose
   // new isolates are slow) in between. What is not a page, or belongs to the
@@ -243,6 +330,7 @@ async function ownAnswer(
     void answer.body?.cancel();
     return null;
   }
+  counted();
   // Rendered (or redirected, or refused) by the server.
   if (!answer.headers.has(ENTRY_ENCODING)) {
     serverTrips.set(request, `render;dur=${Date.now() - askedAt}`);
@@ -265,7 +353,8 @@ const edge = {
     const startedAt = Date.now();
     const firstInIsolate = !isolateHasServed;
     isolateHasServed = true;
-    const own = await ownAnswer(request, env, ctx, url);
+    const own =
+      refusal(request, url) ?? (await ownAnswer(request, env, ctx, url));
     // Not this Worker's: the request goes on as it came (`cf`, the visitor's
     // place and network, by name).
     if (!own)
