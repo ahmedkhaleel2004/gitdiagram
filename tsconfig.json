@@ -48,6 +48,8 @@
     "public/video-engine",
     "public/mcp-app",
     "workers",
+    "cloudflare",
+    ".open-next",
     "**/__pycache__"
   ]
 }

@@ -14,6 +14,7 @@ const config = [
   {
     ignores: [
       ".next/**",
+      ".open-next/**",
       ".claude/**",
       ".agents/**",
       ".playwright-mcp/**",

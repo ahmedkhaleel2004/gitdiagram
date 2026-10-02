@@ -1,0 +1,50 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // The site on Cloudflare Workers (OpenNext). Built by `bun run cf:build`.
+  "name": "gitdiagram",
+  "main": "cloudflare/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  // Logs are sampled: at ~16M requests a month, every request logged would
+  // cost more than the Worker itself.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.02,
+  },
+  // The crons vercel.json runs on Vercel (cloudflare/worker.ts maps each
+  // schedule to its route; a test keeps the three files in step).
+  "triggers": {
+    "crons": ["*/5 * * * *", "*/15 * * * *", "0 13 * * *"],
+  },
+  "vars": {
+    // Where the cron handler and internal calls address the site.
+    "SITE_ORIGIN": "https://gitdiagram.com",
+  },
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "gitdiagram" }],
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "gitdiagram-next-cache",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "NEXT_CACHE_DO_QUEUE", "class_name": "DOQueueHandler" },
+      {
+        "name": "NEXT_TAG_CACHE_DO_SHARDED",
+        "class_name": "DOShardedTagCache",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DOQueueHandler", "DOShardedTagCache"],
+    },
+  ],
+}

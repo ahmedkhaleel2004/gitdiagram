@@ -8,6 +8,8 @@
 coverage/
 tmp/
 .wrangler/
+.dev.vars*
+.open-next/
 workers/**/node_modules/
 
 # Local explainer video renders and experiment output.

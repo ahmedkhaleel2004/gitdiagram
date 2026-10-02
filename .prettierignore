@@ -7,3 +7,6 @@ public/mcp-app/
 
 # Local output of experiments (videos, reports); ignored by git too.
 experiments/*/out/
+
+# The Cloudflare build (OpenNext output).
+.open-next/

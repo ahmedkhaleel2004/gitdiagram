@@ -33,8 +33,10 @@ next-env.d.ts
 # vercel
 .vercel
 
-# cloudflare wrangler local state
+# cloudflare: wrangler local state, local secrets, the OpenNext build
 .wrangler/
+.dev.vars*
+/.open-next/
 
 # local tool state
 /.agents/
