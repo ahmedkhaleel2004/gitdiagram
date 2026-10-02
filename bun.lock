@@ -13,6 +13,7 @@
         "@radix-ui/react-dialog": "^1.1.23",
         "@radix-ui/react-switch": "^1.3.7",
         "@radix-ui/react-tooltip": "^1.2.16",
+        "@smithy/fetch-http-handler": "5.8.0",
         "@sparticuz/chromium": "153.0.0",
         "@vercel/functions": "^3.9.9",
         "clsx": "^2.1.1",

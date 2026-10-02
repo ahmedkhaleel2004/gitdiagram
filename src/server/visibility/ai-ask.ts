@@ -5,6 +5,7 @@ import OpenAI from "openai";
 
 import type { AiMode, AiProvider } from "~/features/admin/visibility";
 import { claudeCostUsd, claudePrice } from "~/server/anthropic-pricing";
+import { modelFetchOption } from "~/server/model-fetch";
 
 // Asks one question the way a person would in ChatGPT or Claude: no system
 // prompt of ours beyond, in search mode, a nudge to check the web first (left
@@ -91,7 +92,11 @@ async function askOpenAI(
   mode: AiMode,
   signal: AbortSignal,
 ): Promise<AskResult> {
-  const client = new OpenAI({ maxRetries: 1, timeout: 90_000 });
+  const client = new OpenAI({
+    maxRetries: 1,
+    timeout: 90_000,
+    ...modelFetchOption(),
+  });
   const request = (serviceTier: "flex" | "default") =>
     client.responses.create(
       {

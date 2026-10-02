@@ -20,6 +20,9 @@
     "enabled": true,
     "head_sampling_rate": 0.02,
   },
+  // Failures are logged in full by a Tail Worker, which sees every request
+  // whatever the sampling above (workers/errors; deploy it before the site).
+  "tail_consumers": [{ "service": "gitdiagram-errors" }],
   // The crons vercel.json runs on Vercel (cloudflare/worker.ts maps each
   // schedule to its route; a test keeps the three files in step).
   "triggers": {
@@ -131,6 +134,9 @@
       },
       { "name": "RENDER", "class_name": "RenderContainer" },
       { "name": "GENERATE", "class_name": "GenerateContainer" },
+      // Model API calls for visitors in countries OpenAI refuses
+      // (cloudflare/us-relay.ts).
+      { "name": "US_RELAY", "class_name": "UsRelay" },
     ],
   },
   "migrations": [
@@ -142,5 +148,6 @@
       "tag": "v2",
       "new_sqlite_classes": ["RenderContainer", "GenerateContainer"],
     },
+    { "tag": "v3", "new_sqlite_classes": ["UsRelay"] },
   ],
 }

@@ -1,0 +1,11 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Logs every failed request of the site's Worker, unsampled (src/index.ts).
+  "name": "gitdiagram-errors",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  // A Tail Worker has no address of its own.
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+}

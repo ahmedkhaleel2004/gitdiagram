@@ -14,6 +14,7 @@ import {
   type AIProvider,
 } from "~/server/generate/model-config";
 import { normalizeGenerationUsage } from "~/server/generate/pricing";
+import { modelFetchOption } from "~/server/model-fetch";
 
 export type ReasoningEffort = "low" | "medium" | "high";
 type TextVerbosity = "low" | "medium" | "high";
@@ -53,6 +54,7 @@ function createClient(provider: AIProvider, apiKey: string): OpenAI {
       defaultHeaders: getOpenRouterHeaders(),
       maxRetries: AI_MAX_RETRIES,
       timeout: AI_REQUEST_TIMEOUT_MS,
+      ...modelFetchOption(),
     });
   }
 
@@ -60,6 +62,7 @@ function createClient(provider: AIProvider, apiKey: string): OpenAI {
     apiKey,
     maxRetries: AI_MAX_RETRIES,
     timeout: AI_REQUEST_TIMEOUT_MS,
+    ...modelFetchOption(),
   });
 }
 

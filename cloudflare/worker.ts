@@ -27,6 +27,8 @@ import {
 } from "../workers/render/src/container";
 
 export { DOQueueHandler, DOShardedTagCache } from "../.open-next/worker.js";
+// Model API calls sent as the server's own (wrangler.jsonc: US_RELAY).
+export { UsRelay } from "./us-relay";
 // The render containers' Durable Object classes (wrangler.jsonc binds them).
 export {
   GenerateContainer,
