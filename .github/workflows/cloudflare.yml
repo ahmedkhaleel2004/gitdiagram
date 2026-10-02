@@ -1,0 +1,65 @@
+name: Cloudflare
+
+# Builds the site with OpenNext and deploys it to the Cloudflare Worker
+# `gitdiagram` (see "Cloudflare" in CLAUDE.md). The Worker's runtime secrets
+# live in Cloudflare and are untouched by a deploy; this job only needs the
+# values compiled into the build.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# One deploy at a time, in order; a queued deploy is never cancelled halfway.
+concurrency:
+  group: cloudflare-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: package.json
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: Cache Bun packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - name: Install dependencies
+        run: bun ci
+      # The last builds' hashed script and style files, uploaded again so tabs
+      # opened before this deploy keep working (scripts/cf-deploy.sh).
+      - name: Restore earlier builds' static files
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .open-next-history
+          key: cf-static-history-${{ github.run_id }}
+          restore-keys: cf-static-history-
+      - name: Build and deploy
+        run: bun run cf:deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 8a4f309f2639721dc9f4f0d1790fd6d5
+          # Compiled into the client bundle, so public by nature.
+          NEXT_PUBLIC_POSTHOG_KEY: phc_eFCkNQ44Ek1rS522DObWVHWHHolVQf2HTFwPDFaOIlZ
+          NEXT_PUBLIC_PRESENCE_URL: wss://gitdiagram-presence.gitdiagram-presence.workers.dev
+          NEXT_PUBLIC_VIDEO_EXPLAINER: "1"
+          NEXT_PUBLIC_GITHUB_CONNECT: "1"
+          # Names the /<key>.txt rewrite at build time.
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+          # No production secrets here, so pages prerendered by this build
+          # have no data: the Worker renders them on first request instead.
+          CF_SKIP_CACHE_POPULATE: "1"
