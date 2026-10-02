@@ -5,7 +5,7 @@ import {
   containerRefusal,
   edgeAnswerKey,
   edgeDecision,
-  isDiagramRun,
+  runsWhereTheVisitorIs,
   isSharedCacheRequest,
   matchesEtag,
   sharedLifetime,
@@ -385,14 +385,41 @@ describe("matchesEtag", () => {
   });
 });
 
-describe("isDiagramRun", () => {
-  it("is the generation stream and nothing else", () => {
-    expect(isDiagramRun("POST", "/api/generate/stream")).toBe(true);
-    expect(isDiagramRun("POST", "/api/generate/stream/")).toBe(true);
-    expect(isDiagramRun("GET", "/api/generate/stream")).toBe(false);
-    expect(isDiagramRun("POST", "/api/generate/cost")).toBe(false);
-    expect(isDiagramRun("POST", "/api/generate/cancel")).toBe(false);
-    expect(isDiagramRun("POST", "/acme/demo")).toBe(false);
+describe("runsWhereTheVisitorIs", () => {
+  const local = (method: string, path: string) =>
+    runsWhereTheVisitorIs(method, new URL(path, "https://gitdiagram.com"));
+
+  it("keeps diagram runs out of the placed server", () => {
+    expect(local("POST", "/api/generate/stream")).toBe(true);
+    expect(local("POST", "/api/generate/stream/")).toBe(true);
+    expect(local("GET", "/api/generate/stream")).toBe(false);
+    expect(local("POST", "/api/generate/cost")).toBe(false);
+    expect(local("POST", "/api/generate/cancel")).toBe(false);
+  });
+
+  it("keeps what loads the whole browse index out of it", () => {
+    expect(local("GET", "/api/internal/browse-index/drain")).toBe(true);
+    expect(local("GET", "/api/internal/video-payments/sweep")).toBe(true);
+    expect(local("POST", "/mcp")).toBe(true);
+    expect(local("GET", "/sitemap/0.xml")).toBe(true);
+    expect(local("GET", "/browse?q=next")).toBe(true);
+    expect(local("GET", "/browse?sort=stars_desc")).toBe(true);
+    expect(local("GET", "/browse?minStars=100")).toBe(true);
+    expect(local("GET", "/browse?page=51")).toBe(true);
+    expect(local("GET", "/api/browse-index?q=next&_rsc=1")).toBe(true);
+  });
+
+  it("leaves pages, the first browse pages and short API calls where the data is", () => {
+    expect(local("GET", "/browse")).toBe(false);
+    expect(local("GET", "/browse?page=3&_rsc=abc")).toBe(false);
+    expect(local("GET", "/browse?sort=recent_desc&q=%20")).toBe(false);
+    expect(local("GET", "/api/browse-index")).toBe(false);
+    expect(local("GET", "/")).toBe(false);
+    expect(local("GET", "/acme/demo")).toBe(false);
+    expect(local("POST", "/api/diagram-state")).toBe(false);
+    expect(local("GET", "/api/video?username=a&repo=b")).toBe(false);
+    expect(local("GET", "/sitemap.xml")).toBe(false);
+    expect(local("GET", "/mcp-app/diagram-view.js")).toBe(false);
   });
 });
 

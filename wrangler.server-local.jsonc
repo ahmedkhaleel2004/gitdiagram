@@ -2,14 +2,17 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   // The Next.js server again, without `placement`: it runs where the visitor
   // is, as every Worker does by default. The site's Worker (`SERVER_LOCAL`,
-  // wrangler.jsonc) sends it diagram generation, and nothing else.
+  // wrangler.jsonc) sends it what is long or memory-heavy: diagram runs, the
+  // crons, and whatever loads the whole browse index (`runsWhereTheVisitorIs`
+  // in src/lib/cloudflare-edge.ts has the list).
   //
-  // A diagram run holds a stream open for 10 to 60 s, and a Worker isolate
-  // that passes 128 MB of memory is killed with everything it is running.
-  // In `gitdiagram-server` every request of the site shares a few isolates in
-  // one place, where one heavy render took two or three streams down with it
-  // (2026-10-02). Here each location has its own isolates and a stream
-  // rarely shares one.
+  // A Worker isolate that passes 128 MB of memory is killed with everything
+  // it is running. In `gitdiagram-server` every request of the site shares a
+  // few isolates in one place; with the browse index loaded in them, the
+  // cron that rewrites it, a sitemap render or a few diagram runs at once
+  // tipped them over, and the streams and requests beside them died
+  // (2026-10-02). Here each location has its own isolates and they run one
+  // or two requests at a time.
   //
   // Everything else must stay identical to wrangler.server.jsonc (a test
   // compares the two).

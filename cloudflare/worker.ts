@@ -31,7 +31,7 @@ import {
   containerRefusal,
   edgeDecision,
   isContainerPath,
-  isDiagramRun,
+  runsWhereTheVisitorIs,
   isPlatformResponseHeader,
   matchesEtag,
   platformHeaders,
@@ -93,7 +93,7 @@ interface Env extends RateLimits, RenderEnv {
   SERVER: Fetcher;
   /**
    * The same server where the visitor is (`gitdiagram-server-local`), for
-   * diagram streams: see wrangler.server-local.jsonc.
+   * what is long or heavy: see `runsWhereTheVisitorIs`.
    */
   SERVER_LOCAL?: Fetcher;
   /**
@@ -242,7 +242,8 @@ const handler = {
         // Only this Worker says which entry it wants, never a visitor.
         if (entryWanted) forwarded.headers.set(ENTRY_WANTED, entryWanted);
         else forwarded.headers.delete(ENTRY_WANTED);
-        if (isDiagramRun(request.method, url.pathname))
+        // Long or memory-heavy work stays out of the placed server.
+        if (runsWhereTheVisitorIs(request.method, url))
           return (env.SERVER_LOCAL ?? env.SERVER).fetch(forwarded);
         // A read can be asked twice. When the server's isolate dies under
         // the request (out of memory: Cloudflare ends everything it was

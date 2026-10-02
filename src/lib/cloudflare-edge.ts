@@ -1,3 +1,5 @@
+import { normalizeBrowseQuery } from "../features/browse/catalog";
+
 // Pure helpers for the Cloudflare Worker entry (cloudflare/worker.ts). They
 // make a request on Cloudflare look to the app like one on Vercel, so the
 // route code is the same on both.
@@ -387,13 +389,41 @@ export function matchesEtag(
 }
 
 /**
- * Whether a request is a diagram run: a stream that stays open for 10 to
- * 60 s. Those go to the copy of the server Worker that runs where the visitor
- * is (wrangler.server-local.jsonc says why), everything else to the one next
- * to the data.
+ * Whether a request runs in the copy of the server Worker that is where the
+ * visitor is (`gitdiagram-server-local`) instead of the one next to the data
+ * (`gitdiagram-server`). A Worker isolate that passes 128 MB is killed with
+ * every request it is running, and the placed server's few isolates run
+ * everything at once, so what is long or heavy stays out of them:
+ *
+ * - a diagram run: a stream open for 10 to 60 s, which a dying isolate cuts;
+ * - whatever loads the whole browse index (170,000 entries, tens of MB once
+ *   parsed, kept in the isolate): a browse search or sort, the MCP server's
+ *   search, the sitemaps, and the cron that rewrites the index;
+ * - the other crons.
+ *
+ * Each location's isolates of the local copy run one or two requests at a
+ * time, as the whole site did before it was split.
  */
-export function isDiagramRun(method: string, pathname: string): boolean {
-  return (
-    method === "POST" && pathname.replace(/\/+$/, "") === "/api/generate/stream"
-  );
+export function runsWhereTheVisitorIs(method: string, url: URL): boolean {
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/api/generate/stream") return method === "POST";
+  if (path.startsWith("/api/internal/")) return true;
+  if (path === "/mcp" || path.startsWith("/sitemap/")) return true;
+  if (path === "/browse" || path === "/api/browse-index") {
+    // The first pages in the default order come from a small "recent" index
+    // (2,000 entries); anything else reads the whole one.
+    const query = normalizeBrowseQuery({
+      q: url.searchParams.get("q"),
+      sort: url.searchParams.get("sort"),
+      minStars: url.searchParams.get("minStars"),
+      page: url.searchParams.get("page"),
+    });
+    return (
+      query.q !== "" ||
+      query.sort !== "recent_desc" ||
+      query.minStars > 0 ||
+      query.page > 50
+    );
+  }
+  return false;
 }

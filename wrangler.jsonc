@@ -126,7 +126,7 @@
     // The Next.js server (wrangler.server.jsonc): what the routing layer and
     // the page cache in this Worker cannot answer.
     { "binding": "SERVER", "service": "gitdiagram-server" },
-    // The same server where the visitor is, for diagram streams only
+    // The same server where the visitor is, for what is long or heavy
     // (wrangler.server-local.jsonc says why).
     { "binding": "SERVER_LOCAL", "service": "gitdiagram-server-local" },
   ],
