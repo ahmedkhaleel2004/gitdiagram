@@ -8,6 +8,18 @@ on:
   push:
     branches:
       - main
+    # A deploy empties the page cache (its keys carry the build id) and
+    # replaces the render containers, so a push that cannot change the site
+    # does not deploy: root Markdown, docs, experiments, the other workflows
+    # and the cost script.
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "experiments/**"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/cost-watch.yml"
+      - ".github/workflows/sponsor-readme.yml"
+      - "scripts/cf-usage.mjs"
   workflow_dispatch:
 
 # One deploy at a time, in order; a queued deploy is never cancelled halfway.
