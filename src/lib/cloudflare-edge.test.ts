@@ -5,7 +5,9 @@ import {
   containerRefusal,
   edgeAnswerKey,
   edgeDecision,
+  isDiagramRun,
   isSharedCacheRequest,
+  matchesEtag,
   sharedLifetime,
   isContainerPath,
   isScannerPath,
@@ -362,6 +364,67 @@ describe("edgeAnswerKey", () => {
     );
     expect(key("https://gitdiagram.com/api/video/catalog")).toBe(
       "http://edge-answers.local/gitdiagram.com/api/video/catalog",
+    );
+  });
+});
+
+describe("matchesEtag", () => {
+  it("compares weakly, across a list", () => {
+    expect(matchesEtag('"abc"', '"abc"')).toBe(true);
+    expect(matchesEtag('W/"abc"', '"abc"')).toBe(true);
+    expect(matchesEtag('"abc"', 'W/"abc"')).toBe(true);
+    expect(matchesEtag('"x", W/"abc"', '"abc"')).toBe(true);
+    expect(matchesEtag("*", '"abc"')).toBe(true);
+  });
+
+  it("does not match another tag, a missing one or a malformed one", () => {
+    expect(matchesEtag('"abd"', '"abc"')).toBe(false);
+    expect(matchesEtag(null, '"abc"')).toBe(false);
+    expect(matchesEtag('"abc"', null)).toBe(false);
+    expect(matchesEtag("abc", "abc")).toBe(false);
+  });
+});
+
+describe("isDiagramRun", () => {
+  it("is the generation stream and nothing else", () => {
+    expect(isDiagramRun("POST", "/api/generate/stream")).toBe(true);
+    expect(isDiagramRun("POST", "/api/generate/stream/")).toBe(true);
+    expect(isDiagramRun("GET", "/api/generate/stream")).toBe(false);
+    expect(isDiagramRun("POST", "/api/generate/cost")).toBe(false);
+    expect(isDiagramRun("POST", "/api/generate/cancel")).toBe(false);
+    expect(isDiagramRun("POST", "/acme/demo")).toBe(false);
+  });
+});
+
+describe("the two server Workers", () => {
+  // wrangler.server-local.jsonc is wrangler.server.jsonc where the visitor
+  // is: the same bindings and settings, another name, no placement.
+  const config = (file: string) =>
+    JSON.parse(
+      readFileSync(file, "utf8")
+        .replace(/^\s*\/\/.*$/gm, "")
+        .replace(/,(\s*[}\]])/g, "$1"),
+    ) as Record<string, unknown>;
+
+  it("differ only in name and placement", () => {
+    const { name, placement, ...placed } = config("wrangler.server.jsonc");
+    const { name: localName, ...local } = config("wrangler.server-local.jsonc");
+    expect(name).toBe("gitdiagram-server");
+    expect(localName).toBe("gitdiagram-server-local");
+    expect(placement).toBeDefined();
+    expect(local).toEqual(placed);
+  });
+
+  it("are both bound in the site's Worker", () => {
+    const services = config("wrangler.jsonc").services as {
+      binding: string;
+      service: string;
+    }[];
+    expect(services).toEqual(
+      expect.arrayContaining([
+        { binding: "SERVER", service: "gitdiagram-server" },
+        { binding: "SERVER_LOCAL", service: "gitdiagram-server-local" },
+      ]),
     );
   });
 });

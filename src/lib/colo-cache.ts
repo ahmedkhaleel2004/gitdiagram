@@ -12,16 +12,20 @@
 //    answers from it alone. A copy is trusted for RECHECK_MS; a hit on an
 //    older one is still answered at once, and the copy is brought in line
 //    after the response (replaced, or dropped if the page was revalidated).
-// 2. A location without a copy asks the server Worker for the entry
-//    (`CACHE_ENTRY_PATH`, over the service binding): one round trip to where
-//    the server runs, next to R2 and the tag cache, instead of two long ones
-//    from the visitor's side of the world. The server answers from its own
+// 2. A location without a copy sends the request on to the server Worker
+//    marked "entry wanted" (ENTRY_WANTED): if the server has a current entry
+//    it answers with that (gzipped) instead of rendering, and the location
+//    keeps it and answers from it. One round trip to where the server runs,
+//    next to R2 and the tag cache, instead of two long ones from the
+//    visitor's side of the world; and a page nobody has cached costs no extra
+//    trip, the server just renders it. The server answers from its own
 //    location's copies, which hold every page the world has asked for.
 // 3. The server reads R2 and asks the tag cache.
 //
-// Freshness: `revalidatePath` drops the copy where the server runs at once,
-// so the next request for the page renders it (not the old page first); a
-// copy elsewhere follows within RECHECK_MS plus one request. A copy is only
+// Freshness: `revalidatePath` drops the copy where it runs and the copy
+// where the server runs at once, so whoever changed a page gets it rendered
+// on their next request (not the old page first); a copy in another location
+// follows within RECHECK_MS + FRESH_WITHIN_MS plus one request. A copy is only
 // ever made of an entry the tag cache calls current, so an invalidated page
 // never comes back out of R2 into a location.
 //
@@ -50,6 +54,11 @@ export type RequestContext = () => {
   env: {
     /** The server Worker, bound in the routing Worker only. */
     SERVER?: ServerBinding;
+    /**
+     * The server Worker next to the data, bound in both server Workers: the
+     * one whose copies every location without its own is answered from.
+     */
+    PLACED_SERVER?: ServerBinding;
     SERVER_VERSION_OVERRIDE?: string;
     SITE_ORIGIN?: string;
     CRON_SECRET?: string;
@@ -65,8 +74,17 @@ export function setRequestContext(context: RequestContext): void {
   requestContext = context;
 }
 
-/** Where the server Worker hands out cache entries (cloudflare/server.ts). */
+/**
+ * Where the server Worker hands out cache entries to a location rechecking
+ * its copy (cloudflare/server.ts).
+ */
 export const CACHE_ENTRY_PATH = "/__gitdiagram/cache-entry";
+/**
+ * On a request the routing Worker forwards: "this location has no copy of
+ * this page's entry; answer with the entry if you have a current one". The
+ * value is the entry's key.
+ */
+export const ENTRY_WANTED = "x-gitdiagram-entry-wanted";
 /**
  * An entry is 60 to 400 KB of JSON and crosses an ocean on its way to the
  * asking location, on a connection that is often new: every doubling of the
@@ -74,7 +92,7 @@ export const CACHE_ENTRY_PATH = "/__gitdiagram/cache-entry";
  * fifth) and says so in this header rather than `Content-Encoding`, which
  * the runtime would act on by itself.
  */
-const ENTRY_ENCODING = "x-gitdiagram-entry-encoding";
+export const ENTRY_ENCODING = "x-gitdiagram-entry-encoding";
 
 /** An entry as the server Worker sends it to another location. */
 export function entryResponse(entry: CurrentEntry): Response {
@@ -165,6 +183,30 @@ export function cacheTimings(request: object): string[] {
   return marks.get(request) ?? [];
 }
 
+/** Adds a Server-Timing entry to a request (the entry Worker's own hops). */
+export function markTiming(request: object, name: string, ms: number): void {
+  const held = marks.get(request) ?? [];
+  if (held.length < 8) held.push(`${name};dur=${ms}`);
+  marks.set(request, held);
+}
+
+// The page each request found no copy of in this location (routing Worker
+// only). On globalThis for the same reason as the marks.
+type Wanted = WeakMap<object, string>;
+const wanted = ((
+  globalThis as { __gitdiagramEntryWanted?: Wanted }
+).__gitdiagramEntryWanted ??= new WeakMap());
+
+/**
+ * The key of the page this request's location has no copy of, once: the
+ * entry Worker sends it to the server as ENTRY_WANTED.
+ */
+export function takeWantedEntry(request: object): string | undefined {
+  const key = wanted.get(request);
+  wanted.delete(request);
+  return key;
+}
+
 const later = (work: Promise<unknown>) =>
   requestContext().ctx.waitUntil(work.catch(() => undefined));
 
@@ -216,11 +258,57 @@ async function writeCopy(
 const copyBody = (value: unknown, lastModified: number) =>
   JSON.stringify({ value, lastModified, checkedAt: Date.now() } as Copy);
 
+/**
+ * The largest entry a location keeps a copy of, in characters of its main
+ * text. A copy is one more serialized string of the entry in the isolate's
+ * memory (two bytes a character), next to the one R2 is given, and an
+ * isolate that passes 128 MB is killed with every request it is running. The
+ * 8 MB sitemap is the entry this is for; pages are 60 to 400 KB.
+ */
+const MAX_COPY_CHARS = 1_500_000;
+
+function isTooBigToCopy(value: unknown): boolean {
+  const entry = value as { html?: unknown; body?: unknown; rsc?: unknown };
+  return [entry?.html, entry?.body, entry?.rsc].some(
+    (part) => typeof part === "string" && part.length > MAX_COPY_CHARS,
+  );
+}
+
 /** Removes this location's copies of the given page keys. */
 async function dropCopies(keys: string[]) {
   try {
     const cache = await copies();
     await Promise.all(keys.map((key) => cache.delete(copyUrl(key, "cache"))));
+  } catch {
+    // Rechecks catch up.
+  }
+}
+
+/**
+ * Tells the server Worker next to the data to drop its copies too. A page is
+ * revalidated wherever the request that changed it ran (a diagram run ends
+ * where its visitor is), but a location without a copy is answered from the
+ * copies there: left alone, they would hand the old page out for up to
+ * RECHECK_MS more.
+ */
+async function dropCopiesAtTheServer(keys: string[]) {
+  try {
+    const { env } = requestContext();
+    if (!env.PLACED_SERVER || !env.CRON_SECRET) return;
+    const response = await env.PLACED_SERVER.fetch(
+      new Request(
+        new URL(CACHE_ENTRY_PATH, env.SITE_ORIGIN ?? "https://gitdiagram.com"),
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${env.CRON_SECRET}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ drop: keys }),
+        },
+      ),
+    );
+    await response.body?.cancel();
   } catch {
     // Rechecks catch up.
   }
@@ -238,12 +326,58 @@ const routesOnly = () =>
 // `/[username]/[repo]`. In the routing Worker that lookup would be a round
 // trip for nothing on every API call and analytics event: the site's own
 // first segments are never cached pages there.
-const NEVER_PAGES = /^\/(?:api|phx9a|out|mcp|__gitdiagram)(?:\/|$)/;
+// Sitemaps are cached pages, but megabytes each and asked for by crawlers
+// only: copying one into every location would cost the server's isolate tens
+// of megabytes at a time (see MAX_COPY_CHARS). The server answers them.
+const NEVER_PAGES = /^\/(?:api|phx9a|out|mcp|sitemap|__gitdiagram)(?:\/|$)/;
+
+/** The entry in a server Worker's answer (see `entryResponse`). */
+async function readEntry(response: Response): Promise<CurrentEntry | null> {
+  // The server gzips the entry itself (see ENTRY_ENCODING).
+  const body =
+    response.headers.get(ENTRY_ENCODING) === "gzip" && response.body
+      ? response.body.pipeThrough(new DecompressionStream("gzip"))
+      : response.body;
+  const entry = (await new Response(body).json()) as CurrentEntry;
+  return entry?.value && typeof entry.lastModified === "number" ? entry : null;
+}
+
+// The entry the server just answered a request with, by request: the routing
+// layer runs again for that request and must find the entry whether or not
+// the Cache API already shows the copy written from it. On globalThis for the
+// same reason as the marks.
+type Handed = WeakMap<object, { key: string; entry: CurrentEntry }>;
+const handed = ((
+  globalThis as { __gitdiagramEntryHanded?: Handed }
+).__gitdiagramEntryHanded ??= new WeakMap());
 
 /**
- * Asks the server Worker for a page's entry. Null: there is none, or it is
- * not current (the request then goes to the server, which decides between a
- * fresh render and the old page). Undefined: the server could not be asked.
+ * Takes the entry the server answered an ENTRY_WANTED request with: it
+ * becomes this location's copy (written after the response) and the answer
+ * to this request's next look in the cache. False when it could not be read.
+ */
+export async function keepEntryFromServer(
+  request: { waitUntil(promise: Promise<unknown>): void },
+  key: string,
+  response: Response,
+): Promise<boolean> {
+  try {
+    const entry = await readEntry(response);
+    if (!entry) return false;
+    // Serialized now: OpenNext mutates the entry it is given.
+    const body = copyBody(entry.value, entry.lastModified);
+    request.waitUntil(writeCopy(key, "cache", body).catch(() => undefined));
+    handed.set(request, { key, entry });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Asks the server Worker for a page's entry, to recheck this location's
+ * copy. Null: there is none, or it is no longer current. Undefined: the
+ * server could not be asked.
  */
 async function readFromServer(
   key: string,
@@ -275,19 +409,16 @@ async function readFromServer(
       await response.body?.cancel();
       return undefined;
     }
-    // The server gzips the entry itself (see ENTRY_ENCODING).
-    const body =
-      response.headers.get(ENTRY_ENCODING) === "gzip" && response.body
-        ? response.body.pipeThrough(new DecompressionStream("gzip"))
-        : response.body;
-    const entry = (await new Response(body).json()) as CurrentEntry;
-    return entry?.value && typeof entry.lastModified === "number"
-      ? entry
-      : null;
+    return await readEntry(response);
   } catch {
     return undefined;
   }
 }
+
+// Pages a request already looked for in the store and did not find: the
+// server looks once for the visitor's location (`entryForLocation`) and the
+// render that follows would look again.
+const absent = new WeakMap<object, Set<string>>();
 
 // Rechecks under way in this isolate, so a burst of hits starts one.
 const rechecking = new Set<string>();
@@ -334,23 +465,29 @@ class ColoCache implements IncrementalCache {
     }
 
     if (routing) {
-      const entry = await timed("origin", () => readFromServer(key, false));
-      if (!entry) return null;
-      // Serialized now: OpenNext mutates the entry it is given.
-      later(
-        writeCopy(key, cacheType, copyBody(entry.value, entry.lastModified)),
-      );
-      // The server only hands out entries the tag cache calls current.
-      return {
-        value: entry.value,
-        lastModified: entry.lastModified,
-        shouldBypassTagCache: true,
-      } as Entry<Type>;
+      const request = requestContext().ctx;
+      const given = handed.get(request);
+      if (given?.key === key) {
+        handed.delete(request);
+        // The server only hands out entries the tag cache calls current.
+        return {
+          value: given.entry.value,
+          lastModified: given.entry.lastModified,
+          shouldBypassTagCache: true,
+        } as Entry<Type>;
+      }
+      // No copy here. The request goes on to the server marked with this
+      // key: it answers with the entry if it has a current one, and the
+      // entry Worker keeps that and comes back here (cloudflare/worker.ts).
+      wanted.set(request, key);
+      return null;
     }
 
+    if (isPage && absent.get(requestContext().ctx)?.has(key)) return null;
     const entry = await timed("r2", () => this.store.get(key, cacheType));
     if (!entry?.value || typeof entry.lastModified !== "number") return null;
     // Serialized now: OpenNext mutates the entry it is given.
+    if (isTooBigToCopy(entry.value)) return entry;
     const tags = pageTags(entry.value);
     const body = copyBody(entry.value, entry.lastModified);
     const lastModified = entry.lastModified;
@@ -389,7 +526,11 @@ class ColoCache implements IncrementalCache {
       return entry;
     }
     const entry = await this.store.get(key, cacheType);
-    if (!entry?.value || typeof entry.lastModified !== "number") return drop();
+    if (!entry?.value || typeof entry.lastModified !== "number") {
+      const request = requestContext().ctx;
+      absent.set(request, (absent.get(request) ?? new Set()).add(key));
+      return drop();
+    }
     const tags = pageTags(entry.value);
     const current =
       (cacheType ?? "cache") !== "cache" ||
@@ -397,7 +538,12 @@ class ColoCache implements IncrementalCache {
     // Revalidated: the next request reads R2 and takes the tag cache's
     // verdict (a fresh render, or the old page while one is made).
     if (!current) return drop();
-    await writeCopy(key, cacheType, copyBody(entry.value, entry.lastModified));
+    if (!isTooBigToCopy(entry.value))
+      await writeCopy(
+        key,
+        cacheType,
+        copyBody(entry.value, entry.lastModified),
+      );
     return { value: entry.value, lastModified: entry.lastModified };
   }
 
@@ -432,21 +578,29 @@ class ColoCache implements IncrementalCache {
     value: CacheValue<Type>,
     cacheType?: Type,
   ): Promise<void> {
-    // The copy is serialized first: `store.set` may hand the value on.
-    const body = copyBody(value, Date.now());
     await this.store.set(key, value, cacheType);
-    await writeCopy(key, cacheType, body).catch(() => undefined);
+    if (isTooBigToCopy(value)) return;
+    // After the store, so the two serialized strings are never held at once.
+    await writeCopy(key, cacheType, copyBody(value, Date.now())).catch(
+      () => undefined,
+    );
   }
 
   async delete(key: string): Promise<void> {
     await this.store.delete(key);
     await dropCopies([key]);
   }
+
+  /** Removes this location's copies of pages revalidated somewhere else. */
+  dropCopies(keys: string[]): Promise<void> {
+    return dropCopies(keys);
+  }
 }
 
 /** What the server Worker's entry calls on OpenNext's incremental cache. */
 export interface EntrySource {
   entryForLocation(key: string, fresh: boolean): Promise<CurrentEntry | null>;
+  dropCopies(keys: string[]): Promise<void>;
 }
 
 /** R2 (or any store) with a copy of each entry in every Cloudflare location. */
@@ -462,9 +616,10 @@ const staleVerdicts = new WeakMap<object, Map<string, Promise<boolean>>>();
  * Two additions to the tag cache:
  *
  * - `revalidatePath` names a page by a tag made of its path. The page was
- *   just invalidated here, where the server runs and every location without
- *   a copy asks: this location's copy is dropped at once rather than at its
- *   next recheck.
+ *   just invalidated by someone about to look at it: the copy in this
+ *   location and the one next to the data (which every location without a
+ *   copy is answered from) are dropped at once rather than at their next
+ *   recheck.
  * - OpenNext asks "revalidated?" and then "stale?" about the same tags, one
  *   after the other, and each is a round trip to a Durable Object when the
  *   location has no answer cached. The second question is asked alongside
@@ -479,7 +634,8 @@ export function withColoPurge(inner: NextModeTagCache): NextModeTagCache {
       .filter((tag) => tag.startsWith(`${SOFT_TAG_PREFIX}/`))
       .map((tag) => tag.slice(SOFT_TAG_PREFIX.length))
       .flatMap((path) => (path === "/" ? ["/index"] : [path]));
-    if (keys.length) await dropCopies(keys);
+    if (keys.length)
+      await Promise.all([dropCopies(keys), dropCopiesAtTheServer(keys)]);
   };
 
   const hasBeenRevalidated = inner.hasBeenRevalidated.bind(inner);

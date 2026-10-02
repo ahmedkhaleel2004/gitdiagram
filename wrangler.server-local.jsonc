@@ -1,10 +1,19 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  // The Next.js server behind the site's Worker (cloudflare/server.ts). It is
-  // reached only through the `SERVER` service binding of `gitdiagram`
-  // (wrangler.jsonc): no routes, no workers.dev address. Deployed by
-  // `bun run cf:deploy`, always together with the site's Worker.
-  "name": "gitdiagram-server",
+  // The Next.js server again, without `placement`: it runs where the visitor
+  // is, as every Worker does by default. The site's Worker (`SERVER_LOCAL`,
+  // wrangler.jsonc) sends it diagram generation, and nothing else.
+  //
+  // A diagram run holds a stream open for 10 to 60 s, and a Worker isolate
+  // that passes 128 MB of memory is killed with everything it is running.
+  // In `gitdiagram-server` every request of the site shares a few isolates in
+  // one place, where one heavy render took two or three streams down with it
+  // (2026-10-02). Here each location has its own isolates and a stream
+  // rarely shares one.
+  //
+  // Everything else must stay identical to wrangler.server.jsonc (a test
+  // compares the two).
+  "name": "gitdiagram-server-local",
   "main": "cloudflare/server.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -13,12 +22,6 @@
   "workers_dev": false,
   "preview_urls": false,
   "limits": { "cpu_ms": 30000 },
-  // Every request here talks to Redis (Upstash, AWS ca-central-1), R2 and
-  // GitHub, often several times, so the Worker runs next to them instead of
-  // next to the visitor: one long hop from the visitor's location, then short
-  // ones. It also keeps the isolates of this 32 MB script in one place, where
-  // the whole site's traffic keeps them warm (a new one takes 1 to 2.6 s).
-  "placement": { "region": "aws:ca-central-1" },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.02,

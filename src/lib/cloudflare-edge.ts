@@ -367,3 +367,33 @@ export function analyticsContext(headers: {
     region: /^[A-Z0-9]{1,3}$/.test(region) ? region : "",
   };
 }
+
+/**
+ * Whether a response with this `ETag` is what the caller already holds, by
+ * its `If-None-Match` (weak comparison, as conditional GETs use: the CDN
+ * turns a strong tag into a weak one when it compresses).
+ */
+export function matchesEtag(
+  ifNoneMatch: string | null,
+  etag: string | null,
+): boolean {
+  if (!ifNoneMatch || !etag) return false;
+  const opaque = (tag: string) => tag.trim().replace(/^W\//, "");
+  const wanted = opaque(etag);
+  if (!/^"[^"]*"$/.test(wanted)) return false;
+  return ifNoneMatch
+    .split(",")
+    .some((tag) => tag.trim() === "*" || opaque(tag) === wanted);
+}
+
+/**
+ * Whether a request is a diagram run: a stream that stays open for 10 to
+ * 60 s. Those go to the copy of the server Worker that runs where the visitor
+ * is (wrangler.server-local.jsonc says why), everything else to the one next
+ * to the data.
+ */
+export function isDiagramRun(method: string, pathname: string): boolean {
+  return (
+    method === "POST" && pathname.replace(/\/+$/, "") === "/api/generate/stream"
+  );
+}

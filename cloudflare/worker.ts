@@ -31,14 +31,23 @@ import {
   containerRefusal,
   edgeDecision,
   isContainerPath,
+  isDiagramRun,
   isPlatformResponseHeader,
+  matchesEtag,
   platformHeaders,
   visitorCacheControl,
   type CloudflareGeo,
   type EdgeRateLimit,
 } from "../src/lib/cloudflare-edge";
 
-import { cacheTimings } from "../src/lib/colo-cache";
+import {
+  ENTRY_ENCODING,
+  ENTRY_WANTED,
+  cacheTimings,
+  keepEntryFromServer,
+  markTiming,
+  takeWantedEntry,
+} from "../src/lib/colo-cache";
 import { entersProxy, proxyDecision } from "../src/lib/proxy-rules";
 
 import {
@@ -82,6 +91,11 @@ interface Env extends RateLimits, RenderEnv {
   WORKER_SELF_REFERENCE: Fetcher;
   /** The Next.js server (cloudflare/server.ts, Worker `gitdiagram-server`). */
   SERVER: Fetcher;
+  /**
+   * The same server where the visitor is (`gitdiagram-server-local`), for
+   * diagram streams: see wrangler.server-local.jsonc.
+   */
+  SERVER_LOCAL?: Fetcher;
   /**
    * The server version uploaded with this version of the Worker, as a
    * Cloudflare-Workers-Version-Overrides value (scripts/cf-deploy.sh). While
@@ -212,16 +226,59 @@ const handler = {
       if (routed instanceof Response) return routed;
       // `cf` (the visitor's place and network) goes along by name: server
       // code reads it (src/server/model-fetch.ts).
-      const forwarded = new Request(routed, {
-        redirect: "manual",
-        cf: (request as Request & { cf?: object }).cf,
-      } as RequestInit);
-      if (env.SERVER_VERSION_OVERRIDE)
-        forwarded.headers.set(
-          "Cloudflare-Workers-Version-Overrides",
-          env.SERVER_VERSION_OVERRIDE,
+      const toServer = async (
+        routedRequest: Request,
+        entryWanted?: string,
+      ): Promise<Response> => {
+        const forwarded = new Request(routedRequest, {
+          redirect: "manual",
+          cf: (request as Request & { cf?: object }).cf,
+        } as RequestInit);
+        if (env.SERVER_VERSION_OVERRIDE)
+          forwarded.headers.set(
+            "Cloudflare-Workers-Version-Overrides",
+            env.SERVER_VERSION_OVERRIDE,
+          );
+        // Only this Worker says which entry it wants, never a visitor.
+        if (entryWanted) forwarded.headers.set(ENTRY_WANTED, entryWanted);
+        else forwarded.headers.delete(ENTRY_WANTED);
+        if (isDiagramRun(request.method, url.pathname))
+          return (env.SERVER_LOCAL ?? env.SERVER).fetch(forwarded);
+        // A read can be asked twice. When the server's isolate dies under
+        // the request (out of memory: Cloudflare ends everything it was
+        // running) the answer is an error or a bare 503; the second try
+        // lands in a new isolate.
+        const retryable = request.method === "GET" || request.method === "HEAD";
+        try {
+          const answer = await env.SERVER.fetch(
+            retryable ? forwarded.clone() : forwarded,
+          );
+          if (!retryable || answer.status !== 503) return answer;
+          void answer.body?.cancel();
+        } catch (error) {
+          if (!retryable) throw error;
+        }
+        console.warn(
+          JSON.stringify({ event: "server.retried", path: url.pathname }),
         );
-      return env.SERVER.fetch(forwarded);
+        return env.SERVER.fetch(forwarded);
+      };
+      // The page cache found no copy of this page in this location
+      // (src/lib/colo-cache.ts): the server may answer with its entry
+      // instead of a page.
+      const entryWanted =
+        request.method === "GET" ? takeWantedEntry(ctx) : undefined;
+      if (!entryWanted) return toServer(routed);
+      const askedAt = Date.now();
+      const answer = await toServer(routed, entryWanted);
+      if (!answer.headers.has(ENTRY_ENCODING)) return answer;
+      const kept = await keepEntryFromServer(ctx, entryWanted, answer);
+      markTiming(ctx, "origin", Date.now() - askedAt);
+      // With the entry here, the routing layer answers the request itself.
+      const again = kept ? await routingLayer(incoming, env, ctx) : routed;
+      if (again instanceof Response) return again;
+      takeWantedEntry(ctx);
+      return toServer(again);
     });
   },
 };
@@ -267,6 +324,28 @@ function visitorResponse(
     statusText: response.statusText,
     headers,
   });
+}
+
+/**
+ * A browser that still holds a page asks again with the page's `ETag`
+ * (pages are `max-age=0, must-revalidate`). When nothing changed the answer
+ * is 304 and no body, as on Vercel; OpenNext sends the whole page again.
+ */
+function notModified(request: Request, response: Response): Response {
+  if (
+    response.status !== 200 ||
+    (request.method !== "GET" && request.method !== "HEAD") ||
+    !matchesEtag(
+      request.headers.get("if-none-match"),
+      response.headers.get("etag"),
+    )
+  )
+    return response;
+  void response.body?.cancel();
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  return new Response(null, { status: 304, headers });
 }
 
 const asVercelRequest = (request: Request): Request =>
@@ -419,7 +498,10 @@ const worker = {
     const startedAt = Date.now();
     const firstInIsolate = !isolateHasServed;
     isolateHasServed = true;
-    const answer = visitorResponse(await respond(request, env, ctx, url), url);
+    const answer = notModified(
+      request,
+      visitorResponse(await respond(request, env, ctx, url), url),
+    );
     // For anyone measuring from outside: the time until this Worker had its
     // answer's headers (I/O only; a Worker's clock stands still while it
     // computes), whether the request started a new isolate, and what the

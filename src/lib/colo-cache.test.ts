@@ -9,8 +9,10 @@ import type {
 import {
   CACHE_ENTRY_PATH,
   entryResponse,
+  keepEntryFromServer,
   type RequestContext,
   setRequestContext,
+  takeWantedEntry,
   withBackgroundSend,
   withColoCache,
   withColoPurge,
@@ -231,6 +233,24 @@ describe("withColoCache", () => {
     expect(store.get).not.toHaveBeenCalled();
   });
 
+  it("keeps no copy of an entry of megabytes", async () => {
+    const sitemap = {
+      type: "route" as const,
+      body: "x".repeat(1_600_000),
+      meta: { headers: { "x-next-cache-tags": "_N_T_/huge/page" } },
+    };
+    const entries: Record<string, { value: unknown; lastModified: number }> =
+      {};
+    const store = fakeStore(entries);
+    const cache = withColoCache(store);
+    await cache.set("/huge/page", sitemap as never);
+    expect(held.size).toBe(0);
+    expect(await cache.get("/huge/page")).not.toBeNull();
+    await settle();
+    expect(held.size).toBe(0);
+    expect(store.get).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves data-cache entries to the tag cache", async () => {
     const store = fakeStore({
       abc: {
@@ -286,6 +306,16 @@ describe("withColoCache", () => {
     expect(await cache.entryForLocation("/acme/demo", false)).toBeNull();
   });
 
+  it("looks in R2 once for a page that is not there", async () => {
+    const store = fakeStore({});
+    const cache = withColoCache(store);
+    // The server looks for the visitor's location, then renders: the render
+    // asks the cache again.
+    expect(await cache.entryForLocation("/acme/new", false)).toBeNull();
+    expect(await cache.get("/acme/new")).toBeNull();
+    expect(store.get).toHaveBeenCalledTimes(1);
+  });
+
   describe("in the routing Worker", () => {
     const asked: Request[] = [];
     let answer: () => Response;
@@ -307,58 +337,87 @@ describe("withColoCache", () => {
       };
     });
 
-    it("asks the server for a page it has no copy of, never R2", async () => {
+    it("marks a page it has no copy of as wanted from the server, and reads no store", async () => {
+      const store = fakeStore({});
+      const cache = withColoCache(store);
+      expect(await cache.get("/acme/demo")).toBeNull();
+      expect(takeWantedEntry(request.ctx)).toBe("/acme/demo");
+      // Taken once.
+      expect(takeWantedEntry(request.ctx)).toBeUndefined();
+      expect(asked).toHaveLength(0);
+      expect(store.get).not.toHaveBeenCalled();
+    });
+
+    it("keeps the entry the server answers with and then answers from it", async () => {
       const store = fakeStore({});
       const cache = withColoCache(store);
       // As the server sends it: gzipped.
-      answer = () => entryResponse({ value: page("one"), lastModified: 1000 });
-
+      // The Cache API does not show the copy yet: the routing layer's second
+      // look for this request still finds the entry.
+      const put = fakeCache.put;
+      let finishPut: () => void = () => undefined;
+      fakeCache.put = async (key, response) => {
+        await new Promise<void>((resolve) => (finishPut = resolve));
+        await put(key, response);
+      };
+      const kept = await keepEntryFromServer(
+        request.ctx,
+        "/acme/demo",
+        entryResponse({ value: page("one"), lastModified: 1000 }),
+      );
+      fakeCache.put = put;
+      expect(kept).toBe(true);
+      expect(held.size).toBe(0);
       const entry = await cache.get("/acme/demo");
       expect((entry!.value as { html: string }).html).toBe("one");
       expect(entry!.lastModified).toBe(1000);
       // The server only hands out current entries.
       expect(entry!.shouldBypassTagCache).toBe(true);
+      expect(takeWantedEntry(request.ctx)).toBeUndefined();
+      expect(judge.hasBeenRevalidated).not.toHaveBeenCalled();
+      // Then the copy is written, and later requests are answered from it.
+      finishPut();
+      await settle();
+      expect(held.size).toBe(1);
+      expect(await cache.get("/acme/demo")).not.toBeNull();
+      expect(takeWantedEntry(request.ctx)).toBeUndefined();
+
+      expect(
+        await keepEntryFromServer(
+          request.ctx,
+          "/acme/other",
+          new Response("not an entry"),
+        ),
+      ).toBe(false);
+    });
+
+    it("rechecks an old copy against the server", async () => {
+      const cache = withColoCache(fakeStore({}));
+      await keepEntryFromServer(
+        request.ctx,
+        "/acme/demo",
+        entryResponse({ value: page("one"), lastModified: 1000 }),
+      );
+      // The request it was handed to takes it; later ones read the copy.
+      await cache.get("/acme/demo");
+      await settle();
+
+      vi.advanceTimersByTime(31_000);
+      answer = () => entryResponse({ value: page("two"), lastModified: 2000 });
+      expect(
+        ((await cache.get("/acme/demo"))!.value as { html: string }).html,
+      ).toBe("one");
+      await settle();
       expect(asked).toHaveLength(1);
       const sent = new URL(asked[0]!.url);
       expect(sent.origin).toBe("https://gitdiagram.com");
       expect(sent.pathname).toBe(CACHE_ENTRY_PATH);
       expect(sent.searchParams.get("key")).toBe("/acme/demo");
-      expect(sent.searchParams.has("fresh")).toBe(false);
+      expect(sent.searchParams.get("fresh")).toBe("1");
       expect(asked[0]!.headers.get("authorization")).toBe("Bearer s3cret");
       expect(
         asked[0]!.headers.get("cloudflare-workers-version-overrides"),
       ).toBe('gitdiagram-server="v1"');
-
-      await settle();
-      // The next request is answered from this location's copy.
-      expect(await cache.get("/acme/demo")).not.toBeNull();
-      expect(asked).toHaveLength(1);
-      expect(store.get).not.toHaveBeenCalled();
-      expect(judge.hasBeenRevalidated).not.toHaveBeenCalled();
-    });
-
-    it("lets the server render what it has no current entry for", async () => {
-      const cache = withColoCache(fakeStore({}));
-      expect(await cache.get("/acme/demo")).toBeNull();
-      answer = () => new Response("boom", { status: 500 });
-      expect(await cache.get("/acme/demo")).toBeNull();
-      await settle();
-      expect(held.size).toBe(0);
-    });
-
-    it("rechecks an old copy against the server", async () => {
-      const cache = withColoCache(fakeStore({}));
-      answer = () => Response.json({ value: page("one"), lastModified: 1000 });
-      await cache.get("/acme/demo");
-      await settle();
-
-      vi.advanceTimersByTime(31_000);
-      answer = () => Response.json({ value: page("two"), lastModified: 2000 });
-      expect(
-        ((await cache.get("/acme/demo"))!.value as { html: string }).html,
-      ).toBe("one");
-      await settle();
-      expect(new URL(asked[1]!.url).searchParams.get("fresh")).toBe("1");
       expect(
         ((await cache.get("/acme/demo"))!.value as { html: string }).html,
       ).toBe("two");
@@ -383,10 +442,12 @@ describe("withColoCache", () => {
       const cache = withColoCache(store);
       expect(await cache.get("/api/video")).toBeNull();
       expect(await cache.get("/phx9a/e")).toBeNull();
+      expect(await cache.get("/sitemap/0.xml")).toBeNull();
       expect(await cache.get("abc", "fetch")).toBeNull();
-      expect(asked).toHaveLength(0);
+      expect(takeWantedEntry(request.ctx)).toBeUndefined();
       await cache.get("/apiary/demo");
-      expect(asked).toHaveLength(1);
+      expect(takeWantedEntry(request.ctx)).toBe("/apiary/demo");
+      expect(asked).toHaveLength(0);
       expect(store.get).not.toHaveBeenCalled();
     });
   });
@@ -445,6 +506,31 @@ describe("withColoPurge", () => {
     expect([...held.keys()].map((key) => decodeURIComponent(key))).toEqual([
       expect.stringContaining("/other/repo.cache"),
     ]);
+  });
+
+  it("has the server next to the data drop its copy too", async () => {
+    const sent: Request[] = [];
+    request.env = {
+      CRON_SECRET: "s3cret",
+      SITE_ORIGIN: "https://gitdiagram.com",
+      PLACED_SERVER: {
+        fetch: async (asked: Request) => {
+          sent.push(asked);
+          return new Response(null, { status: 204 });
+        },
+      },
+    };
+    const { wrapped } = tagCache();
+    await wrapped.writeTags(["_N_T_/acme/demo", "diagram:acme/demo"]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.method).toBe("POST");
+    expect(new URL(sent[0]!.url).pathname).toBe(CACHE_ENTRY_PATH);
+    expect(sent[0]!.headers.get("authorization")).toBe("Bearer s3cret");
+    expect(await sent[0]!.json()).toEqual({ drop: ["/acme/demo"] });
+
+    // Nothing to drop: nothing is sent.
+    await wrapped.writeTags(["diagram:acme/demo"]);
+    expect(sent).toHaveLength(1);
   });
 
   it("asks whether the tags are stale alongside whether they were revalidated", async () => {

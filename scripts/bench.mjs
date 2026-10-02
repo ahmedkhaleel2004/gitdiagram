@@ -129,8 +129,10 @@ const CURL_FORMAT =
 
 async function curl(url, times) {
   // One curl process: `times` transfers of the same URL share a connection.
+  // Paced: the zone blocks an address that sends 100 requests in 10 s.
   const args = [
     ...(await resolveArgs()),
+    ...(times > 1 ? ["--rate", "6/s"] : []),
     "-s",
     "--compressed",
     "-H",
@@ -154,7 +156,7 @@ async function local() {
     const fresh = [];
     for (let i = 0; i < n; i += 1) {
       fresh.push((await curl(HOST + path, 1))[0]);
-      await sleep(Number(flags.gap ?? 150));
+      await sleep(Number(flags.gap ?? 200));
     }
     // The first transfer opens the connection; the rest reuse it.
     const kept = (await curl(HOST + path, n + 1)).slice(1);
