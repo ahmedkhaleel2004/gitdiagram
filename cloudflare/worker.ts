@@ -52,6 +52,7 @@ import { entersProxy, proxyDecision } from "../src/lib/proxy-rules";
 
 import {
   forwardToRender,
+  warmContainers,
   type RenderEnv,
 } from "../workers/render/src/container";
 
@@ -115,6 +116,8 @@ interface Context {
 }
 
 const SITE_HOSTNAME = "gitdiagram.com";
+/** The cron whose every run also checks for a new container image to warm. */
+const WARM_CRON = "*/5 * * * *";
 
 const IMAGE_PATH = "/_next/image";
 
@@ -568,6 +571,26 @@ const worker = {
       }
     })();
     ctx.waitUntil(run);
+    // New container image since the last visit? Start each instance once, so
+    // no visitor's render waits for it to be fetched (workers/render).
+    if (controller.cron === WARM_CRON)
+      ctx.waitUntil(
+        warmContainers(env, origin).then(
+          (started) => {
+            if (started)
+              console.log(
+                JSON.stringify({ event: "containers.warmed", started }),
+              );
+          },
+          (error: unknown) =>
+            console.error(
+              JSON.stringify({
+                event: "containers.warm_failed",
+                error: error instanceof Error ? error.message : "unknown",
+              }),
+            ),
+        ),
+      );
     await run;
   },
 };

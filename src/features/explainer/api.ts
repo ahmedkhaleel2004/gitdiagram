@@ -184,26 +184,73 @@ export function streamExplainerVideo(
   );
 }
 
+/** How long to wait before asking again for an MP4 that is still being made. */
+const RENDER_ASK_AGAIN_MS = 4_000;
+/** A render is over within 13 minutes; past this, asking again cannot help. */
+const RENDER_WAIT_LIMIT_MS = 14 * 60_000;
+/** Tries a server that says it is briefly unavailable (a deploy) gets. */
+const RENDER_UNAVAILABLE_TRIES = 3;
+
+const pause = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+    signal?.addEventListener("abort", done);
+  });
+
 /**
  * Make (or reuse) the MP4 of the video on screen and relay render progress.
  * `version` is that video's `createdAt`; if the video has been replaced since,
  * the server refuses with a stale {@link VideoRequestError}.
+ *
+ * The server finishes and stores a render whatever happens to this
+ * connection, so losing sight of one is not a failure: when the stream closes
+ * early or the connection drops (a deploy cuts open streams), or the server
+ * says the MP4 is being made right now, this asks again every few seconds
+ * until the file is there (the answer is then "complete" at once) or the
+ * render is given up on.
  */
-export function streamExplainerRender(
+export async function streamExplainerRender(
   username: string,
   repo: string,
   format: RenderFormat,
   version: string,
   onEvent: (event: VideoRenderEvent) => void,
   signal?: AbortSignal,
+  { askAgainMs = RENDER_ASK_AGAIN_MS }: { askAgainMs?: number } = {},
 ): Promise<void> {
-  return streamEvents(
-    "/api/video/render",
-    { username, repo, format, v: version },
-    onEvent,
-    "Could not make the MP4.",
-    signal,
-  );
+  const started = Date.now();
+  let unavailable = 0;
+  for (;;) {
+    try {
+      return await streamEvents(
+        "/api/video/render",
+        { username, repo, format, v: version },
+        onEvent,
+        "Could not make the MP4.",
+        signal,
+      );
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const lostSight =
+        error instanceof VideoStreamEndedError || error instanceof TypeError;
+      const refused = error instanceof VideoRequestError && !error.stale;
+      const stillWorking =
+        lostSight ||
+        (refused && error.status === 409) ||
+        (refused &&
+          error.status === 503 &&
+          ++unavailable <= RENDER_UNAVAILABLE_TRIES);
+      if (!stillWorking || Date.now() - started > RENDER_WAIT_LIMIT_MS)
+        throw error;
+      await pause(askAgainMs, signal);
+      if (signal?.aborted) throw error;
+    }
+  }
 }
 
 /**

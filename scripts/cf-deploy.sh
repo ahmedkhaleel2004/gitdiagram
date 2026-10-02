@@ -35,7 +35,8 @@ front_config="${CF_FRONT_CONFIG:-wrangler.jsonc}"
 # Space-separated when given.
 read -r -a server_configs <<<"${CF_SERVER_CONFIGS:-wrangler.server.jsonc wrangler.server-local.jsonc}"
 
-# The deploy builds the render containers' image (the repo's Dockerfile).
+# A deploy that changes what the render containers run builds their image
+# (the repo's Dockerfile); see scripts/cf-container-image.mjs.
 if [[ -z "${CF_NO_CONTAINERS:-}" ]] && ! docker info >/dev/null 2>&1; then
   echo "Docker is not reachable (start it, or run: sg docker -c 'bun run cf:deploy')." >&2
   exit 1
@@ -63,6 +64,18 @@ done
 for build in "$history"/*/; do
   cp -Rn "$build." .open-next/assets/_next/static/
 done
+
+# The containers' image is named after what goes into it, and built only when
+# that changed. The front is deployed from a copy of its config that points
+# at the image in the registry, so a push that leaves the containers' code
+# alone starts no rollout: running renders and videos are not disturbed, and
+# the next one does not wait for a new image.
+front_deploy_config="$front_config"
+if [[ -z "${CF_NO_CONTAINERS:-}" ]]; then
+  front_deploy_config="wrangler.deploy.jsonc"
+  node scripts/cf-container-image.mjs --from "$front_config" \
+    --config "$front_deploy_config" >/dev/null
+fi
 
 commit="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
 # wrangler would otherwise hand a Next.js project to OpenNext's own deploy.
@@ -102,7 +115,7 @@ done
 if [[ -z "${CF_SKIP_CACHE_POPULATE:-}" ]]; then
   bunx opennextjs-cloudflare populateCache remote -c "$front_config"
 fi
-bunx wrangler deploy -c "$front_config" \
+bunx wrangler deploy -c "$front_deploy_config" \
   --var "GIT_COMMIT_SHA:$commit" \
   --var "SERVER_VERSION_OVERRIDE:$overrides"
 

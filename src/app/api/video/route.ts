@@ -29,6 +29,7 @@ import {
   isVideoLockHeld,
   videoLimitReached,
 } from "~/server/explainer/limits";
+import { reapOrphanedRuns } from "~/server/explainer/run-journal";
 import { isNarrationAvailable } from "~/server/explainer/narration";
 import { canSellVideos, videoPriceCents } from "~/server/explainer/payments";
 import {
@@ -164,14 +165,21 @@ export async function GET(request: Request): Promise<Response> {
       },
     );
   const visitor = readVisitor(request);
-  const [availability, generating] = await Promise.all([
-    videoAvailability(request, visitor, username, repo),
-    // A run in progress, which the page can wait for instead of offering a
-    // new one. Only production takes the lock.
-    process.env.NODE_ENV === "production"
-      ? isVideoLockHeld(generationLockName(username, repo))
-      : false,
+  // A run in progress, which the page can wait for instead of offering a
+  // new one. Only production takes the lock.
+  const production = process.env.NODE_ENV === "production";
+  const [generating] = await Promise.all([
+    production && isVideoLockHeld(generationLockName(username, repo)),
+    // A run that died without a word (its server was killed) gives back its
+    // place in the budget before this visitor is told what they may do.
+    production ? reapOrphanedRuns() : 0,
   ]);
+  const availability = await videoAvailability(
+    request,
+    visitor,
+    username,
+    repo,
+  );
   // Anyone the free rules hold back may buy the video instead. It is
   // answered even when they may make it free, because an iPad let in only as
   // a desktop is held back by the page itself (see explainer-video.tsx).

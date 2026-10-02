@@ -89,6 +89,86 @@ describe("explainer video streams", () => {
   });
 });
 
+describe("an MP4 render this tab lost sight of", () => {
+  const ask = (onEvent: (event: unknown) => void = () => undefined) =>
+    streamExplainerRender(
+      "acme",
+      "tiny",
+      "landscape",
+      "2026-09-24T00:00:00.000Z",
+      onEvent,
+      undefined,
+      { askAgainMs: 1 },
+    );
+
+  it("is asked for again until the stored file answers", async () => {
+    const fetchMock = vi
+      .fn()
+      // A deploy cut the stream mid-render.
+      .mockResolvedValueOnce(
+        sse('data: {"status":"rendering","progress":0.4}\n\n'),
+      )
+      // The render carries on in the container and holds its lock.
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: "This MP4 is being made right now." },
+          { status: 409 },
+        ),
+      )
+      // The connection itself fails once.
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      // Briefly unavailable while instances are replaced.
+      .mockResolvedValueOnce(
+        Response.json({ error: "Unavailable." }, { status: 503 }),
+      )
+      .mockResolvedValueOnce(sse('data: {"status":"complete"}\n\n'));
+    vi.stubGlobal("fetch", fetchMock);
+    const events: unknown[] = [];
+    await ask((event) => events.push(event));
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(events.at(-1)).toEqual({ status: "complete" });
+  });
+
+  it("gives up on a refusal that waiting cannot fix", async () => {
+    for (const status of [429, 404, 403]) {
+      const fetchMock = vi.fn(async () =>
+        Response.json({ error: "No." }, { status }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(ask()).rejects.toMatchObject({ status });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+    // A server that stays unavailable is not asked forever.
+    const down = vi.fn(async () =>
+      Response.json({ error: "Unavailable." }, { status: 503 }),
+    );
+    vi.stubGlobal("fetch", down);
+    await expect(ask()).rejects.toMatchObject({ status: 503 });
+    expect(down).toHaveBeenCalledTimes(4);
+  });
+
+  it("stops asking when the viewer leaves", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(async () => {
+      controller.abort();
+      return Response.json({ error: "Being made." }, { status: 409 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      streamExplainerRender(
+        "acme",
+        "tiny",
+        "landscape",
+        "2026-09-24T00:00:00.000Z",
+        () => undefined,
+        controller.signal,
+        { askAgainMs: 1 },
+      ),
+    ).rejects.toBeInstanceOf(VideoRequestError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("fetchExplainerVideo", () => {
   it("passes on that a video is being made", async () => {
     vi.stubGlobal(

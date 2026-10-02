@@ -53,8 +53,10 @@ ENV NEXT_MANUAL_SIG_HANDLE=1
 # renders launch Debian's Chromium. A container has no user namespaces for
 # Chrome's sandbox and a small /dev/shm, as on Vercel, where the same two
 # flags are set. The films bring their own fonts; the system ones only cover
-# what those lack: emoji and Chinese, Japanese and Korean text, which
-# otherwise render as empty boxes. tini is the init process (see ENTRYPOINT).
+# what those lack, which otherwise renders as empty boxes: emoji, Chinese,
+# Japanese and Korean text, and (fonts-noto-core) Arabic, Hebrew, Thai and
+# the Indian scripts, all of which stored videos contain. tini is the init
+# process (see ENTRYPOINT).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -62,6 +64,7 @@ RUN apt-get update \
     fonts-liberation \
     fonts-noto-cjk \
     fonts-noto-color-emoji \
+    fonts-noto-core \
     tini \
   && rm -rf /var/lib/apt/lists/*
 ENV VIDEO_RENDER_CHROME_PATH=/usr/bin/chromium

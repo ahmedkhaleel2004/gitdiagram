@@ -17,7 +17,10 @@ import { alignTake, type TimedWord } from "./voice-alignment";
 // There is no other voice. When the OpenRouter balance runs out, new videos
 // pause (see voicePausedUntil) instead of paying for scripts no one can voice.
 
-const SPEECH_API = "https://openrouter.ai/api/v1/audio/speech";
+// VIDEO_VOICE_API_BASE points the voice at another server: the load test's
+// stand-in for the model APIs (scripts/video-model-replay.mjs).
+const speechApi = () =>
+  `${(process.env.VIDEO_VOICE_API_BASE?.trim() || "https://openrouter.ai/api/v1").replace(/\/$/, "")}/audio/speech`;
 const VOICE_MODEL = "google/gemini-3.8-flash-tts";
 const VOICE_NAME = "Charon";
 const STYLE =
@@ -99,7 +102,7 @@ async function requestTake(
 ): Promise<Buffer> {
   for (let attempt = 0; ; attempt++) {
     const timeout = AbortSignal.timeout(TAKE_TIMEOUT_MS);
-    const response = await fetch(SPEECH_API, {
+    const response = await fetch(speechApi(), {
       method: "POST",
       headers: {
         authorization: `Bearer ${process.env.OPENROUTER_API_KEY?.trim() ?? ""}`,

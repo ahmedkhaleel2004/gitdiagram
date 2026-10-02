@@ -5,8 +5,10 @@ import {
   instanceName,
   isSignedSegmentJob,
   parseSegmentJob,
+  renderInstance,
   SEGMENT_BUSY_HEADER,
   SEGMENT_PATH,
+  SEGMENT_WAITED_HEADER,
   segmentInstances,
 } from "./router";
 
@@ -34,13 +36,29 @@ export interface RenderEnv {
   RENDER_PUBLIC_ORIGIN?: string;
   /** Container instances a render spreads over (default 5). */
   RENDER_POOL_SIZE?: string;
+  /**
+   * More instances, started only while every one of the pool's is busy
+   * (several renders at once); default 0.
+   */
+  RENDER_POOL_OVERFLOW?: string;
   /** Chromium renders one instance runs at once (default 2). */
   RENDER_SEGMENT_CONCURRENCY?: string;
   /** How long an idle instance stays awake, e.g. "30s" (the default). */
   RENDER_SLEEP_AFTER?: string;
+  /**
+   * The tag of the image the containers run, set by the deploy
+   * (scripts/cf-container-image.mjs). When it changes, each instance is
+   * started once ahead of visitors (see `warmContainers`).
+   */
+  RENDER_IMAGE?: string;
 }
 
 const PORT = 3000;
+
+/** Where each instance remembers the image it was last warmed on. */
+const WARMED_KEY = "warmed";
+/** Visits (five minutes apart, from the cron) on which a new image is started. */
+const WARM_TIMES = 3;
 
 /** Settings that only make sense on Vercel or on the Worker itself. */
 const NOT_FOR_THE_CONTAINER =
@@ -52,6 +70,8 @@ const positive = (value: string | undefined, fallback: number) => {
 };
 
 export const poolSize = (env: RenderEnv) => positive(env.RENDER_POOL_SIZE, 5);
+export const overflowSize = (env: RenderEnv) =>
+  Math.max(0, Number.parseInt(env.RENDER_POOL_OVERFLOW ?? "", 10) || 0);
 const perInstance = (env: RenderEnv) =>
   positive(env.RENDER_SEGMENT_CONCURRENCY, 2);
 
@@ -111,6 +131,38 @@ abstract class SiteContainer extends Container<RenderEnv> {
       this.envVars = containerEnv(this.env, { origin, spread: this.spread });
     }
     return super.fetch(request);
+  }
+
+  /**
+   * Start the container if this is a new image it has not been started on
+   * often enough yet. The first start after a deploy has to fetch the image,
+   * which made the first render after one take about twice as long; started
+   * here instead, it sleeps again after `sleepAfter`. Done on a few visits
+   * in a row, because the first may come before the rollout has reached
+   * this instance, and would only start the old image.
+   */
+  async warm(image: string, origin: string): Promise<boolean> {
+    const done = await this.ctx.storage.get<{ image: string; times: number }>(
+      WARMED_KEY,
+    );
+    const times = done?.image === image ? done.times : 0;
+    if (times >= WARM_TIMES) return false;
+    await this.ctx.storage.put(WARMED_KEY, { image, times: times + 1 });
+    // Any answer will do: the readiness probe's own path (a GET is a 405).
+    const response = await this.fetch(
+      new Request(`${origin}${SEGMENT_PATH}`, { method: "GET" }),
+    );
+    await response.body?.cancel();
+    console.log(
+      JSON.stringify({
+        event: "container.warmed",
+        container: this.constructor.name,
+        image,
+        time: times + 1,
+        status: response.status,
+      }),
+    );
+    return true;
   }
 
   override onStop({ exitCode, reason }: { exitCode: number; reason: string }) {
@@ -189,12 +241,16 @@ async function forwardSegment(
     ))
   )
     return json({ ok: false, error: "Forbidden." }, 403);
+  // A job the whole pool has already turned away may start an overflow
+  // instance; on its first try it only looks for room in the pool.
+  const waited = Number(request.headers.get(SEGMENT_WAITED_HEADER)) > 0;
   // What the last instance tried said, if none took the job.
   let refused: Response | null = null;
   for (const index of segmentInstances(
     job.from,
     poolSize(env),
     perInstance(env),
+    waited ? overflowSize(env) : 0,
   )) {
     let response: Response;
     try {
@@ -231,9 +287,35 @@ async function forwardSegment(
 }
 
 /**
+ * After a deploy that changed the containers' image, start every instance
+ * once (the overflow ones too: a burst right after a deploy otherwise waits
+ * for each of them to fetch it) so no visitor's render waits for the image.
+ * Called by the Worker's five-minute cron; an instance already warmed on
+ * this image answers at once without starting anything.
+ */
+export async function warmContainers(
+  env: RenderEnv,
+  origin: string,
+): Promise<number> {
+  const image = env.RENDER_IMAGE?.trim();
+  if (!image) return 0;
+  const stubs = [
+    ...Array.from({ length: poolSize(env) + overflowSize(env) }, (_, index) =>
+      instance(env, index),
+    ),
+    ...(env.GENERATE ? [getContainer(env.GENERATE, "generate")] : []),
+  ];
+  const started = await Promise.all(
+    stubs.map((stub) => stub.warm(image, origin).catch(() => false)),
+  );
+  return started.filter(Boolean).length;
+}
+
+/**
  * Hand a request for one of the container routes (see `isContainerPath`) to
  * a container. Segments spread over the render pool, the render itself runs
- * on the pool's first instance, and video generation on its own small one.
+ * on one of the pool's instances (the same one for the same film), and video
+ * generation on its own instance.
  */
 export async function forwardToRender(
   request: Request,
@@ -243,5 +325,10 @@ export async function forwardToRender(
   if (path === SEGMENT_PATH) return forwardSegment(request, env);
   if (path === GENERATE_PATH && env.GENERATE)
     return getContainer(env.GENERATE, "generate").fetch(request);
-  return from(await instance(env, 0).fetch(request), 0);
+  const body = await request.text();
+  const index = renderInstance(body, poolSize(env));
+  return from(
+    await instance(env, index).fetch(new Request(request, { body })),
+    index,
+  );
 }

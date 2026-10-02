@@ -6,6 +6,7 @@ import { readAdmissionControls } from "~/server/admin/controls";
 import { cloudflareContext } from "~/server/cloudflare-context";
 import { readIntEnv } from "~/server/env";
 import { canGenerateVideos } from "~/server/explainer/config";
+import { generationLockName, videoLockKey } from "~/server/explainer/limits";
 import { isNarrationAvailable } from "~/server/explainer/narration";
 import { errorText, logEvent } from "~/server/log";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
@@ -41,6 +42,10 @@ const UNCLAIMED_REFUND_MS = 90 * 60_000;
 // A run is over within 6 minutes (the generate route's lock); one still
 // "running" long after that died without settling its payment.
 const STALE_RUN_MS = 15 * 60_000;
+// A payment's run is gone when nothing holds its repository's lock (a live
+// run renews it; see tryVideoLock) this long after it claimed the payment.
+// The margin covers the moment between claiming and taking the lock.
+const RECLAIM_AFTER_MS = 30_000;
 // How far back the sweep looks at completed checkouts.
 const SWEEP_WINDOW_SECONDS = 3 * 86_400;
 
@@ -168,16 +173,34 @@ async function refundSession(
 ): Promise<void> {
   const intent = paymentIntentId(session);
   if (!intent) throw new Error("The checkout has no payment to refund.");
-  await (
-    await stripe()
-  ).refunds.create(
-    {
-      payment_intent: intent,
-      reason: "requested_by_customer",
-      metadata: { product: VIDEO_PRODUCT, why: reason },
-    },
-    { idempotencyKey: `video-refund:${session.id}` },
-  );
+  const api = await stripe();
+  const create = (idempotencyKey: string) =>
+    api.refunds.create(
+      {
+        payment_intent: intent,
+        reason: "requested_by_customer",
+        metadata: { product: VIDEO_PRODUCT, why: reason },
+      },
+      { idempotencyKey },
+    );
+  const key = `video-refund:${session.id}`;
+  try {
+    try {
+      await create(key);
+    } catch (error) {
+      // An earlier try used this key with another reason (Stripe then
+      // refuses the key for a day): ask again under this reason's own key.
+      if ((error as { type?: string }).type !== "StripeIdempotencyError")
+        throw error;
+      await create(`${key}:${reason.replace(/[^a-z]+/gi, "-")}`);
+    }
+  } catch (error) {
+    // The money already went back: an earlier refund whose state was never
+    // written (Redis failed after Stripe answered), or one made by hand in
+    // Stripe. That is the outcome wanted, not a failure to retry forever.
+    if ((error as { code?: string }).code !== "charge_already_refunded")
+      throw error;
+  }
   await upstashCommand([
     "SET",
     KEY(session.id),
@@ -263,7 +286,23 @@ export async function claimVideoPayment(
     "EX",
     STATE_TTL_SECONDS,
   ]);
-  if (claimed !== "OK") {
+  // The run that claimed it was killed before it could finish or refund
+  // (its server died): the payer's page asks again, and this run makes the
+  // video they paid for instead of leaving them to the sweep's refund.
+  const reclaimed =
+    claimed !== "OK" &&
+    (await upstashEval<number>({
+      script: RECLAIM,
+      keys: [key, videoLockKey(generationLockName(username, repo))],
+      args: [
+        `running:${Date.now()}`,
+        Date.now() - RECLAIM_AFTER_MS,
+        STATE_TTL_SECONDS,
+      ],
+    })) === 1;
+  if (reclaimed)
+    logEvent("warn", "video.payment.reclaimed", { session: session.id });
+  if (claimed !== "OK" && !reclaimed) {
     const { state } = parseState(
       await upstashCommand<string | null>(["GET", key]),
     );
@@ -327,6 +366,17 @@ export async function claimVideoPayment(
     },
   };
 }
+
+// Takes over a payment whose run died: still "running", claimed before
+// ARGV[2], with nobody holding the repository's lock. KEYS: the payment, the
+// lock. ARGV: the new value, the cutoff in ms, the TTL.
+const RECLAIM = `
+local at = string.match(redis.call('GET', KEYS[1]) or '', '^running:(%d+)$')
+if not at or tonumber(at) >= tonumber(ARGV[2]) then return 0 end
+if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[3]))
+return 1
+`;
 
 // Takes a payment for the sweep: only one nobody holds, or one whose run
 // died (still "running" from before ARGV[2]). KEYS: the payment. ARGV: the

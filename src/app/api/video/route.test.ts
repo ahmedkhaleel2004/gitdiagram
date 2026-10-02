@@ -30,6 +30,9 @@ vi.mock("~/server/explainer/limits", () => ({
   isVideoLockHeld: mocks.isVideoLockHeld,
   videoLimitReached: mocks.videoLimitReached,
 }));
+vi.mock("~/server/explainer/run-journal", () => ({
+  reapOrphanedRuns: async () => 0,
+}));
 vi.mock("~/server/explainer/narration", () => ({
   isNarrationAvailable: mocks.isNarrationAvailable,
 }));

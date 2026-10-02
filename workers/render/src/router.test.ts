@@ -5,6 +5,7 @@ import {
   isContainerPath,
   isSignedSegmentJob,
   parseSegmentJob,
+  renderInstance,
   segmentInstances,
   segmentSignature,
   type SegmentJob,
@@ -104,5 +105,39 @@ describe("the pool", () => {
     expect(segmentInstances(0, 1, 2)).toEqual([0]);
     expect(segmentInstances(900, 3, 4)).toEqual([1, 2, 0]);
     expect(instanceName(3)).toBe("render-3");
+  });
+
+  it("puts overflow instances after the whole pool, in a ring of their own", () => {
+    expect(segmentInstances(0, 5, 2, 5)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+    expect(segmentInstances(4 * 150, 5, 2, 3)).toEqual([
+      2, 3, 4, 0, 1, 7, 5, 6,
+    ]);
+    expect(segmentInstances(4 * 150, 5, 2, 0)).toEqual([2, 3, 4, 0, 1]);
+  });
+
+  it("runs the same film's render on the same instance, and films apart", () => {
+    const body = (repo: string, format = "landscape") =>
+      JSON.stringify({ username: "Owner", repo, format });
+    expect(renderInstance(body("repo"), 5)).toBe(
+      renderInstance(
+        JSON.stringify({
+          username: "owner",
+          repo: "REPO",
+          format: "landscape",
+        }),
+        5,
+      ),
+    );
+    const used = new Set(
+      Array.from({ length: 40 }, (_, index) =>
+        renderInstance(body(`repo-${index}`), 5),
+      ),
+    );
+    expect([...used].sort()).toEqual([0, 1, 2, 3, 4]);
+    expect(renderInstance("not json", 5)).toBe(0);
+    expect(renderInstance("{}", 5)).toBe(0);
+    expect(renderInstance(body("repo"), 1)).toBe(0);
   });
 });

@@ -11,6 +11,7 @@
   "observability": { "enabled": true },
   "vars": {
     "RENDER_POOL_SIZE": "5",
+    "RENDER_POOL_OVERFLOW": "5",
     "RENDER_SEGMENT_CONCURRENCY": "2",
     "RENDER_SLEEP_AFTER": "30s",
   },
@@ -25,8 +26,8 @@
       "image": "../../Dockerfile",
       "image_build_context": "../..",
       "instance_type": { "vcpu": 2, "memory_mib": 6144, "disk_mb": 6000 },
-      // The pool plus one, so a deploy can start a replacement.
-      "max_instances": 6,
+      // The pool, its overflow, and one so a deploy can start a replacement.
+      "max_instances": 11,
     },
     {
       // Video generation: minutes of waiting on model calls, a second of
@@ -34,7 +35,7 @@
       "class_name": "GenerateContainer",
       "image": "../../Dockerfile",
       "image_build_context": "../..",
-      "instance_type": "basic",
+      "instance_type": "standard-1",
       "max_instances": 2,
     },
   ],

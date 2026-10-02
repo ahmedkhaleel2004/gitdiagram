@@ -9,6 +9,13 @@ end
 return 0
 `;
 
+const RENEW_LOCK_SCRIPT = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+`;
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -51,23 +58,46 @@ async function release(key: string, token: string, failureEvent: string) {
 
 /**
  * One holder at a time across every server instance, without waiting: a
- * release function when the lock was free, else null. The lock expires on
- * its own after ttlMs if the holder dies. Throws when Redis fails.
+ * release function when the lock was free, else null. Throws when Redis
+ * fails. Made for a holder that works for minutes: the lock is a short lease
+ * (`leaseMs`) the holder renews three times per lease while it is alive, for
+ * at most `maxMs` in all. A holder that dies (its process
+ * killed, its machine gone) therefore frees the lock within one lease instead
+ * of holding it for the whole of `maxMs`; one that hangs still loses it at
+ * `maxMs`. A renewal that fails is simply tried again at the next beat.
  */
-export async function tryDistributedLock(params: {
+export async function tryLeasedLock(params: {
   key: string;
-  ttlMs: number;
-  /** Logged when releasing fails. */
+  leaseMs: number;
+  maxMs: number;
   releaseFailureEvent?: string;
 }): Promise<(() => Promise<void>) | null> {
+  const { key, leaseMs, maxMs } = params;
   const token = randomUUID();
-  if (!(await acquire(params.key, token, params.ttlMs))) return null;
-  return () =>
-    release(
-      params.key,
+  if (!(await acquire(key, token, Math.min(leaseMs, maxMs)))) return null;
+  const until = Date.now() + maxMs;
+  const timer = setInterval(
+    () => {
+      const left = until - Date.now();
+      if (left <= 0) return clearInterval(timer);
+      upstashEval<number>({
+        script: RENEW_LOCK_SCRIPT,
+        keys: [key],
+        args: [token, Math.min(leaseMs, left)],
+      }).catch(() => undefined);
+    },
+    Math.max(1_000, Math.floor(leaseMs / 3)),
+  );
+  // The lock never keeps a process that is otherwise done alive.
+  timer.unref?.();
+  return async () => {
+    clearInterval(timer);
+    await release(
+      key,
       token,
       params.releaseFailureEvent ?? "storage.distributed_lock.release_failed",
     );
+  };
 }
 
 export async function withDistributedLock<T>(params: {

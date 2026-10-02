@@ -8,7 +8,7 @@ import { viewAsCountry } from "~/server/admin/view-as";
 import { verifyOperatorBearer } from "~/server/admin/sign-in-guard";
 import { readIntEnv } from "~/server/env";
 import { errorText, logEvent } from "~/server/log";
-import { tryDistributedLock } from "~/server/storage/distributed-lock";
+import { tryLeasedLock } from "~/server/storage/distributed-lock";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
 // Every new video spends real money (Claude or GPT, plus the voice), so the
@@ -166,10 +166,19 @@ end
 return 0
 `;
 
+/** Give back one place in each of these budget counters. */
+export const refundBudget = (keys: string[]) =>
+  upstashEval<number>({ script: REFUND_SCRIPT, keys });
+
 export type LimitReason = "daily" | "person" | "network";
 
 export type Reservation =
-  | { ok: true; refund: () => Promise<void> }
+  | {
+      ok: true;
+      refund: () => Promise<void>;
+      /** The counters this took, for the run journal (run-journal.ts). */
+      keys: string[];
+    }
   | { ok: false; reason: LimitReason; limit: number };
 
 const REASONS: LimitReason[] = ["daily", "person", "network"];
@@ -209,11 +218,12 @@ async function reserve(
   if (reason) return { ok: false, reason, limit: limits[reason] };
   return {
     ok: true,
+    keys,
     // A run that failed on our side should not use up anyone's budget. The
     // keys carry the epoch, so after a reset this cannot free a new slot.
     refund: async () => {
       try {
-        await upstashEval<number>({ script: REFUND_SCRIPT, keys });
+        await refundBudget(keys);
       } catch (error) {
         logEvent("error", "video.limit.refund_failed", {
           error: errorText(error),
@@ -263,7 +273,7 @@ return 1
 export async function takePremiumVideo({
   visitorId,
   clientIp,
-}: Requester): Promise<{ refund: () => Promise<void> } | null> {
+}: Requester): Promise<{ refund: () => Promise<void>; keys: string[] } | null> {
   const [epoch] = await currentEpochs(["generate"]);
   const suffix = period(today(), epoch!);
   const keys = [
@@ -277,9 +287,10 @@ export async function takePremiumVideo({
   });
   if (taken !== 1) return null;
   return {
+    keys,
     refund: async () => {
       try {
-        await upstashEval<number>({ script: REFUND_SCRIPT, keys });
+        await refundBudget(keys);
       } catch (error) {
         logEvent("error", "video.premium.refund_failed", {
           error: errorText(error),
@@ -551,17 +562,29 @@ export async function firstGateNotice(params: {
   }
 }
 
+/** The Redis key of a video lock. */
+export const videoLockKey = (name: string) => `video:v1:lock:${name}`;
+
+/**
+ * How long a video lock outlives a holder that died. The holder renews it
+ * while it works; it is the run journal's ORPHAN_MS plus a little, so a dead
+ * run is settled (run-journal.ts) no later than its lock is free.
+ */
+const LOCK_LEASE_MS = 45_000;
+
 /**
  * One holder at a time across every server instance, or null if someone else
- * holds it. The lock expires on its own if the holder dies.
+ * holds it. The holder keeps it for at most ttlMs; if its process dies, the
+ * lock is free again within LOCK_LEASE_MS.
  */
 export function tryVideoLock(
   name: string,
   ttlMs: number,
 ): Promise<(() => Promise<void>) | null> {
-  return tryDistributedLock({
-    key: `video:v1:lock:${name}`,
-    ttlMs,
+  return tryLeasedLock({
+    key: videoLockKey(name),
+    leaseMs: LOCK_LEASE_MS,
+    maxMs: ttlMs,
     releaseFailureEvent: "video.lock.release_failed",
   });
 }
@@ -573,9 +596,7 @@ export const generationLockName = (username: string, repo: string) =>
 /** Whether someone holds the lock right now. False when Redis cannot say. */
 export async function isVideoLockHeld(name: string): Promise<boolean> {
   try {
-    return (
-      (await upstashCommand<number>(["EXISTS", `video:v1:lock:${name}`])) === 1
-    );
+    return (await upstashCommand<number>(["EXISTS", videoLockKey(name)])) === 1;
   } catch {
     return false;
   }

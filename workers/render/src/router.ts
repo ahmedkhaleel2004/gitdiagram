@@ -37,6 +37,14 @@ export const isContainerPath = (pathname: string) =>
 /** The segment route's header on a 503 that means "this instance is busy, try another". */
 export const SEGMENT_BUSY_HEADER = "X-Video-Segment-Busy";
 
+/**
+ * How many busy answers a segment job has had so far (the render that sends
+ * it counts). The first time round a job only tries the pool's regular
+ * instances; one that has already been turned away may also start an
+ * overflow instance (see `segmentInstances`).
+ */
+export const SEGMENT_WAITED_HEADER = "X-Video-Segment-Waited";
+
 /** Frames per segment (RENDER_FPS × 5 in src/server/explainer/ffmpeg.ts). */
 const SEGMENT_FRAMES = 150;
 
@@ -135,18 +143,58 @@ export async function isSignedSegmentJob(
  * neighbouring segments share an instance and the rest spread out: every
  * instance a render needs starts at the same moment instead of one after
  * another as each fills up. A busy instance answers 503 and the next in the
- * ring is tried. Posters (frame 0) land on the first instance, which is also
- * the one that runs the render itself, so a lone poster wakes nothing else.
+ * ring is tried. Posters (frame 0) land on the first instance.
+ *
+ * `overflow` instances (numbered after the pool's) come after every regular
+ * one, in a ring of their own: they are only reached when the whole pool is
+ * busy, which is how several renders at once get more Chromiums than one
+ * render ever uses, while a lone render never wakes them.
  */
 export function segmentInstances(
   from: number,
   poolSize: number,
   perInstance: number,
+  overflow = 0,
 ): number[] {
   const size = Math.max(1, Math.floor(poolSize));
+  const extra = Math.max(0, Math.floor(overflow));
   const slot = Math.floor(from / SEGMENT_FRAMES / Math.max(1, perInstance));
-  const first = ((slot % size) + size) % size;
-  return Array.from({ length: size }, (_, step) => (first + step) % size);
+  const ring = (count: number) => ((slot % count) + count) % count;
+  return [
+    ...Array.from({ length: size }, (_, step) => (ring(size) + step) % size),
+    ...Array.from(
+      { length: extra },
+      (_, step) => size + ((ring(extra) + step) % extra),
+    ),
+  ];
+}
+
+/**
+ * The pool instance that runs a render (the soundtrack, the join, the
+ * upload), chosen by what is rendered: several renders at once then share
+ * neither one instance's processor nor its fate. `body` is the render
+ * request's JSON; anything else lands on the first instance.
+ */
+export function renderInstance(body: string, poolSize: number): number {
+  const size = Math.max(1, Math.floor(poolSize));
+  let name: string;
+  try {
+    const { username, repo, format } = JSON.parse(body) as Record<
+      string,
+      unknown
+    >;
+    if (typeof username !== "string" || typeof repo !== "string") return 0;
+    name = `${username}/${repo}:${String(format)}`.toLowerCase();
+  } catch {
+    return 0;
+  }
+  // FNV-1a: small, and even enough over a handful of instances.
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < name.length; index++) {
+    hash ^= name.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) % size;
 }
 
 /** The name of a pool instance; the same name is always the same container. */

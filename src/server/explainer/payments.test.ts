@@ -36,8 +36,17 @@ vi.mock("~/server/storage/upstash", () => ({
     throw new Error(`unexpected ${command}`);
   },
   // TAKE_FOR_REFUND: only a payment nobody holds, or a run dated before the cutoff.
+  // RECLAIM (two keys, the second the repository's lock): only a run dated
+  // before the cutoff whose lock nobody holds.
   upstashEval: async ({ keys, args }: { keys: string[]; args: unknown[] }) => {
     const value = mocks.redis.get(keys[0]!);
+    if (keys.length === 2) {
+      const at = /^running:(\d+)$/.exec(value ?? "")?.[1];
+      if (at === undefined || Number(at) >= Number(args[1])) return 0;
+      if (mocks.redis.has(keys[1]!)) return 0;
+      mocks.redis.set(keys[0]!, String(args[0]));
+      return 1;
+    }
     if (value !== undefined) {
       const at = /^running:(\d+)$/.exec(value)?.[1];
       if (at === undefined || Number(at) >= Number(args[1])) return 0;
@@ -121,6 +130,67 @@ describe("claimVideoPayment", () => {
     expect(first.ok).toBe(true);
     const second = await claimVideoPayment(SESSION, "acme", "demo");
     expect(second).toMatchObject({ ok: false, status: 409 });
+  });
+
+  it("lets the payer's retry take over a payment whose run died", async () => {
+    const key = `video:v1:paid:${SESSION}`;
+    const lock = "video:v1:lock:generate:acme/demo";
+    // Claimed two minutes ago by a run that still holds the repository.
+    mocks.redis.set(key, `running:${Date.now() - 120_000}`);
+    mocks.redis.set(lock, "token");
+    expect(await claimVideoPayment(SESSION, "acme", "demo")).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    // Its server was killed: the lock lapsed, nothing settled the payment.
+    mocks.redis.delete(lock);
+    const retry = await claimVideoPayment(SESSION, "Acme", "Demo");
+    expect(retry.ok).toBe(true);
+    expect(Number(mocks.redis.get(key)!.split(":")[1])).toBeGreaterThan(
+      Date.now() - 5_000,
+    );
+    // A second tab asking at the same moment waits for that run.
+    expect(await claimVideoPayment(SESSION, "acme", "demo")).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    // A used or refunded payment is never taken over.
+    mocks.redis.set(key, "refunded");
+    expect(await claimVideoPayment(SESSION, "acme", "demo")).toMatchObject({
+      ok: false,
+      status: 402,
+    });
+  });
+
+  it("counts a payment Stripe says is already refunded as refunded", async () => {
+    const claim = await claimVideoPayment(SESSION, "acme", "demo");
+    if (!claim.ok) throw new Error("claim failed");
+    // An earlier attempt under the same key, then the charge already refunded
+    // (by hand in Stripe, or by a refund whose state was never written).
+    mocks.refund
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Keys for idempotent requests…"), {
+          type: "StripeIdempotencyError",
+        }),
+      )
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Charge ch_1 has already been refunded."), {
+          code: "charge_already_refunded",
+        }),
+      );
+    expect(await claim.payment.refund("run failed")).toBe(true);
+    expect(mocks.refund).toHaveBeenCalledTimes(2);
+    expect(mocks.refund.mock.calls[1]![1]).toEqual({
+      idempotencyKey: `video-refund:${SESSION}:run-failed`,
+    });
+    expect(mocks.redis.get(`video:v1:paid:${SESSION}`)).toBe("refunded");
+    // Any other Stripe failure is still a failure, left for the sweep.
+    mocks.redis.clear();
+    const again = await claimVideoPayment(SESSION, "acme", "demo");
+    if (!again.ok) throw new Error("claim failed");
+    mocks.refund.mockRejectedValueOnce(new Error("Stripe is down"));
+    expect(await again.payment.refund("run failed")).toBe(false);
+    expect(mocks.redis.get(`video:v1:paid:${SESSION}`)).toBe("running:0");
   });
 
   it("refuses a checkout for another repository, or one not paid", async () => {

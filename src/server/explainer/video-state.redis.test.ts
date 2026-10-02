@@ -26,6 +26,9 @@ vi.mock("~/server/storage/upstash", () => ({
     args?: Array<string | number>;
   }) => redis.current!.eval(params),
 }));
+vi.mock("~/server/admin/live-events", () => ({
+  emitLiveEvent: async () => undefined,
+}));
 vi.mock("~/server/admin/controls", () => {
   const controls = async () => ({
     videoDailyLimit: null,
@@ -48,6 +51,7 @@ import {
   tryVideoLock,
   videoLimitReached,
 } from "./limits";
+import { openRun, readVideoHealth, reapOrphanedRuns } from "./run-journal";
 import { startTestRedis } from "./test-redis";
 import {
   claimVideoIndexBuild,
@@ -236,6 +240,143 @@ describe("the per-repository lock (Redis)", () => {
     await next!();
     expect(await isVideoLockHeld("generate:a/b")).toBe(false);
     expect(await tryVideoLock("generate:a/b", 60_000)).not.toBeNull();
+  });
+});
+
+describe("a lock held as a lease (Redis)", () => {
+  it("is renewed while its holder lives, and free soon after it dies", async () => {
+    const { tryLeasedLock } = await import("~/server/storage/distributed-lock");
+    const key = "video:v1:lock:lease-test";
+    const held = () => redis.current!.command<number>(["EXISTS", key]);
+    // The holder's renewals, so the test can stop them as a kill would.
+    const timers: Array<ReturnType<typeof setInterval>> = [];
+    const realSetInterval = globalThis.setInterval;
+    const spy = vi.spyOn(globalThis, "setInterval").mockImplementation(((
+      ...args: Parameters<typeof setInterval>
+    ) => {
+      const timer = realSetInterval(...args);
+      timers.push(timer);
+      return timer;
+    }) as typeof setInterval);
+    try {
+      const release = await tryLeasedLock({
+        key,
+        leaseMs: 1_500,
+        maxMs: 60_000,
+      });
+      expect(release).not.toBeNull();
+      expect(
+        await tryLeasedLock({ key, leaseMs: 1_500, maxMs: 60_000 }),
+      ).toBeNull();
+      // Well past one lease: still held, because it was renewed.
+      await delay(2_500);
+      expect(await held()).toBe(1);
+      // The holder dies: nothing renews, nothing releases.
+      for (const timer of timers) clearInterval(timer);
+      await delay(1_800);
+      expect(await held()).toBe(0);
+      // The dead holder's release, were it ever to run, frees nobody else's.
+      const next = await tryLeasedLock({ key, leaseMs: 1_500, maxMs: 60_000 });
+      await release!();
+      expect(await held()).toBe(1);
+      await next!();
+      expect(await held()).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+  }, 15_000);
+
+  it("is given up at its longest hold even by a holder that never lets go", async () => {
+    const { tryLeasedLock } = await import("~/server/storage/distributed-lock");
+    const key = "video:v1:lock:lease-max";
+    const release = await tryLeasedLock({ key, leaseMs: 1_200, maxMs: 2_000 });
+    await delay(1_500);
+    expect(await redis.current!.command<number>(["EXISTS", key])).toBe(1);
+    await delay(1_200);
+    expect(await redis.current!.command<number>(["EXISTS", key])).toBe(0);
+    await release!();
+  }, 15_000);
+});
+
+describe("the run journal (Redis)", () => {
+  const counter = (key: string) =>
+    redis.current!.command<string | null>(["GET", key]);
+
+  it("keeps score of runs that end, and leaves their budget alone", async () => {
+    const slot = await reserveVideoSlot(person("dana"), { priority: false });
+    if (!slot.ok) throw new Error("no slot");
+    const done = openRun({
+      kind: "generate",
+      repository: "a/b",
+      refund: slot.keys,
+    });
+    await done.close("complete");
+    const failed = openRun({
+      kind: "render",
+      repository: "a/b",
+      format: "vertical",
+    });
+    await failed.close("error", "Segment 0-150 failed (render)");
+    // Closing twice counts once.
+    await failed.close("error");
+    const failures = await redis.current!.command<string[]>([
+      "LRANGE",
+      "video:v1:failures",
+      0,
+      -1,
+    ]);
+    expect(failures.map((line) => JSON.parse(line))).toEqual([
+      expect.objectContaining({
+        kind: "render",
+        repository: "a/b",
+        format: "vertical",
+        outcome: "error",
+        error: "Segment 0-150 failed (render)",
+      }),
+    ]);
+    expect(await readVideoHealth(1)).toEqual({
+      generate: { started: 1, complete: 1, error: 0, lost: 0 },
+      render: { started: 1, complete: 0, error: 1, lost: 0 },
+    });
+    expect(await reapOrphanedRuns(Date.now() + 3_600_000)).toBe(0);
+    expect(await counter(slot.keys[0]!)).toBe("1");
+    // Another platform's runs are counted apart.
+    expect((await readVideoHealth(1, "vercel")).generate.started).toBe(0);
+  });
+
+  it("gives back what a run that died had reserved, once, and counts it lost", async () => {
+    const slot = await reserveVideoSlot(person("erin"), { priority: false });
+    const premium = await takePremiumVideo(person("erin"));
+    if (!slot.ok || !premium) throw new Error("no slot");
+    const run = openRun({
+      kind: "generate",
+      repository: "a/b",
+      refund: slot.keys,
+    });
+    run.alsoRefund(premium.keys);
+    // Give the journal's writes a moment; the run then never ends.
+    await delay(200);
+    // A run that still beats is not an orphan.
+    expect(await reapOrphanedRuns()).toBe(0);
+    expect(await counter(slot.keys[0]!)).toBe("1");
+
+    const later = Date.now() + 41_000;
+    const [first, second] = await Promise.all([
+      reapOrphanedRuns(later),
+      reapOrphanedRuns(later),
+    ]);
+    expect(first + second).toBe(1);
+    for (const key of [...slot.keys, ...premium.keys])
+      expect(await counter(key)).toBe("0");
+    expect((await readVideoHealth(1)).generate).toEqual({
+      started: 1,
+      complete: 0,
+      error: 0,
+      lost: 1,
+    });
+    // Were the run alive after all, its ending is not counted a second time.
+    await run.close("complete");
+    expect((await readVideoHealth(1)).generate.complete).toBe(0);
   });
 });
 

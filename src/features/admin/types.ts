@@ -54,6 +54,15 @@ export interface AdminState {
     videos: VideoBudget;
     renders: DailyBudget;
   } | null;
+  /**
+   * How the video pipeline did on Cloudflare over the last two UTC days
+   * (today included): runs started, completed, failed and lost (their server
+   * was killed). Null when Redis could not be read.
+   */
+  videoHealth?: Record<
+    "generate" | "render",
+    { started: number; complete: number; error: number; lost: number }
+  > | null;
   /** When new videos can be voiced again (ms); null when they can now or unknown. */
   voicePausedUntil: number | null;
   /** The voice's prepaid OpenRouter balance in USD; null when unreadable. */

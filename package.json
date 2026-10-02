@@ -114,6 +114,10 @@
       "scripts/cf-secrets.mjs",
       "scripts/cf-asset-headers.mjs",
       "scripts/cf-drop-proxy.mjs",
+      "scripts/cf-staging.mjs",
+      "scripts/cf-container-image.mjs",
+      "scripts/video-model-replay.mjs",
+      "scripts/video-pipeline-test.mjs",
       "scripts/compare-hosts.mjs",
       "scripts/cf-usage.mjs",
       "scripts/bench.mjs"

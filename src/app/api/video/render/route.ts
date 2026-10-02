@@ -15,6 +15,7 @@ import {
 import { emitLiveEvent } from "~/server/admin/live-events";
 import { beginWork } from "~/server/drain";
 import { refreshVideoPages } from "~/server/explainer/cache";
+import { openRun, reapOrphanedRuns } from "~/server/explainer/run-journal";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import {
   isTrustedVideoCaller,
@@ -117,6 +118,9 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
   let releaseLock: (() => Promise<void>) | null = null;
   try {
     if (process.env.NODE_ENV === "production") {
+      // A render that died mid-way gives back its place before this one
+      // asks for its own.
+      await reapOrphanedRuns();
       releaseLock = await tryVideoLock(
         `render:${artifact.repository}:${artifact.createdAt}:${format}`,
         14 * 60_000,
@@ -165,6 +169,17 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
   const encoder = new TextEncoder();
   let closed = false;
   let job: Promise<void> = Promise.resolve();
+  const started = Date.now();
+  const jobId = `render:${artifact.repository}:${format}:${started}`;
+  // If this server is killed mid-render nothing below runs; the journal is
+  // how the reservation is given back and the loss reported.
+  const journal = openRun({
+    kind: "render",
+    repository: artifact.repository,
+    format,
+    refund: reservation?.ok ? reservation.keys : [],
+    jobId,
+  });
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const send = (event: VideoRenderEvent) => {
@@ -177,10 +192,9 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
           closed = true;
         }
       };
-      const started = Date.now();
-      const jobId = `render:${artifact.repository}:${format}:${started}`;
       const label = `${artifact.repository} (${format} MP4)`;
       let outcome: "complete" | "error" = "error";
+      let failure: string | undefined;
       void emitLiveEvent({
         kind: "render.started",
         repo: artifact.repository,
@@ -239,6 +253,7 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
         .catch(async (error: unknown) => {
           // A segment found the video replaced while it rendered.
           if (isStaleRender(error)) return superseded();
+          failure = errorText(error, 300);
           logEvent("error", "video.render.failed", {
             repository: artifact.repository,
             format,
@@ -257,6 +272,7 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
             controller.close();
           }
           await releaseLock?.();
+          await journal.close(outcome, failure);
           await emitLiveEvent({
             kind: "render.finished",
             repo: artifact.repository,

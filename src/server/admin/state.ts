@@ -8,6 +8,7 @@ import {
   presenceSocketUrl,
 } from "~/server/admin/live-events";
 import { videoUsageToday } from "~/server/explainer/limits";
+import { readVideoHealth } from "~/server/explainer/run-journal";
 import * as voice from "~/server/explainer/voice";
 import { readComplimentaryUsageToday } from "~/server/generate/complimentary-gate";
 import { getMcpUsage } from "~/server/mcp/usage";
@@ -79,6 +80,7 @@ export async function readAdminState(): Promise<AdminState> {
   const [
     { controls, unreadable: controlsUnreadable },
     video,
+    videoHealth,
     voicePausedUntil,
     voiceCreditUsd,
     claudeCredit,
@@ -87,6 +89,7 @@ export async function readAdminState(): Promise<AdminState> {
   ] = await Promise.all([
     readControlsForDisplay({ fresh: true }),
     orNull(videoUsageToday()),
+    orNull(readVideoHealth()),
     orNull(voice.voicePausedUntil()),
     orNull(within(cachedVoiceCredit(), BALANCE_DEADLINE_MS)),
     claudeCreditState(),
@@ -100,6 +103,7 @@ export async function readAdminState(): Promise<AdminState> {
     controls,
     controlsUnreadable,
     video,
+    videoHealth,
     voicePausedUntil,
     voiceCreditUsd,
     claudeCredit,

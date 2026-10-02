@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   refund: vi.fn(),
   release: vi.fn(),
   after: [] as Array<() => unknown>,
+  openRun: vi.fn(),
+  closeRun: vi.fn(async (_outcome: string) => undefined),
+  reapOrphanedRuns: vi.fn(async () => 0),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -33,6 +36,10 @@ vi.mock("~/server/explainer/limits", () => ({
   reserveRenderSlot: mocks.reserveRenderSlot,
   renderLimitMessage: () => "limit",
   tryVideoLock: mocks.tryVideoLock,
+}));
+vi.mock("~/server/explainer/run-journal", () => ({
+  openRun: mocks.openRun,
+  reapOrphanedRuns: mocks.reapOrphanedRuns,
 }));
 vi.mock("~/server/explainer/segments", () => ({
   isStaleRender: (error: unknown) =>
@@ -76,7 +83,12 @@ beforeEach(() => {
   mocks.hasRender.mockResolvedValue(false);
   mocks.isTrustedVideoCaller.mockReturnValue(false);
   mocks.tryVideoLock.mockResolvedValue(mocks.release);
-  mocks.reserveRenderSlot.mockResolvedValue({ ok: true, refund: mocks.refund });
+  mocks.reserveRenderSlot.mockResolvedValue({
+    ok: true,
+    refund: mocks.refund,
+    keys: ["render:all", "render:who", "render:net"],
+  });
+  mocks.openRun.mockReturnValue({ alsoRefund: vi.fn(), close: mocks.closeRun });
   mocks.renderMp4InSegments.mockResolvedValue(Buffer.from("mp4"));
   mocks.writeRender.mockResolvedValue(undefined);
   vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -107,6 +119,18 @@ describe("POST /api/video/render", () => {
       Buffer.from("mp4"),
     );
     expect(mocks.release).toHaveBeenCalled();
+    // Written down with what to give back if this server is killed mid-way,
+    // and crossed out when it ends.
+    expect(mocks.reapOrphanedRuns).toHaveBeenCalled();
+    expect(mocks.openRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "render",
+        repository: "acme/widget",
+        format: "landscape",
+        refund: ["render:all", "render:who", "render:net"],
+      }),
+    );
+    expect(mocks.closeRun).toHaveBeenCalledWith("complete", undefined);
   });
 
   it("serves an MP4 another render stored while it waited for the lock", async () => {
@@ -116,6 +140,7 @@ describe("POST /api/video/render", () => {
     expect(mocks.reserveRenderSlot).not.toHaveBeenCalled();
     expect(mocks.renderMp4InSegments).not.toHaveBeenCalled();
     expect(mocks.release).toHaveBeenCalled();
+    expect(mocks.openRun).not.toHaveBeenCalled();
   });
 
   it("drops an MP4 whose video was regenerated while it rendered", async () => {

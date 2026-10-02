@@ -269,6 +269,7 @@ export function ExplainerVideo({
   // A run is under way somewhere (another tab, or before a reload): look for
   // its video until it lands.
   const waiting = state.kind === "waiting";
+  const paidRetries = useRef(0);
   useEffect(() => {
     if (!waiting) return;
     const controller = new AbortController();
@@ -280,6 +281,13 @@ export function ExplainerVideo({
         .then((result) => {
           if (result.generating) return;
           clearVideoRun(username, repo);
+          // The run a payer was waiting for is gone and left no video (its
+          // server died): ask again, and the payment makes it this time.
+          if (paid && !result.video && paidRetries.current < 2) {
+            paidRetries.current++;
+            startVideoRun(username, repo, undefined, paid);
+            return;
+          }
           setState(lookedUp(result));
         })
         // A missed poll is retried on the next tick.
@@ -292,7 +300,7 @@ export function ExplainerVideo({
       window.clearInterval(timer);
       controller.abort();
     };
-  }, [waiting, username, repo]);
+  }, [waiting, username, repo, paid]);
 
   const generate = () => {
     // A failed regeneration keeps the stored video, so it stays one click away.

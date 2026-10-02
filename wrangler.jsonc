@@ -47,13 +47,19 @@
     // over, Chromium renders per instance, and how long an idle instance
     // stays awake (and billed) after its last request.
     "RENDER_POOL_SIZE": "5",
+    // Five more, started only while all of the pool's are busy (several
+    // renders at once); a lone render never wakes them.
+    "RENDER_POOL_OVERFLOW": "5",
     "RENDER_SEGMENT_CONCURRENCY": "2",
     "RENDER_SLEEP_AFTER": "30s",
   },
   // MP4s, posters and video generation need headless Chromium and ffmpeg,
   // which a Worker cannot run: those three routes are handed to containers
-  // that run this same site as a Node server (the repo's Dockerfile). Every
-  // deploy builds the image, so Docker must be running.
+  // that run this same site as a Node server (the repo's Dockerfile). The
+  // deploy script replaces "./Dockerfile" below with the image in the
+  // registry named after its contents, building it only when they changed
+  // (scripts/cf-container-image.mjs), so most deploys leave the containers
+  // alone.
   "containers": [
     {
       // The render pool. Two Chromiums and two encoders per instance, as on
@@ -64,15 +70,17 @@
       "class_name": "RenderContainer",
       "image": "./Dockerfile",
       "instance_type": { "vcpu": 2, "memory_mib": 6144, "disk_mb": 6000 },
-      // The pool plus one, so a deploy can start a replacement.
-      "max_instances": 6,
+      // The pool, its overflow, and one so a deploy can start a replacement.
+      "max_instances": 11,
     },
     {
       // Video generation: minutes of waiting on model calls, a second of
-      // ffmpeg. One small instance serves every run.
+      // ffmpeg. One instance serves every run. Ten runs at once (the cap)
+      // use about 0.45 GiB and, on the smaller `basic` (1/4 vCPU), all of
+      // its processor; this has twice that for about a dollar a month.
       "class_name": "GenerateContainer",
       "image": "./Dockerfile",
-      "instance_type": "basic",
+      "instance_type": "standard-1",
       "max_instances": 2,
     },
   ],

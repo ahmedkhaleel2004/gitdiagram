@@ -33,6 +33,10 @@ const mocks = vi.hoisted(() => ({
   paymentDone: vi.fn(async () => undefined),
   paymentRefund: vi.fn(async (_reason: string) => true),
   afterTasks: [] as Array<() => Promise<void>>,
+  openRun: vi.fn(),
+  alsoRefund: vi.fn(),
+  closeRun: vi.fn(async (_outcome: string) => undefined),
+  reapOrphanedRuns: vi.fn(async () => 0),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -70,6 +74,10 @@ vi.mock("~/server/explainer/limits", async (importOriginal) => ({
   takeVideoAttempt: mocks.takeVideoAttempt,
   tryPaidVideoRun: mocks.tryPaidVideoRun,
   tryVideoLock: mocks.tryVideoLock,
+}));
+vi.mock("~/server/explainer/run-journal", () => ({
+  openRun: mocks.openRun,
+  reapOrphanedRuns: mocks.reapOrphanedRuns,
 }));
 vi.mock("~/server/explainer/narration", () => ({
   isNarrationAvailable: mocks.isNarrationAvailable,
@@ -156,9 +164,20 @@ beforeEach(() => {
   });
   mocks.isNarrationAvailable.mockResolvedValue(true);
   mocks.readVideoArtifact.mockResolvedValue(null);
-  mocks.reserveVideoSlot.mockResolvedValue({ ok: true, refund: mocks.refund });
+  mocks.reserveVideoSlot.mockResolvedValue({
+    ok: true,
+    refund: mocks.refund,
+    keys: ["all", "who", "net"],
+  });
   mocks.takeVideoAttempt.mockResolvedValue({ ok: true, retryAfterSeconds: 60 });
-  mocks.takePremiumVideo.mockResolvedValue({ refund: mocks.refundPremium });
+  mocks.takePremiumVideo.mockResolvedValue({
+    refund: mocks.refundPremium,
+    keys: ["premium:who", "premium:net"],
+  });
+  mocks.openRun.mockReturnValue({
+    alsoRefund: mocks.alsoRefund,
+    close: mocks.closeRun,
+  });
   mocks.tryVideoLock.mockResolvedValue(mocks.releaseLock);
   mocks.tryPaidVideoRun.mockResolvedValue(mocks.releaseRun);
   mocks.remakePosterRemotely.mockResolvedValue(true);
@@ -381,6 +400,21 @@ describe("POST /api/video/generate", () => {
       clientIp: "203.0.113.9",
     });
     expect(mocks.releaseLock).toHaveBeenCalledTimes(1);
+    // The run was written down with what to give back if its server is
+    // killed, the premium place included, and crossed out when it ended.
+    expect(mocks.reapOrphanedRuns).toHaveBeenCalled();
+    expect(mocks.openRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "generate",
+        repository: "acme/demo",
+        refund: ["all", "who", "net"],
+      }),
+    );
+    expect(mocks.alsoRefund).toHaveBeenCalledWith([
+      "premium:who",
+      "premium:net",
+    ]);
+    expect(mocks.closeRun).toHaveBeenCalledWith("error", "GitHub timed out");
     // No model was called, so no paid-run place was ever taken.
     expect(mocks.tryPaidVideoRun).not.toHaveBeenCalled();
     expect(mocks.takeVideoAttempt).toHaveBeenCalledTimes(1);

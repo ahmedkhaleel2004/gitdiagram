@@ -144,6 +144,18 @@ function SetClaudeCredit({
   );
 }
 
+/**
+ * How the pipeline did on Cloudflare: "Last 2 days: 41 made · 2 failed · 0
+ * lost". Lost means the server was killed mid-run (run-journal.ts); the
+ * operator's own runs count too, so it can exceed the budget's numbers.
+ */
+function healthLine(
+  health: NonNullable<AdminState["videoHealth"]>["render"] | undefined,
+): string | null {
+  if (!health) return null;
+  return `Last 2 days: ${health.complete} made · ${health.error} failed · ${health.lost} lost`;
+}
+
 export function BudgetTiles({
   state,
   onChanged,
@@ -155,6 +167,8 @@ export function BudgetTiles({
   onCredit: (credit: ClaudeCredit) => void;
 }) {
   const video = state?.video;
+  const videosHealth = healthLine(state?.videoHealth?.generate);
+  const rendersHealth = healthLine(state?.videoHealth?.render);
   const quota = state?.diagramQuota;
   const mcp = state?.mcp;
   const credit =
@@ -169,9 +183,13 @@ export function BudgetTiles({
           video ? video.videos.used / Math.max(1, video.videos.limit) : null
         }
         sub={
-          video
-            ? `${video.videos.personLimit} per person · ${video.videos.networkLimit} per connection`
-            : undefined
+          video ? (
+            <>
+              {video.videos.personLimit} per person ·{" "}
+              {video.videos.networkLimit} per connection
+              {videosHealth ? <div>{videosHealth}</div> : null}
+            </>
+          ) : undefined
         }
         action={
           video ? (
@@ -189,6 +207,7 @@ export function BudgetTiles({
         meter={
           video ? video.renders.used / Math.max(1, video.renders.limit) : null
         }
+        sub={rendersHealth ?? undefined}
         action={
           video ? (
             <ResetUsage

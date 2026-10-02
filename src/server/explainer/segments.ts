@@ -83,6 +83,12 @@ const segmentFanOut = () => readIntEnv("VIDEO_SEGMENT_FAN_OUT", 10, { min: 1 });
 
 /** The segment route's header on a 503 that means "this instance is busy, try another". */
 export const SEGMENT_BUSY_HEADER = "X-Video-Segment-Busy";
+/**
+ * How many busy answers a job has had so far. A router in front of the render
+ * instances (workers/render) starts extra ones only for a job that has
+ * already been turned away, so a lone render never wakes them.
+ */
+const SEGMENT_WAITED_HEADER = "X-Video-Segment-Waited";
 
 /**
  * The key segment jobs are signed with: derived from CACHE_KEY_SECRET for
@@ -157,6 +163,7 @@ function postJob(
   origin: string,
   job: SegmentJob,
   signal: AbortSignal,
+  waited = 0,
 ): Promise<Response> {
   return fetch(`${origin}/api/video/render/segment`, {
     method: "POST",
@@ -164,6 +171,7 @@ function postJob(
       ...deploymentHeaders(),
       "Content-Type": "application/json",
       "X-Video-Segment": sign(job),
+      [SEGMENT_WAITED_HEADER]: String(waited),
     },
     body: JSON.stringify(job),
     signal,
@@ -207,9 +215,10 @@ async function renderRemotely(
   job: SegmentJob,
   onEvent: (event: SegmentEvent) => void,
   signal: AbortSignal,
+  waited = 0,
 ): Promise<Buffer> {
   const what = `Segment ${job.from}-${job.to}`;
-  const response = await postJob(origin, job, signal);
+  const response = await postJob(origin, job, signal, waited);
   if (!response.ok || !response.body) throw failureFor(response, what);
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
@@ -254,7 +263,8 @@ const pause = (ms: number, signal: AbortSignal) =>
  * calls the whole thing off.
  */
 export async function withSegmentRetries<T>(
-  attempt: (signal: AbortSignal) => Promise<T>,
+  /** `waited` is how many busy answers came before this attempt. */
+  attempt: (signal: AbortSignal, waited: number) => Promise<T>,
   options: {
     deadline: number;
     signal: AbortSignal;
@@ -273,7 +283,7 @@ export async function withSegmentRetries<T>(
       throw new SegmentFailure("The render ran out of time.", "final");
     const timeout = AbortSignal.timeout(Math.min(SEGMENT_ATTEMPT_MS, left));
     try {
-      return await attempt(AbortSignal.any([signal, timeout]));
+      return await attempt(AbortSignal.any([signal, timeout]), busy);
     } catch (error) {
       if (signal.aborted) throw error;
       // A timed-out attempt or a dropped connection is worth another try.
@@ -430,7 +440,8 @@ export async function renderMp4InSegments(params: {
             params.onStarted?.();
           }
           const mp4 = await withSegmentRetries(
-            (attempt) => renderRemotely(segmentOrigin, job, onEvent, attempt),
+            (attempt, waited) =>
+              renderRemotely(segmentOrigin, job, onEvent, attempt, waited),
             {
               deadline,
               signal,
@@ -489,8 +500,8 @@ export async function remakePosterRemotely(
   };
   try {
     return await withSegmentRetries(
-      async (signal) => {
-        const response = await postJob(origin, job, signal);
+      async (signal, waited) => {
+        const response = await postJob(origin, job, signal, waited);
         if (!response.ok) throw failureFor(response, "Poster");
         const body = (await response.json()) as { stored?: boolean };
         return body.stored === true;

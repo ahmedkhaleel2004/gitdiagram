@@ -35,6 +35,8 @@ const MCP_OUTCOMES: Record<string, string> = {
 
 const FAILED = "text-red-700 dark:text-red-400";
 const DONE = "text-green-700 dark:text-green-400";
+// A run whose server was killed mid-way; what it reserved was given back.
+const LOST = "its server stopped; limit refunded";
 
 export interface EventLine {
   title: string;
@@ -55,7 +57,7 @@ export function describeEvent(event: LiveFeedEvent): EventLine {
   const cost =
     typeof event.costUsd === "number" ? `$${event.costUsd.toFixed(3)}` : "";
   const outcome = String(event.outcome ?? "");
-  const failed = outcome === "error";
+  const failed = outcome === "error" || outcome === "lost";
   switch (event.kind) {
     case "diagram.started":
       return {
@@ -92,9 +94,15 @@ export function describeEvent(event: LiveFeedEvent): EventLine {
       };
     case "video.finished":
       return {
-        title: failed ? "Video failed" : "Video made",
+        // "lost": its server was killed mid-run (see run-journal.ts).
+        title:
+          outcome === "lost"
+            ? "Video lost"
+            : failed
+              ? "Video failed"
+              : "Video made",
         tone: failed ? FAILED : DONE,
-        detail: seconds,
+        detail: joined([seconds, outcome === "lost" ? LOST : ""]),
       };
     case "video.gated":
       return {
@@ -121,9 +129,14 @@ export function describeEvent(event: LiveFeedEvent): EventLine {
       };
     case "render.finished":
       return {
-        title: failed ? "MP4 failed" : "MP4 made",
+        title:
+          outcome === "lost" ? "MP4 lost" : failed ? "MP4 failed" : "MP4 made",
         tone: failed ? FAILED : DONE,
-        detail: joined([String(event.format ?? ""), seconds]),
+        detail: joined([
+          String(event.format ?? ""),
+          seconds,
+          outcome === "lost" ? LOST : "",
+        ]),
       };
     case "limits.reset":
       return {

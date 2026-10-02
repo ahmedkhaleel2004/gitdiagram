@@ -22,6 +22,7 @@ import {
   limitedCountryRule,
 } from "~/server/explainer/audience";
 import { refreshVideoPages } from "~/server/explainer/cache";
+import { openRun, reapOrphanedRuns } from "~/server/explainer/run-journal";
 import {
   canGenerateVideos,
   isVideoExplainerEnabled,
@@ -268,6 +269,9 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       return jsonErrorResponse(pausedMessage("voice") + note, 503);
     }
     if (!trusted && !paidSession) {
+      // A run that died mid-way gives back its place in the budget before
+      // this one asks for its own.
+      if (production) await reapOrphanedRuns();
       reservation = await reserveVideoSlot(requester, { priority, limited });
       if (!reservation.ok) {
         gated(reservation.reason);
@@ -338,7 +342,16 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   // The visitor's premium video for today, if this run took it.
   let refundPremium: (() => Promise<void>) | undefined;
   let closed = false;
+  let failedWith: string | undefined;
   let job: Promise<void> = Promise.resolve();
+  // If this server is killed mid-run nothing below runs; the journal is how
+  // the visitor's place is given back and the loss reported.
+  const journal = openRun({
+    kind: "generate",
+    repository,
+    refund: reservation?.ok ? reservation.keys : [],
+    jobId,
+  });
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -402,7 +415,11 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
             stars,
             priority,
             standardOnly: limited,
-            takePremium: () => takePremiumVideo(requester),
+            takePremium: async () => {
+              const taken = await takePremiumVideo(requester);
+              if (taken) journal.alsoRefund(taken.keys);
+              return taken;
+            },
           });
           refundPremium = choice.refund;
           return choice.planner;
@@ -421,6 +438,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
             close();
           },
           async (error: unknown) => {
+            failedWith = errorText(error, 300);
             logEvent("error", "video.generation_failed", {
               repository,
               paid,
@@ -464,6 +482,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
           // Every part of the run has settled by now, so the next run of this
           // repository cannot overlap its paid work.
           await release();
+          await journal.close(stored ? "complete" : "error", failedWith);
           await emitLiveEvent({
             kind: "video.finished",
             repo: confirmedPublic ? repository : "a repository",

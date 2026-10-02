@@ -78,3 +78,5 @@ venv
 
 # local explainer video artifacts (development)
 .video-cache/
+/wrangler.staging*.jsonc
+/wrangler.deploy.jsonc
