@@ -14,6 +14,11 @@
 // ~/.config/gitdiagram/staging/env.json): the production names (see
 // scripts/cf-secrets.mjs) with R2_*_BUCKET, UPSTASH_REDIS_REST_*,
 // STRIPE_SECRET_KEY (sk_test_…) and CRON_SECRET pointing somewhere safe.
+// Redis: any Upstash-style REST endpoint the Workers can reach. What was used
+// on 2026-10-02: `redis:7-alpine` and `hiett/serverless-redis-http` in Docker
+// on a server, behind its HTTPS reverse proxy under an unguessable path, with
+// SRH_TOKEN as UPSTASH_REDIS_REST_TOKEN. The bucket is `gitdiagram-staging`
+// (copy a few `video/v1/<owner>/<repo>/` folders into it to have videos).
 // The script refuses to deploy with the production bucket, Redis or a live
 // Stripe key. Optional overrides for experiments: STAGING_RENDER_INSTANCE
 // (JSON instance_type), STAGING_GENERATE_INSTANCE, STAGING_VARS (JSON).
@@ -243,9 +248,21 @@ if (action === "deploy") {
   // The entry Worker first: the servers are bound to it and it to them.
   for (const config of Object.values(CONFIGS))
     run("bunx", ["wrangler", "delete", "-c", config, "--force"], env);
-  console.log(
-    "Workers deleted. Check `bunx wrangler containers list` for leftover container applications.",
-  );
+  // Their container applications outlive the Workers.
+  const listed = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/containers/applications`,
+    { headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } },
+  ).then((response) => response.json());
+  const applications = listed.result ?? [];
+  for (const application of applications)
+    if (application.name?.startsWith(`${NAME}-`))
+      spawnSync("bunx", ["wrangler", "containers", "delete", application.id], {
+        cwd: root,
+        input: "y\n",
+        stdio: ["pipe", "inherit", "inherit"],
+        env: { ...process.env, ...env },
+      });
+  console.log("Staging's Workers and container applications are deleted.");
 } else if (action !== "config") {
   console.error("usage: node scripts/cf-staging.mjs config|deploy|destroy");
   process.exit(1);
