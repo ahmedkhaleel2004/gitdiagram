@@ -1,5 +1,3 @@
-import { revalidatePath, revalidateTag } from "next/cache";
-
 import { SITE_URL } from "~/lib/site";
 import { revalidateBrowseIndexCache } from "~/server/browse-index-cache";
 import { notifyIndexNow } from "~/server/visibility/indexnow";
@@ -15,11 +13,8 @@ import {
 } from "./diagram-state";
 import { writePublicDiagramPreview } from "./artifact-store";
 import { canPersistVisibility } from "./cache-key";
-import {
-  getPublicDiagramStateCacheTag,
-  getRepoPagePath,
-  getRequestedRepoPagePath,
-} from "./repo-page-cache";
+import { getRepoPagePath } from "./repo-page-cache";
+import { refreshDiagramPagesHere } from "./repo-page-refresh";
 import type { ArtifactVisibility } from "./types";
 
 export interface SuccessfulDiagramState {
@@ -121,28 +116,7 @@ export async function persistGenerationResult(params: {
         });
         params.postResponseTasks.push(async () => {
           try {
-            const normalizedPath = getRepoPagePath(
-              params.username,
-              params.repo,
-            );
-            const requestedPath = getRequestedRepoPagePath(
-              params.username,
-              params.repo,
-            );
-            revalidatePath(normalizedPath);
-            revalidatePath(`${normalizedPath}/opengraph-image`);
-            // The README picture (diagram.png) always shows the latest diagram.
-            revalidatePath(`${normalizedPath}/diagram.png`);
-            if (requestedPath !== normalizedPath) {
-              revalidatePath(requestedPath);
-              revalidatePath(`${requestedPath}/opengraph-image`);
-            }
-            revalidateTag(
-              getPublicDiagramStateCacheTag(params.username, params.repo),
-              // A regenerated diagram must survive the very next reload.
-              // "max" serves the previous artifact once while refreshing it.
-              { expire: 0 },
-            );
+            refreshDiagramPagesHere(params.username, params.repo);
             await updatePublicBrowseIndexForSuccessfulDiagram({
               username: params.username,
               repo: params.repo,

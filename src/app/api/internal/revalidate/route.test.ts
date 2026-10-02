@@ -5,6 +5,13 @@ vi.mock("~/server/explainer/cache", () => ({ refreshVideoPagesHere }));
 const dropEdgeAnswers = vi.fn(async (_urls: URL[]) => undefined);
 vi.mock("~/server/edge-answers", () => ({ dropEdgeAnswers }));
 
+const refreshDiagramPagesHere = vi.fn();
+vi.mock("~/server/storage/repo-page-refresh", () => ({
+  refreshDiagramPagesHere,
+}));
+const revalidateBrowseIndexCache = vi.fn();
+vi.mock("~/server/browse-index-cache", () => ({ revalidateBrowseIndexCache }));
+
 const { POST } = await import("./route");
 
 const call = (body: unknown, token = "s3cret") =>
@@ -20,6 +27,8 @@ describe("POST /api/internal/revalidate", () => {
   beforeEach(() => {
     vi.stubEnv("CRON_SECRET", "s3cret");
     refreshVideoPagesHere.mockClear();
+    refreshDiagramPagesHere.mockClear();
+    revalidateBrowseIndexCache.mockClear();
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -34,6 +43,23 @@ describe("POST /api/internal/revalidate", () => {
       "https://gitdiagram.com/api/video?username=Vercel&repo=next.js",
       "https://gitdiagram.com/api/video?username=vercel&repo=next.js",
     ]);
+  });
+
+  it("refreshes a replaced diagram's pages and the browse index", async () => {
+    const response = await call({
+      diagram: { username: "Vercel", repo: "next.js" },
+    });
+    expect(response.status).toBe(200);
+    expect(refreshDiagramPagesHere).toHaveBeenCalledWith("Vercel", "next.js");
+    expect(revalidateBrowseIndexCache).toHaveBeenCalledOnce();
+    expect(refreshVideoPagesHere).not.toHaveBeenCalled();
+    expect(
+      (await call({ diagram: { username: "a/b", repo: "c" } })).status,
+    ).toBe(400);
+    expect(
+      (await call({ diagram: { username: "a", repo: "b" } }, "nope")).status,
+    ).toBe(401);
+    expect(refreshDiagramPagesHere).toHaveBeenCalledOnce();
   });
 
   it("refuses a wrong or missing secret", async () => {
