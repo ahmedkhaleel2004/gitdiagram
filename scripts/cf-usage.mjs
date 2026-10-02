@@ -4,7 +4,12 @@
 //
 //   node scripts/cf-usage.mjs               period to date + projection from the last 24 h
 //   node scripts/cf-usage.mjs --hours 6     project from the last 6 hours instead
+//   node scripts/cf-usage.mjs --site        without test and staging Workers
 //   node scripts/cf-usage.mjs --json        the same numbers as JSON
+//   node scripts/cf-usage.mjs --hours 3 --fail-above 150
+//                                           one line; exit 1 when the projected
+//                                           month is over $150 (the hourly
+//                                           cost watch, .github/workflows)
 //
 // Reads Cloudflare's analytics (GraphQL), the Workers Logs query API and the
 // billing API. Needs CLOUDFLARE_API_TOKEN, or the token file on the server
@@ -153,43 +158,76 @@ async function logEvents(from, to) {
   }
 }
 
+/** Names for container applications and Durable Object namespaces. */
+async function names() {
+  const found = {};
+  const read = async (path, label) => {
+    try {
+      for (const entry of await rest(path)) found[entry.id] = label(entry);
+    } catch (error) {
+      problems.push(`names: ${error.message}`);
+    }
+  };
+  await Promise.all([
+    read(`/accounts/${ACCOUNT}/containers/applications`, (app) => app.name),
+    read(
+      `/accounts/${ACCOUNT}/workers/durable_objects/namespaces`,
+      (namespace) => `${namespace.script}: ${namespace.class}`,
+    ),
+  ]);
+  return found;
+}
+
+const named = await names();
+// --site: leave out test and staging Workers (and their containers, Durable
+// Objects, buckets and logs), which are billed but are not the site's cost.
+const SITE_ONLY = flag("--site");
+const NOT_THE_SITE = /staging|perf|test|egress|xreq|__unknown__/;
+const counted = (name) => !SITE_ONLY || !NOT_THE_SITE.test(named[name] ?? name);
+
 /** Everything billed by use between two moments. */
 async function usage(from, to) {
-  const [workers, doCalls, doTime, r2Ops, containers, logs] = await Promise.all(
-    [
-      dataset(
-        "workersInvocationsAdaptive",
-        "sum{requests cpuTimeUs} dimensions{scriptName}",
-        from,
-        to,
-      ),
-      dataset(
-        "durableObjectsInvocationsAdaptiveGroups",
-        "sum{requests} dimensions{namespaceId}",
-        from,
-        to,
-      ),
-      dataset(
-        "durableObjectsPeriodicGroups",
-        "sum{duration rowsRead rowsWritten} dimensions{namespaceId}",
-        from,
-        to,
-      ),
-      dataset(
-        "r2OperationsAdaptiveGroups",
-        "sum{requests} dimensions{bucketName actionType}",
-        from,
-        to,
-      ),
-      dataset(
-        "containersUsageAdaptiveGroups",
-        "sum{cpuTimeSec allocatedMemory allocatedDisk} dimensions{applicationId}",
-        from,
-        to,
-      ),
-      logEvents(from, to),
-    ],
-  );
+  let [workers, doCalls, doTime, r2Ops, containers, logs] = await Promise.all([
+    dataset(
+      "workersInvocationsAdaptive",
+      "sum{requests cpuTimeUs} dimensions{scriptName}",
+      from,
+      to,
+    ),
+    dataset(
+      "durableObjectsInvocationsAdaptiveGroups",
+      "sum{requests} dimensions{namespaceId}",
+      from,
+      to,
+    ),
+    dataset(
+      "durableObjectsPeriodicGroups",
+      "sum{duration rowsRead rowsWritten} dimensions{namespaceId}",
+      from,
+      to,
+    ),
+    dataset(
+      "r2OperationsAdaptiveGroups",
+      "sum{requests} dimensions{bucketName actionType}",
+      from,
+      to,
+    ),
+    dataset(
+      "containersUsageAdaptiveGroups",
+      "sum{cpuTimeSec allocatedMemory allocatedDisk} dimensions{applicationId}",
+      from,
+      to,
+    ),
+    logEvents(from, to),
+  ]);
+  const keep = (rows, key) =>
+    rows.filter((row) => counted(row.dimensions[key]));
+  workers = keep(workers, "scriptName");
+  doCalls = keep(doCalls, "namespaceId");
+  doTime = keep(doTime, "namespaceId");
+  r2Ops = keep(r2Ops, "bucketName");
+  containers = keep(containers, "applicationId");
+  for (const name of Object.keys(logs)) if (!counted(name)) delete logs[name];
   const by = (rows, key, pick) => {
     const out = {};
     for (const row of rows)
@@ -234,6 +272,21 @@ async function usage(from, to) {
       r2ClassAByBucket: by(classA, "bucketName", (row) => row.sum.requests),
       r2ClassBByBucket: by(classB, "bucketName", (row) => row.sum.requests),
       logEventsByWorker: logs,
+      containerCpuSByApplication: by(
+        containers,
+        "applicationId",
+        (row) => row.sum.cpuTimeSec,
+      ),
+      containerMemGibSByApplication: by(
+        containers,
+        "applicationId",
+        (row) => row.sum.allocatedMemory / GIB,
+      ),
+      doDurationGbSByNamespace: by(
+        doTime,
+        "namespaceId",
+        (row) => row.sum.duration,
+      ),
     },
   };
 }
@@ -247,7 +300,9 @@ async function storageGb(now) {
     now,
   );
   const perBucket = {};
-  for (const row of rows)
+  for (const row of rows.filter((entry) =>
+    counted(entry.dimensions.bucketName),
+  ))
     perBucket[row.dimensions.bucketName] =
       (row.max.payloadSize + row.max.metadataSize) / 1e9;
   return perBucket;
@@ -373,7 +428,26 @@ const projected = priced(monthly);
 const siteRequests = recent.detail.requestsByWorker.gitdiagram ?? 0;
 const siteCpuMs = recent.detail.cpuMsByWorker.gitdiagram ?? 0;
 
-if (flag("--json")) {
+const ceiling = Number(option("--fail-above", "0"));
+if (ceiling > 0) {
+  // The watch must not pass because it could not see.
+  if (problems.some((problem) => problem.startsWith("workers"))) {
+    console.log(`Cost watch could not read usage: ${problems.join("; ")}`);
+    process.exit(2);
+  }
+  const over = projected.total > ceiling;
+  const worst = [...projected.lines].sort((a, b) => b.cost - a.cost)[0];
+  console.log(
+    `A month at the pace of the last ${windowHours.toFixed(1)} h would cost ${money(projected.total)} ` +
+      `(alarm above ${money(ceiling)}; largest line: ${LABELS[worst.line]}, ${money(worst.cost)}; ` +
+      `${number(siteRequests / windowHours)} site requests an hour).`,
+  );
+  if (over)
+    console.log(
+      "Over the ceiling: run `bun run cf:usage --hours 2` for the table, and see CLAUDE.md (Cloudflare, Cost).",
+    );
+  process.exit(over ? 1 : 0);
+} else if (flag("--json")) {
   console.log(
     JSON.stringify(
       {
@@ -392,6 +466,8 @@ if (flag("--json")) {
     ),
   );
 } else {
+  if (SITE_ONLY)
+    console.log("Site only: test and staging Workers are left out.");
   console.log(
     `Cloudflare usage for account ${ACCOUNT.slice(0, 8)}…, ${iso(now)}`,
   );
@@ -420,12 +496,33 @@ if (flag("--json")) {
     if (!entries.length) return;
     console.log(`\n  ${title}`);
     for (const [name, value] of entries)
-      console.log(`    ${name.padEnd(44)} ${number(value)}${unit}`);
+      console.log(
+        `    ${(named[name] ?? (name || "(deleted)")).padEnd(50)} ${number(value)}${unit}`,
+      );
   };
   detail("Requests by Worker (window):", recent.detail.requestsByWorker);
   detail("R2 class A by bucket (window):", recent.detail.r2ClassAByBucket);
   detail("R2 class B by bucket (window):", recent.detail.r2ClassBByBucket);
   detail("R2 storage by bucket (now):", buckets, " GB");
+  detail(
+    "Durable Object requests by class (window):",
+    recent.detail.doRequestsByNamespace,
+  );
+  detail(
+    "Durable Object duration by class (window):",
+    recent.detail.doDurationGbSByNamespace,
+    " GB-s",
+  );
+  detail(
+    "Container CPU by application (window):",
+    recent.detail.containerCpuSByApplication,
+    " vCPU-s",
+  );
+  detail(
+    "Container memory by application (window):",
+    recent.detail.containerMemGibSByApplication,
+    " GiB-s",
+  );
   detail(
     "Stored log events by Worker (window):",
     recent.detail.logEventsByWorker,

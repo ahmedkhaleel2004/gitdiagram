@@ -1,0 +1,33 @@
+name: Cost watch
+
+# Cloudflare has no spending cap, and its own budget emails run a day behind.
+# Every hour this projects a month from the last three hours of usage
+# (scripts/cf-usage.mjs) and fails when that is over the ceiling, so GitHub
+# emails the owner within the hour. Normal is $25 to $60; Vercel was $102.56.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      ceiling:
+        description: "Fail above this many dollars a month"
+        default: "150"
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: package.json
+      - name: Project the month from the last three hours
+        run: node scripts/cf-usage.mjs --hours 3 --fail-above "$CEILING"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CEILING: ${{ inputs.ceiling || '150' }}

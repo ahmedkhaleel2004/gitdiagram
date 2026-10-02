@@ -105,7 +105,7 @@
       // a render and two R2 writes.
       "name": "LIMIT_REPO_PAGE",
       "namespace_id": "4726",
-      "simple": { "limit": 240, "period": 60 },
+      "simple": { "limit": 120, "period": 60 },
     },
   ],
   "assets": {

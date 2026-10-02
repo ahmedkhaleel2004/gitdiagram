@@ -257,8 +257,8 @@ export function edgeDecision(
     return { action: "deny", rule: "brightbot-repository-crawl" };
   // Not a Vercel rule. A repository page that is not cached yet costs a
   // render (about 150 ms of CPU) and two R2 writes, and there is no end of
-  // names to ask for. 240 a minute is far above a person, prefetches
-  // included; search engines Cloudflare has verified are never held back.
+  // names to ask for. 120 a minute is far above a person, and room for a
+  // classroom behind one address; search engines Cloudflare has verified are never held back.
   if (!verifiedCrawler && isRepositoryRoute(pathname, true))
     return { action: "limit", limit: "LIMIT_REPO_PAGE" };
   return null;
