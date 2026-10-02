@@ -585,7 +585,24 @@ async function health() {
   for (const line of failures) console.log(`  ${line}`);
   // Stored log lines: a second opinion, and where segment retries and
   // container stops show. Best effort (see logs()).
-  if (!staging && cloudflareToken)
+  if (!staging && cloudflareToken) {
+    // Container lines carry their application's id, not a Worker's name:
+    // leave out the staging and test applications' by looking the ids up.
+    const applications = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/containers/applications`,
+      { headers: { Authorization: `Bearer ${cloudflareToken}` } },
+    )
+      .then((response) => response.json())
+      .catch(() => ({}));
+    const live = new Set(
+      (applications.result ?? [])
+        .filter((application) => !/staging|render-test/.test(application.name))
+        .map((application) => application.id),
+    );
+    const isLive = (worker) =>
+      /^[0-9a-f-]{36}$/.test(String(worker))
+        ? live.has(worker)
+        : !/staging|render-test/.test(String(worker));
     for (const needle of [
       "video.render.failed",
       "video.generation_failed",
@@ -595,13 +612,14 @@ async function health() {
       "container.error",
       "container.unreachable",
     ]) {
-      const lines = (await logs(needle, 24, 50)).filter(
-        (line) => !/staging|render-test/.test(String(line.worker)),
+      const lines = (await logs(needle, 24, 50)).filter((line) =>
+        isLive(line.worker),
       );
       console.log(`${needle}: ${lines.length} in 24 h`);
       for (const line of lines.slice(0, 5))
         console.log(`  ${JSON.stringify(line).slice(0, 300)}`);
     }
+  }
   if (bad) process.exitCode = 1;
 }
 

@@ -113,7 +113,7 @@ async function ensureImage() {
   const reference = `registry.cloudflare.com/${ACCOUNT}/${REPOSITORY}:${tag}`;
   if (inRegistry(tag)) {
     console.error(
-      `container image ${tag}: already in the registry, no rollout`,
+      `container image ${tag}: already in the registry, not rebuilt`,
     );
     return reference;
   }

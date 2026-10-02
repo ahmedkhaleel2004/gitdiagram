@@ -24,6 +24,11 @@ on:
       - "workers/errors/**"
       - "workers/presence/**"
       - "scripts/bench.mjs"
+      # The staging copy and the video pipeline's test tools.
+      - "cloudflare/staging.ts"
+      - "scripts/cf-staging.mjs"
+      - "scripts/video-pipeline-test.mjs"
+      - "scripts/video-model-replay.mjs"
   workflow_dispatch:
 
 # One deploy at a time, in order; a queued deploy is never cancelled halfway.
