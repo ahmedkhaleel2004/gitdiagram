@@ -199,7 +199,20 @@ const SOFT_HEADERS = [
 const withoutOrigins = (text) =>
   text.replaceAll(A, "{origin}").replaceAll(B, "{origin}");
 
-const normalizeHeader = (name, value) => {
+const PRODUCTION = "https://gitdiagram.com";
+
+const normalizeHeader = (name, value, origin) => {
+  // Vercel and the Worker both add `noindex` on any hostname but the site's.
+  if (name === "x-robots-tag" && value !== null && origin !== PRODUCTION)
+    value =
+      value
+        .split(",")
+        .map((part) => part.trim())
+        .filter(
+          (part, index, parts) =>
+            part !== "noindex" || parts.indexOf(part) !== index,
+        )
+        .join(", ") || null;
   if (value === null) return null;
   let text = withoutOrigins(value).trim();
   if (name === "content-type")
@@ -335,8 +348,8 @@ function compare(request, a, b) {
   if (a.status !== b.status) fail.push(`status ${a.status} vs ${b.status}`);
   if (request.statusOnly) return { fail, warn };
   for (const name of [...STRICT_HEADERS, ...SOFT_HEADERS]) {
-    const left = normalizeHeader(name, a.headers.get(name));
-    const right = normalizeHeader(name, b.headers.get(name));
+    const left = normalizeHeader(name, a.headers.get(name), A);
+    const right = normalizeHeader(name, b.headers.get(name), B);
     if (left === right) continue;
     (STRICT_HEADERS.includes(name) ? fail : warn).push(
       `${name}: ${left ?? "(none)"} vs ${right ?? "(none)"}`,

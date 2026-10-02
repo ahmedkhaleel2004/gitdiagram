@@ -92,6 +92,12 @@
       "namespace_id": "4724",
       "simple": { "limit": 120, "period": 60 },
     },
+    {
+      // Starting a video or an MP4 wakes a container (see cloudflare-edge.ts).
+      "name": "LIMIT_VIDEO_START",
+      "namespace_id": "4725",
+      "simple": { "limit": 30, "period": 60 },
+    },
   ],
   "assets": {
     "directory": ".open-next/assets",

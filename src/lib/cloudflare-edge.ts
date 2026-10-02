@@ -112,6 +112,37 @@ export function isContainerPath(pathname: string): boolean {
   );
 }
 
+/**
+ * What the Worker can answer for a container route without waking a
+ * container (which costs a few seconds and bills while awake): the same
+ * refusals the route itself gives, in the same order. Null means the request
+ * goes to a container. Segment jobs are signed; their check is the router's.
+ */
+export function containerRefusal(
+  method: string,
+  pathname: string,
+  origin: string | null,
+  url: URL,
+): { status: number; error?: string } | null {
+  if (method !== "POST") return { status: 405 };
+  const path = pathname.replace(/\/+$/, "");
+  if (path === "/api/video/render/segment") return null;
+  let sameOrigin = false;
+  try {
+    sameOrigin = origin !== null && new URL(origin).origin === url.origin;
+  } catch {
+    sameOrigin = false;
+  }
+  if (sameOrigin) return null;
+  return {
+    status: 403,
+    error:
+      path === "/api/video/generate"
+        ? "Video generation must come from GitDiagram."
+        : "Video downloads must come from GitDiagram.",
+  };
+}
+
 /** The internal route each cron schedule calls (same as vercel.json). */
 export const CRON_ROUTES: Record<string, string> = {
   "*/5 * * * *": "/api/internal/browse-index/drain",
@@ -130,13 +161,19 @@ export type EdgeRateLimit =
   | "LIMIT_GENERATE_STREAM"
   | "LIMIT_GENERATE_COST"
   | "LIMIT_GENERATE_CANCEL"
-  | "LIMIT_DIAGRAM_STATE";
+  | "LIMIT_DIAGRAM_STATE"
+  | "LIMIT_VIDEO_START";
 
 const RATE_LIMITED_PATHS: Record<string, EdgeRateLimit> = {
   "/api/generate/stream": "LIMIT_GENERATE_STREAM", // 20 a minute
   "/api/generate/cost": "LIMIT_GENERATE_COST", // 60 a minute
   "/api/generate/cancel": "LIMIT_GENERATE_CANCEL", // 60 a minute
   "/api/diagram-state": "LIMIT_DIAGRAM_STATE", // 120 a minute
+  // Not a Vercel rule: these two wake a container, which bills while awake.
+  // The routes' own limits (Redis) run inside it, so this one stands in
+  // front. Far above what a person does (a video or an MP4 takes a minute).
+  "/api/video/generate": "LIMIT_VIDEO_START", // 30 a minute
+  "/api/video/render": "LIMIT_VIDEO_START",
 };
 
 // First path segments that are the site's own, never a GitHub owner.

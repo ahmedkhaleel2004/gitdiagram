@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CRON_ROUTES,
+  containerRefusal,
   edgeDecision,
   isContainerPath,
   platformHeaders,
@@ -169,5 +170,42 @@ describe("visitorCacheControl", () => {
       "public, max-age=31536000, immutable",
     ])
       expect(visitorCacheControl(value)).toBe(value);
+  });
+});
+
+describe("containerRefusal", () => {
+  const url = new URL("https://gitdiagram.com/api/video/generate");
+  it("lets a same-origin POST through to a container", () => {
+    expect(
+      containerRefusal("POST", url.pathname, "https://gitdiagram.com", url),
+    ).toBeNull();
+    // Segment jobs are signed; the router checks them.
+    expect(
+      containerRefusal("POST", "/api/video/render/segment", null, url),
+    ).toBeNull();
+  });
+
+  it("answers what the route would, without waking a container", () => {
+    expect(containerRefusal("GET", url.pathname, null, url)).toEqual({
+      status: 405,
+    });
+    expect(containerRefusal("POST", url.pathname, null, url)).toEqual({
+      status: 403,
+      error: "Video generation must come from GitDiagram.",
+    });
+    expect(
+      containerRefusal(
+        "POST",
+        "/api/video/render",
+        "https://evil.example",
+        url,
+      ),
+    ).toEqual({
+      status: 403,
+      error: "Video downloads must come from GitDiagram.",
+    });
+    expect(
+      containerRefusal("POST", url.pathname, "not a url", url)?.status,
+    ).toBe(403);
   });
 });

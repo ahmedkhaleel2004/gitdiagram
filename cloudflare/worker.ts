@@ -11,6 +11,7 @@ import openNext from "../.open-next/worker.js";
 import siteHeaders from "../.open-next/site-headers.json";
 import {
   CRON_ROUTES,
+  containerRefusal,
   edgeDecision,
   isContainerPath,
   isPlatformResponseHeader,
@@ -65,6 +66,8 @@ globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   return platformFetch(input, { ...init, headers });
 }) as typeof fetch;
 
+const SITE_HOSTNAME = "gitdiagram.com";
+
 const handler = openNext as {
   fetch(request: Request, env: Env, ctx: Context): Promise<Response>;
 };
@@ -73,9 +76,14 @@ const handler = openNext as {
  * The app's response as Vercel would have passed it on: without the cache
  * directives and headers meant for the platform, and with next.config.js's
  * site-wide headers on the answers OpenNext leaves them off (redirects, the
- * proxy's own answers). On the PostHog rewrite they replace PostHog's own.
+ * proxy's own answers). On the PostHog rewrite and on a container's answers
+ * (an image built without the Worker's settings) they replace what is there.
  */
-function visitorResponse(response: Response, pathname: string): Response {
+function visitorResponse(
+  response: Response,
+  url: URL,
+  replaceSiteHeaders = url.pathname.startsWith("/phx9a/"),
+): Response {
   if (response.status === 101) return response;
   const headers = new Headers(response.headers);
   const cacheControl = headers.get("cache-control");
@@ -89,11 +97,17 @@ function visitorResponse(response: Response, pathname: string): Response {
     !/\baccept\b/i.test(headers.get("vary") ?? "")
   )
     headers.append("vary", "Accept");
-  const replace = pathname.startsWith("/phx9a/");
   for (const [name, value] of Object.entries(
     siteHeaders as Record<string, string>,
   ))
-    if (replace || !headers.has(name)) headers.set(name, value);
+    if (replaceSiteHeaders || !headers.has(name)) headers.set(name, value);
+  // Only the real site belongs in search results, not its copy on
+  // workers.dev (Vercel does the same on its own hostnames).
+  if (
+    url.hostname !== SITE_HOSTNAME &&
+    !/\bnoindex\b/i.test(headers.get("x-robots-tag") ?? "")
+  )
+    headers.append("x-robots-tag", "noindex");
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -145,8 +159,8 @@ async function respond(
   url: URL,
 ): Promise<Response> {
   // On Vercel the www domain redirected to the apex.
-  if (url.hostname === "www.gitdiagram.com") {
-    url.hostname = "gitdiagram.com";
+  if (url.hostname === `www.${SITE_HOSTNAME}`) {
+    url.hostname = SITE_HOSTNAME;
     return new Response(null, {
       status: 308,
       headers: { Location: url.toString() },
@@ -158,18 +172,73 @@ async function respond(
   );
 }
 
+/**
+ * The ffmpeg and Chromium routes, which run in the render containers. The
+ * Worker answers what it can itself, so a stray request never wakes one.
+ */
+async function container(
+  request: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
+  const refusal = containerRefusal(
+    request.method,
+    url.pathname,
+    request.headers.get("origin"),
+    url,
+  );
+  if (refusal)
+    return refusal.error
+      ? Response.json(
+          { ok: false, error: refusal.error },
+          { status: refusal.status, headers: { "Cache-Control": "no-store" } },
+        )
+      : new Response(null, { status: refusal.status });
+  const limited = await firewall(request, env, url.pathname);
+  if (limited) return limited;
+  const forwarded = asVercelRequest(request);
+  // Segments spread over the render pool and fail over between instances
+  // themselves; see workers/render.
+  if (url.pathname.replace(/\/+$/, "").endsWith("/segment"))
+    return forwardToRender(forwarded, env);
+  // A deploy replaces the container instances. For a few seconds the one a
+  // request is sent to may be gone, which throws here rather than answering;
+  // the next try reaches its replacement. The bodies are a few hundred bytes.
+  const body = await forwarded.arrayBuffer();
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await forwardToRender(new Request(forwarded, { body }), env);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "container.unreachable",
+          path: url.pathname,
+          attempt,
+          error: error instanceof Error ? error.message.slice(0, 200) : "?",
+        }),
+      );
+      if (request.signal.aborted || attempt === 4)
+        return Response.json(
+          {
+            ok: false,
+            error: "Videos are unavailable for a moment. Try again shortly.",
+          },
+          {
+            status: 503,
+            headers: { "Cache-Control": "no-store", "Retry-After": "5" },
+          },
+        );
+      await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+    }
+  }
+}
+
 const worker = {
   async fetch(request: Request, env: Env, ctx: Context): Promise<Response> {
     const url = new URL(request.url);
-    // The render Container streams its own answers; everything else gets the
-    // headers a visitor would have seen on Vercel.
-    if (isContainerPath(url.pathname)) {
-      const limited = await firewall(request, env, url.pathname);
-      if (limited) return limited;
-      // Segments spread over the render pool; see workers/render.
-      return forwardToRender(asVercelRequest(request), env);
-    }
-    return visitorResponse(await respond(request, env, ctx, url), url.pathname);
+    if (isContainerPath(url.pathname))
+      return visitorResponse(await container(request, env, url), url, true);
+    return visitorResponse(await respond(request, env, ctx, url), url);
   },
 
   // Cloudflare cron triggers stand in for Vercel's crons: the same routes,
