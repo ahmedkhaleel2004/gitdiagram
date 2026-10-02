@@ -183,7 +183,16 @@ const named = await names();
 // Objects, buckets and logs), which are billed but are not the site's cost.
 const SITE_ONLY = flag("--site");
 const NOT_THE_SITE = /staging|perf|test|egress|xreq/;
-const counted = (name) => !SITE_ONLY || !NOT_THE_SITE.test(named[name] ?? name);
+// A deleted container application or Durable Object class keeps its id and
+// loses its name; tonight every deleted one was a test.
+const DELETED =
+  /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/;
+const counted = (name) =>
+  !SITE_ONLY ||
+  !(
+    NOT_THE_SITE.test(named[name] ?? name) ||
+    (!named[name] && DELETED.test(name))
+  );
 
 // One visitor request runs several Workers: `gitdiagram-edge` (holds the
 // routes; answers cached pages), then `gitdiagram` (routing, page cache),
