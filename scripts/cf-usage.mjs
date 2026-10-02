@@ -404,7 +404,11 @@ async function billed() {
 const now = Date.now();
 const period = await billingPeriod(now);
 const hours = Number(option("--hours", "24"));
-const windowStart = Math.max(now - hours * 3600_000, LIVE_SINCE);
+// The cost watch looks at the whole window whatever happened in it: a short
+// window would turn one test burst into a month's alarm.
+const windowStart = option("--fail-above")
+  ? now - hours * 3600_000
+  : Math.max(now - hours * 3600_000, LIVE_SINCE);
 const windowHours = (now - windowStart) / 3600_000;
 
 const [toDate, recent, buckets, charged] = await Promise.all([
