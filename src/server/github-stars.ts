@@ -27,15 +27,25 @@ const shortenPageLifetime = unstable_cache(
   { revalidate: 60 * 5 },
 );
 
+async function fetchRepository(asGitHubApp: boolean) {
+  return fetch(GITHUB_REPO_URL, {
+    cache: "force-cache",
+    headers: await getGitHubApiHeaders({ allowGitHubAppAuth: asGitHubApp }),
+    next: {
+      revalidate: STAR_COUNT_REVALIDATE_SECONDS,
+    },
+  });
+}
+
 export async function getStarCount() {
   try {
-    const response = await fetch(GITHUB_REPO_URL, {
-      cache: "force-cache",
-      headers: await getGitHubApiHeaders({ allowGitHubAppAuth: false }),
-      next: {
-        revalidate: STAR_COUNT_REVALIDATE_SECONDS,
-      },
-    });
+    // Without credentials first, as always. GitHub allows 60 such calls an
+    // hour per address, and on Cloudflare Workers the address is shared with
+    // other sites, so the call is sometimes refused (403 or 429): then once
+    // more as the GitHub App.
+    let response = await fetchRepository(false);
+    if (response.status === 403 || response.status === 429)
+      response = await fetchRepository(true);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch star count (${response.status})`);
