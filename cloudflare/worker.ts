@@ -100,6 +100,7 @@ const asVercelRequest = (request: Request): Request =>
     headers: platformHeaders(
       request.headers,
       (request as Request & { cf?: CloudflareGeo }).cf,
+      new URL(request.url),
     ),
   });
 

@@ -8,6 +8,8 @@ import {
   visitorCacheControl,
 } from "./cloudflare-edge";
 
+const SITE = new URL("https://gitdiagram.com/vercel/next.js");
+
 describe("platformHeaders", () => {
   it("fills Vercel-style geolocation from Cloudflare", () => {
     const headers = platformHeaders(
@@ -19,6 +21,7 @@ describe("platformHeaders", () => {
         latitude: "48.70650",
         longitude: "2.07140",
       },
+      SITE,
     );
     expect(headers.get("x-vercel-ip-country")).toBe("FR");
     expect(headers.get("x-vercel-ip-country-region")).toBe("IDF");
@@ -40,10 +43,15 @@ describe("platformHeaders", () => {
         "x-vercel-ip-city": "San%20Francisco",
         "x-forwarded-for": "1.2.3.4, 5.6.7.8",
         "x-real-ip": "1.2.3.4",
+        "x-forwarded-host": "evil.example",
+        "x-forwarded-proto": "http",
         "cf-connecting-ip": "198.51.100.9",
       }),
       { country: "IN" },
+      SITE,
     );
+    expect(headers.get("x-forwarded-host")).toBe("gitdiagram.com");
+    expect(headers.get("x-forwarded-proto")).toBe("https");
     expect(headers.get("x-vercel-ip-country")).toBe("IN");
     expect(headers.get("x-vercel-ip-country-region")).toBeNull();
     expect(headers.get("x-vercel-ip-city")).toBeNull();
@@ -58,13 +66,14 @@ describe("platformHeaders", () => {
         "x-forwarded-for": "1.1.1.1",
       }),
       { country: "T1", latitude: "nope", longitude: "2" },
+      SITE,
     );
     expect(headers.get("x-vercel-ip-country")).toBeNull();
     expect(headers.get("x-vercel-ip-latitude")).toBeNull();
     expect(headers.get("x-forwarded-for")).toBeNull();
-    expect(platformHeaders(new Headers(), undefined).has("x-real-ip")).toBe(
-      false,
-    );
+    expect(
+      platformHeaders(new Headers(), undefined, SITE).has("x-real-ip"),
+    ).toBe(false);
   });
 });
 

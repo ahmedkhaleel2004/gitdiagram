@@ -26,6 +26,8 @@ const PLATFORM_HEADERS = [
   "x-vercel-deployment-url",
   "x-vercel-id",
   "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
   "x-real-ip",
 ];
 
@@ -40,9 +42,13 @@ const text = (value: unknown, pattern: RegExp): string =>
 export function platformHeaders(
   incoming: Headers,
   cf: CloudflareGeo | undefined,
+  url: URL,
 ): Headers {
   const headers = new Headers(incoming);
   for (const name of PLATFORM_HEADERS) headers.delete(name);
+  // The same-origin guard reads these; they are the platform's to state.
+  headers.set("x-forwarded-host", url.host);
+  headers.set("x-forwarded-proto", url.protocol.replace(/:$/, ""));
 
   const ip = incoming.get("cf-connecting-ip")?.trim();
   if (ip) {
