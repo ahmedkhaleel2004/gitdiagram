@@ -885,11 +885,22 @@ function remainingLifetime(
   return remaining > 1 ? remaining : null;
 }
 
+/** A stale page's re-render is asked for this often at most, per isolate. */
+const RESTART_HOLD_MS = 10_000;
+/** When, after asking, the server is asked for the new render. */
+const RESTART_LOOKS_MS = [1_500, 2_500, 4_000, 8_000];
+const restarted = new Map<string, number>();
+
 /**
  * The page a GET asks for, from this location's copy, or null when the
- * routing layer must answer: no copy, not a plain HTML page request, a page
- * past its lifetime (answering it means queueing its re-render), an error
+ * routing layer must answer: no copy, not a plain HTML page request, an error
  * page, or anything unusual about the request.
+ *
+ * A page past its lifetime is answered stale, as OpenNext's cache interceptor
+ * answers it, when the caller gives `restart`: the routing layer's own pass
+ * over the request, which queues the re-render. It runs after the response
+ * (at most once per RESTART_HOLD_MS per isolate), and the copy is replaced
+ * as soon as the server holds the new render. Without `restart`: null.
  */
 export async function answerFromCopy(
   request: Request,
@@ -898,6 +909,7 @@ export async function answerFromCopy(
   ctx: { waitUntil(promise: Promise<unknown>): void },
   /** The build whose pages these are (the cache's addresses carry it). */
   build: string,
+  restart?: () => Promise<unknown>,
 ): Promise<Response | null> {
   const key = plainPageKey(request, url);
   if (!key) return null;
@@ -919,11 +931,37 @@ export async function answerFromCopy(
   const revalidate = answer.get(READY_REVALIDATE);
   const sMaxAge = remainingLifetime(revalidate, lastModified);
   if (sMaxAge === null) {
-    void held.body?.cancel();
-    return null;
-  }
-
-  if (!(Date.now() - checkedAt <= RECHECK_MS) && !rechecking.has(address)) {
+    if (!restart) {
+      void held.body?.cancel();
+      return null;
+    }
+    if (!(Date.now() - (restarted.get(address) ?? 0) <= RESTART_HOLD_MS)) {
+      restarted.set(address, Date.now());
+      if (restarted.size > 500) restarted.clear();
+      ctx.waitUntil(
+        (async () => {
+          await restart();
+          // The re-render is queued: the copy follows it.
+          for (const wait of RESTART_LOOKS_MS) {
+            await new Promise((resolve) => setTimeout(resolve, wait));
+            const entry = await readFromServer(key, true, env);
+            if (entry === undefined) return;
+            if (!entry) return dropCopy(key, where);
+            if (entry.lastModified <= lastModified) continue;
+            return writeCopy(
+              key,
+              "cache",
+              prepare(entry.value, entry.lastModified),
+              where,
+            );
+          }
+        })().catch(() => undefined),
+      );
+    }
+  } else if (
+    !(Date.now() - checkedAt <= RECHECK_MS) &&
+    !rechecking.has(address)
+  ) {
     rechecking.add(address);
     ctx.waitUntil(
       (async () => {
@@ -958,8 +996,9 @@ export async function answerFromCopy(
     answer.delete(name);
   answer.set(
     "cache-control",
-    `s-maxage=${sMaxAge}, stale-while-revalidate=${ONE_MONTH_SECONDS}`,
+    `s-maxage=${sMaxAge ?? 1}, stale-while-revalidate=${ONE_MONTH_SECONDS}`,
   );
+  if (sMaxAge === null) answer.set("x-opennext-cache", "STALE");
   // The body goes out as it comes from the cache: nothing is parsed.
   return new Response(held.body, { status: 200, headers: answer });
 }

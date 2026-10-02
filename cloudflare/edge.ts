@@ -281,7 +281,26 @@ async function ownAnswer(
   };
   const key = plainPageKey(request, url);
   if (!key) return null;
-  const held = await answerFromCopy(request, url, env, ctx, build.buildId);
+  // A page past its lifetime is answered as it is; the site's Worker gets
+  // the request afterwards and queues the re-render, as it always has.
+  const cf = (request as Request & { cf?: CloudflareGeo }).cf;
+  const held = await answerFromCopy(
+    request,
+    url,
+    env,
+    ctx,
+    build.buildId,
+    async () => {
+      const answer = await env.SITE.fetch(
+        new Request(request.url, {
+          headers: request.headers,
+          redirect: "manual",
+          cf,
+        } as RequestInit),
+      );
+      await answer.body?.cancel();
+    },
+  );
   // The page is here; the firewall still has its say (a blocked crawler, the
   // per-address limit on repository pages), and counts the request once.
   if (held) {
@@ -305,7 +324,6 @@ async function ownAnswer(
     return null;
   const refused = await firewall(request, env, url.pathname);
   if (refused) return refused;
-  const cf = (request as Request & { cf?: CloudflareGeo }).cf;
   // The request as the app saw it on Vercel, marked as the edge Worker's.
   const headers = platformHeaders(request.headers, cf, url);
   headers.set(ENTRY_WANTED, key);

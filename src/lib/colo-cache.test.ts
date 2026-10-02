@@ -605,6 +605,8 @@ const tagCacheFor = () => ({
   } as unknown as NextModeTagCache),
 });
 
+const realImmediate = globalThis.setImmediate;
+
 describe("answerFromCopy", () => {
   const env = { CRON_SECRET: "s3cret", SITE_ORIGIN: "https://gitdiagram.com" };
   const waiting: Promise<unknown>[] = [];
@@ -790,6 +792,70 @@ describe("answerFromCopy", () => {
     // OpenNext calls a page stale from its last second on.
     vi.advanceTimersByTime(1_000);
     expect(await ask("/acme/demo")).toBeNull();
+  });
+
+  it("answers a page past its lifetime stale when it can restart its render, and follows the new render", async () => {
+    const asked: Request[] = [];
+    let restarts = 0;
+    let rendered = false;
+    let heldAt = 0;
+    const bound = {
+      ...env,
+      SERVER: {
+        fetch: async (sent: Request) => {
+          asked.push(sent);
+          return entryResponse(
+            rendered
+              ? {
+                  value: appPage({ html: "<p>new</p>" }),
+                  lastModified: Date.now(),
+                }
+              : { value: appPage(), lastModified: heldAt },
+          );
+        },
+      },
+    };
+    const get = () => {
+      const url = new URL("/acme/stale", "https://gitdiagram.com");
+      return answerFromCopy(
+        new Request(url),
+        url,
+        bound,
+        ctx,
+        "no-build-id",
+        async () => void restarts++,
+      );
+    };
+    heldAt = Date.now();
+    await hold("/acme/stale", appPage());
+    vi.advanceTimersByTime(400_000);
+    const stale = await get();
+    expect(await stale!.text()).toContain("hello");
+    expect(stale!.headers.get("cache-control")).toBe(
+      "s-maxage=1, stale-while-revalidate=2592000",
+    );
+    expect(stale!.headers.get("x-opennext-cache")).toBe("STALE");
+    // Asked for once, however many visitors come meanwhile.
+    expect((await get())!.headers.get("x-opennext-cache")).toBe("STALE");
+    // The clock moves on while real work (the entry's decompression) lands.
+    const until = async (done: () => boolean) => {
+      for (let step = 0; step < 200 && !done(); step++) {
+        await vi.advanceTimersByTimeAsync(100);
+        await new Promise((resolve) => realImmediate(resolve));
+      }
+    };
+    await until(() => asked.length === 1);
+    expect(restarts).toBe(1);
+    expect(asked).toHaveLength(1);
+    // The render lands; the next look takes it.
+    rendered = true;
+    await until(() => asked.length === 2);
+    await Promise.all(waiting);
+    expect(asked).toHaveLength(2);
+    const fresh = await get();
+    expect(await fresh!.text()).toBe("<p>new</p>");
+    expect(fresh!.headers.get("x-opennext-cache")).toBe("HIT");
+    expect(restarts).toBe(1);
   });
 
   it("rechecks an old copy with the server after answering from it", async () => {
