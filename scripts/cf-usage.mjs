@@ -185,14 +185,17 @@ const SITE_ONLY = flag("--site");
 const NOT_THE_SITE = /staging|perf|test|egress|xreq/;
 const counted = (name) => !SITE_ONLY || !NOT_THE_SITE.test(named[name] ?? name);
 
-// Runs that are billed for their CPU only, not as requests: the Next.js
-// server behind the site Worker's service binding (`gitdiagram-server`,
-// one fee for the visitor's request to `gitdiagram`), and Tail Workers
-// (`gitdiagram-errors`). Analytics counts their runs like any other.
-// A Worker created in the last hour or so shows up as `__unknown__`: tonight
-// that is those two, so its CPU is counted and its runs are not.
-const billedPerRequest = (worker) =>
-  !/-(?:server|errors)$|^__unknown__$/.test(worker);
+// One visitor request runs several Workers: `gitdiagram-edge` (holds the
+// routes; answers cached pages), then `gitdiagram` (routing, page cache),
+// then `gitdiagram-server` or `gitdiagram-server-local` (Next.js), and the
+// Tail Worker `gitdiagram-errors` after each. Cloudflare bills the request
+// once, at the Worker the visitor reached, and CPU for all of them; analytics
+// counts every run. A Worker under an hour old shows as `__unknown__`.
+const SITE_FAMILY =
+  /^(?:gitdiagram(?:-edge|-server|-server-local|-errors)?|__unknown__)$/;
+/** Requests billed for the site: runs of whichever Worker faced visitors. */
+const siteBilledRequests = (runsByWorker) =>
+  Math.max(runsByWorker["gitdiagram-edge"] ?? 0, runsByWorker.gitdiagram ?? 0);
 
 /** Everything billed by use between two moments. */
 async function usage(from, to) {
@@ -251,12 +254,15 @@ async function usage(from, to) {
       !R2_CLASS_A.test(row.dimensions.actionType) &&
       !R2_FREE.test(row.dimensions.actionType),
   );
+  const runs = by(workers, "scriptName", (row) => row.sum.requests);
   return {
     totals: {
-      workerRequests: sum(
-        workers.filter((row) => billedPerRequest(row.dimensions.scriptName)),
-        (row) => row.sum.requests,
-      ),
+      workerRequests:
+        siteBilledRequests(runs) +
+        sum(
+          workers.filter((row) => !SITE_FAMILY.test(row.dimensions.scriptName)),
+          (row) => row.sum.requests,
+        ),
       workerCpuMs: sum(workers, (row) => row.sum.cpuTimeUs) / 1000,
       doRequests: sum(doCalls, (row) => row.sum.requests),
       doDurationGbS: sum(doTime, (row) => row.sum.duration),
@@ -441,11 +447,13 @@ monthly.r2StorageGb = storedGb;
 
 const soFar = priced(toDate.totals);
 const projected = priced(monthly);
-const siteRequests = recent.detail.requestsByWorker.gitdiagram ?? 0;
-const siteCpuMs =
-  (recent.detail.cpuMsByWorker.gitdiagram ?? 0) +
-  (recent.detail.cpuMsByWorker["gitdiagram-server"] ?? 0) +
-  (recent.detail.cpuMsByWorker.__unknown__ ?? 0);
+const siteRequests = siteBilledRequests(recent.detail.requestsByWorker);
+const siteCpuMs = sum(
+  Object.entries(recent.detail.cpuMsByWorker).filter(([worker]) =>
+    SITE_FAMILY.test(worker),
+  ),
+  ([, ms]) => ms,
+);
 
 const ceiling = Number(option("--fail-above", "0"));
 if (ceiling > 0) {
@@ -520,7 +528,7 @@ if (ceiling > 0) {
       );
   };
   detail(
-    "Runs by Worker (window; -server and -errors are not billed per request):",
+    "Runs by Worker (window; a visitor's request is billed once, see SITE_FAMILY):",
     recent.detail.requestsByWorker,
   );
   detail("CPU by Worker (window):", recent.detail.cpuMsByWorker, " ms");
