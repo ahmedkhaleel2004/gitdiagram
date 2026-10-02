@@ -10,7 +10,16 @@ import { logEvent } from "~/server/log";
 // public by design: /<key>.txt serves it (a rewrite in next.config.js to
 // /api/indexnow-key) to prove the site owns the submissions.
 
-const ENDPOINT = "https://api.indexnow.org/indexnow";
+// Tried in order until one accepts. Every IndexNow engine passes what it
+// receives on to the others, so one acceptance is enough. The shared endpoint
+// (run by Bing) answers 429 to every call from Cloudflare Workers' shared
+// addresses (29 of 29 on the day of the move; 200 from elsewhere), where
+// Yandex and Seznam accept.
+const ENDPOINTS = [
+  "https://api.indexnow.org/indexnow",
+  "https://yandex.com/indexnow",
+  "https://search.seznam.cz/indexnow",
+];
 const MAX_URLS = 10_000;
 const TIMEOUT_MS = 5_000;
 
@@ -46,28 +55,35 @@ async function submit(urls: string[]): Promise<void> {
   const key = indexNowKey();
   const urlList = ownUrls(urls);
   if (!key || !urlList.length) return;
-  try {
-    const response = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({
-        host: new URL(SITE_URL).host,
-        key,
-        keyLocation: `${SITE_URL}/${key}.txt`,
-        urlList,
-      }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    await response.body?.cancel().catch(() => undefined);
-    // 200 and 202 both mean received; 429 means slow down.
-    if (!response.ok)
-      logEvent("warn", "indexnow.rejected", {
-        status: response.status,
-        urls: urlList.length,
+  const body = JSON.stringify({
+    host: new URL(SITE_URL).host,
+    key,
+    keyLocation: `${SITE_URL}/${key}.txt`,
+    urlList,
+  });
+  const refused: number[] = [];
+  for (const endpoint of ENDPOINTS) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
-  } catch {
-    // Best effort: crawlers still find the page through the sitemap.
+      await response.body?.cancel().catch(() => undefined);
+      // 200 and 202 both mean received; 429 means slow down.
+      if (response.ok) return;
+      refused.push(response.status);
+    } catch {
+      // Best effort: crawlers still find the page through the sitemap.
+      refused.push(0);
+    }
   }
+  logEvent("warn", "indexnow.rejected", {
+    status: refused[0],
+    statuses: refused.join(","),
+    urls: urlList.length,
+  });
 }
 
 /**

@@ -64,4 +64,15 @@ describe("IndexNow", () => {
       notifyIndexNow(["https://gitdiagram.com/a/b"]),
     ).resolves.toBeUndefined();
   });
+
+  it("moves on to the next engine when the shared endpoint refuses, and stops at the first that accepts", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("slow down", { status: 429 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 202 }));
+    await notifyIndexNow(["https://gitdiagram.com/a/b"]);
+    expect(fetchMock.mock.calls.map(([url]) => url as string)).toEqual([
+      "https://api.indexnow.org/indexnow",
+      "https://yandex.com/indexnow",
+    ]);
+  });
 });
