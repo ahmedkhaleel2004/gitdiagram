@@ -109,7 +109,8 @@
       "src/mcp-app/diagram-view.ts",
       "open-next.config.ts",
       "scripts/cf-secrets.mjs",
-      "scripts/cf-asset-headers.mjs"
+      "scripts/cf-asset-headers.mjs",
+      "scripts/compare-hosts.mjs"
     ],
     "ignore": [
       "experiments/**",

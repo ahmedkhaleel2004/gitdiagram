@@ -46,6 +46,11 @@ const rules = headerRules.map((rule) => {
 /** The headers Vercel would put on this static path. */
 function headersFor(path) {
   const headers = new Map();
+  // Vercel lets any origin read a static file.
+  headers.set("access-control-allow-origin", [
+    "Access-Control-Allow-Origin",
+    "*",
+  ]);
   // Next's own rule for its content-hashed build output.
   if (path.startsWith("/_next/static/"))
     headers.set("cache-control", [
@@ -110,3 +115,13 @@ if (count > MAX_RULES)
   throw new Error(`_headers would need ${count} rules (limit ${MAX_RULES}).`);
 writeFileSync(join(assetsDir, "_headers"), lines.join("\n"));
 console.log(`Wrote ${assetsDir}/_headers (${count} rules).`);
+
+// The headers next.config.js puts on every path. OpenNext leaves them off
+// redirects, proxy answers and rewritten (PostHog) responses; the Worker entry
+// (cloudflare/worker.ts) adds them there.
+const sitewide = Object.fromEntries(
+  rules
+    .filter((rule) => rule.test.test("/__any__/__path__"))
+    .flatMap((rule) => rule.headers.map(({ key, value }) => [key, value])),
+);
+writeFileSync(".open-next/site-headers.json", JSON.stringify(sitewide));

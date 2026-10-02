@@ -5,7 +5,7 @@ import { withRegionalCache } from "@opennextjs/cloudflare/overrides/incremental-
 import doQueue from "@opennextjs/cloudflare/overrides/queue/do-queue";
 import doShardedTagCache from "@opennextjs/cloudflare/overrides/tag-cache/do-sharded-tag-cache";
 
-export default defineCloudflareConfig({
+const config = defineCloudflareConfig({
   // Pages and data-cache entries live in R2; each Cloudflare location keeps
   // its own copy in the Cache API so a repeat hit does not read R2.
   incrementalCache: withRegionalCache(r2IncrementalCache, {
@@ -23,3 +23,14 @@ export default defineCloudflareConfig({
   // Cached pages are answered without loading the Next.js server.
   enableCacheInterception: true,
 });
+
+// As on Vercel: a header a route sets itself wins over next.config.js
+// headers() (for example /out's `Referrer-Policy: no-referrer`), and the
+// proxy's headers win over the config's.
+config.dangerous = {
+  ...config.dangerous,
+  headersAndCookiesPriority: () => "handler",
+  middlewareHeadersOverrideNextConfigHeaders: true,
+};
+
+export default config;

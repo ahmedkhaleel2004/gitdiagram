@@ -7,6 +7,8 @@
 // root tsconfig skips this folder: .open-next only exists after a build.
 
 import openNext from "../.open-next/worker.js";
+// next.config.js headers for every path (scripts/cf-asset-headers.mjs).
+import siteHeaders from "../.open-next/site-headers.json";
 import {
   CRON_ROUTES,
   edgeDecision,
@@ -61,17 +63,31 @@ const handler = openNext as {
   fetch(request: Request, env: Env, ctx: Context): Promise<Response>;
 };
 
-/** The app's response as Vercel's CDN would have passed it on. */
-function visitorResponse(response: Response): Response {
-  const cacheControl = response.headers.get("cache-control");
-  const visitorValue = cacheControl && visitorCacheControl(cacheControl);
-  const platformOnly = [...response.headers.keys()].filter(
-    isPlatformResponseHeader,
-  );
-  if (visitorValue === cacheControl && !platformOnly.length) return response;
+/**
+ * The app's response as Vercel would have passed it on: without the cache
+ * directives and headers meant for the platform, and with next.config.js's
+ * site-wide headers on the answers OpenNext leaves them off (redirects, the
+ * proxy's own answers). On the PostHog rewrite they replace PostHog's own.
+ */
+function visitorResponse(response: Response, pathname: string): Response {
+  if (response.status === 101) return response;
   const headers = new Headers(response.headers);
-  if (visitorValue) headers.set("cache-control", visitorValue);
-  for (const name of platformOnly) headers.delete(name);
+  const cacheControl = headers.get("cache-control");
+  if (cacheControl)
+    headers.set("cache-control", visitorCacheControl(cacheControl));
+  for (const name of [...headers.keys()])
+    if (isPlatformResponseHeader(name)) headers.delete(name);
+  // The Markdown twin of a repository page answers on the page's own URL.
+  if (
+    headers.get("content-type")?.startsWith("text/markdown") &&
+    !/\baccept\b/i.test(headers.get("vary") ?? "")
+  )
+    headers.append("vary", "Accept");
+  const replace = pathname.startsWith("/phx9a/");
+  for (const [name, value] of Object.entries(
+    siteHeaders as Record<string, string>,
+  ))
+    if (replace || !headers.has(name)) headers.set(name, value);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -79,41 +95,75 @@ function visitorResponse(response: Response): Response {
   });
 }
 
+const asVercelRequest = (request: Request): Request =>
+  new Request(request, {
+    headers: platformHeaders(
+      request.headers,
+      (request as Request & { cf?: CloudflareGeo }).cf,
+    ),
+  });
+
+/** The firewall rules Vercel ran in front of the app; null lets it through. */
+async function firewall(
+  request: Request,
+  env: Env,
+  pathname: string,
+): Promise<Response | null> {
+  const decision = edgeDecision(pathname, request.headers.get("user-agent"));
+  if (decision?.action === "deny")
+    return new Response("Forbidden", {
+      status: 403,
+      headers: { "Cache-Control": "no-store" },
+    });
+  if (decision?.action === "limit") {
+    const key = request.headers.get("cf-connecting-ip") ?? "unknown";
+    // A limiter that cannot answer never blocks a visitor.
+    const allowed = await env[decision.limit]
+      ?.limit({ key })
+      .then((outcome) => outcome.success)
+      .catch(() => true);
+    if (allowed === false)
+      return new Response("Too Many Requests", {
+        status: 429,
+        headers: { "Cache-Control": "no-store", "Retry-After": "60" },
+      });
+  }
+  return null;
+}
+
+async function respond(
+  request: Request,
+  env: Env,
+  ctx: Context,
+  url: URL,
+): Promise<Response> {
+  // On Vercel the www domain redirected to the apex.
+  if (url.hostname === "www.gitdiagram.com") {
+    url.hostname = "gitdiagram.com";
+    return new Response(null, {
+      status: 308,
+      headers: { Location: url.toString() },
+    });
+  }
+  return (
+    (await firewall(request, env, url.pathname)) ??
+    handler.fetch(asVercelRequest(request), env, ctx)
+  );
+}
+
 const worker = {
   async fetch(request: Request, env: Env, ctx: Context): Promise<Response> {
-    const cf = (request as Request & { cf?: CloudflareGeo }).cf;
-    const { pathname } = new URL(request.url);
-
-    // The firewall rules Vercel ran in front of the app.
-    const decision = edgeDecision(pathname, request.headers.get("user-agent"));
-    if (decision?.action === "deny")
-      return new Response("Forbidden", {
-        status: 403,
-        headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
-      });
-    if (decision?.action === "limit") {
-      const key = request.headers.get("cf-connecting-ip") ?? "unknown";
-      // A limiter that cannot answer never blocks a visitor.
-      const allowed = await env[decision.limit]
-        ?.limit({ key })
-        .then((outcome) => outcome.success)
-        .catch(() => true);
-      if (allowed === false)
-        return new Response("Too Many Requests", {
-          status: 429,
-          headers: { "Cache-Control": "no-store", "Retry-After": "60" },
-        });
+    const url = new URL(request.url);
+    // The render Container streams its own answers; everything else gets the
+    // headers a visitor would have seen on Vercel.
+    if (env.RENDER && isContainerPath(url.pathname)) {
+      const limited = await firewall(request, env, url.pathname);
+      if (limited) return limited;
+      return env.RENDER.get(env.RENDER.idFromName("render")).fetch(
+        asVercelRequest(request),
+      );
     }
-
-    const forwarded = new Request(request, {
-      headers: platformHeaders(request.headers, cf),
-    });
-
-    if (env.RENDER && isContainerPath(pathname)) {
-      return env.RENDER.get(env.RENDER.idFromName("render")).fetch(forwarded);
-    }
-
-    return visitorResponse(await handler.fetch(forwarded, env, ctx));
+    return visitorResponse(await respond(request, env, ctx, url), url.pathname);
   },
 
   // Cloudflare cron triggers stand in for Vercel's crons: the same routes,
