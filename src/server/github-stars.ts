@@ -27,26 +27,45 @@ const shortenPageLifetime = unstable_cache(
   { revalidate: 60 * 5 },
 );
 
-// Never the GitHub App here: minting its token is an uncached fetch, and an
-// uncached fetch while a page renders for the cache fails that page with
-// "Page changed from static to dynamic at runtime" (tried 2026-10-02: repository
-// pages answered 500 whenever the anonymous call was refused).
-export async function getStarCount() {
-  try {
-    const response = await fetch(GITHUB_REPO_URL, {
-      cache: "force-cache",
-      headers: await getGitHubApiHeaders({ allowGitHubAppAuth: false }),
-      next: {
-        revalidate: STAR_COUNT_REVALIDATE_SECONDS,
-      },
-    });
+async function fetchRepository(asGitHubApp: boolean) {
+  return fetch(GITHUB_REPO_URL, {
+    cache: "no-store",
+    headers: await getGitHubApiHeaders({ allowGitHubAppAuth: asGitHubApp }),
+    signal: AbortSignal.timeout(5_000),
+  });
+}
 
+// The count, kept six hours in the data cache. The reads happen inside
+// `unstable_cache` on purpose: an uncached fetch made directly while a page
+// renders for the cache (minting the GitHub App's token is one) fails that
+// page with "Page changed from static to dynamic at runtime", which is what
+// a first attempt at the App fallback did to repository pages on 2026-10-02.
+// A failed read throws, so nothing is kept and the next render tries again.
+const readStarCount = unstable_cache(
+  async () => {
+    // Without credentials first, as always. GitHub allows 60 such calls an
+    // hour per address, and Cloudflare Workers share their addresses with
+    // other sites: there the call was refused (403 or 429) about once a
+    // minute, against five times a day on Vercel. Then once as the GitHub App.
+    let response = await fetchRepository(false);
+    if (response.status === 403 || response.status === 429) {
+      await response.body?.cancel();
+      response = await fetchRepository(true);
+    }
     if (!response.ok) {
+      await response.body?.cancel();
       throw new Error(`Failed to fetch star count (${response.status})`);
     }
-
     const data = (await response.json()) as GitHubRepoResponse;
     return data.stargazers_count;
+  },
+  ["github-star-count-v2"],
+  { revalidate: STAR_COUNT_REVALIDATE_SECONDS },
+);
+
+export async function getStarCount() {
+  try {
+    return await readStarCount();
   } catch (error) {
     console.error("Error fetching GitHub star count:", error);
     await shortenPageLifetime().catch(() => undefined);
