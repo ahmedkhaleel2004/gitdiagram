@@ -24,7 +24,16 @@
   "triggers": {
     "crons": ["*/5 * * * *", "*/15 * * * *", "0 13 * * *"],
   },
+  // The live site. A route only takes effect while its hostname's DNS record
+  // is proxied through Cloudflare (the cutover switch); until then visitors
+  // reach Vercel and the Worker answers on workers.dev only.
+  "routes": [
+    { "pattern": "gitdiagram.com/*", "zone_name": "gitdiagram.com" },
+    { "pattern": "www.gitdiagram.com/*", "zone_name": "gitdiagram.com" },
+  ],
   "vars": {
+    // On Vercel, VERCEL_ENV=production turns IndexNow pings on.
+    "INDEXNOW_ENABLED": "1",
     // Where the cron handler and internal calls address the site.
     "SITE_ORIGIN": "https://gitdiagram.com",
   },
