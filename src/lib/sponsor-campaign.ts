@@ -122,7 +122,7 @@ export function pickSponsorCampaign<T>(
   return campaigns[(hash >>> 0) % campaigns.length];
 }
 
-export function nextSponsorTransition(now: number) {
+function nextSponsorTransition(now: number) {
   return scheduledSponsorCampaigns
     .flatMap(({ startsAt, endsAt }) => [
       Date.parse(startsAt),
@@ -153,3 +153,38 @@ export function sponsorClickHref(
 ) {
   return `/out/${campaignId}?placement=${placement}`;
 }
+
+/**
+ * The answer of GET /api/sponsor: which campaigns show now. One function for
+ * the route and for the Cloudflare Worker entry, which answers this call
+ * itself (every page makes it; it needs nothing but the clock).
+ * `previewCampaigns` is SPONSOR_PREVIEW_CAMPAIGN: on a host other than the
+ * site, one campaign or a comma-separated rotation to show instead.
+ */
+export function sponsorAnswer(
+  hostname: string,
+  now: number,
+  previewCampaigns = "",
+) {
+  const preview = !isProductionSponsorHost(hostname)
+    ? previewCampaigns
+        .split(",")
+        .flatMap((id) => findSponsorCampaign(id.trim()) ?? [])
+    : [];
+  const campaigns = preview.length ? preview : activeSponsorCampaigns(now);
+  return {
+    campaignIds: campaigns.map(({ id }) => id),
+    // Tabs still running the single-sponsor client read this field.
+    campaignId: campaigns[0]?.id ?? null,
+    serverTime: now,
+    nextTransition: preview.length
+      ? null
+      : (nextSponsorTransition(now) ?? null),
+    preview: preview.length > 0,
+  };
+}
+
+export const SPONSOR_ANSWER_HEADERS = {
+  "Cache-Control": "private, no-store",
+  "X-Robots-Tag": "noindex",
+} as const;

@@ -3,66 +3,20 @@ import "server-only";
 import { after } from "next/server";
 
 import type { AgentFetchDay } from "~/features/admin/visibility";
+import {
+  agentFetchCommands,
+  agentFetchKey,
+  utcDay,
+} from "~/lib/agent-families";
 import { upstashPipeline } from "~/server/storage/upstash";
+
+export { agentFamily } from "~/lib/agent-families";
 
 // Counts fetches by search-engine crawlers and AI agents, per UTC day and bot
 // family, in one Redis hash a day: `<family>` is the day's total and
 // `<family>@<surface>` the part one route saw. src/proxy.ts counts search and
 // AI crawlers on every page, cached ones included (its matcher only admits
 // their user agents); routes like /api/video/file count their own fetches.
-
-const KEY_PREFIX = "agents:v1:";
-const KEEP_SECONDS = 200 * 24 * 60 * 60;
-
-// Most specific first: "ChatGPT-User" and "OAI-SearchBot" before "GPTBot",
-// "Googlebot-Image" is Googlebot. Robots.txt-only tokens (Google-Extended,
-// Applebot-Extended) never appear in a user agent, so they are not listed.
-const FAMILIES: Array<[family: string, pattern: RegExp]> = [
-  ["ChatGPT-User", /ChatGPT-User/i],
-  ["OAI-SearchBot", /OAI-SearchBot/i],
-  ["GPTBot", /GPTBot/i],
-  ["Claude-User", /Claude-User/i],
-  ["Claude-SearchBot", /Claude-SearchBot/i],
-  ["ClaudeBot", /ClaudeBot|anthropic-ai|Claude-Web/i],
-  ["Perplexity-User", /Perplexity-User/i],
-  ["PerplexityBot", /PerplexityBot/i],
-  ["MistralAI-User", /MistralAI-User/i],
-  ["DuckAssistBot", /DuckAssistBot/i],
-  ["Gemini", /Google-CloudVertexBot|Gemini-Deep-Research|GoogleAgent/i],
-  ["GoogleOther", /GoogleOther/i],
-  ["Googlebot", /Googlebot|Google-InspectionTool|AdsBot-Google/i],
-  ["bingbot", /bingbot|BingPreview|msnbot/i],
-  ["Applebot", /Applebot/i],
-  ["meta-externalagent", /meta-externalagent|meta-externalfetcher/i],
-  ["facebookexternalhit", /facebookexternalhit|facebookcatalog/i],
-  ["Amazonbot", /Amazonbot/i],
-  ["Bytespider", /Bytespider/i],
-  ["CCBot", /CCBot/i],
-  ["cohere-ai", /cohere-ai|cohere-training/i],
-  ["YouBot", /YouBot/i],
-  ["DuckDuckBot", /DuckDuckBot/i],
-  ["YandexBot", /YandexBot|YandexAdditional/i],
-  ["Baiduspider", /Baiduspider/i],
-  ["PetalBot", /PetalBot/i],
-  ["Twitterbot", /Twitterbot/i],
-  ["LinkedInBot", /LinkedInBot/i],
-  ["Slackbot", /Slackbot|Slack-ImgProxy/i],
-  ["Discordbot", /Discordbot/i],
-];
-
-/** The bot family a user agent belongs to, or null for everyone else. */
-export function agentFamily(userAgent: string | null | undefined) {
-  if (!userAgent) return null;
-  for (const [family, pattern] of FAMILIES)
-    if (pattern.test(userAgent)) return family;
-  return null;
-}
-
-const dayKey = (day: string) => `${KEY_PREFIX}${day}`;
-
-function utcDay(ms: number) {
-  return new Date(ms).toISOString().slice(0, 10);
-}
 
 /**
  * Count one fetch by a known bot. Best effort and never slows the response:
@@ -73,15 +27,9 @@ export function recordAgentFetch(
   userAgent: string | null | undefined,
   surface: string,
 ): Promise<void> {
-  const family = agentFamily(userAgent);
-  if (!family) return Promise.resolve();
-  const place = surface.replace(/[^a-z0-9_./-]/gi, "").slice(0, 40) || "other";
-  const key = dayKey(utcDay(Date.now()));
-  const task = upstashPipeline([
-    ["HINCRBY", key, family, 1],
-    ["HINCRBY", key, `${family}@${place}`, 1],
-    ["EXPIRE", key, KEEP_SECONDS],
-  ]).then(
+  const commands = agentFetchCommands(userAgent, surface);
+  if (!commands) return Promise.resolve();
+  const task = upstashPipeline(commands).then(
     () => undefined,
     () => undefined,
   );
@@ -102,7 +50,7 @@ export async function readAgentFetches(
     utcDay(now - index * 86_400_000),
   );
   const results = await upstashPipeline(
-    dates.map((day) => ["HGETALL", dayKey(day)]),
+    dates.map((day) => ["HGETALL", agentFetchKey(day)]),
   );
   return dates.map((date, index) => {
     const flat = (results[index]?.result ?? []) as string[];

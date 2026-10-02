@@ -1,0 +1,490 @@
+// @vitest-environment node
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  IncrementalCache,
+  NextModeTagCache,
+  Queue,
+} from "@opennextjs/aws/types/overrides.js";
+
+import {
+  CACHE_ENTRY_PATH,
+  entryResponse,
+  type RequestContext,
+  setRequestContext,
+  withBackgroundSend,
+  withColoCache,
+  withColoPurge,
+} from "./colo-cache";
+
+// A Cache API location: copies by address.
+const held = new Map<string, string>();
+const fakeCache = {
+  match: async (key: string) =>
+    held.has(key) ? new Response(held.get(key)) : undefined,
+  put: async (key: string, response: Response) => {
+    held.set(key, await response.text());
+  },
+  delete: async (key: string) => held.delete(key),
+};
+
+let background: Promise<unknown>[] = [];
+const settle = async () => {
+  while (background.length) {
+    const work = background;
+    background = [];
+    await Promise.all(work);
+  }
+};
+
+const page = (html: string, tags = "_N_T_/acme/demo,diagram:acme/demo") => ({
+  type: "app" as const,
+  html,
+  meta: { headers: { "x-next-cache-tags": tags } },
+});
+
+function fakeStore(
+  entries: Record<string, { value: unknown; lastModified: number }>,
+) {
+  const store = {
+    name: "fake",
+    get: vi.fn(async (key: string) => {
+      const entry = entries[key];
+      // A fresh object each time, as R2 gives.
+      return entry ? structuredClone(entry) : null;
+    }),
+    set: vi.fn(async (key: string, value: unknown) => {
+      entries[key] = {
+        value: structuredClone(value),
+        lastModified: Date.now(),
+      };
+    }),
+    delete: vi.fn(async (key: string) => {
+      delete entries[key];
+    }),
+  };
+  return store as unknown as IncrementalCache & typeof store;
+}
+
+const judge = {
+  revalidated: false,
+  stale: false,
+  hasBeenRevalidated: vi.fn(async () => judge.revalidated),
+  isStale: vi.fn(async () => judge.stale),
+};
+
+const globals = globalThis as Record<string, unknown>;
+
+let request: ReturnType<RequestContext>;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-02T12:00:00Z"));
+  held.clear();
+  background = [];
+  judge.revalidated = false;
+  judge.stale = false;
+  judge.hasBeenRevalidated.mockClear();
+  judge.isStale.mockClear();
+  vi.stubGlobal("caches", { open: async () => fakeCache });
+  globals.tagCache = judge;
+  delete globals.__GITDIAGRAM_ROUTING_WORKER__;
+  // One request for the whole test (the same objects every time, as the
+  // Worker runtime gives).
+  request = {
+    ctx: { waitUntil: (work: Promise<unknown>) => void background.push(work) },
+    env: {},
+  };
+  setRequestContext(() => request);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("withColoCache", () => {
+  it("reads R2 once, then answers from the location's copy alone", async () => {
+    const store = fakeStore({
+      "/acme/demo": { value: page("one"), lastModified: 1000 },
+    });
+    const cache = withColoCache(store);
+
+    const first = await cache.get("/acme/demo");
+    expect(first?.shouldBypassTagCache).toBeUndefined();
+    expect(first?.lastModified).toBe(1000);
+    await settle();
+    expect(held.size).toBe(1);
+
+    const second = await cache.get("/acme/demo");
+    expect((second?.value as { html: string }).html).toBe("one");
+    expect(second?.lastModified).toBe(1000);
+    // The tag cache is not asked about a copy.
+    expect(second?.shouldBypassTagCache).toBe(true);
+    await settle();
+    expect(store.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the tags OpenNext strips from the entry it is given", async () => {
+    const store = fakeStore({
+      "/acme/demo": { value: page("one"), lastModified: 1000 },
+    });
+    const cache = withColoCache(store);
+    const entry = await cache.get("/acme/demo");
+    // What OpenNext's getTagsFromValue does to the entry.
+    delete (
+      entry!.value as { meta: { headers: Record<string, string | undefined> } }
+    ).meta.headers["x-next-cache-tags"];
+    await settle();
+    const copy = await cache.get("/acme/demo");
+    expect(
+      (copy!.value as ReturnType<typeof page>).meta.headers[
+        "x-next-cache-tags"
+      ],
+    ).toBe("_N_T_/acme/demo,diagram:acme/demo");
+  });
+
+  it.each(["revalidated", "stale"] as const)(
+    "keeps no copy of an entry the tag cache calls %s",
+    async (verdict) => {
+      judge[verdict] = true;
+      const store = fakeStore({
+        "/acme/demo": { value: page("old"), lastModified: 1000 },
+      });
+      const cache = withColoCache(store);
+      expect(await cache.get("/acme/demo")).not.toBeNull();
+      await settle();
+      expect(held.size).toBe(0);
+      expect(judge.hasBeenRevalidated).toHaveBeenCalledWith(
+        ["_N_T_/acme/demo", "diagram:acme/demo"],
+        1000,
+      );
+    },
+  );
+
+  it("answers from an old copy at once and replaces it after the response", async () => {
+    const entries = {
+      "/acme/demo": { value: page("one"), lastModified: 1000 },
+    };
+    const store = fakeStore(entries);
+    const cache = withColoCache(store);
+    await cache.get("/acme/demo");
+    await settle();
+
+    // Re-rendered somewhere else.
+    entries["/acme/demo"] = { value: page("two"), lastModified: 2000 };
+    vi.advanceTimersByTime(29_000);
+    expect(
+      ((await cache.get("/acme/demo"))!.value as { html: string }).html,
+    ).toBe("one");
+    await settle();
+    expect(store.get).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(2_000);
+    const stale = await cache.get("/acme/demo");
+    expect((stale!.value as { html: string }).html).toBe("one");
+    await settle();
+    expect(store.get).toHaveBeenCalledTimes(2);
+    const fresh = await cache.get("/acme/demo");
+    expect((fresh!.value as { html: string }).html).toBe("two");
+    expect(fresh!.lastModified).toBe(2000);
+  });
+
+  it("drops a copy whose page was revalidated elsewhere", async () => {
+    const store = fakeStore({
+      "/acme/demo": { value: page("one"), lastModified: 1000 },
+    });
+    const cache = withColoCache(store);
+    await cache.get("/acme/demo");
+    await settle();
+
+    judge.revalidated = true;
+    vi.advanceTimersByTime(31_000);
+    await cache.get("/acme/demo");
+    await settle();
+    expect(held.size).toBe(0);
+    // The next request takes the tag cache's verdict on the R2 entry.
+    const next = await cache.get("/acme/demo");
+    expect(next?.shouldBypassTagCache).toBeUndefined();
+  });
+
+  it("drops a copy whose entry left R2", async () => {
+    const entries: Record<string, { value: unknown; lastModified: number }> = {
+      "/acme/demo": { value: page("one"), lastModified: 1000 },
+    };
+    const cache = withColoCache(fakeStore(entries));
+    await cache.get("/acme/demo");
+    await settle();
+    delete entries["/acme/demo"];
+    vi.advanceTimersByTime(31_000);
+    await cache.get("/acme/demo");
+    await settle();
+    expect(await cache.get("/acme/demo")).toBeNull();
+  });
+
+  it("puts a page rendered here into this location at once", async () => {
+    const store = fakeStore({});
+    const cache = withColoCache(store);
+    await cache.set("/acme/demo", page("new") as never);
+    const copy = await cache.get("/acme/demo");
+    expect((copy!.value as { html: string }).html).toBe("new");
+    expect(copy!.shouldBypassTagCache).toBe(true);
+    expect(store.get).not.toHaveBeenCalled();
+  });
+
+  it("leaves data-cache entries to the tag cache", async () => {
+    const store = fakeStore({
+      abc: {
+        value: { kind: "FETCH", tags: ["diagram:acme/demo"] },
+        lastModified: 1000,
+      },
+    });
+    const cache = withColoCache(store);
+    await cache.get("abc", "fetch");
+    await settle();
+    const copy = await cache.get("abc", "fetch");
+    expect(copy?.shouldBypassTagCache).toBe(false);
+    expect(store.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands another location a page's entry only while it is current", async () => {
+    const entries = {
+      "/acme/demo": { value: page("one"), lastModified: 1000 },
+    };
+    const store = fakeStore(entries);
+    const cache = withColoCache(store);
+
+    // From R2, judged by the tag cache.
+    expect(await cache.entryForLocation("/acme/demo", false)).toEqual({
+      value: page("one"),
+      lastModified: 1000,
+    });
+    expect(judge.hasBeenRevalidated).toHaveBeenCalled();
+    await settle();
+    // Then from this location's copy.
+    expect(await cache.entryForLocation("/acme/demo", false)).not.toBeNull();
+    expect(store.get).toHaveBeenCalledTimes(1);
+    expect(await cache.entryForLocation("/missing/page", false)).toBeNull();
+
+    // A location rechecking its copy takes this one only if it was checked
+    // in the last ten seconds; otherwise R2 and the tag cache are asked, and
+    // the copy here is brought in line.
+    entries["/acme/demo"] = { value: page("two"), lastModified: 2000 };
+    vi.advanceTimersByTime(9_000);
+    const recent = await cache.entryForLocation("/acme/demo", true);
+    expect((recent!.value as { html: string }).html).toBe("one");
+    vi.advanceTimersByTime(2_000);
+    const fresh = await cache.entryForLocation("/acme/demo", true);
+    expect((fresh!.value as { html: string }).html).toBe("two");
+    expect(
+      ((await cache.get("/acme/demo"))!.value as { html: string }).html,
+    ).toBe("two");
+
+    vi.advanceTimersByTime(11_000);
+    judge.revalidated = true;
+    expect(await cache.entryForLocation("/acme/demo", true)).toBeNull();
+    expect(held.size).toBe(0);
+    expect(await cache.entryForLocation("/acme/demo", false)).toBeNull();
+  });
+
+  describe("in the routing Worker", () => {
+    const asked: Request[] = [];
+    let answer: () => Response;
+
+    beforeEach(() => {
+      globals.__GITDIAGRAM_ROUTING_WORKER__ = true;
+      asked.length = 0;
+      answer = () => new Response(null, { status: 404 });
+      request.env = {
+        CRON_SECRET: "s3cret",
+        SITE_ORIGIN: "https://gitdiagram.com",
+        SERVER_VERSION_OVERRIDE: 'gitdiagram-server="v1"',
+        SERVER: {
+          fetch: async (sent: Request) => {
+            asked.push(sent);
+            return answer();
+          },
+        },
+      };
+    });
+
+    it("asks the server for a page it has no copy of, never R2", async () => {
+      const store = fakeStore({});
+      const cache = withColoCache(store);
+      // As the server sends it: gzipped.
+      answer = () => entryResponse({ value: page("one"), lastModified: 1000 });
+
+      const entry = await cache.get("/acme/demo");
+      expect((entry!.value as { html: string }).html).toBe("one");
+      expect(entry!.lastModified).toBe(1000);
+      // The server only hands out current entries.
+      expect(entry!.shouldBypassTagCache).toBe(true);
+      expect(asked).toHaveLength(1);
+      const sent = new URL(asked[0]!.url);
+      expect(sent.origin).toBe("https://gitdiagram.com");
+      expect(sent.pathname).toBe(CACHE_ENTRY_PATH);
+      expect(sent.searchParams.get("key")).toBe("/acme/demo");
+      expect(sent.searchParams.has("fresh")).toBe(false);
+      expect(asked[0]!.headers.get("authorization")).toBe("Bearer s3cret");
+      expect(
+        asked[0]!.headers.get("cloudflare-workers-version-overrides"),
+      ).toBe('gitdiagram-server="v1"');
+
+      await settle();
+      // The next request is answered from this location's copy.
+      expect(await cache.get("/acme/demo")).not.toBeNull();
+      expect(asked).toHaveLength(1);
+      expect(store.get).not.toHaveBeenCalled();
+      expect(judge.hasBeenRevalidated).not.toHaveBeenCalled();
+    });
+
+    it("lets the server render what it has no current entry for", async () => {
+      const cache = withColoCache(fakeStore({}));
+      expect(await cache.get("/acme/demo")).toBeNull();
+      answer = () => new Response("boom", { status: 500 });
+      expect(await cache.get("/acme/demo")).toBeNull();
+      await settle();
+      expect(held.size).toBe(0);
+    });
+
+    it("rechecks an old copy against the server", async () => {
+      const cache = withColoCache(fakeStore({}));
+      answer = () => Response.json({ value: page("one"), lastModified: 1000 });
+      await cache.get("/acme/demo");
+      await settle();
+
+      vi.advanceTimersByTime(31_000);
+      answer = () => Response.json({ value: page("two"), lastModified: 2000 });
+      expect(
+        ((await cache.get("/acme/demo"))!.value as { html: string }).html,
+      ).toBe("one");
+      await settle();
+      expect(new URL(asked[1]!.url).searchParams.get("fresh")).toBe("1");
+      expect(
+        ((await cache.get("/acme/demo"))!.value as { html: string }).html,
+      ).toBe("two");
+
+      // The server cannot be asked: the copy stays.
+      vi.advanceTimersByTime(31_000);
+      answer = () => new Response(null, { status: 503 });
+      await cache.get("/acme/demo");
+      await settle();
+      expect(held.size).toBe(1);
+
+      // Revalidated: the copy goes, and the next request goes to the server.
+      vi.advanceTimersByTime(31_000);
+      answer = () => new Response(null, { status: 404 });
+      await cache.get("/acme/demo");
+      await settle();
+      expect(held.size).toBe(0);
+    });
+
+    it("never looks for a page under the site's own paths, or for data", async () => {
+      const store = fakeStore({});
+      const cache = withColoCache(store);
+      expect(await cache.get("/api/video")).toBeNull();
+      expect(await cache.get("/phx9a/e")).toBeNull();
+      expect(await cache.get("abc", "fetch")).toBeNull();
+      expect(asked).toHaveLength(0);
+      await cache.get("/apiary/demo");
+      expect(asked).toHaveLength(1);
+      expect(store.get).not.toHaveBeenCalled();
+    });
+  });
+
+  it("falls back to R2 when the Cache API fails", async () => {
+    vi.stubGlobal("caches", {
+      open: async () => ({
+        ...fakeCache,
+        match: async () => {
+          throw new Error("unavailable");
+        },
+      }),
+    });
+    const store = fakeStore({
+      "/down/cache": { value: page("one"), lastModified: 1000 },
+    });
+    // A new module instance would reopen the cache; this one may hold the
+    // working handle, so only the result matters here.
+    const entry = await withColoCache(store).get("/down/cache");
+    expect((entry!.value as { html: string }).html).toBe("one");
+  });
+});
+
+describe("withColoPurge", () => {
+  const tagCache = () => {
+    // The wrapper replaces methods on the object it is given.
+    const inner = {
+      writeTags: vi.fn(async () => undefined),
+      hasBeenRevalidated: vi.fn(async () => false),
+      isStale: vi.fn(async () => true),
+    };
+    const wrapped = withColoPurge({
+      mode: "nextMode",
+      name: "fake",
+      getLastRevalidated: async () => 0,
+      ...inner,
+    } as unknown as NextModeTagCache);
+    return { inner, wrapped };
+  };
+
+  it("drops this location's copy of a revalidated path", async () => {
+    const store = fakeStore({});
+    const cache = withColoCache(store);
+    await cache.set("/acme/demo", page("one") as never);
+    await cache.set("/index", page("home", "_N_T_/") as never);
+    await cache.set("/other/repo", page("other") as never);
+    expect(held.size).toBe(3);
+
+    const { inner, wrapped } = tagCache();
+    await wrapped.writeTags([
+      { tag: "_N_T_/acme/demo", expire: Date.now() },
+      "_N_T_/",
+      "diagram:other/repo",
+    ]);
+    expect(inner.writeTags).toHaveBeenCalledTimes(1);
+    expect([...held.keys()].map((key) => decodeURIComponent(key))).toEqual([
+      expect.stringContaining("/other/repo.cache"),
+    ]);
+  });
+
+  it("asks whether the tags are stale alongside whether they were revalidated", async () => {
+    const { inner, wrapped } = tagCache();
+    const tags = ["_N_T_/acme/demo"];
+    expect(await wrapped.hasBeenRevalidated(tags, 1000)).toBe(false);
+    expect(inner.isStale).toHaveBeenCalledTimes(1);
+    expect(await wrapped.isStale!(tags, 1000)).toBe(true);
+    // Collected, not asked again.
+    expect(inner.isStale).toHaveBeenCalledTimes(1);
+    // A question nobody prepared is asked directly.
+    expect(await wrapped.isStale!(tags, 2000)).toBe(true);
+    expect(inner.isStale).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("withBackgroundSend", () => {
+  it("sends after the response, once per revalidation", async () => {
+    let finish: () => void = () => undefined;
+    const inner = {
+      name: "fake",
+      send: vi.fn(() => new Promise<void>((resolve) => (finish = resolve))),
+    };
+    const queue = withBackgroundSend(inner as unknown as Queue);
+    const message = {
+      MessageBody: { host: "gitdiagram.com", url: "/acme/demo" },
+      MessageDeduplicationId: "a",
+      MessageGroupId: "g",
+    };
+    // Resolves without waiting for the queue.
+    await queue.send(message as never);
+    await queue.send(message as never);
+    expect(inner.send).toHaveBeenCalledTimes(1);
+    finish();
+    await settle();
+
+    vi.advanceTimersByTime(61_000);
+    await queue.send(message as never);
+    expect(inner.send).toHaveBeenCalledTimes(2);
+    finish();
+    await settle();
+  });
+});

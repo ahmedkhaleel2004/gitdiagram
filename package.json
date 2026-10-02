@@ -113,8 +113,10 @@
       "open-next.config.ts",
       "scripts/cf-secrets.mjs",
       "scripts/cf-asset-headers.mjs",
+      "scripts/cf-drop-proxy.mjs",
       "scripts/compare-hosts.mjs",
-      "scripts/cf-usage.mjs"
+      "scripts/cf-usage.mjs",
+      "scripts/bench.mjs"
     ],
     "ignore": [
       "experiments/**",
@@ -124,6 +126,7 @@
     ],
     "ignoreDependencies": [
       "@cloudflare/containers",
+      "@opennextjs/aws",
       "typescript-7",
       "wrangler"
     ],

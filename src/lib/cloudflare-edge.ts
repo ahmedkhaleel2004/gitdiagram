@@ -263,3 +263,107 @@ export function edgeDecision(
     return { action: "limit", limit: "LIMIT_REPO_PAGE" };
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// The shared cache for route answers. On Vercel a route handler that answers
+// with `s-maxage` (or `CDN-Cache-Control`) is kept by the CDN and later
+// requests never reach a function. On Cloudflare a Worker's answer is not
+// cached by the CDN, so the Worker entry keeps such answers itself, in the
+// Cache API of each location (cloudflare/worker.ts).
+
+/** The named Cache API cache both Workers use for these answers. */
+export const EDGE_ANSWERS_CACHE = "edge-answers";
+
+/** A year: what "immutable" answers ask for, and the longest we keep one. */
+const LONGEST_SECONDS = 365 * 24 * 60 * 60;
+
+const directiveSeconds = (value: string, name: string): number | null => {
+  const match = new RegExp(`(?:^|,)\\s*${name}=(\\d+)`, "i").exec(value);
+  return match ? Math.min(Number(match[1]), LONGEST_SECONDS) : null;
+};
+
+/**
+ * How long a shared cache may answer with this response: `fresh` seconds as
+ * is, then `stale` more while a new copy is fetched. Null when it must not be
+ * kept at all. `CDN-Cache-Control` wins over `Cache-Control: s-maxage`, as on
+ * Vercel; a browser-only `max-age` is not a shared lifetime.
+ */
+export function sharedLifetime(
+  status: number,
+  headers: Headers,
+): { fresh: number; stale: number } | null {
+  if (status !== 200 || headers.has("set-cookie")) return null;
+  const cacheControl = headers.get("cache-control") ?? "";
+  if (/\b(?:private|no-store)\b/i.test(cacheControl)) return null;
+  const cdn = headers.get("cdn-cache-control");
+  if (cdn !== null) {
+    if (/\b(?:private|no-store)\b/i.test(cdn)) return null;
+    const fresh =
+      directiveSeconds(cdn, "s-maxage") ?? directiveSeconds(cdn, "max-age");
+    if (fresh === null || fresh <= 0) return null;
+    return {
+      fresh,
+      stale: directiveSeconds(cdn, "stale-while-revalidate") ?? 0,
+    };
+  }
+  const fresh = directiveSeconds(cacheControl, "s-maxage");
+  if (fresh === null || fresh <= 0) return null;
+  return {
+    fresh,
+    stale: directiveSeconds(cacheControl, "stale-while-revalidate") ?? 0,
+  };
+}
+
+/**
+ * Whether a request may be answered from, and its answer kept in, the shared
+ * cache: reads of API routes only. Pages and their pictures have Next.js's
+ * own cache (with tag revalidation); a caller who sends credentials or asks
+ * for part of a file gets the route itself.
+ */
+export function isSharedCacheRequest(
+  method: string,
+  pathname: string,
+  headers: Headers,
+): boolean {
+  return (
+    method === "GET" &&
+    pathname.startsWith("/api/") &&
+    !pathname.startsWith("/api/internal/") &&
+    !pathname.startsWith("/api/admin/") &&
+    !headers.has("authorization") &&
+    !headers.has("range")
+  );
+}
+
+/**
+ * The address an answer is kept under: the host, the path and the query with
+ * its parameters in order (so `?a=1&b=2` and `?b=2&a=1` share a copy).
+ */
+export function edgeAnswerKey(url: URL): string {
+  const query = [...url.searchParams.entries()]
+    .sort(([a, x], [b, y]) =>
+      a === b ? x.localeCompare(y) : a.localeCompare(b),
+    )
+    .map(
+      ([name, value]) =>
+        `${encodeURIComponent(name)}=${encodeURIComponent(value)}`,
+    )
+    .join("&");
+  return `http://edge-answers.local/${url.host}${url.pathname}${query ? `?${query}` : ""}`;
+}
+
+/**
+ * The answer of GET /api/analytics-context: the caller's coarse place, from
+ * the platform's geolocation headers (never the address itself). One function
+ * for the route and for the Worker entry, which answers this call itself.
+ */
+export function analyticsContext(headers: {
+  get(name: string): string | null;
+}) {
+  const country = headers.get("x-vercel-ip-country") ?? "";
+  const region = headers.get("x-vercel-ip-country-region") ?? "";
+  return {
+    country: /^[A-Z]{2}$/.test(country) ? country : "",
+    region: /^[A-Z0-9]{1,3}$/.test(region) ? region : "",
+  };
+}

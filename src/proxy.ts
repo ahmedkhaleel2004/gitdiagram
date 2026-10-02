@@ -3,57 +3,13 @@ import {
   type NextRequest,
   NextResponse,
 } from "next/server";
+import { proxyDecision } from "~/lib/proxy-rules";
 import { recordAgentFetch } from "~/server/visibility/agent-fetch";
 
 const REJECTION_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
 };
-
-// First path segments that are the site's own, never a GitHub owner.
-const RESERVED_FIRST_SEGMENTS = new Set([
-  "api",
-  "phx9a",
-  "_next",
-  "out",
-  "sitemap",
-  "admin",
-  "mcp",
-  "mcp-app",
-  ".well-known",
-]);
-
-/**
- * Where the Markdown twin of a repository page lives, when this request asks
- * for it: /{owner}/{repo}.md, or the page URL with `Accept: text/markdown`
- * (agents; browsers never send it). User agents are never sniffed.
- */
-function markdownRoute(request: NextRequest): string | null {
-  const match = /^\/([^/]+)\/([^/]+?)(\.md)?\/?$/.exec(
-    request.nextUrl.pathname,
-  );
-  if (!match) return null;
-  const [, owner, repo, extension] = match;
-  if (!owner || !repo || RESERVED_FIRST_SEGMENTS.has(owner.toLowerCase())) {
-    return null;
-  }
-  const wantsMarkdown =
-    Boolean(extension) ||
-    /(?:^|,)\s*text\/markdown\s*(?:[;,]|$)/i.test(
-      request.headers.get("accept") ?? "",
-    );
-  return wantsMarkdown ? `/${owner}/${repo}/llms.txt` : null;
-}
-
-/** Which part of the site a counted fetch was for. */
-function fetchSurface(path: string, markdown: boolean): string {
-  if (markdown) return "repo-md";
-  if (path === "/") return "home";
-  if (path === "/llms.txt" || path === "/llms-full.txt") return path.slice(1);
-  if (/^\/[^/]+\/[^/]+\/video\/?$/.test(path)) return "watch";
-  if (/^\/[^/]+\/[^/]+\/?$/.test(path)) return "repo";
-  return path.split("/")[1]?.slice(0, 30) || "other";
-}
 
 /**
  * GitDiagram does not expose Server Actions. Reject forged action requests at
@@ -63,43 +19,33 @@ export function proxy(
   request: NextRequest,
   event?: NextFetchEvent,
 ): NextResponse {
-  if (!request.headers.has("next-action")) {
-    const markdown =
-      request.method === "GET" || request.method === "HEAD"
-        ? markdownRoute(request)
-        : null;
-    // Best effort, after the response: one Redis pipeline for known bots.
+  // The rules themselves live in ~/lib/proxy-rules: on Cloudflare the Worker
+  // entry applies them without this file (see cloudflare/worker.ts).
+  const { decision, surface } = proxyDecision(
+    request.method,
+    request.nextUrl.pathname,
+    request.headers,
+  );
+  if (decision.action === "reject")
+    return new NextResponse(null, {
+      status: 404,
+      headers: REJECTION_HEADERS,
+    });
+  // Best effort, after the response: one Redis pipeline for known bots.
+  if (surface !== null) {
     const counted = recordAgentFetch(
       request.headers.get("user-agent"),
-      fetchSurface(request.nextUrl.pathname, Boolean(markdown)),
+      surface,
     );
     event?.waitUntil(counted);
-    // Only mixed-case repository URLs and Markdown requests enter this branch
-    // in production. Keep query parameters (including PostHog campaign
-    // attribution) on redirects.
-    if (request.method === "GET" || request.method === "HEAD") {
-      const url = request.nextUrl.clone();
-      const path = url.pathname;
-      if (
-        !/^\/(?:api|phx9a|_next)\//i.test(path) &&
-        /^\/[^/]+\/[^/]+(?:\/opengraph-image)?\/?$/.test(path) &&
-        path !== path.toLowerCase()
-      ) {
-        url.pathname = path.toLowerCase();
-        return NextResponse.redirect(url, 308);
-      }
-      if (markdown) {
-        url.pathname = markdown;
-        return NextResponse.rewrite(url);
-      }
-    }
-    return NextResponse.next();
   }
-
-  return new NextResponse(null, {
-    status: 404,
-    headers: REJECTION_HEADERS,
-  });
+  if (decision.action === "next") return NextResponse.next();
+  // Keep query parameters (including PostHog campaign attribution).
+  const url = request.nextUrl.clone();
+  url.pathname = decision.pathname;
+  return decision.action === "redirect"
+    ? NextResponse.redirect(url, 308)
+    : NextResponse.rewrite(url);
 }
 
 export const config = {
@@ -120,7 +66,8 @@ export const config = {
     // Known crawlers and AI agents, counted even on pages the CDN serves from
     // cache (where no route code runs). Only these user agents enter the
     // proxy for plain pages, so ordinary visitors never pay for it. Must stay
-    // a literal (Next reads the matcher at build time).
+    // a literal (Next reads the matcher at build time); a test keeps it equal
+    // to COUNTED_AGENT_PATTERN in ~/lib/proxy-rules.
     {
       source: "/((?!api/|phx9a/|_next/).*)",
       has: [

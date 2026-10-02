@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   // The site on Cloudflare Workers (OpenNext). Built by `bun run cf:build`.
+  // This is the Worker every request reaches: routing, the page cache, the
+  // firewall, static files. The Next.js server is a second Worker behind it
+  // (wrangler.server.jsonc), so that a new isolate here starts fast.
   "name": "gitdiagram",
   "main": "cloudflare/worker.ts",
   "compatibility_date": "2026-09-01",
@@ -118,7 +121,12 @@
     // /video-engine/stage.html to /video-engine/stage.
     "html_handling": "none",
   },
-  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "gitdiagram" }],
+  "services": [
+    { "binding": "WORKER_SELF_REFERENCE", "service": "gitdiagram" },
+    // The Next.js server (wrangler.server.jsonc): what the routing layer and
+    // the page cache in this Worker cannot answer.
+    { "binding": "SERVER", "service": "gitdiagram-server" },
+  ],
   "r2_buckets": [
     {
       "binding": "NEXT_INC_CACHE_R2_BUCKET",

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const refreshVideoPagesHere = vi.fn();
 vi.mock("~/server/explainer/cache", () => ({ refreshVideoPagesHere }));
+const dropEdgeAnswers = vi.fn(async (_urls: URL[]) => undefined);
+vi.mock("~/server/edge-answers", () => ({ dropEdgeAnswers }));
 
 const { POST } = await import("./route");
 
@@ -27,6 +29,11 @@ describe("POST /api/internal/revalidate", () => {
     });
     expect(response.status).toBe(200);
     expect(refreshVideoPagesHere).toHaveBeenCalledWith("Vercel", "next.js");
+    // The kept GET /api/video answers, as asked for and in lowercase.
+    expect(dropEdgeAnswers.mock.calls[0]![0].map(String)).toEqual([
+      "https://gitdiagram.com/api/video?username=Vercel&repo=next.js",
+      "https://gitdiagram.com/api/video?username=vercel&repo=next.js",
+    ]);
   });
 
   it("refuses a wrong or missing secret", async () => {

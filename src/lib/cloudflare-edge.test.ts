@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   CRON_ROUTES,
   containerRefusal,
+  edgeAnswerKey,
   edgeDecision,
+  isSharedCacheRequest,
+  sharedLifetime,
   isContainerPath,
   isScannerPath,
   platformHeaders,
@@ -269,5 +272,96 @@ describe("containerRefusal", () => {
     expect(
       containerRefusal("POST", url.pathname, "not a url", url)?.status,
     ).toBe(403);
+  });
+});
+
+describe("sharedLifetime", () => {
+  const lifetime = (headers: Record<string, string>, status = 200) =>
+    sharedLifetime(status, new Headers(headers));
+
+  it("reads s-maxage and stale-while-revalidate", () => {
+    expect(
+      lifetime({
+        "cache-control":
+          "public, max-age=0, s-maxage=60, stale-while-revalidate=600",
+      }),
+    ).toEqual({ fresh: 60, stale: 600 });
+    expect(
+      lifetime({
+        "cache-control":
+          "public, max-age=31536000, s-maxage=31536000, immutable",
+      }),
+    ).toEqual({ fresh: 31536000, stale: 0 });
+  });
+
+  it("prefers CDN-Cache-Control", () => {
+    expect(
+      lifetime({
+        "cache-control": "public, max-age=60",
+        "cdn-cache-control": "public, max-age=60, stale-while-revalidate=600",
+      }),
+    ).toEqual({ fresh: 60, stale: 600 });
+  });
+
+  it.each([
+    [{ "cache-control": "public, max-age=3600" }],
+    [{ "cache-control": "no-store" }],
+    [{ "cache-control": "private, s-maxage=60" }],
+    [{ "cache-control": "public, s-maxage=0" }],
+    [{ "cache-control": "s-maxage=60", "set-cookie": "gd_visitor=1" }],
+    [{ "cache-control": "no-store", "cdn-cache-control": "max-age=60" }],
+    [{}],
+  ])("keeps nothing for %o", (headers) => {
+    expect(lifetime(headers as Record<string, string>)).toBeNull();
+  });
+
+  it("keeps only successful answers", () => {
+    expect(lifetime({ "cache-control": "s-maxage=60" }, 404)).toBeNull();
+    expect(lifetime({ "cache-control": "s-maxage=60" }, 206)).toBeNull();
+  });
+});
+
+describe("isSharedCacheRequest", () => {
+  const shared = (
+    method: string,
+    path: string,
+    headers: Record<string, string> = {},
+  ) => isSharedCacheRequest(method, path, new Headers(headers));
+
+  it("admits plain reads of API routes", () => {
+    expect(shared("GET", "/api/video")).toBe(true);
+    expect(shared("GET", "/api/video/file", { cookie: "gd_visitor=1" })).toBe(
+      true,
+    );
+  });
+
+  it("leaves everything else to the route", () => {
+    expect(shared("POST", "/api/video")).toBe(false);
+    expect(shared("HEAD", "/api/video")).toBe(false);
+    expect(shared("GET", "/acme/demo")).toBe(false);
+    expect(shared("GET", "/api/internal/revalidate")).toBe(false);
+    expect(shared("GET", "/api/admin/state")).toBe(false);
+    expect(shared("GET", "/api/video", { authorization: "Bearer x" })).toBe(
+      false,
+    );
+    expect(shared("GET", "/api/video/file", { range: "bytes=0-" })).toBe(false);
+  });
+});
+
+describe("edgeAnswerKey", () => {
+  it("ignores the order of query parameters, not their values", () => {
+    const key = (address: string) => edgeAnswerKey(new URL(address));
+    expect(key("https://gitdiagram.com/api/video?username=a&repo=b")).toBe(
+      key("https://gitdiagram.com/api/video?repo=b&username=a"),
+    );
+    expect(key("https://gitdiagram.com/api/video?username=a&repo=b")).not.toBe(
+      key("https://gitdiagram.com/api/video?username=A&repo=b"),
+    );
+    expect(key("https://gitdiagram.com/api/video?username=a&repo=b")).not.toBe(
+      key("https://perf.gitdiagram.com/api/video?username=a&repo=b"),
+    );
+    expect(key("https://gitdiagram.com/api/video/catalog")).toBe(
+      "http://edge-answers.local/gitdiagram.com/api/video/catalog",
+    );
   });
 });

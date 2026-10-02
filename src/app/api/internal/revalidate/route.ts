@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { dropEdgeAnswers } from "~/server/edge-answers";
 import { refreshVideoPagesHere } from "~/server/explainer/cache";
 
 export const runtime = "nodejs";
@@ -43,5 +44,18 @@ export async function POST(request: Request) {
       { status: 400, headers },
     );
   refreshVideoPagesHere(username, repo);
+  // The kept answer of GET /api/video for this repository (as the page asks
+  // for it, and in lowercase).
+  await dropEdgeAnswers(
+    [
+      [username, repo],
+      [username.toLowerCase(), repo.toLowerCase()],
+    ].map(([owner, name]) => {
+      const url = new URL("/api/video", request.url);
+      url.searchParams.set("username", owner!);
+      url.searchParams.set("repo", name!);
+      return url;
+    }),
+  );
   return Response.json({ ok: true }, { headers });
 }

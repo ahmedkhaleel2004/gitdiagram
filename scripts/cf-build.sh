@@ -33,5 +33,10 @@ mkdir -p .open-next/assets/og-fonts
 cp node_modules/geist/dist/fonts/geist-sans/Geist-{Regular,Medium,Bold}.ttf \
   .open-next/assets/og-fonts/
 
+# The server Worker (wrangler.server.jsonc) reads those fonts through its own
+# ASSETS binding; everything else under assets/ is served by the front.
+mkdir -p .open-next/server-assets/og-fonts
+cp .open-next/assets/og-fonts/* .open-next/server-assets/og-fonts/
+
 # next.config.js headers() for the files Workers Assets serves by itself.
 node scripts/cf-asset-headers.mjs

@@ -1,0 +1,76 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // The Next.js server behind the site's Worker (cloudflare/server.ts). It is
+  // reached only through the `SERVER` service binding of `gitdiagram`
+  // (wrangler.jsonc): no routes, no workers.dev address. Deployed by
+  // `bun run cf:deploy`, always together with the site's Worker.
+  "name": "gitdiagram-server",
+  "main": "cloudflare/server.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // See wrangler.jsonc.
+  "keep_names": false,
+  "workers_dev": false,
+  "preview_urls": false,
+  "limits": { "cpu_ms": 30000 },
+  // Every request here talks to Redis (Upstash, AWS ca-central-1), R2 and
+  // GitHub, often several times, so the Worker runs next to them instead of
+  // next to the visitor: one long hop from the visitor's location, then short
+  // ones. It also keeps the isolates of this 32 MB script in one place, where
+  // the whole site's traffic keeps them warm (a new one takes 1 to 2.6 s).
+  "placement": { "region": "aws:ca-central-1" },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.02,
+  },
+  // As for the site's Worker: failures are logged in full (workers/errors).
+  "tail_consumers": [{ "service": "gitdiagram-errors" }],
+  "vars": {
+    "INDEXNOW_ENABLED": "1",
+    "SITE_ORIGIN": "https://gitdiagram.com",
+  },
+  // Only what server code reads through the ASSETS binding: the fonts of the
+  // social pictures (src/server/og/cards.tsx). The site's own static files
+  // are served by `gitdiagram`.
+  "assets": {
+    "directory": ".open-next/server-assets",
+    "binding": "ASSETS",
+    "html_handling": "none",
+  },
+  "services": [
+    // Calls the app makes to itself (the revalidation queue, the container's
+    // page refresh) enter through the site's Worker, as a visitor's would.
+    { "binding": "WORKER_SELF_REFERENCE", "service": "gitdiagram" },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "gitdiagram-next-cache",
+    },
+  ],
+  // The Durable Objects live in the site's Worker. A class must exist there
+  // before this Worker can bind it, and the deploy uploads this Worker first:
+  // a new class has to ship in the site's Worker one deploy ahead of its
+  // binding here.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NEXT_CACHE_DO_QUEUE",
+        "class_name": "DOQueueHandler",
+        "script_name": "gitdiagram",
+      },
+      {
+        "name": "NEXT_TAG_CACHE_DO_SHARDED",
+        "class_name": "DOShardedTagCache",
+        "script_name": "gitdiagram",
+      },
+      // Model API calls for visitors in countries OpenAI refuses
+      // (cloudflare/us-relay.ts; src/server/model-fetch.ts asks for it).
+      {
+        "name": "US_RELAY",
+        "class_name": "UsRelay",
+        "script_name": "gitdiagram",
+      },
+    ],
+  },
+}

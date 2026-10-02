@@ -7,6 +7,7 @@ import {
   pickSponsorCampaign,
   scheduledSponsorCampaigns,
   sentCampaign,
+  sponsorAnswer,
   type SponsorCampaign,
   type SponsorPackage,
 } from "./sponsor-campaign";
@@ -191,5 +192,34 @@ describe("paid sponsor schedule", () => {
       updateSponsorReadme(after, Date.parse(coderabbitCampaign.endsAt)),
     ).toContain("Advertise your product here.");
     expect(() => updateSponsorReadme("# no markers")).toThrow();
+  });
+});
+
+describe("sponsorAnswer", () => {
+  const during = Date.parse(sentCampaign.startsAt) + 60_000;
+
+  it("names the campaigns on show and when that next changes", () => {
+    const answer = sponsorAnswer("gitdiagram.com", during);
+    expect(answer.campaignIds).toEqual([sentCampaign.id]);
+    expect(answer.campaignId).toBe(sentCampaign.id);
+    expect(answer.serverTime).toBe(during);
+    expect(answer.preview).toBe(false);
+    expect(answer.nextTransition).toBeGreaterThan(during);
+  });
+
+  it("shows a preview rotation only off the site's own hostname", () => {
+    const preview = sponsorAnswer(
+      "preview.example.com",
+      0,
+      ` ${sentCampaign.id}, nope `,
+    );
+    expect(preview).toMatchObject({
+      campaignIds: [sentCampaign.id],
+      preview: true,
+      nextTransition: null,
+    });
+    expect(sponsorAnswer("gitdiagram.com", 0, sentCampaign.id).preview).toBe(
+      false,
+    );
   });
 });
