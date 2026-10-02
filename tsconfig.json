@@ -50,6 +50,7 @@
     "workers",
     "cloudflare",
     ".open-next",
+    ".open-next-history",
     "**/__pycache__"
   ]
 }

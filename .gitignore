@@ -37,6 +37,7 @@ next-env.d.ts
 .wrangler/
 .dev.vars*
 /.open-next/
+/.open-next-history/
 
 # local tool state
 /.agents/

@@ -10,6 +10,7 @@ tmp/
 .wrangler/
 .dev.vars*
 .open-next/
+.open-next-history/
 workers/**/node_modules/
 
 # Local explainer video renders and experiment output.

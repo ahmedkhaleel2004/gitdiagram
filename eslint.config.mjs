@@ -15,6 +15,7 @@ const config = [
     ignores: [
       ".next/**",
       ".open-next/**",
+      ".open-next-history/**",
       ".claude/**",
       ".agents/**",
       ".playwright-mcp/**",
