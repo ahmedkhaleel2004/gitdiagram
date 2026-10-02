@@ -1,5 +1,7 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
+
 import { getGitHubApiHeaders } from "./github-auth";
 
 interface GitHubRepoResponse {
@@ -15,6 +17,15 @@ const GITHUB_REPO_URL =
 // third of Vercel's ISR writes, Oct 2026). The count moves slowly; six hours
 // matches the repository page, so it never shortens it.
 const STAR_COUNT_REVALIDATE_SECONDS = 60 * 60 * 6;
+
+// A page rendered without the count (GitHub refused or was slow) must not be
+// kept for six hours: reading this short-lived entry caps that page at five
+// minutes, like any page before the count's lifetime was raised.
+const shortenPageLifetime = unstable_cache(
+  async () => true,
+  ["star-count-failure"],
+  { revalidate: 60 * 5 },
+);
 
 export async function getStarCount() {
   try {
@@ -34,6 +45,7 @@ export async function getStarCount() {
     return data.stargazers_count;
   } catch (error) {
     console.error("Error fetching GitHub star count:", error);
+    await shortenPageLifetime().catch(() => undefined);
     return null;
   }
 }
