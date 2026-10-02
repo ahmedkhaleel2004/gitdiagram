@@ -1,0 +1,52 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // The Worker every request reaches first (cloudflare/edge.ts): it answers
+  // cached pages this location holds and passes everything else to the
+  // site's Worker (`gitdiagram`, wrangler.jsonc). It is kept tiny, with no
+  // Node compatibility, Durable Objects or containers, so that a new isolate
+  // of it answers as fast as a warm one.
+  //
+  // It holds the site's routes, which scripts/cf-deploy.sh points at it
+  // after each upload (scripts/cf-routes.mjs: gitdiagram.com/* and
+  // www.gitdiagram.com/*). To take it out of the path, point them back:
+  //   node scripts/cf-routes.mjs gitdiagram
+  // The site's Worker is complete without it.
+  "name": "gitdiagram-edge",
+  "main": "cloudflare/edge.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "workers_dev": false,
+  "preview_urls": false,
+  // A cached page is a Cache API read, a JSON parse and an MD5.
+  "limits": { "cpu_ms": 2000 },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.02,
+  },
+  // As for the site's Worker: failures are logged in full (workers/errors).
+  "tail_consumers": [{ "service": "gitdiagram-errors" }],
+  "vars": {
+    // Where the placed server is addressed when a copy is rechecked.
+    "SITE_ORIGIN": "https://gitdiagram.com",
+  },
+  // Static files are answered here without running any Worker.
+  "assets": {
+    "directory": ".open-next/assets",
+    "html_handling": "none",
+  },
+  "services": [
+    { "binding": "SITE", "service": "gitdiagram" },
+    // A copy of a page is rechecked against the placed server
+    // (src/lib/colo-cache.ts).
+    { "binding": "SERVER", "service": "gitdiagram-server" },
+  ],
+  // The one firewall rule that applies to a page answered here; the same
+  // counter as the site's Worker's (wrangler.jsonc).
+  "ratelimits": [
+    {
+      "name": "LIMIT_REPO_PAGE",
+      "namespace_id": "4726",
+      "simple": { "limit": 120, "period": 60 },
+    },
+  ],
+}

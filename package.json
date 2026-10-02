@@ -114,6 +114,7 @@
       "scripts/cf-secrets.mjs",
       "scripts/cf-asset-headers.mjs",
       "scripts/cf-drop-proxy.mjs",
+      "scripts/cf-routes.mjs",
       "scripts/cf-staging.mjs",
       "scripts/cf-container-image.mjs",
       "scripts/video-model-replay.mjs",

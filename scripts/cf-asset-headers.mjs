@@ -10,7 +10,7 @@
 // Cloudflare joins the values when two `_headers` rules set one header, so the
 // rules written here never overlap: a folder gets one `/*` rule only when all
 // files under it share their headers; otherwise its entries get their own.
-import { readdirSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const assetsDir = ".open-next/assets";
@@ -125,3 +125,12 @@ const sitewide = Object.fromEntries(
     .flatMap((rule) => rule.headers.map(({ key, value }) => [key, value])),
 );
 writeFileSync(".open-next/site-headers.json", JSON.stringify(sitewide));
+
+// The build's id, for the edge Worker (cloudflare/edge.ts): the page cache's
+// addresses carry it, and that Worker has no OpenNext to ask.
+writeFileSync(
+  ".open-next/build.json",
+  JSON.stringify({
+    buildId: readFileSync(join(assetsDir, "BUILD_ID"), "utf8").trim(),
+  }),
+);

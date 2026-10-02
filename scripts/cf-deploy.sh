@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Builds and deploys the site to Cloudflare Workers: the Worker every request
-# reaches (`gitdiagram`, wrangler.jsonc: routing, page cache, static files)
-# and the Next.js server behind it, twice: `gitdiagram-server`
+# Builds and deploys the site to Cloudflare Workers: the small Worker every
+# request reaches (`gitdiagram-edge`, wrangler.edge.jsonc: cached pages and
+# static files), the site's Worker behind it (`gitdiagram`, wrangler.jsonc:
+# routing, page cache, containers, crons) and the Next.js server behind that,
+# twice: `gitdiagram-server`
 # (wrangler.server.jsonc, in one place next to the data) and
 # `gitdiagram-server-local` (wrangler.server-local.jsonc, where the visitor
 # is, for diagram streams). They always ship together, from one build.
@@ -11,6 +13,7 @@
 #   bun run cf:deploy --skip-build   deploy the .open-next/ already built
 #   CF_SKIP_CACHE_POPULATE=1         deploy without uploading prerendered pages
 #   CF_FRONT_CONFIG, CF_SERVER_CONFIGS  other wrangler configs (a test set)
+#   CF_EDGE_CONFIG, CF_EDGE_ROUTES   that set's edge Worker and route patterns
 #   CF_NO_CONTAINERS=1               the front config has no containers
 #
 # Needs CLOUDFLARE_API_TOKEN (CI) or the token file / a wrangler login.
@@ -32,6 +35,14 @@ if [[ -n "${CLOUDFLARE_API_TOKEN:-}" && -z "${CI:-}" ]]; then
 fi
 
 front_config="${CF_FRONT_CONFIG:-wrangler.jsonc}"
+# The small Worker in front, which holds the site's routes. Only the live
+# site has one by default: another front (staging, a test set) gets one when
+# CF_EDGE_CONFIG names its config (and CF_EDGE_ROUTES its route patterns).
+if [[ -n "${CF_FRONT_CONFIG:-}" ]]; then
+  edge_config="${CF_EDGE_CONFIG:-}"
+else
+  edge_config="${CF_EDGE_CONFIG-wrangler.edge.jsonc}"
+fi
 # Space-separated when given.
 read -r -a server_configs <<<"${CF_SERVER_CONFIGS:-wrangler.server.jsonc wrangler.server-local.jsonc}"
 
@@ -110,7 +121,20 @@ for server_config in "${server_configs[@]}"; do
   overrides+="${overrides:+, }$(worker_name "$server_config")=\"$server_version\""
 done
 
-# 2. The front: prerendered pages into R2 (unless the build had no data
+# 2. The edge Worker, with this build's static files (and the last builds').
+#    It goes first: until the front below is live it passes pages of the old
+#    build through, whose files it still has; the other way round, the new
+#    front's pages would ask an old edge for files it never had. Then the
+#    site's routes are pointed at it (a no-op once they are).
+if [[ -n "$edge_config" ]]; then
+  bunx wrangler deploy -c "$edge_config" \
+    --var "GIT_COMMIT_SHA:$commit" \
+    --var "SERVER_VERSION_OVERRIDE:$overrides"
+  # shellcheck disable=SC2086
+  node scripts/cf-routes.mjs "$(worker_name "$edge_config")" ${CF_EDGE_ROUTES:-}
+fi
+
+# 3. The front: prerendered pages into R2 (unless the build had no data
 #    behind them), then the Worker itself, which goes live at once.
 if [[ -z "${CF_SKIP_CACHE_POPULATE:-}" ]]; then
   bunx opennextjs-cloudflare populateCache remote -c "$front_config"
@@ -119,7 +143,7 @@ bunx wrangler deploy -c "$front_deploy_config" \
   --var "GIT_COMMIT_SHA:$commit" \
   --var "SERVER_VERSION_OVERRIDE:$overrides"
 
-# 3. The new servers take all traffic (the old front's last requests too).
+# 4. The new servers take all traffic (the old front's last requests too).
 for entry in "${staged[@]}"; do
   bunx wrangler versions deploy "${entry#*=}@100%" -y \
     -c "${entry%%=*}" --message "$commit"
@@ -129,4 +153,11 @@ if [[ " $* " == *" --secrets "* ]]; then
   for config in "${server_configs[@]}" "$front_config"; do
     node scripts/cf-secrets.mjs | bunx wrangler secret bulk -c "$config"
   done
+  # The edge Worker needs one: what it shows the server when it rechecks a
+  # page (src/lib/colo-cache.ts).
+  if [[ -n "$edge_config" ]]; then
+    node scripts/cf-secrets.mjs |
+      node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const {CRON_SECRET}=JSON.parse(s);process.stdout.write(JSON.stringify({CRON_SECRET}))})' |
+      bunx wrangler secret bulk -c "$edge_config"
+  fi
 fi

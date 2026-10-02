@@ -442,6 +442,22 @@ describe("the two server Workers", () => {
     expect(local).toEqual(placed);
   });
 
+  it("the edge Worker counts repository pages on the site's Worker's limiter", () => {
+    const limiter = (file: string) =>
+      (
+        config(file).ratelimits as { name: string; namespace_id: string }[]
+      ).find(({ name }) => name === "LIMIT_REPO_PAGE");
+    expect(limiter("wrangler.edge.jsonc")).toEqual(limiter("wrangler.jsonc"));
+    expect(config("wrangler.edge.jsonc").services).toEqual([
+      { binding: "SITE", service: "gitdiagram" },
+      { binding: "SERVER", service: "gitdiagram-server" },
+    ]);
+    // The routes are the edge Worker's (scripts/cf-routes.mjs); a Worker
+    // that listed them would fight it for them at every deploy.
+    expect(config("wrangler.jsonc").routes).toBeUndefined();
+    expect(config("wrangler.edge.jsonc").routes).toBeUndefined();
+  });
+
   it("are both bound in the site's Worker", () => {
     const services = config("wrangler.jsonc").services as {
       binding: string;

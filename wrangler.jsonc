@@ -1,9 +1,10 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   // The site on Cloudflare Workers (OpenNext). Built by `bun run cf:build`.
-  // This is the Worker every request reaches: routing, the page cache, the
-  // firewall, static files. The Next.js server is a second Worker behind it
-  // (wrangler.server.jsonc), so that a new isolate here starts fast.
+  // The site's Worker: the firewall, routing, the page cache, static files,
+  // the render containers and the crons. The Next.js server is a Worker
+  // behind it (wrangler.server.jsonc, wrangler.server-local.jsonc), and a
+  // small one in front of it holds the routes (wrangler.edge.jsonc).
   "name": "gitdiagram",
   "main": "cloudflare/worker.ts",
   "compatibility_date": "2026-09-01",
@@ -31,13 +32,12 @@
   "triggers": {
     "crons": ["*/5 * * * *", "*/15 * * * *", "0 13 * * *"],
   },
-  // The live site. A route only takes effect while its hostname's DNS record
-  // is proxied through Cloudflare (the cutover switch); until then visitors
-  // reach Vercel and the Worker answers on workers.dev only.
-  "routes": [
-    { "pattern": "gitdiagram.com/*", "zone_name": "gitdiagram.com" },
-    { "pattern": "www.gitdiagram.com/*", "zone_name": "gitdiagram.com" },
-  ],
+  // No routes here: gitdiagram.com/* and www.gitdiagram.com/* belong to the
+  // small Worker in front of this one (`gitdiagram-edge`,
+  // wrangler.edge.jsonc), which answers cached pages itself and passes the
+  // rest on. This Worker is complete without it and still answers on
+  // workers.dev; `node scripts/cf-routes.mjs gitdiagram` gives it the routes
+  // back.
   "vars": {
     // On Vercel, VERCEL_ENV=production turns IndexNow pings on.
     "INDEXNOW_ENABLED": "1",

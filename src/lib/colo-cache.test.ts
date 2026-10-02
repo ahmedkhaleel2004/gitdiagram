@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   IncrementalCache,
@@ -8,6 +9,8 @@ import type {
 
 import {
   CACHE_ENTRY_PATH,
+  FULL_PATH_HEADER,
+  answerFromCopy,
   entryResponse,
   keepEntryFromServer,
   type RequestContext,
@@ -18,12 +21,16 @@ import {
   withColoPurge,
 } from "./colo-cache";
 
-// A Cache API location: copies by address.
+// A Cache API location: copies by address (bodies, and their headers).
 const held = new Map<string, string>();
+const heldHeaders = new Map<string, [string, string][]>();
 const fakeCache = {
   match: async (key: string) =>
-    held.has(key) ? new Response(held.get(key)) : undefined,
+    held.has(key)
+      ? new Response(held.get(key), { headers: heldHeaders.get(key) })
+      : undefined,
   put: async (key: string, response: Response) => {
+    heldHeaders.set(key, [...response.headers]);
     held.set(key, await response.text());
   },
   delete: async (key: string) => held.delete(key),
@@ -88,6 +95,15 @@ beforeEach(() => {
   judge.hasBeenRevalidated.mockClear();
   judge.isStale.mockClear();
   vi.stubGlobal("caches", { open: async () => fakeCache });
+  // Workers' Web Crypto has MD5 (the ETag OpenNext computes); Node's does not.
+  vi.spyOn(crypto.subtle, "digest").mockImplementation(
+    async (_algorithm, data) =>
+      new Uint8Array(
+        createHash("md5")
+          .update(new Uint8Array(data as ArrayBuffer))
+          .digest(),
+      ).buffer,
+  );
   globals.tagCache = judge;
   delete globals.__GITDIAGRAM_ROUTING_WORKER__;
   // One request for the whole test (the same objects every time, as the
@@ -102,6 +118,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("withColoCache", () => {
@@ -572,5 +589,187 @@ describe("withBackgroundSend", () => {
     expect(inner.send).toHaveBeenCalledTimes(2);
     finish();
     await settle();
+  });
+});
+
+const tagCacheFor = () => ({
+  wrapped: withColoPurge({
+    mode: "nextMode",
+    name: "fake",
+    getLastRevalidated: async () => 0,
+    writeTags: async () => undefined,
+    hasBeenRevalidated: async () => false,
+    isStale: async () => false,
+  } as unknown as NextModeTagCache),
+});
+
+describe("answerFromCopy", () => {
+  const env = { CRON_SECRET: "s3cret", SITE_ORIGIN: "https://gitdiagram.com" };
+  const waiting: Promise<unknown>[] = [];
+  const ctx = {
+    waitUntil: (work: Promise<unknown>) => void waiting.push(work),
+  };
+  const ask = (
+    path: string,
+    headers: Record<string, string> = {},
+    method = "GET",
+  ) => {
+    const url = new URL(path, "https://gitdiagram.com");
+    return answerFromCopy(
+      new Request(url, { method, headers }),
+      url,
+      env,
+      ctx,
+      "no-build-id",
+    );
+  };
+  const appPage = (overrides: Record<string, unknown> = {}) => ({
+    type: "app",
+    html: "<!DOCTYPE html><p>hello</p>",
+    rsc: "0:{}",
+    revalidate: 300,
+    meta: {
+      headers: {
+        "x-nextjs-stale-time": "300",
+        "x-next-cache-tags": "_N_T_/acme/demo",
+      },
+    },
+    ...overrides,
+  });
+  const hold = (key: string, value: unknown) =>
+    withColoCache(fakeStore({})).set(key, value as never);
+
+  beforeEach(() => {
+    waiting.length = 0;
+  });
+
+  it("answers a held page as OpenNext's cache interceptor would", async () => {
+    await hold("/acme/demo", appPage());
+    vi.advanceTimersByTime(100_000);
+    const response = await ask("/acme/demo?utm_source=x");
+    expect(response!.status).toBe(200);
+    expect(await response!.text()).toBe("<!DOCTYPE html><p>hello</p>");
+    expect(Object.fromEntries(response!.headers)).toEqual({
+      "cache-control": "s-maxage=200, stale-while-revalidate=2592000",
+      "content-type": "text/html; charset=utf-8",
+      // md5 of the body, quoted.
+      etag: '"d3700297557844f664c6d740fa566557"',
+      vary: "RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch, Next-Url",
+      "x-nextjs-stale-time": "300",
+      "x-opennext-cache": "HIT",
+    });
+  });
+
+  it("finds the home page and paths with a trailing slash", async () => {
+    await hold("/index", appPage());
+    await hold("/videos", appPage({ revalidate: false }));
+    expect(await ask("/")).not.toBeNull();
+    const videos = await ask("/videos/");
+    expect(videos!.headers.get("cache-control")).toBe(
+      "s-maxage=31536000, stale-while-revalidate=2592000",
+    );
+  });
+
+  it.each([
+    ["an RSC request", "/acme/demo", { rsc: "1" }, "GET"],
+    ["a forged Server Action", "/acme/demo", { "next-action": "x" }, "GET"],
+    ["a revalidation", "/acme/demo", { "x-prerender-revalidate": "id" }, "GET"],
+    ["a preview", "/acme/demo", { cookie: "a=1; __prerender_bypass=x" }, "GET"],
+    [
+      "an explicit full-path request",
+      "/acme/demo",
+      { [FULL_PATH_HEADER]: "1" },
+      "GET",
+    ],
+    ["a HEAD", "/acme/demo", {}, "HEAD"],
+    ["a POST", "/acme/demo", {}, "POST"],
+    ["an encoded path", "/acme/de%6Do", {}, "GET"],
+    ["a doubled slash", "/acme//demo", {}, "GET"],
+    ["a page it does not hold", "/acme/other", {}, "GET"],
+    ["a path that is never a page", "/api/video", {}, "GET"],
+  ])("leaves %s to the routing layer", async (_name, path, headers, method) => {
+    await hold("/acme/demo", appPage());
+    await hold("/api/video", appPage());
+    expect(await ask(path, headers, method)).toBeNull();
+  });
+
+  it.each([
+    ["a route answer", { type: "route", body: "x", html: undefined }],
+    ["an error page", { meta: { status: 404, headers: {} } }],
+    ["an entry without a lifetime", { revalidate: undefined }],
+  ])("leaves %s to the routing layer", async (_name, overrides) => {
+    await hold("/acme/demo", appPage(overrides));
+    expect(await ask("/acme/demo")).toBeNull();
+  });
+
+  it("is kept in step with the entry: replaced, dropped, or removed with it", async () => {
+    const cache = withColoCache(fakeStore({}));
+    await cache.set("/acme/demo", appPage() as never);
+    // The entry (for OpenNext) and the finished page (for the edge Worker).
+    expect(held.size).toBe(2);
+    expect(await ask("/acme/demo")).not.toBeNull();
+
+    // The page now renders an error: nothing finished is kept for it.
+    await cache.set(
+      "/acme/demo",
+      appPage({ meta: { status: 404, headers: {} } }) as never,
+    );
+    expect(held.size).toBe(1);
+    expect(await ask("/acme/demo")).toBeNull();
+
+    await cache.set("/acme/demo", appPage() as never);
+    const { wrapped } = tagCacheFor();
+    await wrapped.writeTags(["_N_T_/acme/demo"]);
+    expect(held.size).toBe(0);
+    expect(await ask("/acme/demo")).toBeNull();
+  });
+
+  it("leaves a page past its lifetime to the routing layer, which queues its re-render", async () => {
+    await hold("/acme/demo", appPage());
+    vi.advanceTimersByTime(298_000);
+    expect(await ask("/acme/demo")).not.toBeNull();
+    // OpenNext calls a page stale from its last second on.
+    vi.advanceTimersByTime(1_000);
+    expect(await ask("/acme/demo")).toBeNull();
+  });
+
+  it("rechecks an old copy with the server after answering from it", async () => {
+    const asked: Request[] = [];
+    let answer = () =>
+      entryResponse({
+        value: appPage({ html: "<p>new</p>" }),
+        lastModified: Date.now(),
+      });
+    const bound = {
+      ...env,
+      SERVER: {
+        fetch: async (sent: Request) => {
+          asked.push(sent);
+          return answer();
+        },
+      },
+    };
+    const get = (path: string) => {
+      const url = new URL(path, "https://gitdiagram.com");
+      return answerFromCopy(new Request(url), url, bound, ctx, "no-build-id");
+    };
+    await hold("/acme/demo", appPage());
+    vi.advanceTimersByTime(20_000);
+    await get("/acme/demo");
+    expect(asked).toHaveLength(0);
+
+    vi.advanceTimersByTime(11_000);
+    expect(await (await get("/acme/demo"))!.text()).toContain("hello");
+    await Promise.all(waiting);
+    expect(asked).toHaveLength(1);
+    expect(new URL(asked[0]!.url).searchParams.get("fresh")).toBe("1");
+    expect(await (await get("/acme/demo"))!.text()).toBe("<p>new</p>");
+
+    // Revalidated: the copy goes, and the next request takes the long way.
+    vi.advanceTimersByTime(31_000);
+    answer = () => new Response(null, { status: 404 });
+    await get("/acme/demo");
+    await Promise.all(waiting);
+    expect(await get("/acme/demo")).toBeNull();
   });
 });

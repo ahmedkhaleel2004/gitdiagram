@@ -137,14 +137,23 @@ export interface CurrentEntry {
 
 type Entry<Type extends CacheEntryType> = WithLastModified<CacheValue<Type>>;
 
-const buildId = () => process.env.OPEN_NEXT_BUILD_ID ?? "no-build-id";
+// OpenNext's settings, where there is a `process` (the edge Worker runs
+// without Node compatibility and passes them in).
+const setting = (name: string): string | undefined =>
+  (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process?.env?.[name];
 
 // The R2 prefix is part of the address, so a second deployment that keeps its
 // entries elsewhere in the bucket (a test Worker) never shares copies.
-const copyUrl = (key: string, cacheType: CacheEntryType = "cache") =>
+const copyUrl = (
+  key: string,
+  cacheType: CacheEntryType = "cache",
+  prefix = setting("NEXT_INC_CACHE_R2_PREFIX"),
+  build = setting("OPEN_NEXT_BUILD_ID"),
+) =>
   "http://page-cache.local" +
-  `/${process.env.NEXT_INC_CACHE_R2_PREFIX ?? "incremental-cache"}` +
-  `/${buildId()}/${encodeURIComponent(key)}.${cacheType}`;
+  `/${prefix ?? "incremental-cache"}` +
+  `/${build ?? "no-build-id"}/${encodeURIComponent(key)}.${cacheType}`;
 
 let opened: Promise<Cache> | undefined;
 const copies = () => (opened ??= caches.open(CACHE_NAME));
@@ -238,25 +247,144 @@ async function isCurrent(tags: string[], lastModified: number) {
   return !revalidated && !stale;
 }
 
+const VARY_HEADER =
+  "RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch, Next-Url";
+// On a page's finished response in the Cache API: what `answerFromCopy`
+// needs to know about the entry it was made from.
+const READY_LAST_MODIFIED = "x-copy-last-modified";
+const READY_CHECKED_AT = "x-copy-checked-at";
+const READY_REVALIDATE = "x-copy-revalidate";
+
+interface AppPageValue {
+  type?: unknown;
+  html?: unknown;
+  revalidate?: unknown;
+  meta?: { status?: unknown; headers?: Record<string, unknown> };
+}
+
+/**
+ * What a location keeps of an entry: the entry itself, for OpenNext's
+ * routing layer, and for a plain page its HTML as a finished response, which
+ * the edge Worker sends without parsing anything (`answerFromCopy`). Made
+ * before the entry is handed to OpenNext, which mutates it.
+ */
+interface Prepared {
+  body: string;
+  page: {
+    html: string;
+    headers: Record<string, string>;
+    revalidate: string;
+    lastModified: number;
+  } | null;
+}
+
+function prepare(value: unknown, lastModified: number): Prepared {
+  const body = JSON.stringify({
+    value,
+    lastModified,
+    checkedAt: Date.now(),
+  } as Copy);
+  const entry = value as AppPageValue;
+  const status = entry?.meta?.status;
+  const revalidate = entry?.revalidate;
+  // The pages `answerFromCopy` answers: an app page that rendered with 200
+  // and says how long it lives.
+  if (
+    entry?.type !== "app" ||
+    typeof entry.html !== "string" ||
+    (status !== undefined && status !== 200) ||
+    !(
+      revalidate === false ||
+      (typeof revalidate === "number" && revalidate > 0)
+    )
+  )
+    return { body, page: null };
+  const headers: Record<string, string> = {};
+  for (const [name, held] of Object.entries(entry.meta?.headers ?? {}))
+    if (name !== "x-next-cache-tags" && typeof held === "string")
+      headers[name] = held;
+  return {
+    body,
+    page: {
+      html: entry.html,
+      headers,
+      revalidate: String(revalidate),
+      lastModified,
+    },
+  };
+}
+
+async function md5(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "MD5",
+    new TextEncoder().encode(text),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Where a location's copies live: the build and the R2 prefix they are of. */
+interface Where {
+  prefix?: string;
+  build?: string;
+}
+
+const readyUrl = (key: string, where: Where = {}) =>
+  `${copyUrl(key, "cache", where.prefix, where.build)}.html`;
+
 async function writeCopy(
   key: string,
   cacheType: CacheEntryType | undefined,
-  body: string,
+  prepared: Prepared,
+  where: Where = {},
 ) {
   const cache = await copies();
-  await cache.put(
-    copyUrl(key, cacheType),
-    new Response(body, {
-      headers: {
-        "content-type": "application/json",
-        "cache-control": `max-age=${KEEP_SECONDS}`,
-      },
-    }),
-  );
+  const keep = { "cache-control": `max-age=${KEEP_SECONDS}` };
+  const writes: Promise<unknown>[] = [
+    cache.put(
+      copyUrl(key, cacheType, where.prefix, where.build),
+      new Response(prepared.body, {
+        headers: { "content-type": "application/json", ...keep },
+      }),
+    ),
+  ];
+  if ((cacheType ?? "cache") === "cache") {
+    const { page } = prepared;
+    writes.push(
+      page
+        ? cache.put(
+            readyUrl(key, where),
+            // The response OpenNext's cache interceptor builds for the page,
+            // less the lifetime it computes at each request.
+            new Response(page.html, {
+              headers: {
+                "x-opennext-cache": "HIT",
+                etag: `"${await md5(page.html)}"`,
+                "content-type": "text/html; charset=utf-8",
+                ...page.headers,
+                vary: VARY_HEADER,
+                [READY_LAST_MODIFIED]: String(page.lastModified),
+                [READY_CHECKED_AT]: String(Date.now()),
+                [READY_REVALIDATE]: page.revalidate,
+                ...keep,
+              },
+            }),
+          )
+        : cache.delete(readyUrl(key, where)),
+    );
+  }
+  await Promise.all(writes);
 }
 
-const copyBody = (value: unknown, lastModified: number) =>
-  JSON.stringify({ value, lastModified, checkedAt: Date.now() } as Copy);
+/** Removes this location's copy of a page (both forms of it). */
+async function dropCopy(key: string, where: Where = {}) {
+  const cache = await copies();
+  await Promise.all([
+    cache.delete(copyUrl(key, "cache", where.prefix, where.build)),
+    cache.delete(readyUrl(key, where)),
+  ]);
+}
 
 /**
  * The largest entry a location keeps a copy of, in characters of its main
@@ -277,8 +405,7 @@ function isTooBigToCopy(value: unknown): boolean {
 /** Removes this location's copies of the given page keys. */
 async function dropCopies(keys: string[]) {
   try {
-    const cache = await copies();
-    await Promise.all(keys.map((key) => cache.delete(copyUrl(key, "cache"))));
+    await Promise.all(keys.map((key) => dropCopy(key)));
   } catch {
     // Rechecks catch up.
   }
@@ -365,8 +492,8 @@ export async function keepEntryFromServer(
     const entry = await readEntry(response);
     if (!entry) return false;
     // Serialized now: OpenNext mutates the entry it is given.
-    const body = copyBody(entry.value, entry.lastModified);
-    request.waitUntil(writeCopy(key, "cache", body).catch(() => undefined));
+    const prepared = prepare(entry.value, entry.lastModified);
+    request.waitUntil(writeCopy(key, "cache", prepared).catch(() => undefined));
     handed.set(request, { key, entry });
     return true;
   } catch {
@@ -382,9 +509,10 @@ export async function keepEntryFromServer(
 async function readFromServer(
   key: string,
   fresh: boolean,
+  bindings?: ReturnType<RequestContext>["env"],
 ): Promise<CurrentEntry | null | undefined> {
   try {
-    const { env } = requestContext();
+    const env = bindings ?? requestContext().env;
     if (!env.SERVER || !env.CRON_SECRET) return undefined;
     const url = new URL(
       CACHE_ENTRY_PATH,
@@ -489,12 +617,12 @@ class ColoCache implements IncrementalCache {
     // Serialized now: OpenNext mutates the entry it is given.
     if (isTooBigToCopy(entry.value)) return entry;
     const tags = pageTags(entry.value);
-    const body = copyBody(entry.value, entry.lastModified);
+    const prepared = prepare(entry.value, entry.lastModified);
     const lastModified = entry.lastModified;
     later(
       (async () => {
         if (!isPage || (await isCurrent(tags, lastModified)))
-          await writeCopy(key, cacheType, body);
+          await writeCopy(key, cacheType, prepared);
       })(),
     );
     return entry;
@@ -510,7 +638,8 @@ class ColoCache implements IncrementalCache {
     heldTags: string[],
   ): Promise<CurrentEntry | null> {
     const drop = async () => {
-      await (await copies()).delete(copyUrl(key, cacheType));
+      if ((cacheType ?? "cache") === "cache") await dropCopy(key);
+      else await (await copies()).delete(copyUrl(key, cacheType));
       return null;
     };
     if (routesOnly()) {
@@ -518,11 +647,7 @@ class ColoCache implements IncrementalCache {
       // The server could not be asked: the copy stays as it is.
       if (entry === undefined) return null;
       if (!entry) return drop();
-      await writeCopy(
-        key,
-        cacheType,
-        copyBody(entry.value, entry.lastModified),
-      );
+      await writeCopy(key, cacheType, prepare(entry.value, entry.lastModified));
       return entry;
     }
     const entry = await this.store.get(key, cacheType);
@@ -539,11 +664,7 @@ class ColoCache implements IncrementalCache {
     // verdict (a fresh render, or the old page while one is made).
     if (!current) return drop();
     if (!isTooBigToCopy(entry.value))
-      await writeCopy(
-        key,
-        cacheType,
-        copyBody(entry.value, entry.lastModified),
-      );
+      await writeCopy(key, cacheType, prepare(entry.value, entry.lastModified));
     return { value: entry.value, lastModified: entry.lastModified };
   }
 
@@ -581,7 +702,7 @@ class ColoCache implements IncrementalCache {
     await this.store.set(key, value, cacheType);
     if (isTooBigToCopy(value)) return;
     // After the store, so the two serialized strings are never held at once.
-    await writeCopy(key, cacheType, copyBody(value, Date.now())).catch(
+    await writeCopy(key, cacheType, prepare(value, Date.now())).catch(
       () => undefined,
     );
   }
@@ -691,4 +812,131 @@ export function withBackgroundSend(inner: Queue): Queue {
       later(inner.send(message));
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// The short way to a cached page. Most requests the site gets are for the
+// HTML of a page this location already holds, and OpenNext's routing layer is
+// a long way round to it: it is 0.3 MB of script with its Durable Objects and
+// containers, and a new isolate of a Worker that size takes about 70 ms
+// longer to answer than a warm one (a third of the hits on a cached page are
+// a new isolate's first request). `answerFromCopy` is the edge Worker's own
+// answer for the plain case (cloudflare/edge.ts, 30 KB, which starts as fast
+// as it runs), built exactly as OpenNext's cache interceptor builds it;
+// anything else is left to the routing layer.
+
+const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+const ONE_MONTH_SECONDS = 60 * 60 * 24 * 30;
+/** A request with this header is always answered by the routing layer. */
+export const FULL_PATH_HEADER = "x-gitdiagram-full-path";
+
+/**
+ * The page a GET asks for, from this location's copy, or null when the
+ * routing layer must answer: no copy, not a plain HTML page request, a page
+ * past its lifetime (answering it means queueing its re-render), an error
+ * page, or anything unusual about the request.
+ */
+export async function answerFromCopy(
+  request: Request,
+  url: URL,
+  env: ReturnType<RequestContext>["env"] & {
+    NEXT_INC_CACHE_R2_PREFIX?: string;
+  },
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+  /** The build whose pages these are (the cache's addresses carry it). */
+  build: string,
+): Promise<Response | null> {
+  if (request.method !== "GET") return null;
+  const headers = request.headers;
+  if (
+    headers.has("rsc") ||
+    headers.has("next-action") ||
+    headers.has("x-prerender-revalidate") ||
+    headers.has(FULL_PATH_HEADER)
+  )
+    return null;
+  const cookie = headers.get("cookie") ?? "";
+  if (
+    cookie.includes("__prerender_bypass") ||
+    cookie.includes("__next_preview_data")
+  )
+    return null;
+  // Plain paths only: nothing to decode, so the key is the path as OpenNext
+  // would compute it.
+  if (
+    !/^\/[A-Za-z0-9_.~/-]*$/.test(url.pathname) ||
+    url.pathname.includes("//")
+  )
+    return null;
+  const path = url.pathname.replace(/\/$/, "");
+  const key = path === "" ? "/index" : path;
+  if (NEVER_PAGES.test(key)) return null;
+
+  const where = {
+    prefix: env.NEXT_INC_CACHE_R2_PREFIX ?? "incremental-cache",
+    build,
+  };
+  const address = readyUrl(key, where);
+  let held: Response | undefined;
+  try {
+    held = await (await copies()).match(address);
+  } catch {
+    held = undefined;
+  }
+  if (!held) return null;
+  const answer = new Headers(held.headers);
+  const lastModified = Number(answer.get(READY_LAST_MODIFIED));
+  const checkedAt = Number(answer.get(READY_CHECKED_AT));
+  const revalidate = answer.get(READY_REVALIDATE);
+  let sMaxAge = ONE_YEAR_SECONDS;
+  if (revalidate !== "false") {
+    const age = Math.round((Date.now() - lastModified) / 1000);
+    sMaxAge = Math.max(Number(revalidate) - age, 1);
+    // Past its lifetime (or unreadable): the routing layer answers, and
+    // queues the re-render.
+    if (!(sMaxAge > 1)) {
+      void held.body?.cancel();
+      return null;
+    }
+  }
+
+  if (!(Date.now() - checkedAt <= RECHECK_MS) && !rechecking.has(address)) {
+    rechecking.add(address);
+    ctx.waitUntil(
+      (async () => {
+        const entry = await readFromServer(key, true, env);
+        // The server could not be asked: the copy stays as it is.
+        if (entry === undefined) return;
+        if (!entry) await dropCopy(key, where);
+        else
+          await writeCopy(
+            key,
+            "cache",
+            prepare(entry.value, entry.lastModified),
+            where,
+          );
+      })()
+        .catch(() => undefined)
+        .finally(() => rechecking.delete(address)),
+    );
+  }
+
+  // Its own notes, and what the Cache API adds to a response it kept.
+  for (const name of [
+    READY_LAST_MODIFIED,
+    READY_CHECKED_AT,
+    READY_REVALIDATE,
+    "accept-ranges",
+    "age",
+    "cf-cache-status",
+    "expires",
+    "last-modified",
+  ])
+    answer.delete(name);
+  answer.set(
+    "cache-control",
+    `s-maxage=${sMaxAge}, stale-while-revalidate=${ONE_MONTH_SECONDS}`,
+  );
+  // The body goes out as it comes from the cache: nothing is parsed.
+  return new Response(held.body, { status: 200, headers: answer });
 }
