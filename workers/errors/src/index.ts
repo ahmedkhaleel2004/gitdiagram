@@ -1,4 +1,4 @@
-// Keeps every failed request of the site's Worker in the logs.
+// Keeps every failed request of the site's Workers in the logs.
 //
 // The site's own logs are sampled at 2% (wrangler.jsonc: logging every
 // request would cost more than the Worker), so 49 of 50 failures left no
@@ -62,6 +62,8 @@ export function failure(item: TraceItem): Record<string, unknown> | null {
   const request = item.event?.request;
   return {
     event: "site.failure",
+    // `gitdiagram` (the entry Worker) or `gitdiagram-server` (Next.js).
+    script: item.scriptName,
     at: item.eventTimestamp
       ? new Date(item.eventTimestamp).toISOString()
       : null,
