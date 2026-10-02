@@ -27,25 +27,19 @@ const shortenPageLifetime = unstable_cache(
   { revalidate: 60 * 5 },
 );
 
-async function fetchRepository(asGitHubApp: boolean) {
-  return fetch(GITHUB_REPO_URL, {
-    cache: "force-cache",
-    headers: await getGitHubApiHeaders({ allowGitHubAppAuth: asGitHubApp }),
-    next: {
-      revalidate: STAR_COUNT_REVALIDATE_SECONDS,
-    },
-  });
-}
-
+// Never the GitHub App here: minting its token is an uncached fetch, and an
+// uncached fetch while a page renders for the cache fails that page with
+// "Page changed from static to dynamic at runtime" (tried 2026-10-02: repository
+// pages answered 500 whenever the anonymous call was refused).
 export async function getStarCount() {
   try {
-    // Without credentials first, as always. GitHub allows 60 such calls an
-    // hour per address, and on Cloudflare Workers the address is shared with
-    // other sites, so the call is sometimes refused (403 or 429): then once
-    // more as the GitHub App.
-    let response = await fetchRepository(false);
-    if (response.status === 403 || response.status === 429)
-      response = await fetchRepository(true);
+    const response = await fetch(GITHUB_REPO_URL, {
+      cache: "force-cache",
+      headers: await getGitHubApiHeaders({ allowGitHubAppAuth: false }),
+      next: {
+        revalidate: STAR_COUNT_REVALIDATE_SECONDS,
+      },
+    });
 
     if (!response.ok) {
       throw new Error(`Failed to fetch star count (${response.status})`);
