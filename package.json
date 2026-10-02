@@ -8,6 +8,7 @@
     "build:mcp-app": "node scripts/build-mcp-app.mjs",
     "cf:build": "bash scripts/cf-build.sh",
     "cf:deploy": "bash scripts/cf-deploy.sh",
+    "cf:usage": "node scripts/cf-usage.mjs",
     "check": "bun run lint && bun run typecheck",
     "dev": "bun run build:mcp-app && ./scripts/dev-turbo.sh",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0",
@@ -111,7 +112,8 @@
       "open-next.config.ts",
       "scripts/cf-secrets.mjs",
       "scripts/cf-asset-headers.mjs",
-      "scripts/compare-hosts.mjs"
+      "scripts/compare-hosts.mjs",
+      "scripts/cf-usage.mjs"
     ],
     "ignore": [
       "experiments/**",

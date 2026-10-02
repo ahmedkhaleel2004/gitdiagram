@@ -162,7 +162,8 @@ export type EdgeRateLimit =
   | "LIMIT_GENERATE_COST"
   | "LIMIT_GENERATE_CANCEL"
   | "LIMIT_DIAGRAM_STATE"
-  | "LIMIT_VIDEO_START";
+  | "LIMIT_VIDEO_START"
+  | "LIMIT_REPO_PAGE";
 
 const RATE_LIMITED_PATHS: Record<string, EdgeRateLimit> = {
   "/api/generate/stream": "LIMIT_GENERATE_STREAM", // 20 a minute
@@ -204,18 +205,47 @@ function isRepositoryRoute(pathname: string, images: boolean): boolean {
   return images || !match[2];
 }
 
+/**
+ * Paths only vulnerability scanners ask for (`/wp-login.php`, `/.env`,
+ * `/s3/.aws/config`, `/vendor/phpunit/.../eval-stdin.php`). The app would
+ * answer each with its rendered 404 page, at 30 to 400 ms of billed CPU; the
+ * Worker answers them itself. Nothing the site serves matches: its own
+ * dot-folder is `.well-known`, and a repository page (`/owner/.github`,
+ * `/owner/tool.php`) is two segments whose first is a GitHub name.
+ */
+export function isScannerPath(pathname: string): boolean {
+  const segments = pathname.split("/").filter(Boolean);
+  const [first] = segments;
+  if (!first) return false;
+  if (first.startsWith(".")) return first !== ".well-known";
+  if (/\.(?:php\d?|aspx?|jsp|cgi|env)$/i.test(pathname))
+    return segments.length !== 2;
+  return (
+    segments.length > 2 &&
+    !OWN_FIRST_SEGMENTS.has(first.toLowerCase()) &&
+    segments.some((segment) => segment.startsWith("."))
+  );
+}
+
 export type EdgeDecision =
   | { action: "deny"; rule: string }
+  | { action: "missing" }
   | { action: "limit"; limit: EdgeRateLimit }
   | null;
 
-/** What the firewall does with a request before the app sees it. */
+/**
+ * What the firewall does with a request before the app sees it.
+ * `verifiedCrawler`: Cloudflare has confirmed the caller is a known search
+ * engine or other good bot (`request.cf.verifiedBotCategory`).
+ */
 export function edgeDecision(
   pathname: string,
   userAgent: string | null,
+  verifiedCrawler = false,
 ): EdgeDecision {
   const limit = RATE_LIMITED_PATHS[pathname];
   if (limit) return { action: "limit", limit };
+  if (isScannerPath(pathname)) return { action: "missing" };
   const agent = userAgent ?? "";
   // 2026-07-08: ClaudeBot crawling thousands of unique repository pages.
   if (agent.includes("ClaudeBot") && isRepositoryRoute(pathname, false))
@@ -225,5 +255,11 @@ export function edgeDecision(
     return { action: "deny", rule: "amazonbot-repository-crawl" };
   if (agent === "Brightbot 1.0" && isRepositoryRoute(pathname, true))
     return { action: "deny", rule: "brightbot-repository-crawl" };
+  // Not a Vercel rule. A repository page that is not cached yet costs a
+  // render (about 150 ms of CPU) and two R2 writes, and there is no end of
+  // names to ask for. 240 a minute is far above a person, prefetches
+  // included; search engines Cloudflare has verified are never held back.
+  if (!verifiedCrawler && isRepositoryRoute(pathname, true))
+    return { action: "limit", limit: "LIMIT_REPO_PAGE" };
   return null;
 }

@@ -130,11 +130,23 @@ async function firewall(
   env: Env,
   pathname: string,
 ): Promise<Response | null> {
-  const decision = edgeDecision(pathname, request.headers.get("user-agent"));
+  const decision = edgeDecision(
+    pathname,
+    request.headers.get("user-agent"),
+    Boolean(
+      (request as Request & { cf?: { verifiedBotCategory?: unknown } }).cf
+        ?.verifiedBotCategory,
+    ),
+  );
   if (decision?.action === "deny")
     return new Response("Forbidden", {
       status: 403,
       headers: { "Cache-Control": "no-store" },
+    });
+  if (decision?.action === "missing")
+    return new Response("Not Found", {
+      status: 404,
+      headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
     });
   if (decision?.action === "limit") {
     const key = request.headers.get("cf-connecting-ip") ?? "unknown";

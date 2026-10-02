@@ -9,10 +9,11 @@
   // server code that prints a function into an inline script (next-themes).
   "keep_names": false,
   "workers_dev": true,
-  // The default is 30 s of CPU per request. Nothing here should come near
-  // it (a page render is ~0.1 s), but a diagram run or the 8 MB sitemap must
-  // never be cut off midway: allow the maximum.
-  "limits": { "cpu_ms": 300000 },
+  // CPU one request may use (it is billed by the millisecond). The most any
+  // request used on the live site's first day was 4.9 s (a diagram run; the
+  // 8 MB sitemap takes 2.8 s, a page render ~0.1 s), so 30 s cuts nothing
+  // real off and bounds what a runaway request can cost.
+  "limits": { "cpu_ms": 30000 },
   // Logs are sampled: at ~16M requests a month, every request logged would
   // cost more than the Worker itself.
   "observability": {
@@ -97,6 +98,14 @@
       "name": "LIMIT_VIDEO_START",
       "namespace_id": "4725",
       "simple": { "limit": 30, "period": 60 },
+    },
+    {
+      // A cost guard, not a Vercel rule: repository pages (and their social
+      // pictures) one address may ask for in a minute. An uncached one costs
+      // a render and two R2 writes.
+      "name": "LIMIT_REPO_PAGE",
+      "namespace_id": "4726",
+      "simple": { "limit": 240, "period": 60 },
     },
   ],
   "assets": {

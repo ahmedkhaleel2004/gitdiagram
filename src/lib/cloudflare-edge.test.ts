@@ -5,6 +5,7 @@ import {
   containerRefusal,
   edgeDecision,
   isContainerPath,
+  isScannerPath,
   platformHeaders,
   visitorCacheControl,
 } from "./cloudflare-edge";
@@ -131,13 +132,17 @@ describe("edgeDecision", () => {
       "Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)";
     expect(edgeDecision("/vercel/next.js", claude)?.action).toBe("deny");
     expect(edgeDecision("/vercel/next.js/", claude)?.action).toBe("deny");
-    expect(edgeDecision("/vercel/next.js/opengraph-image", claude)).toBeNull();
+    expect(
+      edgeDecision("/vercel/next.js/opengraph-image", claude)?.action,
+    ).toBe("limit");
     expect(edgeDecision("/", claude)).toBeNull();
     expect(edgeDecision("/videos", claude)).toBeNull();
     expect(edgeDecision("/vercel/next.js/video", claude)).toBeNull();
     expect(edgeDecision("/sitemap/0.xml", claude)).toBeNull();
     expect(edgeDecision("/api/video", claude)).toBeNull();
-    expect(edgeDecision("/vercel/next.js", "Claude-User/1.0")).toBeNull();
+    expect(edgeDecision("/vercel/next.js", "Claude-User/1.0")?.action).toBe(
+      "limit",
+    );
 
     const amazon = "Mozilla/5.0 (compatible; Amazonbot/0.1)";
     expect(edgeDecision("/a/b", amazon)?.action).toBe("deny");
@@ -145,8 +150,65 @@ describe("edgeDecision", () => {
     expect(edgeDecision("/a/b/twitter-image", amazon)?.action).toBe("deny");
     expect(edgeDecision("/a/b/diagram.png", amazon)).toBeNull();
     expect(edgeDecision("/a/b", "Brightbot 1.0")?.action).toBe("deny");
-    expect(edgeDecision("/a/b", "Brightbot 1.0 extra")).toBeNull();
-    expect(edgeDecision("/a/b", "Mozilla/5.0 Safari")).toBeNull();
+    expect(edgeDecision("/a/b", "Brightbot 1.0 extra")?.action).toBe("limit");
+    // A verified crawler is still refused where its rule says so.
+    expect(edgeDecision("/a/b", amazon, true)?.action).toBe("deny");
+  });
+
+  it("limits repository pages per address, except for verified crawlers", () => {
+    const limited = { action: "limit", limit: "LIMIT_REPO_PAGE" };
+    const browser = "Mozilla/5.0 Safari";
+    expect(edgeDecision("/a/b", browser)).toEqual(limited);
+    expect(edgeDecision("/a/b.md", browser)).toEqual(limited);
+    expect(edgeDecision("/a/b/opengraph-image", browser)).toEqual(limited);
+    expect(edgeDecision("/a/b", "bingbot/2.0", true)).toBeNull();
+    for (const path of [
+      "/",
+      "/browse",
+      "/videos",
+      "/a/b/video",
+      "/api/video",
+      "/sitemap/0.xml",
+      "/out/sent",
+      "/mcp-app/view.js",
+    ])
+      expect(edgeDecision(path, browser)).toBeNull();
+    expect(readFileSync("wrangler.jsonc", "utf8")).toContain(
+      '"LIMIT_REPO_PAGE"',
+    );
+  });
+
+  it("answers scanner paths without the app", () => {
+    for (const path of [
+      "/wp-login.php",
+      "/.env",
+      "/.git/config",
+      "/.aws/credentials",
+      "/s3/.aws/config",
+      "/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php",
+      "/wp-content/plugins/forminator/forminator.php",
+      "/index.PHP",
+      "/cgi-bin/luci/stok.cgi",
+    ]) {
+      expect(isScannerPath(path)).toBe(true);
+      expect(edgeDecision(path, "x")).toEqual({ action: "missing" });
+    }
+    for (const path of [
+      "/",
+      "/robots.txt",
+      "/.well-known/openai-apps-challenge",
+      "/owner/.github",
+      "/owner/tool.php",
+      "/owner/repo",
+      "/owner/repo/video",
+      "/owner/repo/opengraph-image",
+      "/owner/repo.md",
+      "/api/video/file",
+      "/api/internal/.x/y",
+      "/_next/static/chunks/a.js",
+      "/wp-json/wp/v2/pages",
+    ])
+      expect(isScannerPath(path)).toBe(false);
   });
 });
 
