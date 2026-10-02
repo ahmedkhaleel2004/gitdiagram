@@ -6,7 +6,7 @@
 //   node scripts/cf-usage.mjs --hours 6     project from the last 6 hours instead
 //   node scripts/cf-usage.mjs --site        without test and staging Workers
 //   node scripts/cf-usage.mjs --json        the same numbers as JSON
-//   node scripts/cf-usage.mjs --hours 3 --fail-above 150
+//   node scripts/cf-usage.mjs --hours 6 --fail-above 150
 //                                           one line; exit 1 when the projected
 //                                           month is over $150 (the hourly
 //                                           cost watch, .github/workflows)

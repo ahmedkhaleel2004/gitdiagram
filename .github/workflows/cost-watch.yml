@@ -1,7 +1,9 @@
 name: Cost watch
 
 # Cloudflare has no spending cap, and its own budget emails run a day behind.
-# Every hour this projects a month from the last three hours of usage
+# Every hour this projects a month from the last six hours of usage (long enough that a
+# fifteen-minute burst of test renders does not trip it; abuse at $50 a day
+# still does within the hour)
 # (scripts/cf-usage.mjs) and fails when that is over the ceiling, so GitHub
 # emails the owner within the hour. Normal is $25 to $60; Vercel was $102.56.
 on:
@@ -26,8 +28,8 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: package.json
-      - name: Project the month from the last three hours
-        run: node scripts/cf-usage.mjs --hours 3 --fail-above "$CEILING"
+      - name: Project the month from the last six hours
+        run: node scripts/cf-usage.mjs --hours 6 --fail-above "$CEILING"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CEILING: ${{ inputs.ceiling || '150' }}
