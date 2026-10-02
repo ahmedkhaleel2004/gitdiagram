@@ -16,6 +16,19 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" && -f "$token_file" ]]; then
   CLOUDFLARE_API_TOKEN="$(cat "$token_file")"
   export CLOUDFLARE_API_TOKEN
 fi
+if [[ -n "${CLOUDFLARE_API_TOKEN:-}" && -z "${CI:-}" ]]; then
+  # wrangler 4.146 checks a stored `wrangler login`'s scopes even when a
+  # token is set, and then refuses to deploy containers. Give it an empty
+  # config home so only the token counts.
+  XDG_CONFIG_HOME="$(mktemp -d)"
+  export XDG_CONFIG_HOME
+fi
+
+# The deploy builds the render containers' image (the repo's Dockerfile).
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker is not reachable (start it, or run: sg docker -c 'bun run cf:deploy')." >&2
+  exit 1
+fi
 
 if [[ " $* " != *" --skip-build "* ]]; then
   bash scripts/cf-build.sh
