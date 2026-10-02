@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 
 import type { DiagramGraph, DiagramGraphNode } from "~/features/diagram/graph";
 import { toneClassForNode } from "~/server/generate/graph";
-import { geistFontsPromise } from "~/server/og/cards";
+import { getGeistFonts } from "~/server/og/cards";
 
 // A README picture of a repository's diagram: its groups and parts in the
 // diagram's own colours, drawn without a browser (Satori), so it stays cheap
@@ -441,7 +441,7 @@ export async function createDiagramPicture(data: {
   repo: string;
   graph: DiagramGraph;
 }) {
-  const fonts = await geistFontsPromise;
+  const fonts = await getGeistFonts();
   return new ImageResponse(<DiagramPicture {...data} />, {
     ...DIAGRAM_PICTURE_SIZE,
     fonts,

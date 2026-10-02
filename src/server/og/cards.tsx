@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ImageResponse } from "next/og";
+import { cloudflareContext } from "~/server/cloudflare-context";
 
 const socialImageSize = {
   width: 1200,
@@ -34,40 +35,54 @@ const colors = {
   sky: "#38bdf8",
 } as const;
 
-export const geistFontsPromise = Promise.all([
-  readFile(
-    path.join(
-      process.cwd(),
-      "node_modules/geist/dist/fonts/geist-sans/Geist-Regular.ttf",
-    ),
-  ),
-  readFile(
-    path.join(
-      process.cwd(),
-      "node_modules/geist/dist/fonts/geist-sans/Geist-Medium.ttf",
-    ),
-  ),
-  readFile(
-    path.join(
-      process.cwd(),
-      "node_modules/geist/dist/fonts/geist-sans/Geist-Bold.ttf",
-    ),
-  ),
-]).then(([regular, medium, bold]) => [
-  {
-    name: "Geist",
-    data: regular,
-    weight: 400 as const,
-    style: "normal" as const,
-  },
-  {
-    name: "Geist",
-    data: medium,
-    weight: 500 as const,
-    style: "normal" as const,
-  },
-  { name: "Geist", data: bold, weight: 700 as const, style: "normal" as const },
-]);
+const GEIST_FONTS = [
+  { file: "Geist-Regular.ttf", weight: 400 },
+  { file: "Geist-Medium.ttf", weight: 500 },
+  { file: "Geist-Bold.ttf", weight: 700 },
+] as const;
+
+/**
+ * One Geist font file. A Worker has no filesystem, so on Cloudflare the files
+ * are static assets (scripts/cf-build.sh copies them to /og-fonts).
+ */
+async function readGeistFont(file: string): Promise<Buffer> {
+  const assets = cloudflareContext()?.env.ASSETS;
+  if (assets) {
+    const response = await assets.fetch(
+      `https://assets.local/og-fonts/${file}`,
+    );
+    if (!response.ok) throw new Error(`Font ${file}: ${response.status}`);
+    return Buffer.from(await response.arrayBuffer());
+  }
+  return readFile(
+    path.join(process.cwd(), "node_modules/geist/dist/fonts/geist-sans", file),
+  );
+}
+
+type GeistFont = {
+  name: "Geist";
+  data: Buffer;
+  weight: (typeof GEIST_FONTS)[number]["weight"];
+  style: "normal";
+};
+let geistFonts: GeistFont[] | null = null;
+
+/**
+ * The fonts every picture is drawn with, read once per instance. Only the
+ * finished result is shared: on Workers a request cannot wait on a promise
+ * another request started.
+ */
+export async function getGeistFonts(): Promise<GeistFont[]> {
+  geistFonts ??= await Promise.all(
+    GEIST_FONTS.map(async ({ file, weight }) => ({
+      name: "Geist" as const,
+      data: await readGeistFont(file),
+      weight,
+      style: "normal" as const,
+    })),
+  );
+  return geistFonts;
+}
 
 function formatStarCount(value: number | null) {
   if (value === null) {
@@ -308,7 +323,7 @@ function RepoCard(data: RepoCardData) {
 }
 
 export async function createRepoSocialImage(data: RepoCardData) {
-  const fonts = await geistFontsPromise;
+  const fonts = await getGeistFonts();
 
   return new ImageResponse(<RepoCard {...data} />, {
     ...socialImageSize,
