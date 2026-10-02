@@ -182,8 +182,17 @@ const named = await names();
 // --site: leave out test and staging Workers (and their containers, Durable
 // Objects, buckets and logs), which are billed but are not the site's cost.
 const SITE_ONLY = flag("--site");
-const NOT_THE_SITE = /staging|perf|test|egress|xreq|__unknown__/;
+const NOT_THE_SITE = /staging|perf|test|egress|xreq/;
 const counted = (name) => !SITE_ONLY || !NOT_THE_SITE.test(named[name] ?? name);
+
+// Runs that are billed for their CPU only, not as requests: the Next.js
+// server behind the site Worker's service binding (`gitdiagram-server`,
+// one fee for the visitor's request to `gitdiagram`), and Tail Workers
+// (`gitdiagram-errors`). Analytics counts their runs like any other.
+// A Worker created in the last hour or so shows up as `__unknown__`: tonight
+// that is those two, so its CPU is counted and its runs are not.
+const billedPerRequest = (worker) =>
+  !/-(?:server|errors)$|^__unknown__$/.test(worker);
 
 /** Everything billed by use between two moments. */
 async function usage(from, to) {
@@ -244,7 +253,10 @@ async function usage(from, to) {
   );
   return {
     totals: {
-      workerRequests: sum(workers, (row) => row.sum.requests),
+      workerRequests: sum(
+        workers.filter((row) => billedPerRequest(row.dimensions.scriptName)),
+        (row) => row.sum.requests,
+      ),
       workerCpuMs: sum(workers, (row) => row.sum.cpuTimeUs) / 1000,
       doRequests: sum(doCalls, (row) => row.sum.requests),
       doDurationGbS: sum(doTime, (row) => row.sum.duration),
@@ -430,7 +442,10 @@ monthly.r2StorageGb = storedGb;
 const soFar = priced(toDate.totals);
 const projected = priced(monthly);
 const siteRequests = recent.detail.requestsByWorker.gitdiagram ?? 0;
-const siteCpuMs = recent.detail.cpuMsByWorker.gitdiagram ?? 0;
+const siteCpuMs =
+  (recent.detail.cpuMsByWorker.gitdiagram ?? 0) +
+  (recent.detail.cpuMsByWorker["gitdiagram-server"] ?? 0) +
+  (recent.detail.cpuMsByWorker.__unknown__ ?? 0);
 
 const ceiling = Number(option("--fail-above", "0"));
 if (ceiling > 0) {
@@ -504,7 +519,11 @@ if (ceiling > 0) {
         `    ${(named[name] ?? (name || "(deleted)")).padEnd(50)} ${number(value)}${unit}`,
       );
   };
-  detail("Requests by Worker (window):", recent.detail.requestsByWorker);
+  detail(
+    "Runs by Worker (window; -server and -errors are not billed per request):",
+    recent.detail.requestsByWorker,
+  );
+  detail("CPU by Worker (window):", recent.detail.cpuMsByWorker, " ms");
   detail("R2 class A by bucket (window):", recent.detail.r2ClassAByBucket);
   detail("R2 class B by bucket (window):", recent.detail.r2ClassBByBucket);
   detail("R2 storage by bucket (now):", buckets, " GB");

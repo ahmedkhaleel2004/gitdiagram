@@ -20,6 +20,9 @@ on:
       - ".github/workflows/cost-watch.yml"
       - ".github/workflows/sponsor-readme.yml"
       - "scripts/cf-usage.mjs"
+      # Deployed by hand, each from its own folder.
+      - "workers/errors/**"
+      - "workers/presence/**"
       - "scripts/bench.mjs"
   workflow_dispatch:
 
