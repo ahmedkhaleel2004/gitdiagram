@@ -4,6 +4,7 @@
 #   bun run cf:deploy            build, upload prerendered pages to R2, deploy
 #   bun run cf:deploy --secrets  also (re)load every secret from CF_ENV_FILE
 #   bun run cf:deploy --skip-build   deploy the .open-next/ already built
+#   CF_SKIP_CACHE_POPULATE=1         deploy without uploading prerendered pages
 #
 # Needs CLOUDFLARE_API_TOKEN (CI) or the token file / a wrangler login.
 set -euo pipefail
@@ -40,7 +41,14 @@ for build in "$history"/*/; do
 done
 
 commit="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
-bunx opennextjs-cloudflare deploy -- --var "GIT_COMMIT_SHA:$commit"
+if [[ -n "${CF_SKIP_CACHE_POPULATE:-}" ]]; then
+  # A build without the production secrets (CI) prerendered its pages with no
+  # data behind them. Leave them out of the cache: the Worker renders each
+  # page with real data on its first request instead.
+  OPEN_NEXT_DEPLOY=true bunx wrangler deploy --var "GIT_COMMIT_SHA:$commit"
+else
+  bunx opennextjs-cloudflare deploy -- --var "GIT_COMMIT_SHA:$commit"
+fi
 
 if [[ " $* " == *" --secrets "* ]]; then
   node scripts/cf-secrets.mjs | bunx wrangler secret bulk
