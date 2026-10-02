@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import { readRequiredEnv } from "~/server/storage/config";
 
+import { outliveRequest } from "~/server/shared-read";
+
 import { readGitHubConnectConfig } from "./config";
 import {
   refreshUserTokens,
@@ -155,15 +157,17 @@ function refreshOnce(refreshToken: string): Promise<GitHubUserTokens | null> {
 
   const config = readGitHubConnectConfig();
   const promise = config
-    ? refreshUserTokens(config, refreshToken).catch((error: unknown) => {
-        console.error(
-          JSON.stringify({
-            event: "github_connect.refresh_failed",
-            error: error instanceof Error ? error.message : "unknown",
-          }),
-        );
-        return null;
-      })
+    ? outliveRequest(
+        refreshUserTokens(config, refreshToken).catch((error: unknown) => {
+          console.error(
+            JSON.stringify({
+              event: "github_connect.refresh_failed",
+              error: error instanceof Error ? error.message : "unknown",
+            }),
+          );
+          return null;
+        }),
+      )
     : Promise.resolve(null);
   recentRefreshes.set(key, { promise, expiresAt: now + REFRESH_REUSE_MS });
   return promise;

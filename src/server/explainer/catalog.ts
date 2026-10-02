@@ -13,6 +13,8 @@ import {
   type VideoPage,
 } from "~/features/explainer/catalog-types";
 import { errorText, logEvent } from "~/server/log";
+import { sharedRead } from "~/server/shared-read";
+
 import { VIDEO_CATALOG_TAG } from "./cache";
 import {
   listStoredVideos,
@@ -137,21 +139,18 @@ let catalog: {
   index: PreparedBrowseIndex<VideoEntry>;
   expiresAt: number;
 } | null = null;
-let catalogRead: Promise<PreparedBrowseIndex<VideoEntry>> | null = null;
+const readCatalog = sharedRead(() =>
+  listVideoCards().then((cards) => {
+    const index = prepareCatalog(cards);
+    catalog = { index, expiresAt: Date.now() + CATALOG_TTL_MS };
+    return index;
+  }),
+);
 
 function cachedCatalog(): Promise<PreparedBrowseIndex<VideoEntry>> {
   if (catalog && catalog.expiresAt > Date.now())
     return Promise.resolve(catalog.index);
-  catalogRead ??= listVideoCards()
-    .then((cards) => {
-      const index = prepareCatalog(cards);
-      catalog = { index, expiresAt: Date.now() + CATALOG_TTL_MS };
-      return index;
-    })
-    .finally(() => {
-      catalogRead = null;
-    });
-  return catalogRead;
+  return readCatalog();
 }
 
 function toVideoPage(
@@ -189,5 +188,5 @@ export const getFirstVideoPage = unstable_cache(
 /** Forget this instance's list (tests). */
 export function resetVideoCatalogForTests(): void {
   catalog = null;
-  catalogRead = null;
+  readCatalog.forget();
 }

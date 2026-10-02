@@ -14,6 +14,7 @@ import type {
   BrowseQuery,
   RecentBrowseIndex,
 } from "~/features/browse/catalog";
+import { sharedRead } from "~/server/shared-read";
 import {
   readBrowseIndex,
   readRecentBrowseIndex,
@@ -36,43 +37,49 @@ let cachedBrowseIndex: {
   expiresAt: number;
   preparedIndex: PreparedBrowseIndex | null;
 } | null = null;
-let inFlightBrowseIndexRead: Promise<BrowseIndexEntry[] | null> | null = null;
 let cachedRecentBrowseIndex: {
   index: RecentBrowseIndex | null;
   expiresAt: number;
 } | null = null;
-let inFlightRecentBrowseIndexRead: Promise<RecentBrowseIndex | null> | null =
-  null;
 let browseIndexCacheGeneration = 0;
+
+// One read in flight per instance; a read started before the cache was
+// dropped (`forget`) finishes for its callers but is not kept.
+const sharedRecentBrowseIndexRead = sharedRead(() => {
+  const readGeneration = browseIndexCacheGeneration;
+  return readRecentBrowseIndexFromDataCache().then((index) => {
+    if (readGeneration === browseIndexCacheGeneration) {
+      cachedRecentBrowseIndex = {
+        index,
+        expiresAt: Date.now() + BROWSE_CACHE_REVALIDATE_SECONDS * 1000,
+      };
+    }
+    return index;
+  });
+});
+
+const sharedBrowseIndexRead = sharedRead(() => {
+  const readGeneration = browseIndexCacheGeneration;
+  return readBrowseIndex().then((entries) => {
+    if (readGeneration === browseIndexCacheGeneration) {
+      cachedBrowseIndex = {
+        entries,
+        expiresAt: Date.now() + BROWSE_CACHE_REVALIDATE_SECONDS * 1000,
+        preparedIndex: entries
+          ? prepareBrowseIndex(entries, "recent_desc")
+          : null,
+      };
+    }
+    return entries;
+  });
+});
 
 async function getCachedRecentBrowseIndex(): Promise<RecentBrowseIndex | null> {
   const now = Date.now();
   if (cachedRecentBrowseIndex && cachedRecentBrowseIndex.expiresAt > now) {
     return cachedRecentBrowseIndex.index;
   }
-  if (inFlightRecentBrowseIndexRead) {
-    return inFlightRecentBrowseIndexRead;
-  }
-
-  const readGeneration = browseIndexCacheGeneration;
-  const readPromise = readRecentBrowseIndexFromDataCache()
-    .then((index) => {
-      if (readGeneration === browseIndexCacheGeneration) {
-        cachedRecentBrowseIndex = {
-          index,
-          expiresAt: Date.now() + BROWSE_CACHE_REVALIDATE_SECONDS * 1000,
-        };
-      }
-      return index;
-    })
-    .finally(() => {
-      if (inFlightRecentBrowseIndexRead === readPromise) {
-        inFlightRecentBrowseIndexRead = null;
-      }
-    });
-
-  inFlightRecentBrowseIndexRead = readPromise;
-  return readPromise;
+  return sharedRecentBrowseIndexRead();
 }
 
 export async function getCachedBrowseIndex(): Promise<
@@ -84,32 +91,7 @@ export async function getCachedBrowseIndex(): Promise<
     return cachedBrowseIndex.entries;
   }
 
-  if (inFlightBrowseIndexRead) {
-    return inFlightBrowseIndexRead;
-  }
-
-  const readGeneration = browseIndexCacheGeneration;
-  const readPromise = readBrowseIndex()
-    .then((entries) => {
-      if (readGeneration === browseIndexCacheGeneration) {
-        cachedBrowseIndex = {
-          entries,
-          expiresAt: Date.now() + BROWSE_CACHE_REVALIDATE_SECONDS * 1000,
-          preparedIndex: entries
-            ? prepareBrowseIndex(entries, "recent_desc")
-            : null,
-        };
-      }
-      return entries;
-    })
-    .finally(() => {
-      if (inFlightBrowseIndexRead === readPromise) {
-        inFlightBrowseIndexRead = null;
-      }
-    });
-
-  inFlightBrowseIndexRead = readPromise;
-  return readPromise;
+  return sharedBrowseIndexRead();
 }
 
 export async function getCachedBrowsePage(
@@ -149,8 +131,8 @@ export async function getCachedBrowsePage(
 export function revalidateBrowseIndexCache() {
   browseIndexCacheGeneration += 1;
   cachedBrowseIndex = null;
-  inFlightBrowseIndexRead = null;
+  sharedBrowseIndexRead.forget();
   cachedRecentBrowseIndex = null;
-  inFlightRecentBrowseIndexRead = null;
+  sharedRecentBrowseIndexRead.forget();
   revalidateTag(BROWSE_INDEX_CACHE_TAG, "max");
 }

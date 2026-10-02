@@ -11,6 +11,7 @@ import { videoUsageToday } from "~/server/explainer/limits";
 import * as voice from "~/server/explainer/voice";
 import { readComplimentaryUsageToday } from "~/server/generate/complimentary-gate";
 import { getMcpUsage } from "~/server/mcp/usage";
+import { outliveRequest } from "~/server/shared-read";
 
 // The dashboard polls this every 5 s. The two balances come from outside
 // services (OpenRouter, Anthropic) that can be slow, so each gets a short
@@ -44,7 +45,10 @@ let voiceCache: { at: number; usd: Promise<number | null> } | null = null;
 /** The voice balance, read from OpenRouter at most every half minute. */
 function cachedVoiceCredit(now = Date.now()): Promise<number | null> {
   if (!voiceCache || now - voiceCache.at > VOICE_CACHE_MS)
-    voiceCache = { at: now, usd: voice.voiceCreditUsd().catch(() => null) };
+    voiceCache = {
+      at: now,
+      usd: outliveRequest(voice.voiceCreditUsd().catch(() => null)),
+    };
   return voiceCache.usd;
 }
 

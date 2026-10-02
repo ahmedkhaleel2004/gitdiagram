@@ -1,5 +1,7 @@
 import { createSign } from "node:crypto";
 
+import { sharedRead } from "~/server/shared-read";
+
 const GITHUB_API_VERSION = "2022-11-28";
 const GITHUB_APP_JWT_LIFETIME_SECONDS = 9 * 60;
 const GITHUB_APP_TOKEN_REFRESH_BUFFER_MS = 60_000;
@@ -14,7 +16,6 @@ let cachedInstallationToken: {
   token: string;
   expiresAtMs: number;
 } | null = null;
-let installationTokenPromise: Promise<string> | null = null;
 let nextPatPoolIndex = 0;
 
 function readTrimmedEnv(name: string): string | undefined {
@@ -149,6 +150,10 @@ async function requestGitHubAppInstallationToken() {
   return cachedInstallationToken.token;
 }
 
+const sharedInstallationTokenRequest = sharedRead(
+  requestGitHubAppInstallationToken,
+);
+
 async function getGitHubAppInstallationToken() {
   if (
     cachedInstallationToken &&
@@ -158,12 +163,7 @@ async function getGitHubAppInstallationToken() {
     return cachedInstallationToken.token;
   }
 
-  installationTokenPromise ??= requestGitHubAppInstallationToken().finally(
-    () => {
-      installationTokenPromise = null;
-    },
-  );
-  return installationTokenPromise;
+  return sharedInstallationTokenRequest();
 }
 
 export async function getGitHubApiHeaders(options?: {

@@ -7,6 +7,7 @@ import type {
   VideoAudience,
 } from "~/features/admin/types";
 import { errorText, logEvent } from "~/server/log";
+import { outliveRequest } from "~/server/shared-read";
 import { upstashCommand, upstashEval } from "~/server/storage/upstash";
 
 // Switches the operator flips from /admin while the site is running. They live
@@ -113,7 +114,7 @@ async function load(): Promise<LiveControls> {
 function cached(fresh: boolean): Promise<LiveControls> {
   const now = Date.now();
   if (!fresh && cache && now - cache.at < CACHE_MS) return cache.controls;
-  const controls = load();
+  const controls = outliveRequest(load());
   cache = { at: now, controls };
   // A failed read is not cached, so the next request tries Redis again.
   controls.catch((error: unknown) => {

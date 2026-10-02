@@ -8,6 +8,7 @@ interface AssetFetcher {
 
 interface CloudflareContext {
   env: { ASSETS?: AssetFetcher } & Record<string, unknown>;
+  ctx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
 export function cloudflareContext(): CloudflareContext | undefined {

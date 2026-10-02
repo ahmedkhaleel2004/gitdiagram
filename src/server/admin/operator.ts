@@ -4,6 +4,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import { readCookie } from "~/server/http/cookies";
 import { errorText, logEvent } from "~/server/log";
+import { sharedRead } from "~/server/shared-read";
 import { upstashCommand } from "~/server/storage/upstash";
 
 // The operator (the site's owner) signs in to /admin with the operator token,
@@ -49,7 +50,6 @@ export function isOperatorToken(presented: string): boolean {
 // The generation this instance read last (value null: Redis could not be
 // read and nothing was known before), and when.
 let generationCache: { at: number; value: number | null } | null = null;
-let generationRead: Promise<number | null> | null = null;
 
 async function readGeneration(): Promise<number | null> {
   const known = generationCache?.value ?? null;
@@ -71,14 +71,13 @@ async function readGeneration(): Promise<number | null> {
   }
 }
 
+const sharedGenerationRead = sharedRead(readGeneration);
+
 /** The current session generation, read at most every few seconds. */
 async function sessionGeneration(now = Date.now()): Promise<number | null> {
   if (generationCache && now - generationCache.at < GENERATION_CACHE_MS)
     return generationCache.value;
-  generationRead ??= readGeneration().finally(() => {
-    generationRead = null;
-  });
-  return generationRead;
+  return sharedGenerationRead();
 }
 
 function sign(token: string, payload: string): string {

@@ -6,6 +6,7 @@ import {
   claudePrice,
   HIGHEST_CLAUDE_PRICE,
 } from "~/server/anthropic-pricing";
+import { outliveRequest } from "~/server/shared-read";
 import { upstashCommand } from "~/server/storage/upstash";
 
 // Anthropic has no API for the prepaid credit balance, only for what was spent.
@@ -192,7 +193,7 @@ export async function readClaudeCredit(): Promise<ClaudeCredit | null> {
   const anchor = await readAnchor();
   const setAt = anchor?.at ?? null;
   if (!cache || now - cache.at > CACHE_MS || cache.setAt !== setAt) {
-    const credit = computeCredit(anchor, now);
+    const credit = outliveRequest(computeCredit(anchor, now));
     credit.catch(() => undefined); // Each caller still sees the failure.
     cache = { at: now, setAt, credit };
   }
