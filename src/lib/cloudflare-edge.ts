@@ -427,3 +427,18 @@ export function runsWhereTheVisitorIs(method: string, url: URL): boolean {
   }
   return false;
 }
+
+/**
+ * Whether a path has the shape of one of the site's pages: the home page, a
+ * single name without a dot (`/videos`, `/browse`), a repository
+ * (`/owner/repo`) or its watch page. The edge Worker sends such a request
+ * straight to the placed server when it has no copy of the page; pictures,
+ * text files and everything else go through the site's Worker.
+ */
+export function isPagePath(pathname: string): boolean {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 0) return true;
+  if (segments.length === 1) return !segments[0]!.includes(".");
+  if (segments.length === 2) return true;
+  return segments.length === 3 && segments[2] === "video";
+}

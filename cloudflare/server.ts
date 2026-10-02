@@ -2,18 +2,21 @@
 // (wrangler.server.jsonc). It has no address of its own. The site's Worker
 // (cloudflare/worker.ts) calls it over a service binding for every request
 // its routing layer and page cache could not answer: page renders, RSC
-// payloads, the API routes. Requests arrive already routed, with the
-// Vercel-style headers the entry Worker wrote.
+// payloads, the API routes. Those arrive already routed, with the
+// Vercel-style headers the Workers in front wrote. The edge Worker
+// (cloudflare/edge.ts) calls it directly for a page it has no copy of.
 //
 // It runs in one place, next to Redis and R2 (`placement` in
 // wrangler.server.jsonc), so it is also where a Cloudflare location without
 // a copy of a cached page gets one (CACHE_ENTRY_PATH, src/lib/colo-cache.ts).
 
 import { runWithCloudflareRequestContext } from "../.open-next/cloudflare/init.js";
+import { handler as routingLayer } from "../.open-next/middleware/handler.mjs";
 import { handler } from "../.open-next/server-functions/default/handler.mjs";
 import {
   CACHE_ENTRY_PATH,
   ENTRY_WANTED,
+  UNROUTED,
   entryResponse,
   type EntrySource,
 } from "../src/lib/colo-cache";
@@ -92,6 +95,14 @@ const server = {
           ?.entryForLocation?.(wanted, false)
           .catch(() => null);
         if (entry) return entryResponse(entry);
+      }
+      // Straight from the edge Worker (a page it had no copy of): OpenNext's
+      // routing layer has not seen the request yet, so it runs here, as it
+      // does in a one-Worker OpenNext deployment.
+      if (request.headers.has(UNROUTED)) {
+        const routed = await routingLayer(request, env, ctx);
+        if (routed instanceof Response) return routed;
+        return handler(routed, env, ctx, request.signal);
       }
       return handler(request, env, ctx, request.signal);
     });

@@ -6,6 +6,7 @@ import {
   edgeAnswerKey,
   edgeDecision,
   runsWhereTheVisitorIs,
+  isPagePath,
   isSharedCacheRequest,
   matchesEtag,
   sharedLifetime,
@@ -470,4 +471,23 @@ describe("the two server Workers", () => {
       ]),
     );
   });
+});
+
+describe("isPagePath", () => {
+  it.each([
+    "/",
+    "/videos",
+    "/browse/",
+    "/acme/demo",
+    "/vercel/next.js",
+    "/acme/demo/video",
+  ])("%s is a page", (path) => expect(isPagePath(path)).toBe(true));
+  it.each([
+    "/robots.txt",
+    "/llms.txt",
+    "/acme/demo/opengraph-image",
+    "/acme/demo/diagram.png",
+    "/acme/demo/tree/main",
+    "/sitemap/0.xml/x/y",
+  ])("%s is not", (path) => expect(isPagePath(path)).toBe(false));
 });

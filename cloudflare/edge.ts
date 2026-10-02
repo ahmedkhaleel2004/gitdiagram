@@ -13,6 +13,8 @@
 // without it (the routes can be pointed back at `gitdiagram` at any time):
 // - a cached page this location holds (`answerFromCopy`), after the
 //   firewall's rules for it, with next.config.js's headers and 304s;
+// - a page it does not hold, with one hop to the placed server
+//   (`gitdiagram-server`), which hands over its cache entry or renders;
 // - the two calls every page makes (`/api/sponsor`, `/api/analytics-context`).
 // A request the Next.js proxy has a say in (a crawler to count, a Markdown
 // twin, a mixed-case address) is the site's Worker's.
@@ -27,14 +29,23 @@ import siteHeaders from "../.open-next/site-headers.json";
 import {
   analyticsContext,
   edgeDecision,
+  isPagePath,
   isPlatformResponseHeader,
   matchesEtag,
   platformHeaders,
+  runsWhereTheVisitorIs,
   visitorCacheControl,
   type CloudflareGeo,
   type EdgeRateLimit,
 } from "../src/lib/cloudflare-edge";
-import { answerFromCopy } from "../src/lib/colo-cache";
+import {
+  ENTRY_ENCODING,
+  ENTRY_WANTED,
+  UNROUTED,
+  answerFromCopy,
+  answerFromEntry,
+  plainPageKey,
+} from "../src/lib/colo-cache";
 import { entersProxy } from "../src/lib/proxy-rules";
 import {
   SPONSOR_ANSWER_HEADERS,
@@ -189,12 +200,62 @@ async function ownAnswer(
   // The Next.js proxy's rules (and its count of crawler fetches) are applied
   // by the site's Worker.
   if (entersProxy(url.pathname, request.headers)) return null;
+  const key = plainPageKey(request, url);
+  if (!key) return null;
   const held = await answerFromCopy(request, url, env, ctx, build.buildId);
-  if (!held) return null;
   // The page is here; the firewall still has its say (a blocked crawler, the
   // per-address limit on repository pages), and counts the request once.
-  return (await firewall(request, env, url.pathname)) ?? held;
+  if (held) return (await firewall(request, env, url.pathname)) ?? held;
+  // Not here. A page goes straight to the placed server, which answers with
+  // its cache entry or renders: one hop, without the site's Worker (whose
+  // new isolates are slow) in between. What is not a page, or belongs to the
+  // unplaced copy of the server, is the site's Worker's.
+  if (
+    !env.SERVER ||
+    !isPagePath(url.pathname) ||
+    runsWhereTheVisitorIs(request.method, url)
+  )
+    return null;
+  const refused = await firewall(request, env, url.pathname);
+  if (refused) return refused;
+  const cf = (request as Request & { cf?: CloudflareGeo }).cf;
+  // The request as the app saw it on Vercel, marked as the edge Worker's.
+  const headers = platformHeaders(request.headers, cf, url);
+  headers.set(ENTRY_WANTED, key);
+  headers.set(UNROUTED, "1");
+  if (env.SERVER_VERSION_OVERRIDE)
+    headers.set(
+      "Cloudflare-Workers-Version-Overrides",
+      env.SERVER_VERSION_OVERRIDE,
+    );
+  let answer: Response;
+  const askedAt = Date.now();
+  try {
+    answer = await env.SERVER.fetch(
+      new Request(request, { headers, redirect: "manual", cf } as RequestInit),
+    );
+  } catch {
+    // The site's Worker asks again (and once more if the server's isolate
+    // died under the request).
+    return null;
+  }
+  if (answer.status === 503) {
+    void answer.body?.cancel();
+    return null;
+  }
+  // Rendered (or redirected, or refused) by the server.
+  if (!answer.headers.has(ENTRY_ENCODING)) {
+    serverTrips.set(request, `render;dur=${Date.now() - askedAt}`);
+    return answer;
+  }
+  // The server had the page: it is kept here and answered from.
+  const page = await answerFromEntry(key, answer, env, ctx, build.buildId);
+  serverTrips.set(request, `origin;dur=${Date.now() - askedAt}`);
+  return page;
 }
+
+// How long the trip to the server took, for the request's Server-Timing.
+const serverTrips = new WeakMap<Request, string>();
 
 let isolateHasServed = false;
 
@@ -217,11 +278,13 @@ const edge = {
     const answer = notModified(request, visitorResponse(own, url));
     // For anyone measuring from outside, as the site's Worker does for its
     // own answers: the time until the answer's headers were ready (I/O only;
-    // a Worker's clock stands still while it computes) and whether the
-    // request started a new isolate.
+    // a Worker's clock stands still while it computes), whether the request
+    // started a new isolate, and the trip to the server if there was one
+    // (`origin`: it had the page; `render`: it rendered it).
+    const trip = serverTrips.get(request);
     answer.headers.append(
       "server-timing",
-      `edge;dur=${Date.now() - startedAt};desc="${firstInIsolate ? "new isolate" : "warm"}"`,
+      `edge;dur=${Date.now() - startedAt};desc="${firstInIsolate ? "new isolate" : "warm"}"${trip ? `, ${trip}` : ""}`,
     );
     return answer;
   },

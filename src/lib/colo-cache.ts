@@ -86,6 +86,11 @@ export const CACHE_ENTRY_PATH = "/__gitdiagram/cache-entry";
  */
 export const ENTRY_WANTED = "x-gitdiagram-entry-wanted";
 /**
+ * On a request the edge Worker sends straight to the server Worker: it has
+ * not been through OpenNext's routing layer, so the server runs it.
+ */
+export const UNROUTED = "x-gitdiagram-unrouted";
+/**
  * An entry is 60 to 400 KB of JSON and crosses an ocean on its way to the
  * asking location, on a connection that is often new: every doubling of the
  * congestion window is another round trip. The server gzips it (to about a
@@ -831,21 +836,11 @@ const ONE_MONTH_SECONDS = 60 * 60 * 24 * 30;
 export const FULL_PATH_HEADER = "x-gitdiagram-full-path";
 
 /**
- * The page a GET asks for, from this location's copy, or null when the
- * routing layer must answer: no copy, not a plain HTML page request, a page
- * past its lifetime (answering it means queueing its re-render), an error
- * page, or anything unusual about the request.
+ * The cache key of the page a request asks for when it is the plain case (a
+ * GET for a page's HTML at a path with nothing to decode), else null:
+ * anything else is the routing layer's to answer.
  */
-export async function answerFromCopy(
-  request: Request,
-  url: URL,
-  env: ReturnType<RequestContext>["env"] & {
-    NEXT_INC_CACHE_R2_PREFIX?: string;
-  },
-  ctx: { waitUntil(promise: Promise<unknown>): void },
-  /** The build whose pages these are (the cache's addresses carry it). */
-  build: string,
-): Promise<Response | null> {
+export function plainPageKey(request: Request, url: URL): string | null {
   if (request.method !== "GET") return null;
   const headers = request.headers;
   if (
@@ -861,8 +856,7 @@ export async function answerFromCopy(
     cookie.includes("__next_preview_data")
   )
     return null;
-  // Plain paths only: nothing to decode, so the key is the path as OpenNext
-  // would compute it.
+  // The key is then the path as OpenNext would compute it.
   if (
     !/^\/[A-Za-z0-9_.~/-]*$/.test(url.pathname) ||
     url.pathname.includes("//")
@@ -870,8 +864,43 @@ export async function answerFromCopy(
     return null;
   const path = url.pathname.replace(/\/$/, "");
   const key = path === "" ? "/index" : path;
-  if (NEVER_PAGES.test(key)) return null;
+  return NEVER_PAGES.test(key) ? null : key;
+}
 
+type EdgeEnv = ReturnType<RequestContext>["env"] & {
+  NEXT_INC_CACHE_R2_PREFIX?: string;
+};
+
+/**
+ * How long a page may still be served, in seconds, or null when it is past
+ * its lifetime (the routing layer then answers and queues its re-render).
+ */
+function remainingLifetime(
+  revalidate: string | null,
+  lastModified: number,
+): number | null {
+  if (revalidate === "false") return ONE_YEAR_SECONDS;
+  const age = Math.round((Date.now() - lastModified) / 1000);
+  const remaining = Math.max(Number(revalidate) - age, 1);
+  return remaining > 1 ? remaining : null;
+}
+
+/**
+ * The page a GET asks for, from this location's copy, or null when the
+ * routing layer must answer: no copy, not a plain HTML page request, a page
+ * past its lifetime (answering it means queueing its re-render), an error
+ * page, or anything unusual about the request.
+ */
+export async function answerFromCopy(
+  request: Request,
+  url: URL,
+  env: EdgeEnv,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+  /** The build whose pages these are (the cache's addresses carry it). */
+  build: string,
+): Promise<Response | null> {
+  const key = plainPageKey(request, url);
+  if (!key) return null;
   const where = {
     prefix: env.NEXT_INC_CACHE_R2_PREFIX ?? "incremental-cache",
     build,
@@ -888,16 +917,10 @@ export async function answerFromCopy(
   const lastModified = Number(answer.get(READY_LAST_MODIFIED));
   const checkedAt = Number(answer.get(READY_CHECKED_AT));
   const revalidate = answer.get(READY_REVALIDATE);
-  let sMaxAge = ONE_YEAR_SECONDS;
-  if (revalidate !== "false") {
-    const age = Math.round((Date.now() - lastModified) / 1000);
-    sMaxAge = Math.max(Number(revalidate) - age, 1);
-    // Past its lifetime (or unreadable): the routing layer answers, and
-    // queues the re-render.
-    if (!(sMaxAge > 1)) {
-      void held.body?.cancel();
-      return null;
-    }
+  const sMaxAge = remainingLifetime(revalidate, lastModified);
+  if (sMaxAge === null) {
+    void held.body?.cancel();
+    return null;
   }
 
   if (!(Date.now() - checkedAt <= RECHECK_MS) && !rechecking.has(address)) {
@@ -939,4 +962,48 @@ export async function answerFromCopy(
   );
   // The body goes out as it comes from the cache: nothing is parsed.
   return new Response(held.body, { status: 200, headers: answer });
+}
+
+/**
+ * The page a GET asks for, from the entry the server Worker answered an
+ * ENTRY_WANTED request with: the entry becomes this location's copy (after
+ * the response) and, when it is a plain page still within its lifetime, the
+ * answer. Null when the routing layer must answer after all.
+ */
+export async function answerFromEntry(
+  key: string,
+  response: Response,
+  env: EdgeEnv,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+  build: string,
+): Promise<Response | null> {
+  let entry: CurrentEntry | null;
+  try {
+    entry = await readEntry(response);
+  } catch {
+    entry = null;
+  }
+  if (!entry) return null;
+  const prepared = prepare(entry.value, entry.lastModified);
+  ctx.waitUntil(
+    writeCopy(key, "cache", prepared, {
+      prefix: env.NEXT_INC_CACHE_R2_PREFIX ?? "incremental-cache",
+      build,
+    }).catch(() => undefined),
+  );
+  const { page } = prepared;
+  if (!page) return null;
+  const sMaxAge = remainingLifetime(page.revalidate, page.lastModified);
+  if (sMaxAge === null) return null;
+  return new Response(page.html, {
+    status: 200,
+    headers: {
+      "cache-control": `s-maxage=${sMaxAge}, stale-while-revalidate=${ONE_MONTH_SECONDS}`,
+      "x-opennext-cache": "HIT",
+      etag: `"${await md5(page.html)}"`,
+      "content-type": "text/html; charset=utf-8",
+      ...page.headers,
+      vary: VARY_HEADER,
+    },
+  });
 }

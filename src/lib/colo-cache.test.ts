@@ -11,8 +11,10 @@ import {
   CACHE_ENTRY_PATH,
   FULL_PATH_HEADER,
   answerFromCopy,
+  answerFromEntry,
   entryResponse,
   keepEntryFromServer,
+  plainPageKey,
   type RequestContext,
   setRequestContext,
   takeWantedEntry,
@@ -724,6 +726,63 @@ describe("answerFromCopy", () => {
     expect(await ask("/acme/demo")).toBeNull();
   });
 
+  it("answers from the entry the server hands over, and keeps it", async () => {
+    const response = await answerFromEntry(
+      "/acme/demo",
+      entryResponse({ value: appPage(), lastModified: Date.now() - 100_000 }),
+      env,
+      ctx,
+      "no-build-id",
+    );
+    expect(await response!.text()).toBe("<!DOCTYPE html><p>hello</p>");
+    expect(Object.fromEntries(response!.headers)).toEqual({
+      "cache-control": "s-maxage=200, stale-while-revalidate=2592000",
+      "content-type": "text/html; charset=utf-8",
+      etag: '"d3700297557844f664c6d740fa566557"',
+      vary: "RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch, Next-Url",
+      "x-nextjs-stale-time": "300",
+      "x-opennext-cache": "HIT",
+    });
+    await Promise.all(waiting);
+    // Both forms are here now: the next request is answered locally.
+    expect(held.size).toBe(2);
+    expect(await ask("/acme/demo")).not.toBeNull();
+  });
+
+  it.each([
+    ["a route answer", { type: "route", body: "x", html: undefined }],
+    ["a page past its lifetime", { revalidate: 50 }],
+  ])(
+    "keeps %s the server hands over but leaves the answer to the routing layer",
+    async (_name, overrides) => {
+      const response = await answerFromEntry(
+        "/acme/demo",
+        entryResponse({
+          value: appPage(overrides),
+          lastModified: Date.now() - 100_000,
+        }),
+        env,
+        ctx,
+        "no-build-id",
+      );
+      expect(response).toBeNull();
+      await Promise.all(waiting);
+      expect(held.size).toBeGreaterThan(0);
+    },
+  );
+
+  it("answers nothing from something that is not an entry", async () => {
+    expect(
+      await answerFromEntry(
+        "/acme/demo",
+        new Response("<html>"),
+        env,
+        ctx,
+        "no-build-id",
+      ),
+    ).toBeNull();
+  });
+
   it("leaves a page past its lifetime to the routing layer, which queues its re-render", async () => {
     await hold("/acme/demo", appPage());
     vi.advanceTimersByTime(298_000);
@@ -771,5 +830,26 @@ describe("answerFromCopy", () => {
     await get("/acme/demo");
     await Promise.all(waiting);
     expect(await get("/acme/demo")).toBeNull();
+  });
+});
+
+describe("plainPageKey", () => {
+  const key = (path: string, init: RequestInit = {}) => {
+    const url = new URL(path, "https://gitdiagram.com");
+    return plainPageKey(new Request(url, init), url);
+  };
+
+  it("is the page's cache key for a plain GET", () => {
+    expect(key("/")).toBe("/index");
+    expect(key("/videos/")).toBe("/videos");
+    expect(key("/vercel/next.js?utm_source=x")).toBe("/vercel/next.js");
+  });
+
+  it("is null for anything the routing layer must see", () => {
+    expect(key("/acme/demo", { method: "HEAD" })).toBeNull();
+    expect(key("/acme/demo", { headers: { rsc: "1" } })).toBeNull();
+    expect(key("/acme/de%6Do")).toBeNull();
+    expect(key("/api/video")).toBeNull();
+    expect(key("/sitemap/0.xml")).toBeNull();
   });
 });

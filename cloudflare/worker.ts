@@ -43,6 +43,7 @@ import {
 import {
   ENTRY_ENCODING,
   ENTRY_WANTED,
+  UNROUTED,
   cacheTimings,
   keepEntryFromServer,
   markTiming,
@@ -245,6 +246,8 @@ const handler = {
         // Only this Worker says which entry it wants, never a visitor.
         if (entryWanted) forwarded.headers.set(ENTRY_WANTED, entryWanted);
         else forwarded.headers.delete(ENTRY_WANTED);
+        // Routed here; a visitor's own copy of this header means nothing.
+        forwarded.headers.delete(UNROUTED);
         // Long or memory-heavy work stays out of the placed server.
         if (runsWhereTheVisitorIs(request.method, url))
           return (env.SERVER_LOCAL ?? env.SERVER).fetch(forwarded);
