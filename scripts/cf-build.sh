@@ -32,3 +32,6 @@ find .open-next -name '.env*' -type f -delete
 mkdir -p .open-next/assets/og-fonts
 cp node_modules/geist/dist/fonts/geist-sans/Geist-{Regular,Medium,Bold}.ttf \
   .open-next/assets/og-fonts/
+
+# next.config.js headers() for the files Workers Assets serves by itself.
+node scripts/cf-asset-headers.mjs

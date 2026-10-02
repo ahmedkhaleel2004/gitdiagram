@@ -5,6 +5,9 @@
   "main": "cloudflare/worker.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // esbuild's name-keeping wraps functions in a `__name` helper, which breaks
+  // server code that prints a function into an inline script (next-themes).
+  "keep_names": false,
   "workers_dev": true,
   // Logs are sampled: at ~16M requests a month, every request logged would
   // cost more than the Worker itself.
@@ -21,9 +24,36 @@
     // Where the cron handler and internal calls address the site.
     "SITE_ORIGIN": "https://gitdiagram.com",
   },
+  // Vercel's four firewall rate limits (requests per minute per address);
+  // cloudflare/worker.ts applies them before the app runs.
+  "ratelimits": [
+    {
+      "name": "LIMIT_GENERATE_STREAM",
+      "namespace_id": "4721",
+      "simple": { "limit": 20, "period": 60 },
+    },
+    {
+      "name": "LIMIT_GENERATE_COST",
+      "namespace_id": "4722",
+      "simple": { "limit": 60, "period": 60 },
+    },
+    {
+      "name": "LIMIT_GENERATE_CANCEL",
+      "namespace_id": "4723",
+      "simple": { "limit": 60, "period": 60 },
+    },
+    {
+      "name": "LIMIT_DIAGRAM_STATE",
+      "namespace_id": "4724",
+      "simple": { "limit": 120, "period": 60 },
+    },
+  ],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
+    // Serve files under their own names: the default would redirect
+    // /video-engine/stage.html to /video-engine/stage.
+    "html_handling": "none",
   },
   "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "gitdiagram" }],
   "r2_buckets": [

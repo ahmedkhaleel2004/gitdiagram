@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CRON_ROUTES,
+  edgeDecision,
   isContainerPath,
   platformHeaders,
+  visitorCacheControl,
 } from "./cloudflare-edge";
 
 describe("platformHeaders", () => {
@@ -91,5 +93,72 @@ describe("CRON_ROUTES", () => {
     const wrangler = readFileSync("wrangler.jsonc", "utf8");
     for (const schedule of Object.keys(CRON_ROUTES))
       expect(wrangler).toContain(JSON.stringify(schedule));
+  });
+});
+
+describe("edgeDecision", () => {
+  it("rate-limits the four generation routes", () => {
+    expect(edgeDecision("/api/generate/stream", null)).toEqual({
+      action: "limit",
+      limit: "LIMIT_GENERATE_STREAM",
+    });
+    expect(edgeDecision("/api/diagram-state", "x")).toEqual({
+      action: "limit",
+      limit: "LIMIT_DIAGRAM_STATE",
+    });
+    expect(edgeDecision("/api/video", null)).toBeNull();
+    const wrangler = readFileSync("wrangler.jsonc", "utf8");
+    for (const path of ["stream", "cost", "cancel"]) {
+      const decision = edgeDecision(`/api/generate/${path}`, null);
+      expect(decision?.action).toBe("limit");
+      if (decision?.action === "limit")
+        expect(wrangler).toContain(`"${decision.limit}"`);
+    }
+  });
+
+  it("keeps the blocked crawlers off repository pages only", () => {
+    const claude =
+      "Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)";
+    expect(edgeDecision("/vercel/next.js", claude)?.action).toBe("deny");
+    expect(edgeDecision("/vercel/next.js/", claude)?.action).toBe("deny");
+    expect(edgeDecision("/vercel/next.js/opengraph-image", claude)).toBeNull();
+    expect(edgeDecision("/", claude)).toBeNull();
+    expect(edgeDecision("/videos", claude)).toBeNull();
+    expect(edgeDecision("/vercel/next.js/video", claude)).toBeNull();
+    expect(edgeDecision("/sitemap/0.xml", claude)).toBeNull();
+    expect(edgeDecision("/api/video", claude)).toBeNull();
+    expect(edgeDecision("/vercel/next.js", "Claude-User/1.0")).toBeNull();
+
+    const amazon = "Mozilla/5.0 (compatible; Amazonbot/0.1)";
+    expect(edgeDecision("/a/b", amazon)?.action).toBe("deny");
+    expect(edgeDecision("/a/b/opengraph-image", amazon)?.action).toBe("deny");
+    expect(edgeDecision("/a/b/twitter-image", amazon)?.action).toBe("deny");
+    expect(edgeDecision("/a/b/diagram.png", amazon)).toBeNull();
+    expect(edgeDecision("/a/b", "Brightbot 1.0")?.action).toBe("deny");
+    expect(edgeDecision("/a/b", "Brightbot 1.0 extra")).toBeNull();
+    expect(edgeDecision("/a/b", "Mozilla/5.0 Safari")).toBeNull();
+  });
+});
+
+describe("visitorCacheControl", () => {
+  it("keeps the platform cache's directives away from visitors", () => {
+    expect(
+      visitorCacheControl("s-maxage=300, stale-while-revalidate=31535700"),
+    ).toBe("public, max-age=0, must-revalidate");
+    expect(
+      visitorCacheControl(
+        "public, max-age=0, s-maxage=60, stale-while-revalidate=600",
+      ),
+    ).toBe("public, max-age=0");
+  });
+
+  it("leaves everything else alone", () => {
+    for (const value of [
+      "public, max-age=300, stale-while-revalidate=86400",
+      "no-store",
+      "private, no-cache, no-store, max-age=0, must-revalidate",
+      "public, max-age=31536000, immutable",
+    ])
+      expect(visitorCacheControl(value)).toBe(value);
   });
 });

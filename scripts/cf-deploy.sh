@@ -3,6 +3,7 @@
 #
 #   bun run cf:deploy            build, upload prerendered pages to R2, deploy
 #   bun run cf:deploy --secrets  also (re)load every secret from CF_ENV_FILE
+#   bun run cf:deploy --skip-build   deploy the .open-next/ already built
 #
 # Needs CLOUDFLARE_API_TOKEN (CI) or the token file / a wrangler login.
 set -euo pipefail
@@ -15,7 +16,9 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" && -f "$token_file" ]]; then
   export CLOUDFLARE_API_TOKEN
 fi
 
-bash scripts/cf-build.sh
+if [[ " $* " != *" --skip-build "* ]]; then
+  bash scripts/cf-build.sh
+fi
 
 commit="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
 bunx opennextjs-cloudflare deploy -- --var "GIT_COMMIT_SHA:$commit"

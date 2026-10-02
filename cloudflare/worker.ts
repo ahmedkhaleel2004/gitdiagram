@@ -9,9 +9,13 @@
 import openNext from "../.open-next/worker.js";
 import {
   CRON_ROUTES,
+  edgeDecision,
   isContainerPath,
+  isPlatformResponseHeader,
   platformHeaders,
+  visitorCacheControl,
   type CloudflareGeo,
+  type EdgeRateLimit,
 } from "../src/lib/cloudflare-edge";
 
 export { DOQueueHandler, DOShardedTagCache } from "../.open-next/worker.js";
@@ -20,7 +24,13 @@ interface Fetcher {
   fetch(request: Request): Promise<Response>;
 }
 
-interface Env {
+interface RateLimit {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
+type RateLimits = { [Name in EdgeRateLimit]?: RateLimit };
+
+interface Env extends RateLimits {
   WORKER_SELF_REFERENCE: Fetcher;
   /** The render Container (ffmpeg and Chromium), once it is bound. */
   RENDER?: {
@@ -35,22 +45,75 @@ interface Context {
   waitUntil(promise: Promise<unknown>): void;
 }
 
+// Node's fetch (what the app runs on at Vercel) names itself; a Worker's sends
+// no User-Agent at all, and GitHub's API refuses such requests with a 403.
+const platformFetch = globalThis.fetch;
+globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  const headers = new Headers(
+    init?.headers ?? (input instanceof Request ? input.headers : undefined),
+  );
+  if (headers.has("user-agent")) return platformFetch(input, init);
+  headers.set("user-agent", "node");
+  return platformFetch(input, { ...init, headers });
+}) as typeof fetch;
+
 const handler = openNext as {
   fetch(request: Request, env: Env, ctx: Context): Promise<Response>;
 };
 
+/** The app's response as Vercel's CDN would have passed it on. */
+function visitorResponse(response: Response): Response {
+  const cacheControl = response.headers.get("cache-control");
+  const visitorValue = cacheControl && visitorCacheControl(cacheControl);
+  const platformOnly = [...response.headers.keys()].filter(
+    isPlatformResponseHeader,
+  );
+  if (visitorValue === cacheControl && !platformOnly.length) return response;
+  const headers = new Headers(response.headers);
+  if (visitorValue) headers.set("cache-control", visitorValue);
+  for (const name of platformOnly) headers.delete(name);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 const worker = {
   async fetch(request: Request, env: Env, ctx: Context): Promise<Response> {
     const cf = (request as Request & { cf?: CloudflareGeo }).cf;
+    const { pathname } = new URL(request.url);
+
+    // The firewall rules Vercel ran in front of the app.
+    const decision = edgeDecision(pathname, request.headers.get("user-agent"));
+    if (decision?.action === "deny")
+      return new Response("Forbidden", {
+        status: 403,
+        headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
+      });
+    if (decision?.action === "limit") {
+      const key = request.headers.get("cf-connecting-ip") ?? "unknown";
+      // A limiter that cannot answer never blocks a visitor.
+      const allowed = await env[decision.limit]
+        ?.limit({ key })
+        .then((outcome) => outcome.success)
+        .catch(() => true);
+      if (allowed === false)
+        return new Response("Too Many Requests", {
+          status: 429,
+          headers: { "Cache-Control": "no-store", "Retry-After": "60" },
+        });
+    }
+
     const forwarded = new Request(request, {
       headers: platformHeaders(request.headers, cf),
     });
 
-    if (env.RENDER && isContainerPath(new URL(request.url).pathname)) {
+    if (env.RENDER && isContainerPath(pathname)) {
       return env.RENDER.get(env.RENDER.idFromName("render")).fetch(forwarded);
     }
 
-    return handler.fetch(forwarded, env, ctx);
+    return visitorResponse(await handler.fetch(forwarded, env, ctx));
   },
 
   // Cloudflare cron triggers stand in for Vercel's crons: the same routes,

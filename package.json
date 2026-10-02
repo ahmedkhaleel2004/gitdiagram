@@ -108,7 +108,8 @@
     "entry": [
       "src/mcp-app/diagram-view.ts",
       "open-next.config.ts",
-      "scripts/cf-secrets.mjs"
+      "scripts/cf-secrets.mjs",
+      "scripts/cf-asset-headers.mjs"
     ],
     "ignore": [
       "experiments/**",

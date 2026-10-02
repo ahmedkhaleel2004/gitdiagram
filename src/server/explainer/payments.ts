@@ -3,6 +3,7 @@ import "server-only";
 import type Stripe from "stripe";
 import type * as StripeSdk from "stripe";
 import { readAdmissionControls } from "~/server/admin/controls";
+import { cloudflareContext } from "~/server/cloudflare-context";
 import { readIntEnv } from "~/server/env";
 import { canGenerateVideos } from "~/server/explainer/config";
 import { isNarrationAvailable } from "~/server/explainer/narration";
@@ -66,7 +67,15 @@ async function stripe(): Promise<Stripe> {
   if (!key) throw new Error("STRIPE_SECRET_KEY is not set.");
   stripeModule ??= import("stripe");
   const { default: StripeClient } = await stripeModule;
-  client = new StripeClient(key, { maxNetworkRetries: 2, timeout: 10_000 });
+  client = new StripeClient(key, {
+    maxNetworkRetries: 2,
+    timeout: 10_000,
+    // Stripe's default Node client (node:https) never answers on Cloudflare
+    // Workers; its fetch client does.
+    ...(cloudflareContext()
+      ? { httpClient: StripeClient.createFetchHttpClient() }
+      : {}),
+  });
   return client;
 }
 
