@@ -22,6 +22,18 @@ export function internalOrigin(request: Request): string {
 }
 
 /**
+ * Where segment jobs are posted. Normally the server itself. When render
+ * instances sit behind a router that spreads segments over several of them
+ * (Cloudflare Containers behind the site's Worker), VIDEO_SEGMENT_ORIGIN
+ * names that router, while the stage and effect sounds still load from this
+ * instance.
+ */
+export function segmentOrigin(request: Request): string {
+  const configured = process.env.VIDEO_SEGMENT_ORIGIN?.trim();
+  return configured ? new URL(configured).origin : internalOrigin(request);
+}
+
+/**
  * The running deployment, so a render that spans a deploy keeps every call on
  * the release that started it (Vercel Skew Protection routes on it). Null off
  * Vercel, where there is only one release.

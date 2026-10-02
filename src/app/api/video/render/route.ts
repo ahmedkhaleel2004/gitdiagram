@@ -13,6 +13,7 @@ import {
   parseSameOriginJsonRequest,
 } from "~/server/http/same-origin-json";
 import { emitLiveEvent } from "~/server/admin/live-events";
+import { beginWork } from "~/server/drain";
 import { refreshVideoPages } from "~/server/explainer/cache";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import {
@@ -23,7 +24,10 @@ import {
   type Reservation,
 } from "~/server/explainer/limits";
 import { untilAborted } from "~/server/explainer/ffmpeg";
-import { internalOrigin } from "~/server/explainer/render-origin";
+import {
+  internalOrigin,
+  segmentOrigin,
+} from "~/server/explainer/render-origin";
 import {
   isStaleRender,
   remakePosterRemotely,
@@ -97,10 +101,7 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
     if (!(await isTrustedVideoCaller(request)))
       return jsonErrorResponse("Forbidden.", 403);
     // Rendered on a render instance, so this route never ships Chromium.
-    const stored = await remakePosterRemotely(
-      artifact,
-      internalOrigin(request),
-    );
+    const stored = await remakePosterRemotely(artifact, segmentOrigin(request));
     // The new poster has a new URL; point the pages that show it there.
     if (stored) refreshVideoPages(username, repo);
     return events([
@@ -202,6 +203,7 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
         artifact,
         format,
         origin,
+        segmentOrigin: segmentOrigin(request),
         signal: deadline,
         onStarted: () => {
           computeStarted = true;
@@ -269,8 +271,10 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
       closed = true;
     },
   });
-  // A render finishes and is stored even if the viewer leaves.
-  after(() => job);
+  // A render finishes and is stored even if the viewer leaves, and before a
+  // container that is told to stop exits (drain.ts).
+  const endWork = beginWork();
+  after(() => job.finally(endWork));
 
   return new Response(stream, {
     headers: {

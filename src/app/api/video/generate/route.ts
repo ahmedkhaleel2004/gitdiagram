@@ -14,6 +14,7 @@ import {
 } from "~/server/http/same-origin-json";
 import { readAdmissionControls } from "~/server/admin/controls";
 import { emitLiveEvent, requestOrigin } from "~/server/admin/live-events";
+import { beginWork } from "~/server/drain";
 import {
   audienceBlock,
   audienceMessage,
@@ -49,6 +50,7 @@ import {
 } from "~/server/explainer/payments";
 import { choosePlanner } from "~/server/explainer/planner";
 import { VideoInputError } from "~/server/explainer/repository";
+import { segmentOrigin } from "~/server/explainer/render-origin";
 import { remakePosterRemotely } from "~/server/explainer/segments";
 import {
   publicVideoArtifact,
@@ -321,7 +323,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     return turnAway(jsonErrorResponse(UNAVAILABLE_MESSAGE + note, 503));
   }
 
-  const siteOrigin = new URL(request.url).origin;
+  const posterOrigin = segmentOrigin(request);
   const origin = requestOrigin(request);
   const encoder = new TextEncoder();
   const startedAt = Date.now();
@@ -478,7 +480,11 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   // Once the run has settled (and released its lock), point the pages that
   // name the video at the new one, then make its link-preview poster on a
   // render instance, within what is left of this function's time.
-  after(async () => {
+  // A container that is told to stop finishes the run and its poster first
+  // (drain.ts).
+  const endWork = beginWork();
+  after(() => settle().finally(endWork));
+  async function settle() {
     await job;
     const artifact = stored;
     if (!artifact) return;
@@ -488,10 +494,10 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       logEvent("warn", "video.poster.skipped", { repository, leftMs: left });
       return;
     }
-    if (await remakePosterRemotely(artifact, siteOrigin, { timeoutMs: left }))
+    if (await remakePosterRemotely(artifact, posterOrigin, { timeoutMs: left }))
       refreshVideoPages(username, repo);
     else logEvent("error", "video.poster.remote_failed", { repository });
-  });
+  }
 
   return new Response(stream, {
     headers: {

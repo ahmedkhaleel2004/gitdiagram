@@ -17,3 +17,7 @@ docs
 *.md
 **/*.test.ts
 **/*.test.tsx
+.open-next
+.open-next-history
+workers
+cloudflare

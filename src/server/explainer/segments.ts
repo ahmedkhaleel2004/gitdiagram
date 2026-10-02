@@ -346,12 +346,15 @@ export async function renderMp4InSegments(params: {
   artifact: VideoArtifact;
   format: RenderFormat;
   origin: string;
+  /** Where segment jobs are posted, when that is not `origin` (see segmentOrigin). */
+  segmentOrigin?: string;
   signal?: AbortSignal;
   onProgress?: (progress: RenderProgress) => void;
   /** The first segment request is about to go out: compute is being spent. */
   onStarted?: () => void;
 }): Promise<Buffer> {
   const { artifact, format, origin } = params;
+  const segmentOrigin = params.segmentOrigin ?? origin;
   const started = Date.now();
   const deadline = started + RENDER_DEADLINE_MS;
   // Valid for every attempt the deadline allows (none outlasts it).
@@ -427,7 +430,7 @@ export async function renderMp4InSegments(params: {
             params.onStarted?.();
           }
           const mp4 = await withSegmentRetries(
-            (attempt) => renderRemotely(origin, job, onEvent, attempt),
+            (attempt) => renderRemotely(segmentOrigin, job, onEvent, attempt),
             {
               deadline,
               signal,

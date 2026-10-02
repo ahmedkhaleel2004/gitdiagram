@@ -6,6 +6,7 @@ import {
   deploymentHeaders,
   internalOrigin,
   pinToDeployment,
+  segmentOrigin,
 } from "./render-origin";
 
 const originalEnv = { ...process.env };
@@ -46,6 +47,19 @@ describe("render self-calls", () => {
     expect(internalOrigin(request("http://0.0.0.0:8080/api/x"))).toBe(
       "http://render.internal:9000",
     );
+  });
+
+  it("post segments to the server itself unless a router is named", () => {
+    Object.assign(process.env, { NODE_ENV: "production", PORT: "3000" });
+    delete process.env.VERCEL;
+    delete process.env.VIDEO_INTERNAL_ORIGIN;
+    delete process.env.VIDEO_SEGMENT_ORIGIN;
+    const incoming = request("http://0.0.0.0:3000/api/video/render");
+    expect(segmentOrigin(incoming)).toBe("http://127.0.0.1:3000");
+    process.env.VIDEO_SEGMENT_ORIGIN = "https://gitdiagram.com/";
+    expect(segmentOrigin(incoming)).toBe("https://gitdiagram.com");
+    // The stage still loads from this instance.
+    expect(internalOrigin(incoming)).toBe("http://127.0.0.1:3000");
   });
 
   it("use the request's origin in development", () => {

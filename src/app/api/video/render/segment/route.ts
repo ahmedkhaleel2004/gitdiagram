@@ -1,3 +1,4 @@
+import { beginWork } from "~/server/drain";
 import { readIntEnv } from "~/server/env";
 import { jsonErrorResponse } from "~/server/http/same-origin-json";
 import { errorText, logEvent } from "~/server/log";
@@ -73,11 +74,14 @@ export async function POST(request: Request): Promise<Response> {
   const job = parsed.data;
   if (running >= renderLimit()) return busyResponse();
   running++;
+  // A container that is told to stop finishes this first (drain.ts).
+  const endWork = beginWork();
   let released = false;
   const release = () => {
     if (!released) {
       released = true;
       running--;
+      endWork();
     }
   };
   try {

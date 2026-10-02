@@ -80,6 +80,7 @@
     "uuid": "^11.1.1"
   },
   "devDependencies": {
+    "@cloudflare/containers": "0.3.7",
     "@modelcontextprotocol/client": "2.2.0",
     "@opennextjs/cloudflare": "1.20.7",
     "@tailwindcss/postcss": "4.3.3",
@@ -119,6 +120,7 @@
       "cloudflare/**"
     ],
     "ignoreDependencies": [
+      "@cloudflare/containers",
       "typescript-7",
       "wrangler"
     ],

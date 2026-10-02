@@ -61,9 +61,13 @@ export interface LiveEvent {
   [detail: string]: unknown;
 }
 
+// Looked up by name so the build does not compile the value in: the render
+// containers are built without it and get it from their environment.
+const PRESENCE_URL = "NEXT_PUBLIC_PRESENCE_URL";
+
 /** The worker's WebSocket origin, e.g. wss://gitdiagram-presence.example.workers.dev. */
 export function presenceSocketUrl(): string | null {
-  const url = process.env.NEXT_PUBLIC_PRESENCE_URL?.trim().replace(/\/$/, "");
+  const url = process.env[PRESENCE_URL]?.trim().replace(/\/$/, "");
   return url && /^wss?:\/\//.test(url) ? url : null;
 }
 

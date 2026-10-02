@@ -44,17 +44,25 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # VIDEO_INTERNAL_ORIGIN overrides it).
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
+# On SIGTERM (a deploy, or the platform putting an idle instance to sleep)
+# the server finishes renders and videos in flight before it exits, instead
+# of Next's default of refusing new connections at once (src/server/drain.ts).
+ENV NEXT_MANUAL_SIG_HANDLE=1
 
 # @sparticuz/chromium only runs on Vercel and AWS Lambda, so off Vercel the
 # renders launch Debian's Chromium. A container has no user namespaces for
 # Chrome's sandbox and a small /dev/shm, as on Vercel, where the same two
-# flags are set.
+# flags are set. The films bring their own fonts; the system ones only cover
+# what those lack: emoji and Chinese, Japanese and Korean text, which
+# otherwise render as empty boxes. tini is the init process (see ENTRYPOINT).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
     chromium \
     fonts-liberation \
+    fonts-noto-cjk \
     fonts-noto-color-emoji \
+    tini \
   && rm -rf /var/lib/apt/lists/*
 ENV VIDEO_RENDER_CHROME_PATH=/usr/bin/chromium
 ENV VIDEO_RENDER_CHROME_ARGS="--no-sandbox --disable-dev-shm-usage"
@@ -72,4 +80,8 @@ USER nextjs
 
 EXPOSE 3000
 
+# Every render leaves Chromium helper processes behind for process 1 to reap.
+# Node does not, so they piled up as zombies until the container restarted;
+# tini reaps them and passes signals on to the server.
+ENTRYPOINT ["tini", "--"]
 CMD ["node", "server.js"]

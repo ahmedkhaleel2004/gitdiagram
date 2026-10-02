@@ -36,7 +36,39 @@
     "INDEXNOW_ENABLED": "1",
     // Where the cron handler and internal calls address the site.
     "SITE_ORIGIN": "https://gitdiagram.com",
+    // The render pool (workers/render): instances a film's segments spread
+    // over, Chromium renders per instance, and how long an idle instance
+    // stays awake (and billed) after its last request.
+    "RENDER_POOL_SIZE": "5",
+    "RENDER_SEGMENT_CONCURRENCY": "2",
+    "RENDER_SLEEP_AFTER": "30s",
   },
+  // MP4s, posters and video generation need headless Chromium and ffmpeg,
+  // which a Worker cannot run: those three routes are handed to containers
+  // that run this same site as a Node server (the repo's Dockerfile). Every
+  // deploy builds the image, so Docker must be running.
+  "containers": [
+    {
+      // The render pool. Two Chromiums and two encoders per instance, as on
+      // Vercel (2 vCPU, 4 GB there); 6 GiB is the least Cloudflare allows
+      // with 2 vCPU. Memory and disk bill while an instance is awake, so
+      // five small instances that sleep after 30 s cost less than one big
+      // one, and render a film about twice as fast.
+      "class_name": "RenderContainer",
+      "image": "./Dockerfile",
+      "instance_type": { "vcpu": 2, "memory_mib": 6144, "disk_mb": 6000 },
+      // The pool plus one, so a deploy can start a replacement.
+      "max_instances": 6,
+    },
+    {
+      // Video generation: minutes of waiting on model calls, a second of
+      // ffmpeg. One small instance serves every run.
+      "class_name": "GenerateContainer",
+      "image": "./Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 2,
+    },
+  ],
   // Vercel's four firewall rate limits (requests per minute per address);
   // cloudflare/worker.ts applies them before the app runs.
   "ratelimits": [
@@ -82,12 +114,18 @@
         "name": "NEXT_TAG_CACHE_DO_SHARDED",
         "class_name": "DOShardedTagCache",
       },
+      { "name": "RENDER", "class_name": "RenderContainer" },
+      { "name": "GENERATE", "class_name": "GenerateContainer" },
     ],
   },
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": ["DOQueueHandler", "DOShardedTagCache"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["RenderContainer", "GenerateContainer"],
     },
   ],
 }

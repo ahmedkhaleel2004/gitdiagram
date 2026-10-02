@@ -20,7 +20,17 @@ import {
   type EdgeRateLimit,
 } from "../src/lib/cloudflare-edge";
 
+import {
+  forwardToRender,
+  type RenderEnv,
+} from "../workers/render/src/container";
+
 export { DOQueueHandler, DOShardedTagCache } from "../.open-next/worker.js";
+// The render containers' Durable Object classes (wrangler.jsonc binds them).
+export {
+  GenerateContainer,
+  RenderContainer,
+} from "../workers/render/src/container";
 
 interface Fetcher {
   fetch(request: Request): Promise<Response>;
@@ -32,13 +42,9 @@ interface RateLimit {
 
 type RateLimits = { [Name in EdgeRateLimit]?: RateLimit };
 
-interface Env extends RateLimits {
+// RenderEnv: the render containers' bindings (RENDER, GENERATE) and settings.
+interface Env extends RateLimits, RenderEnv {
   WORKER_SELF_REFERENCE: Fetcher;
-  /** The render Container (ffmpeg and Chromium), once it is bound. */
-  RENDER?: {
-    idFromName(name: string): unknown;
-    get(id: unknown): Fetcher;
-  };
   CRON_SECRET?: string;
   SITE_ORIGIN?: string;
 }
@@ -157,12 +163,11 @@ const worker = {
     const url = new URL(request.url);
     // The render Container streams its own answers; everything else gets the
     // headers a visitor would have seen on Vercel.
-    if (env.RENDER && isContainerPath(url.pathname)) {
+    if (isContainerPath(url.pathname)) {
       const limited = await firewall(request, env, url.pathname);
       if (limited) return limited;
-      return env.RENDER.get(env.RENDER.idFromName("render")).fetch(
-        asVercelRequest(request),
-      );
+      // Segments spread over the render pool; see workers/render.
+      return forwardToRender(asVercelRequest(request), env);
     }
     return visitorResponse(await respond(request, env, ctx, url), url.pathname);
   },

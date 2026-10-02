@@ -90,6 +90,11 @@ async function launchBrowser(dir: string): Promise<Browser> {
     executablePath,
     headless: "shell",
     userDataDir,
+    // Puppeteer would close Chromium on the server's stop signal; a container
+    // finishes its renders first (drain.ts), and every render closes its own.
+    handleSIGTERM: false,
+    handleSIGINT: false,
+    handleSIGHUP: false,
     ...(args?.length ? { args } : {}),
   });
 }
