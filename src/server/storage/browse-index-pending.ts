@@ -128,3 +128,14 @@ export async function acknowledgePendingBrowseIndexEntries(
     args: pending.flatMap(({ field, serialized }) => [field, serialized]),
   });
 }
+
+/** Forgets a repository's queued entry, so a drain cannot put it back. */
+export async function dropPendingBrowseIndexEntry(
+  entry: Pick<BrowseIndexEntry, "username" | "repo">,
+): Promise<void> {
+  await upstashCommand<number>([
+    "HDEL",
+    PENDING_BROWSE_INDEX_KEY,
+    toRepoKey(entry),
+  ]);
+}

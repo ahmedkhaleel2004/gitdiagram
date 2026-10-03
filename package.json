@@ -17,6 +17,7 @@
     "start": "next start",
     "quota:today": "bun scripts/complimentary-quota-today.mjs",
     "browse:migrate-index": "bun scripts/migrate-browse-index.ts",
+    "diagram:delete": "bun scripts/delete-diagram.ts",
     "ai-visibility:run": "bun --conditions=react-server scripts/ai-visibility-run.ts",
     "indexnow:submit-sitemap": "bun scripts/indexnow-submit-sitemap.ts",
     "test": "vitest run",

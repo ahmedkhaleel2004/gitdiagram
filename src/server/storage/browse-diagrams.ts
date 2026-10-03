@@ -19,6 +19,7 @@ import {
 import type { ObjectReadResult, ObjectWriteCondition } from "./r2";
 import {
   acknowledgePendingBrowseIndexEntries,
+  dropPendingBrowseIndexEntry,
   enqueuePendingBrowseIndexEntry,
   readPendingBrowseIndexEntries,
 } from "./browse-index-pending";
@@ -473,6 +474,36 @@ export async function upsertBrowseIndexEntry(
   }
 
   throw lastError;
+}
+
+/**
+ * Takes a repository out of the browse index (an owner asked for its diagram
+ * to be deleted). Returns whether it was listed.
+ */
+export async function removeBrowseIndexEntry(
+  entry: Pick<BrowseIndexEntry, "username" | "repo">,
+): Promise<boolean> {
+  const repoKey = toRepoKey(entry);
+  return withDistributedLock({
+    key: PUBLIC_BROWSE_INDEX_LOCK_KEY,
+    ttlMs: BROWSE_INDEX_LOCK_TTL_MS,
+    waitMs: BROWSE_INDEX_LOCK_WAIT_MS,
+    callback: async () => {
+      await dropPendingBrowseIndexEntry(entry);
+      const stored = await readStoredBrowseIndex();
+      if (!stored) return false;
+      const entries = stored.entries.filter(
+        (candidate) => toRepoKey(candidate) !== repoKey,
+      );
+      if (entries.length === stored.entries.length) return false;
+      await writeBrowseIndex({
+        entries,
+        retainedSnapshotKeys: stored.retainedSnapshotKeys,
+        expectedManifestEtag: stored.manifestEtag,
+      });
+      return true;
+    },
+  });
 }
 
 export async function drainPendingBrowseIndex(): Promise<number> {
