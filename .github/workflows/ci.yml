@@ -60,7 +60,11 @@ jobs:
       - name: Dead code and dependency boundaries
         run: bun run knip
       - name: Dependency audit
-        run: bun audit
+        # GHSA-vfj7-8cjw-p6xm (braces <=3.0.3, stack exhaustion on deeply nested
+        # patterns) has no patched release yet, so an override cannot fix it.
+        # braces only arrives through eslint-config-next's fast-glob (lint
+        # tooling, our own globs). Remove this ignore once braces ships a fix.
+        run: bun audit --ignore=GHSA-vfj7-8cjw-p6xm
       - name: Tests
         run: bun run test
         env:
