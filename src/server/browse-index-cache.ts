@@ -1,5 +1,3 @@
-import { revalidateTag, unstable_cache } from "next/cache";
-
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
 import {
   BROWSE_PAGE_SIZE,
@@ -22,15 +20,6 @@ import {
 } from "~/server/storage/browse-diagrams";
 
 const BROWSE_CACHE_REVALIDATE_SECONDS = 5 * 60;
-const BROWSE_INDEX_CACHE_TAG = "browse-index";
-const readRecentBrowseIndexFromDataCache = unstable_cache(
-  readRecentBrowseIndex,
-  ["browse-recent-index-v1"],
-  {
-    revalidate: BROWSE_CACHE_REVALIDATE_SECONDS,
-    tags: [BROWSE_INDEX_CACHE_TAG],
-  },
-);
 
 let cachedBrowseIndex: {
   entries: BrowseIndexEntry[] | null;
@@ -45,9 +34,19 @@ let browseIndexCacheGeneration = 0;
 
 // One read in flight per instance; a read started before the cache was
 // dropped (`forget`) finishes for its callers but is not kept.
+//
+// The recent index (a 51 KB manifest) is read straight from storage and kept
+// in this instance's memory, not in Next's data cache. Behind `unstable_cache`
+// the browse page's entry stopped being rewritten on Workers (2026-10-05:
+// the Newest list sat 100 minutes behind while the index in storage was
+// current). `unstable_cache` answers a stale entry at once and refreshes it
+// in the background; the page asks from inside a Suspense boundary, after
+// Next has collected the refreshes it keeps a request alive for, so the
+// likely cause is that refresh being dropped with the request. A read the
+// caller awaits cannot be lost that way.
 const sharedRecentBrowseIndexRead = sharedRead(() => {
   const readGeneration = browseIndexCacheGeneration;
-  return readRecentBrowseIndexFromDataCache().then((index) => {
+  return readRecentBrowseIndex().then((index) => {
     if (readGeneration === browseIndexCacheGeneration) {
       cachedRecentBrowseIndex = {
         index,
@@ -134,5 +133,4 @@ export function revalidateBrowseIndexCache() {
   sharedBrowseIndexRead.forget();
   cachedRecentBrowseIndex = null;
   sharedRecentBrowseIndexRead.forget();
-  revalidateTag(BROWSE_INDEX_CACHE_TAG, "max");
 }

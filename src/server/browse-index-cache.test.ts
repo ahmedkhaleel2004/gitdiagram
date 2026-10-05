@@ -5,16 +5,13 @@ import type { BrowseIndexEntry } from "~/features/browse/catalog";
 const mocks = vi.hoisted(() => ({
   readBrowseIndex: vi.fn(),
   readRecentBrowseIndex: vi.fn(),
-  revalidateTag: vi.fn(),
 }));
 
-vi.mock("next/cache", () => ({
-  revalidateTag: mocks.revalidateTag,
-  unstable_cache:
-    (callback: (...args: never[]) => unknown) =>
-    (...args: never[]) =>
-      callback(...args),
-}));
+// A stale-while-revalidate data cache here once froze the Newest list: the
+// module must not put one back between the page and storage.
+vi.mock("next/cache", () => {
+  throw new Error("browse-index-cache must not use Next's data cache");
+});
 
 vi.mock("~/server/storage/browse-diagrams", () => ({
   RECENT_BROWSE_INDEX_SIZE: 2_000,
@@ -69,6 +66,62 @@ describe("browse data cache", () => {
       totalPages: 4_059,
     });
     expect(mocks.readBrowseIndex).not.toHaveBeenCalled();
+  });
+
+  it("reads the recent index from storage again once its five minutes are up", async () => {
+    vi.useFakeTimers();
+    try {
+      const recent = (repo: string, total: number) => ({
+        entries: Array.from({ length: 20 }, (_, index) => ({
+          username: "recent",
+          repo: `${repo}-${index}`,
+          lastSuccessfulAt: "2026-10-05T18:47:37.914Z",
+          stargazerCount: 0,
+        })),
+        total,
+      });
+      mocks.readRecentBrowseIndex
+        .mockResolvedValueOnce(recent("older", 175_390))
+        .mockResolvedValueOnce(recent("newer", 175_548));
+      const data = await import("~/server/browse-index-cache");
+
+      await expect(data.getCachedBrowsePage({})).resolves.toMatchObject({
+        total: 175_390,
+      });
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+      await expect(data.getCachedBrowsePage({})).resolves.toMatchObject({
+        total: 175_390,
+      });
+      expect(mocks.readRecentBrowseIndex).toHaveBeenCalledTimes(1);
+
+      // The first request after expiry gets the new index itself, not the
+      // old one with a refresh left running behind it.
+      await vi.advanceTimersByTimeAsync(61 * 1000);
+      await expect(data.getCachedBrowsePage({})).resolves.toMatchObject({
+        items: expect.arrayContaining([
+          expect.objectContaining({ repo: "newer-0" }),
+        ]),
+        total: 175_548,
+      });
+      expect(mocks.readRecentBrowseIndex).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops the recent index when a diagram run revalidates it", async () => {
+    mocks.readRecentBrowseIndex
+      .mockResolvedValueOnce({ entries: oldEntries, total: 1 })
+      .mockResolvedValueOnce({ entries: freshEntries, total: 1 });
+    const data = await import("~/server/browse-index-cache");
+
+    await expect(data.getCachedBrowsePage({})).resolves.toMatchObject({
+      total: 1,
+    });
+    data.revalidateBrowseIndexCache();
+    await expect(data.getCachedBrowsePage({})).resolves.toMatchObject({
+      items: freshEntries,
+    });
   });
 
   it("does not let a read invalidated in flight repopulate stale data", async () => {
