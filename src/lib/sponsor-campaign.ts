@@ -45,9 +45,23 @@ export const coderabbitCampaign = {
   bookedFrom: "2026-10-20T04:00:00.000Z",
 } as const satisfies SponsorCampaign;
 
+// Paid October 5, 2026: a shared website spot, November 19–December 19 Toronto.
+export const nangoCampaign = {
+  id: "nango-2026-11",
+  sponsor: "Nango",
+  package: "shared",
+  // Nango's own tracking link; its UTM tags are kept as sent.
+  destination:
+    "https://nango.dev/?utm_source=gitdiagram&utm_medium=display&utm_campaign=rotating_ad",
+  utmCampaign: "rotating_ad",
+  startsAt: coderabbitCampaign.endsAt,
+  endsAt: "2026-12-19T05:00:00.000Z",
+} as const satisfies SponsorCampaign;
+
 export const scheduledSponsorCampaigns = [
   sentCampaign,
   coderabbitCampaign,
+  nangoCampaign,
 ] as const;
 export type ScheduledSponsorCampaign =
   (typeof scheduledSponsorCampaigns)[number];

@@ -21,6 +21,10 @@ const pinnedLogoHashes: Record<string, string> = {
     "a05d72ea8ff2db89017e6e064d71609be51a3216a4f09eb73293e6b95b1757ec",
   "/sponsors/coderabbit-wordmark-dark.svg":
     "882058991a16d4729057e113f5b21317365a9ec89d38c6fb7d7b5d12d96d6e55",
+  "/sponsors/nango-wordmark.svg":
+    "e8fedc072ba6b175a202540df557b23e3102c48bcc56f4693c1d38ffd77c18aa",
+  "/sponsors/nango-wordmark-white.svg":
+    "97f6a4e9e43f65365a630e5b67b5d36c1d788161780f7b47008101778b9668a8",
 };
 
 it("has a creative for every scheduled campaign", () => {

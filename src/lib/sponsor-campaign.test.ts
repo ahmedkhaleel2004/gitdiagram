@@ -4,6 +4,7 @@ import {
   activeSponsorCampaigns,
   coderabbitCampaign,
   lastBookedSponsorCampaign,
+  nangoCampaign,
   pickSponsorCampaign,
   scheduledSponsorCampaigns,
   sentCampaign,
@@ -49,7 +50,7 @@ function scheduleProblems(campaigns: readonly SponsorCampaign[]) {
 }
 
 describe("paid sponsor schedule", () => {
-  it("hands over at Sent's exact expiry without overlap, then expires CodeRabbit", () => {
+  it("hands over at Sent's exact expiry without overlap, then from CodeRabbit to Nango", () => {
     const start = Date.parse(coderabbitCampaign.startsAt);
     const end = Date.parse(coderabbitCampaign.endsAt);
     expect(
@@ -58,10 +59,18 @@ describe("paid sponsor schedule", () => {
     expect(activeSponsorCampaigns(start - 1)[0]?.id).toBe(sentCampaign.id);
     expect(activeSponsorCampaigns(start)[0]?.id).toBe(coderabbitCampaign.id);
     expect(activeSponsorCampaigns(end - 1)[0]?.id).toBe(coderabbitCampaign.id);
-    expect(activeSponsorCampaigns(end)).toEqual([]);
+    expect(activeSponsorCampaigns(end).map(({ id }) => id)).toEqual([
+      nangoCampaign.id,
+    ]);
     expect(
       end - Date.parse("2026-10-20T00:00:00-04:00"),
     ).toBeGreaterThanOrEqual(30 * 86400000);
+    // Nango: a shared website spot (no README) for 30 full days, then vacant.
+    const nangoEnd = Date.parse(nangoCampaign.endsAt);
+    expect(activeReadmeSponsorCampaign(end)).toBeUndefined();
+    expect(activeSponsorCampaigns(nangoEnd - 1)[0]?.id).toBe(nangoCampaign.id);
+    expect(activeSponsorCampaigns(nangoEnd)).toEqual([]);
+    expect(nangoEnd - end).toBe(30 * 86400000);
   });
 
   // Rotation splits the website between at most two shared campaigns; an
@@ -129,12 +138,12 @@ describe("paid sponsor schedule", () => {
   it("finds the last booked campaign until it ends", () => {
     expect(
       lastBookedSponsorCampaign(Date.parse(sentCampaign.startsAt))?.id,
-    ).toBe(coderabbitCampaign.id);
+    ).toBe(nangoCampaign.id);
     expect(
-      lastBookedSponsorCampaign(Date.parse(coderabbitCampaign.endsAt) - 1)?.id,
-    ).toBe(coderabbitCampaign.id);
+      lastBookedSponsorCampaign(Date.parse(nangoCampaign.endsAt) - 1)?.id,
+    ).toBe(nangoCampaign.id);
     expect(
-      lastBookedSponsorCampaign(Date.parse(coderabbitCampaign.endsAt)),
+      lastBookedSponsorCampaign(Date.parse(nangoCampaign.endsAt)),
     ).toBeUndefined();
   });
 

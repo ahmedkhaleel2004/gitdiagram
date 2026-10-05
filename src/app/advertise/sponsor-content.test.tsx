@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   coderabbitCampaign,
+  nangoCampaign,
   sentCampaign,
   type BookedSponsorCampaign,
 } from "~/lib/sponsor-campaign";
@@ -27,11 +28,24 @@ const stats: SponsorStats = {
 
 describe("advertise availability", () => {
   it("follows the booked schedule instead of fixed dates", () => {
+    // Nango's shared run leaves the other half of the website open with it.
     for (const now of [
       Date.parse(sentCampaign.startsAt),
       Date.parse(coderabbitCampaign.endsAt) - 1,
     ]) {
       expect(createSponsorBooking(now)).toMatchObject({
+        availability:
+          "Shared spot from November 19, 2026. Exclusive from December 19, 2026.",
+        offerTiming:
+          "A shared spot can start from November 19, 2026. Exclusive campaigns start from December 19, 2026, after Nango’s run.",
+        bookedBy: {
+          label: "November 19 campaign booked by",
+          name: "Nango",
+        },
+      });
+      expect(
+        createSponsorBooking(now, [sentCampaign, coderabbitCampaign]),
+      ).toMatchObject({
         availability: "Next available: November 19, 2026.",
         offerTiming:
           "New campaigns start from November 19, 2026, after CodeRabbit’s run.",
@@ -75,13 +89,14 @@ describe("advertise availability", () => {
     ).toBe(
       "Shared spot from November 1, 2026. Exclusive from November 19, 2026.",
     );
-    expect(createSponsorBooking(Date.parse(coderabbitCampaign.endsAt))).toEqual(
-      {
-        availability: "Available now.",
-        offerTiming: "New campaigns can start right away.",
-        bookedBy: null,
-      },
-    );
+    expect(
+      createSponsorBooking(Date.parse(nangoCampaign.startsAt)).availability,
+    ).toBe("Shared spot available now. Exclusive from December 19, 2026.");
+    expect(createSponsorBooking(Date.parse(nangoCampaign.endsAt))).toEqual({
+      availability: "Available now.",
+      offerTiming: "New campaigns can start right away.",
+      bookedBy: null,
+    });
   });
 
   it("drops the booking note once the last booking ends", () => {
@@ -93,14 +108,11 @@ describe("advertise availability", () => {
         )}
       />,
     );
-    expect(screen.getByText("October 20 campaign booked by")).toBeTruthy();
-    expect(screen.getAllByAltText("CodeRabbit")).toHaveLength(2);
+    expect(screen.getByText("November 19 campaign booked by")).toBeTruthy();
+    expect(screen.getAllByAltText("Nango")).toHaveLength(2);
     view.rerender(
       <SponsorPageContent
-        content={createSponsorContent(
-          stats,
-          Date.parse(coderabbitCampaign.endsAt),
-        )}
+        content={createSponsorContent(stats, Date.parse(nangoCampaign.endsAt))}
       />,
     );
     expect(screen.queryByText(/campaign booked by/)).toBeNull();

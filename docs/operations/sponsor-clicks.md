@@ -1,5 +1,16 @@
 # Sponsor campaign reporting and scheduling
 
+## Nango
+
+`nango-2026-11` is a shared website spot (homepage, repository pages and browse;
+no README), paid on October 5, 2026 ($999). It starts when CodeRabbit ends,
+`2026-11-19T05:00:00Z` (November 19, midnight Toronto), and runs 30 days to
+`2026-12-19T05:00:00Z`. The other shared half is unsold; until it is, Nango is
+the only ad on the website. Clicks go to the link Nango sent, with its own
+`utm_source`, `utm_medium` and `utm_campaign` kept and only the
+placement-specific `utm_content` added. Tagline and wordmarks are the ones
+approved in the email thread and shown on its preview.
+
 ## CodeRabbit
 
 [CodeRabbit campaign dashboard](https://us.posthog.com/project/113380/dashboard/2132862)
@@ -16,8 +27,8 @@ CodeRabbit takes over immediately, with those lead-in hours complimentary before
 the booked October 20–November 18 run. It ends at `2026-11-19T05:00:00Z`
 (November 19, midnight Toronto, after the daylight-saving change). Both campaigns
 are exclusive. No renewal or rotation is configured for the paid CodeRabbit run.
-Rotation is not implemented at all: the /advertise "shared website spot" needs it
-before one is booked, and a schedule test rejects overlapping campaigns meanwhile.
+Two shared campaigns booked for the same days rotate (`pickSponsorCampaign`); a
+schedule test rejects any other overlap.
 
 One provider per tab (`SponsorCampaignProvider` in the root layout) resolves
 `/api/sponsor` against server time with no caching, and switches at the next

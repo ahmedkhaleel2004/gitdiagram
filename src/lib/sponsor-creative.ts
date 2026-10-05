@@ -50,4 +50,17 @@ export const sponsorCreatives: Record<SponsorCampaignId, SponsorCreative> = {
       readmeWidth: 156,
     },
   },
+  "nango-2026-11": {
+    name: "Nango",
+    message: "Connect your AI agents to 1,000+ APIs.",
+    action: "Try Nango",
+    logo: {
+      src: "/sponsors/nango-wordmark.svg",
+      darkSrc: "/sponsors/nango-wordmark-white.svg",
+      width: 9111,
+      height: 2167,
+      kind: "wordmark",
+      readmeWidth: 112,
+    },
+  },
 };
