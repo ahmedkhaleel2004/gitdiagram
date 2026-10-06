@@ -28,20 +28,32 @@ const stats: SponsorStats = {
 
 describe("advertise availability", () => {
   it("follows the booked schedule instead of fixed dates", () => {
-    // Nango's shared run leaves the other half of the website open with it.
+    // Nango and MeteorOps hold both shared halves, so nothing opens sooner.
     for (const now of [
       Date.parse(sentCampaign.startsAt),
       Date.parse(coderabbitCampaign.endsAt) - 1,
     ]) {
       expect(createSponsorBooking(now)).toMatchObject({
-        availability:
-          "Shared spot from November 19, 2026. Exclusive from December 19, 2026.",
+        availability: "Next available: December 19, 2026.",
         offerTiming:
-          "A shared spot can start from November 19, 2026. Exclusive campaigns start from December 19, 2026, after Nango’s run.",
+          "New campaigns start from December 19, 2026, after Nango’s run.",
         bookedBy: {
           label: "November 19 campaign booked by",
           name: "Nango",
         },
+      });
+      // One shared booking leaves the other half of the website open with it.
+      expect(
+        createSponsorBooking(now, [
+          sentCampaign,
+          coderabbitCampaign,
+          nangoCampaign,
+        ]),
+      ).toMatchObject({
+        availability:
+          "Shared spot from November 19, 2026. Exclusive from December 19, 2026.",
+        offerTiming:
+          "A shared spot can start from November 19, 2026. Exclusive campaigns start from December 19, 2026, after Nango’s run.",
       });
       expect(
         createSponsorBooking(now, [sentCampaign, coderabbitCampaign]),
@@ -90,8 +102,12 @@ describe("advertise availability", () => {
       "Shared spot from November 1, 2026. Exclusive from November 19, 2026.",
     );
     expect(
-      createSponsorBooking(Date.parse(nangoCampaign.startsAt)).availability,
+      createSponsorBooking(Date.parse(nangoCampaign.startsAt), [nangoCampaign])
+        .availability,
     ).toBe("Shared spot available now. Exclusive from December 19, 2026.");
+    expect(
+      createSponsorBooking(Date.parse(nangoCampaign.startsAt)).availability,
+    ).toBe("Next available: December 19, 2026.");
     expect(createSponsorBooking(Date.parse(nangoCampaign.endsAt))).toEqual({
       availability: "Available now.",
       offerTiming: "New campaigns can start right away.",

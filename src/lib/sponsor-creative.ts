@@ -63,4 +63,17 @@ export const sponsorCreatives: Record<SponsorCampaignId, SponsorCreative> = {
       readmeWidth: 112,
     },
   },
+  "meteorops-2026-11": {
+    name: "MeteorOps",
+    message: "Fix your DevOps bottleneck in 24h",
+    action: "Connect with a DevOps Expert",
+    logo: {
+      src: "/sponsors/meteorops-wordmark.png",
+      darkSrc: "/sponsors/meteorops-wordmark-white.png",
+      width: 1390,
+      height: 367,
+      kind: "wordmark",
+      readmeWidth: 120,
+    },
+  },
 };

@@ -109,6 +109,40 @@
   box-shadow: none;
 }
 
+.inlineDisclosure {
+  display: none;
+}
+
+/* Small phones: "Sponsored" moves down to the right of the message. */
+@container (max-width: 23rem) {
+  .longAction .disclosure {
+    display: none;
+  }
+
+  .longAction .message {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .longAction .inlineDisclosure {
+    display: inline;
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 400;
+  }
+
+  .longAction .wordmark {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .longAction .wordmark img {
+    max-width: 100%;
+  }
+}
+
 .banner:focus-visible {
   outline: 3px solid hsl(var(--neo-link));
   outline-offset: 4px;

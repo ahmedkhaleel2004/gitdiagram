@@ -58,10 +58,22 @@ export const nangoCampaign = {
   endsAt: "2026-12-19T05:00:00.000Z",
 } as const satisfies SponsorCampaign;
 
+// Paid October 6, 2026: the other shared half of Nango's 30 days.
+export const meteoropsCampaign = {
+  id: "meteorops-2026-11",
+  sponsor: "MeteorOps",
+  package: "shared",
+  destination: "https://meteorops.com/",
+  utmCampaign: "meteorops_30_days",
+  startsAt: nangoCampaign.startsAt,
+  endsAt: nangoCampaign.endsAt,
+} as const satisfies SponsorCampaign;
+
 export const scheduledSponsorCampaigns = [
   sentCampaign,
   coderabbitCampaign,
   nangoCampaign,
+  meteoropsCampaign,
 ] as const;
 export type ScheduledSponsorCampaign =
   (typeof scheduledSponsorCampaigns)[number];

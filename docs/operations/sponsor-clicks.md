@@ -1,12 +1,23 @@
 # Sponsor campaign reporting and scheduling
 
+## MeteorOps
+
+`meteorops-2026-11` is the other shared website spot beside Nango (homepage,
+repository pages and browse; no README), paid on October 6, 2026 ($999). Same
+30 days: `2026-11-19T05:00:00Z` to `2026-12-19T05:00:00Z`, rotating with Nango
+(`pickSponsorCampaign`). Clicks go to `https://meteorops.com/` with the site's
+default UTM tags (`utm_campaign=meteorops_30_days`); none were supplied. The
+logo file (it includes the company name), line and button text are the ones
+Michael Zion sent in the email thread. His button text is long, so on small
+phones "Sponsored" sits to the right of the line instead of beside the button
+(`longAction` in `sponsor-slot.tsx`, any button text over 20 characters).
+
 ## Nango
 
 `nango-2026-11` is a shared website spot (homepage, repository pages and browse;
 no README), paid on October 5, 2026 ($999). It starts when CodeRabbit ends,
 `2026-11-19T05:00:00Z` (November 19, midnight Toronto), and runs 30 days to
-`2026-12-19T05:00:00Z`. The other shared half is unsold; until it is, Nango is
-the only ad on the website. Clicks go to the link Nango sent, with its own
+`2026-12-19T05:00:00Z`. The other shared half is MeteorOps (above). Clicks go to the link Nango sent, with its own
 `utm_source`, `utm_medium` and `utm_campaign` kept and only the
 placement-specific `utm_content` added. Tagline and wordmarks are the ones
 approved in the email thread and shown on its preview.

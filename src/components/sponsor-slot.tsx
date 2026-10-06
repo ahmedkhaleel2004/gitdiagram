@@ -39,7 +39,13 @@ function SponsorBanner({
       target="_blank"
       rel="sponsored noopener noreferrer"
       aria-label={`Sponsored by ${creative.name}: ${creative.message}`}
-      className={cn(styles.banner, embedded && styles.embedded, className)}
+      className={cn(
+        styles.banner,
+        // A long button text leaves no room beside the logo on a small phone.
+        creative.action.length > 20 && styles.longAction,
+        embedded && styles.embedded,
+        className,
+      )}
     >
       <span className={styles.content}>
         <span className={styles.brand}>
@@ -67,7 +73,12 @@ function SponsorBanner({
           </span>
           {logo.kind === "mark" && <span>{creative.name}</span>}
         </span>
-        <span className={styles.message}>{creative.message}</span>
+        <span className={styles.message}>
+          {creative.message}
+          <span className={styles.inlineDisclosure} aria-hidden="true">
+            Sponsored
+          </span>
+        </span>
         <span className={styles.end}>
           <span className={styles.disclosure}>Sponsored</span>
           <span className={styles.action}>

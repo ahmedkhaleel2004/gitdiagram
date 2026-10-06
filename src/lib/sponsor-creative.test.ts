@@ -25,6 +25,10 @@ const pinnedLogoHashes: Record<string, string> = {
     "e8fedc072ba6b175a202540df557b23e3102c48bcc56f4693c1d38ffd77c18aa",
   "/sponsors/nango-wordmark-white.svg":
     "97f6a4e9e43f65365a630e5b67b5d36c1d788161780f7b47008101778b9668a8",
+  "/sponsors/meteorops-wordmark.png":
+    "b8ea24ebf4ae7f26be02e3df29a25c7c21f0e85afd5841cff0f10a3a6abd41df",
+  "/sponsors/meteorops-wordmark-white.png":
+    "3caf51e1d83f887e848c9aa431c7382c6cf0d4c4a4342cf8464772cf6bfe27ff",
 };
 
 it("has a creative for every scheduled campaign", () => {

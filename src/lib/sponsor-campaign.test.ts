@@ -4,6 +4,7 @@ import {
   activeSponsorCampaigns,
   coderabbitCampaign,
   lastBookedSponsorCampaign,
+  meteoropsCampaign,
   nangoCampaign,
   pickSponsorCampaign,
   scheduledSponsorCampaigns,
@@ -60,15 +61,20 @@ describe("paid sponsor schedule", () => {
     expect(activeSponsorCampaigns(start)[0]?.id).toBe(coderabbitCampaign.id);
     expect(activeSponsorCampaigns(end - 1)[0]?.id).toBe(coderabbitCampaign.id);
     expect(activeSponsorCampaigns(end).map(({ id }) => id)).toEqual([
+      meteoropsCampaign.id,
       nangoCampaign.id,
     ]);
     expect(
       end - Date.parse("2026-10-20T00:00:00-04:00"),
     ).toBeGreaterThanOrEqual(30 * 86400000);
-    // Nango: a shared website spot (no README) for 30 full days, then vacant.
+    // Nango and MeteorOps: the two shared halves of the website (no README)
+    // for the same 30 full days, then vacant.
     const nangoEnd = Date.parse(nangoCampaign.endsAt);
     expect(activeReadmeSponsorCampaign(end)).toBeUndefined();
-    expect(activeSponsorCampaigns(nangoEnd - 1)[0]?.id).toBe(nangoCampaign.id);
+    expect(activeSponsorCampaigns(nangoEnd - 1).map(({ id }) => id)).toEqual([
+      meteoropsCampaign.id,
+      nangoCampaign.id,
+    ]);
     expect(activeSponsorCampaigns(nangoEnd)).toEqual([]);
     expect(nangoEnd - end).toBe(30 * 86400000);
   });
