@@ -78,7 +78,7 @@
     "picomatch@<3": "2.3.2",
     "postcss": "8.5.28",
     "rollup": "4.62.2",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "source-map-js": "1.2.2",
     "undici": "8.11.2",
     "vite": "7.3.6",
