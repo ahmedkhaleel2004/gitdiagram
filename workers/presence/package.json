@@ -16,6 +16,7 @@
     "wrangler": "4.139.0"
   },
   "overrides": {
+    "source-map-js": "1.2.2",
     "undici": "7.29.1"
   }
 }
