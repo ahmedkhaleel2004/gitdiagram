@@ -19,12 +19,20 @@ describe("generation service tier", () => {
     "gpt-5.6-luna",
     "gpt-5.6-sol",
     "gpt-5.6-terra-2026-07-09",
-  ])("uses Fast mode for managed %s requests", (model) => {
-    expect(getGenerationServiceTier({ provider: "openai", model })).toBe(
-      "priority",
-    );
-  });
+  ])(
+    "uses Fast mode for managed %s requests only when switched on",
+    (model) => {
+      expect(getGenerationServiceTier({ provider: "openai", model })).toBe(
+        "default",
+      );
+      process.env.GENERATION_FAST_LANE = "1";
+      expect(getGenerationServiceTier({ provider: "openai", model })).toBe(
+        "priority",
+      );
+    },
+  );
   it("preserves standard billing for user keys and unsupported providers/models", () => {
+    process.env.GENERATION_FAST_LANE = "1";
     for (const params of [
       {
         provider: "openai" as const,

@@ -41,13 +41,19 @@ export function supportsTextVerbosity(
   );
 }
 
-/** Fast mode is funded by GitDiagram, never silently charged to a user's key. */
+/**
+ * The standard lane, unless GENERATION_FAST_LANE=1: Fast mode costs double and
+ * measured about 3 s quicker on a whole diagram (8.3 s against 11.5 s, see
+ * experiments/diagram-haiku). It is funded by GitDiagram, never silently
+ * charged to a user's key.
+ */
 export function getGenerationServiceTier(params: {
   provider: AIProvider;
   model: string;
   apiKey?: string;
 }): GenerationServiceTier {
-  return params.provider === "openai" &&
+  return readEnvValue("GENERATION_FAST_LANE") === "1" &&
+    params.provider === "openai" &&
     !params.apiKey?.trim() &&
     MANAGED_OPENAI_MODEL_PATTERN.test(params.model.trim())
     ? "priority"

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { countInputTokens } = vi.hoisted(() => ({
   countInputTokens: vi.fn(),
@@ -13,7 +13,9 @@ vi.mock("~/server/generate/openai", () => ({
 import { estimateGenerationCost } from "~/server/generate/cost-estimate";
 
 describe("estimateGenerationCost", () => {
+  afterEach(() => vi.unstubAllEnvs());
   it("prices one managed architecture request and leaves BYOK at standard stage rates", async () => {
+    vi.stubEnv("GENERATION_FAST_LANE", "1");
     const params = {
       provider: "openai" as const,
       model: "gpt-5.6-luna",

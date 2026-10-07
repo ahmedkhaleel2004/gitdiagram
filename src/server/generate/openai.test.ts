@@ -65,6 +65,7 @@ describe("OpenAI Responses text verbosity", () => {
     "requests Fast for managed %s and retains the tier actually served",
     async (model) => {
       vi.stubEnv("OPENAI_API_KEY", "sk-managed-test");
+      vi.stubEnv("GENERATION_FAST_LANE", "1");
       openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
       const stream = await streamCompletion({
         provider: "openai",
