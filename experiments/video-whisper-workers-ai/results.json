@@ -1,0 +1,1836 @@
+{
+  "summary": [
+    {
+      "name": "whisper-1.a",
+      "label": "OpenAI whisper-1 (production today), run a (the reference)",
+      "takes": 12,
+      "werMean": 0.04340834864316928,
+      "werWorst": 0.1732283464566929,
+      "matchedMean": 0.9625639276070581,
+      "matchedWorst": 0.8267716535433071,
+      "refused": 0,
+      "latencyMedianMs": 3507.5,
+      "latencyMaxMs": 5728,
+      "wordStart": "-",
+      "wordEnd": "-",
+      "wordsOver100ms": "-",
+      "wordsOver250ms": "-",
+      "beatStart": "-",
+      "beatEnd": "-",
+      "beatsOver100ms": "-",
+      "beatsOver250ms": "-",
+      "beatStartBias": "0",
+      "beatEndBias": "0",
+      "sceneStart": "-",
+      "afterPause": "-",
+      "afterPauseBias": "-",
+      "afterPauseCount": 0,
+      "midPhrase": "-",
+      "midPhraseBias": "-",
+      "midPhraseCount": 0,
+      "pauseEnd": "46 / 217 / 844",
+      "pauseEndBias": "-27",
+      "pauseStart": "115 / 482 / 863",
+      "pauseStartBias": "15",
+      "pauses": 206,
+      "worst": []
+    },
+    {
+      "name": "stored",
+      "label": "Timing stored in production, against today's whisper-1 run",
+      "takes": 12,
+      "werMean": null,
+      "werWorst": null,
+      "matchedMean": null,
+      "matchedWorst": null,
+      "refused": 0,
+      "latencyMedianMs": null,
+      "latencyMaxMs": null,
+      "wordStart": "0 / 0 / 0",
+      "wordEnd": "0 / 0 / 0",
+      "wordsOver100ms": "0.0%",
+      "wordsOver250ms": "0.0%",
+      "beatStart": "0 / 0 / 0",
+      "beatEnd": "0 / 0 / 0",
+      "beatsOver100ms": "0.0%",
+      "beatsOver250ms": "0.0%",
+      "beatStartBias": "0",
+      "beatEndBias": "0",
+      "sceneStart": "0 / 0 / 0",
+      "afterPause": "-",
+      "afterPauseBias": "-",
+      "afterPauseCount": 0,
+      "midPhrase": "0 / 0 / 0",
+      "midPhraseBias": "0",
+      "midPhraseCount": 1540,
+      "pauseEnd": "46 / 217 / 844",
+      "pauseEndBias": "-27",
+      "pauseStart": "115 / 482 / 863",
+      "pauseStartBias": "15",
+      "pauses": 206,
+      "worst": []
+    },
+    {
+      "name": "whisper-1.b",
+      "label": "OpenAI whisper-1 (production today), run b",
+      "takes": 12,
+      "werMean": 0.04340834864316928,
+      "werWorst": 0.1732283464566929,
+      "matchedMean": 0.9625639276070581,
+      "matchedWorst": 0.8267716535433071,
+      "refused": 0,
+      "latencyMedianMs": 3805.5,
+      "latencyMaxMs": 12366,
+      "wordStart": "0 / 0 / 0",
+      "wordEnd": "0 / 0 / 0",
+      "wordsOver100ms": "0.0%",
+      "wordsOver250ms": "0.0%",
+      "beatStart": "0 / 0 / 0",
+      "beatEnd": "0 / 0 / 0",
+      "beatsOver100ms": "0.0%",
+      "beatsOver250ms": "0.0%",
+      "beatStartBias": "0",
+      "beatEndBias": "0",
+      "sceneStart": "0 / 0 / 0",
+      "afterPause": "0 / 0 / 0",
+      "afterPauseBias": "0",
+      "afterPauseCount": 337,
+      "midPhrase": "0 / 0 / 0",
+      "midPhraseBias": "0",
+      "midPhraseCount": 1203,
+      "pauseEnd": "46 / 217 / 844",
+      "pauseEndBias": "-27",
+      "pauseStart": "115 / 482 / 863",
+      "pauseStartBias": "15",
+      "pauses": 206,
+      "worst": []
+    },
+    {
+      "name": "turbo.a",
+      "label": "Workers AI whisper-large-v3-turbo, defaults, run a",
+      "takes": 12,
+      "werMean": 0.05725551510462662,
+      "werWorst": 0.22962962962962963,
+      "matchedMean": 0.9640706141975133,
+      "matchedWorst": 0.8346456692913385,
+      "refused": 0,
+      "latencyMedianMs": 4891.5,
+      "latencyMaxMs": 12767,
+      "wordStart": "80 / 420 / 740",
+      "wordEnd": "80 / 300 / 1280",
+      "wordsOver100ms": "39.1%",
+      "wordsOver250ms": "11.3%",
+      "beatStart": "280 / 500 / 640",
+      "beatEnd": "60 / 240 / 1280",
+      "beatsOver100ms": "49.7%",
+      "beatsOver250ms": "30.1%",
+      "beatStartBias": "-248",
+      "beatEndBias": "-86",
+      "sceneStart": "360 / 560 / 600",
+      "afterPause": "120 / 480 / 720",
+      "afterPauseBias": "-120",
+      "afterPauseCount": 337,
+      "midPhrase": "80 / 380 / 740",
+      "midPhraseBias": "-80",
+      "midPhraseCount": 1203,
+      "pauseEnd": "86 / 379 / 1326",
+      "pauseEndBias": "-76",
+      "pauseStart": "259 / 492 / 873",
+      "pauseStartBias": "-256",
+      "pauses": 206,
+      "worst": [
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 1280,
+          "word": "line"
+        },
+        {
+          "slug": "nidanhis__nidan-docker",
+          "what": "word",
+          "ms": 740,
+          "word": "records"
+        },
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 720,
+          "word": "status"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 700,
+          "word": "or"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 700,
+          "word": "mutation"
+        },
+        {
+          "slug": "nidanhis__nidan-docker",
+          "what": "word",
+          "ms": 700,
+          "word": "invoices"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 660,
+          "word": "a"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 660,
+          "word": "concept"
+        }
+      ]
+    },
+    {
+      "name": "turbo.b",
+      "label": "Workers AI whisper-large-v3-turbo, defaults, run b",
+      "takes": 12,
+      "werMean": 0.044909836092280934,
+      "werWorst": 0.16535433070866143,
+      "matchedMean": 0.9640706141975133,
+      "matchedWorst": 0.8346456692913385,
+      "refused": 0,
+      "latencyMedianMs": 4459,
+      "latencyMaxMs": 15134,
+      "wordStart": "80 / 420 / 740",
+      "wordEnd": "80 / 300 / 1280",
+      "wordsOver100ms": "39.1%",
+      "wordsOver250ms": "11.3%",
+      "beatStart": "280 / 500 / 640",
+      "beatEnd": "60 / 240 / 1280",
+      "beatsOver100ms": "49.7%",
+      "beatsOver250ms": "30.4%",
+      "beatStartBias": "-249",
+      "beatEndBias": "-86",
+      "sceneStart": "360 / 560 / 600",
+      "afterPause": "120 / 480 / 720",
+      "afterPauseBias": "-120",
+      "afterPauseCount": 337,
+      "midPhrase": "80 / 380 / 740",
+      "midPhraseBias": "-80",
+      "midPhraseCount": 1203,
+      "pauseEnd": "86 / 379 / 1326",
+      "pauseEndBias": "-75",
+      "pauseStart": "259 / 492 / 873",
+      "pauseStartBias": "-256",
+      "pauses": 206,
+      "worst": [
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 1280,
+          "word": "line"
+        },
+        {
+          "slug": "nidanhis__nidan-docker",
+          "what": "word",
+          "ms": 740,
+          "word": "records"
+        },
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 720,
+          "word": "status"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 700,
+          "word": "or"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 700,
+          "word": "mutation"
+        },
+        {
+          "slug": "nidanhis__nidan-docker",
+          "what": "word",
+          "ms": 700,
+          "word": "invoices"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 660,
+          "word": "a"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 660,
+          "word": "concept"
+        }
+      ]
+    },
+    {
+      "name": "turbo-vad.a",
+      "label": "Workers AI whisper-large-v3-turbo, vad_filter, run a",
+      "takes": 12,
+      "werMean": 0.046839456000903466,
+      "werWorst": 0.18110236220472442,
+      "matchedMean": 0.962758278239508,
+      "matchedWorst": 0.8188976377952756,
+      "refused": 0,
+      "latencyMedianMs": 3095,
+      "latencyMaxMs": 14955,
+      "wordStart": "80 / 420 / 740",
+      "wordEnd": "80 / 300 / 1280",
+      "wordsOver100ms": "38.8%",
+      "wordsOver250ms": "11.2%",
+      "beatStart": "280 / 500 / 640",
+      "beatEnd": "60 / 240 / 1280",
+      "beatsOver100ms": "49.7%",
+      "beatsOver250ms": "30.1%",
+      "beatStartBias": "-248",
+      "beatEndBias": "-86",
+      "sceneStart": "360 / 560 / 600",
+      "afterPause": "120 / 480 / 720",
+      "afterPauseBias": "-120",
+      "afterPauseCount": 337,
+      "midPhrase": "80 / 380 / 740",
+      "midPhraseBias": "-80",
+      "midPhraseCount": 1203,
+      "pauseEnd": "85 / 341 / 1326",
+      "pauseEndBias": "-76",
+      "pauseStart": "260 / 499 / 873",
+      "pauseStartBias": "-257",
+      "pauses": 206,
+      "worst": [
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 1280,
+          "word": "line"
+        },
+        {
+          "slug": "nidanhis__nidan-docker",
+          "what": "word",
+          "ms": 740,
+          "word": "records"
+        },
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 720,
+          "word": "status"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 700,
+          "word": "or"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 700,
+          "word": "mutation"
+        },
+        {
+          "slug": "nidanhis__nidan-docker",
+          "what": "word",
+          "ms": 700,
+          "word": "invoices"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 660,
+          "word": "a"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 660,
+          "word": "concept"
+        }
+      ]
+    },
+    {
+      "name": "turbo-en.a",
+      "label": "Workers AI whisper-large-v3-turbo, language en, no conditioning on previous text, run a",
+      "takes": 12,
+      "werMean": 0.04244070028981179,
+      "werWorst": 0.16535433070866143,
+      "matchedMean": 0.9640706141975133,
+      "matchedWorst": 0.8346456692913385,
+      "refused": 0,
+      "latencyMedianMs": 3341,
+      "latencyMaxMs": 5804,
+      "wordStart": "80 / 440 / 740",
+      "wordEnd": "80 / 300 / 1280",
+      "wordsOver100ms": "38.8%",
+      "wordsOver250ms": "11.4%",
+      "beatStart": "280 / 500 / 640",
+      "beatEnd": "60 / 240 / 1280",
+      "beatsOver100ms": "49.1%",
+      "beatsOver250ms": "31.0%",
+      "beatStartBias": "-247",
+      "beatEndBias": "-85",
+      "sceneStart": "360 / 560 / 600",
+      "afterPause": "120 / 480 / 720",
+      "afterPauseBias": "-120",
+      "afterPauseCount": 337,
+      "midPhrase": "80 / 380 / 740",
+      "midPhraseBias": "-80",
+      "midPhraseCount": 1203,
+      "pauseEnd": "85 / 391 / 1326",
+      "pauseEndBias": "-73",
+      "pauseStart": "256 / 487 / 587",
+      "pauseStartBias": "-247",
+      "pauses": 206,
+      "worst": [
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 1280,
+          "word": "line"
+        },
+        {
+          "slug": "nidanhis__nidan-docker",
+          "what": "word",
+          "ms": 740,
+          "word": "records"
+        },
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 720,
+          "word": "status"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 700,
+          "word": "or"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 700,
+          "word": "mutation"
+        },
+        {
+          "slug": "nidanhis__nidan-docker",
+          "what": "word",
+          "ms": 700,
+          "word": "invoices"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 660,
+          "word": "a"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 660,
+          "word": "concept"
+        }
+      ]
+    },
+    {
+      "name": "whisper.a",
+      "label": "Workers AI whisper (the original model), run a",
+      "takes": 12,
+      "werMean": 0.08511166722992218,
+      "werWorst": 0.2283464566929134,
+      "matchedMean": 0.9311990178813776,
+      "matchedWorst": 0.7716535433070866,
+      "refused": 0,
+      "latencyMedianMs": 3654.5,
+      "latencyMaxMs": 5048,
+      "wordStart": "100 / 380 / 700",
+      "wordEnd": "120 / 480 / 1160",
+      "wordsOver100ms": "57.9%",
+      "wordsOver250ms": "15.4%",
+      "beatStart": "120 / 440 / 620",
+      "beatEnd": "400 / 780 / 1160",
+      "beatsOver100ms": "72.6%",
+      "beatsOver250ms": "46.4%",
+      "beatStartBias": "-59",
+      "beatEndBias": "373",
+      "sceneStart": "140 / 500 / 520",
+      "afterPause": "100 / 380 / 700",
+      "afterPauseBias": "-80",
+      "afterPauseCount": 337,
+      "midPhrase": "120 / 380 / 700",
+      "midPhraseBias": "-100",
+      "midPhraseCount": 1203,
+      "pauseEnd": "353 / 775 / 1121",
+      "pauseEndBias": "352",
+      "pauseStart": "71 / 362 / 729",
+      "pauseStartBias": "-56",
+      "pauses": 206,
+      "worst": [
+        {
+          "slug": "phamhaicnttk21__laravel-crud",
+          "what": "word",
+          "ms": 1160,
+          "word": "screens"
+        },
+        {
+          "slug": "jub0t__concat",
+          "what": "word",
+          "ms": 920,
+          "word": "gpu"
+        },
+        {
+          "slug": "dreezytrial__weather-app",
+          "what": "word",
+          "ms": 900,
+          "word": "slice"
+        },
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 900,
+          "word": "line"
+        },
+        {
+          "slug": "jub0t__concat",
+          "what": "word",
+          "ms": 900,
+          "word": "too"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 800,
+          "word": "rendering"
+        },
+        {
+          "slug": "restarhalf__chrnova",
+          "what": "word",
+          "ms": 780,
+          "word": "optional"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 780,
+          "word": "automatically"
+        }
+      ]
+    },
+    {
+      "name": "whisper.b",
+      "label": "Workers AI whisper (the original model), run b",
+      "takes": 12,
+      "werMean": 0.08511166722992218,
+      "werWorst": 0.2283464566929134,
+      "matchedMean": 0.9311990178813776,
+      "matchedWorst": 0.7716535433070866,
+      "refused": 0,
+      "latencyMedianMs": 3898.5,
+      "latencyMaxMs": 4573,
+      "wordStart": "100 / 380 / 700",
+      "wordEnd": "120 / 480 / 1160",
+      "wordsOver100ms": "57.9%",
+      "wordsOver250ms": "15.4%",
+      "beatStart": "120 / 440 / 620",
+      "beatEnd": "400 / 780 / 1160",
+      "beatsOver100ms": "72.6%",
+      "beatsOver250ms": "46.4%",
+      "beatStartBias": "-59",
+      "beatEndBias": "373",
+      "sceneStart": "140 / 500 / 520",
+      "afterPause": "100 / 380 / 700",
+      "afterPauseBias": "-80",
+      "afterPauseCount": 337,
+      "midPhrase": "120 / 380 / 700",
+      "midPhraseBias": "-100",
+      "midPhraseCount": 1203,
+      "pauseEnd": "353 / 775 / 1121",
+      "pauseEndBias": "352",
+      "pauseStart": "71 / 362 / 729",
+      "pauseStartBias": "-56",
+      "pauses": 206,
+      "worst": [
+        {
+          "slug": "phamhaicnttk21__laravel-crud",
+          "what": "word",
+          "ms": 1160,
+          "word": "screens"
+        },
+        {
+          "slug": "jub0t__concat",
+          "what": "word",
+          "ms": 920,
+          "word": "gpu"
+        },
+        {
+          "slug": "dreezytrial__weather-app",
+          "what": "word",
+          "ms": 900,
+          "word": "slice"
+        },
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 900,
+          "word": "line"
+        },
+        {
+          "slug": "jub0t__concat",
+          "what": "word",
+          "ms": 900,
+          "word": "too"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 800,
+          "word": "rendering"
+        },
+        {
+          "slug": "restarhalf__chrnova",
+          "what": "word",
+          "ms": 780,
+          "word": "optional"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 780,
+          "word": "automatically"
+        }
+      ]
+    },
+    {
+      "name": "tiny-en.a",
+      "label": "Workers AI whisper-tiny-en (beta), run a",
+      "takes": 12,
+      "werMean": 0.1069237186249473,
+      "werWorst": 0.25196850393700787,
+      "matchedMean": 0.9091499123547292,
+      "matchedWorst": 0.7480314960629921,
+      "refused": 1,
+      "latencyMedianMs": 4700.5,
+      "latencyMaxMs": 6371,
+      "wordStart": "258 / 790 / 1777",
+      "wordEnd": "269 / 800 / 1920",
+      "wordsOver100ms": "77.7%",
+      "wordsOver250ms": "52.1%",
+      "beatStart": "198 / 791 / 1393",
+      "beatEnd": "373 / 1100 / 1920",
+      "beatsOver100ms": "77.7%",
+      "beatsOver250ms": "56.0%",
+      "beatStartBias": "-91",
+      "beatEndBias": "356",
+      "sceneStart": "196 / 917 / 1393",
+      "afterPause": "202 / 846 / 1527",
+      "afterPauseBias": "-80",
+      "afterPauseCount": 337,
+      "midPhrase": "272 / 788 / 1777",
+      "midPhraseBias": "53",
+      "midPhraseCount": 1203,
+      "pauseEnd": "193 / 492 / 1114",
+      "pauseEndBias": "190",
+      "pauseStart": "241 / 552 / 1025",
+      "pauseStartBias": "-237",
+      "pauses": 214,
+      "worst": [
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 1920,
+          "word": "on"
+        },
+        {
+          "slug": "hkuds__vimax",
+          "what": "word",
+          "ms": 1663,
+          "word": "build"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 1593,
+          "word": "each"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 1527,
+          "word": "builder"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 1527,
+          "word": "just"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 1460,
+          "word": "collects"
+        },
+        {
+          "slug": "nidanhis__nidan-docker",
+          "what": "word",
+          "ms": 1405,
+          "word": "openelis"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 1393,
+          "word": "inside"
+        }
+      ]
+    },
+    {
+      "name": "nova-3.a",
+      "label": "Workers AI Deepgram nova-3, run a",
+      "takes": 12,
+      "werMean": 0.04315745766541315,
+      "werWorst": 0.18110236220472442,
+      "matchedMean": 0.9653541208744874,
+      "matchedWorst": 0.8188976377952756,
+      "refused": 0,
+      "latencyMedianMs": 664.5,
+      "latencyMaxMs": 952,
+      "wordStart": "60 / 320 / 705",
+      "wordEnd": "60 / 365 / 900",
+      "wordsOver100ms": "29.3%",
+      "wordsOver250ms": "11.4%",
+      "beatStart": "125 / 380 / 705",
+      "beatEnd": "300 / 430 / 900",
+      "beatsOver100ms": "67.0%",
+      "beatsOver250ms": "39.0%",
+      "beatStartBias": "-10",
+      "beatEndBias": "243",
+      "sceneStart": "110 / 365 / 540",
+      "afterPause": "66 / 280 / 560",
+      "afterPauseBias": "-30",
+      "afterPauseCount": 337,
+      "midPhrase": "55 / 320 / 705",
+      "midPhraseBias": "9",
+      "midPhraseCount": 1203,
+      "pauseEnd": "292 / 431 / 874",
+      "pauseEndBias": "289",
+      "pauseStart": "60 / 190 / 369",
+      "pauseStartBias": "-37",
+      "pauses": 206,
+      "worst": [
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 900,
+          "word": "line"
+        },
+        {
+          "slug": "phamhaicnttk21__laravel-crud",
+          "what": "word",
+          "ms": 725,
+          "word": "signup"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 705,
+          "word": "the"
+        },
+        {
+          "slug": "jub0t__concat",
+          "what": "word",
+          "ms": 695,
+          "word": "k"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 635,
+          "word": "or"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 635,
+          "word": "mutation"
+        },
+        {
+          "slug": "phamhaicnttk21__laravel-crud",
+          "what": "word",
+          "ms": 605,
+          "word": "ships"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 585,
+          "word": "schema"
+        }
+      ]
+    },
+    {
+      "name": "nova-3.b",
+      "label": "Workers AI Deepgram nova-3, run b",
+      "takes": 12,
+      "werMean": 0.04315745766541315,
+      "werWorst": 0.18110236220472442,
+      "matchedMean": 0.9653541208744874,
+      "matchedWorst": 0.8188976377952756,
+      "refused": 0,
+      "latencyMedianMs": 706,
+      "latencyMaxMs": 889,
+      "wordStart": "60 / 320 / 705",
+      "wordEnd": "60 / 365 / 900",
+      "wordsOver100ms": "29.3%",
+      "wordsOver250ms": "11.4%",
+      "beatStart": "125 / 380 / 705",
+      "beatEnd": "300 / 430 / 900",
+      "beatsOver100ms": "67.0%",
+      "beatsOver250ms": "39.0%",
+      "beatStartBias": "-10",
+      "beatEndBias": "243",
+      "sceneStart": "110 / 365 / 540",
+      "afterPause": "66 / 280 / 560",
+      "afterPauseBias": "-30",
+      "afterPauseCount": 337,
+      "midPhrase": "55 / 320 / 705",
+      "midPhraseBias": "9",
+      "midPhraseCount": 1203,
+      "pauseEnd": "292 / 431 / 874",
+      "pauseEndBias": "289",
+      "pauseStart": "60 / 190 / 369",
+      "pauseStartBias": "-37",
+      "pauses": 206,
+      "worst": [
+        {
+          "slug": "curzer1995-777__line-local-mcp-user-key",
+          "what": "word",
+          "ms": 900,
+          "word": "line"
+        },
+        {
+          "slug": "phamhaicnttk21__laravel-crud",
+          "what": "word",
+          "ms": 725,
+          "word": "signup"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 705,
+          "word": "the"
+        },
+        {
+          "slug": "jub0t__concat",
+          "what": "word",
+          "ms": 695,
+          "word": "k"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 635,
+          "word": "or"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 635,
+          "word": "mutation"
+        },
+        {
+          "slug": "phamhaicnttk21__laravel-crud",
+          "what": "word",
+          "ms": 605,
+          "word": "ships"
+        },
+        {
+          "slug": "graphdsl__graphql-kotlin-dsl",
+          "what": "word",
+          "ms": 585,
+          "word": "schema"
+        }
+      ]
+    },
+    {
+      "name": "turbo.b-vs-a",
+      "label": "Workers AI whisper-large-v3-turbo, defaults: run b against its own run a",
+      "takes": 12,
+      "werMean": null,
+      "werWorst": null,
+      "matchedMean": null,
+      "matchedWorst": null,
+      "refused": 0,
+      "latencyMedianMs": null,
+      "latencyMaxMs": null,
+      "wordStart": "0 / 0 / 240",
+      "wordEnd": "0 / 0 / 0",
+      "wordsOver100ms": "0.0%",
+      "wordsOver250ms": "0.0%",
+      "beatStart": "0 / 0 / 240",
+      "beatEnd": "0 / 0 / 0",
+      "beatsOver100ms": "0.3%",
+      "beatsOver250ms": "0.0%",
+      "beatStartBias": "-1",
+      "beatEndBias": "0",
+      "sceneStart": "0 / 0 / 0",
+      "afterPause": "-",
+      "afterPauseBias": "-",
+      "afterPauseCount": 0,
+      "midPhrase": "0 / 0 / 240",
+      "midPhraseBias": "0",
+      "midPhraseCount": 1540,
+      "pauseEnd": "-",
+      "pauseEndBias": "-",
+      "pauseStart": "-",
+      "pauseStartBias": "-",
+      "pauses": 0,
+      "worst": []
+    },
+    {
+      "name": "whisper.b-vs-a",
+      "label": "Workers AI whisper (the original model): run b against its own run a",
+      "takes": 12,
+      "werMean": null,
+      "werWorst": null,
+      "matchedMean": null,
+      "matchedWorst": null,
+      "refused": 0,
+      "latencyMedianMs": null,
+      "latencyMaxMs": null,
+      "wordStart": "0 / 0 / 0",
+      "wordEnd": "0 / 0 / 0",
+      "wordsOver100ms": "0.0%",
+      "wordsOver250ms": "0.0%",
+      "beatStart": "0 / 0 / 0",
+      "beatEnd": "0 / 0 / 0",
+      "beatsOver100ms": "0.0%",
+      "beatsOver250ms": "0.0%",
+      "beatStartBias": "0",
+      "beatEndBias": "0",
+      "sceneStart": "0 / 0 / 0",
+      "afterPause": "-",
+      "afterPauseBias": "-",
+      "afterPauseCount": 0,
+      "midPhrase": "0 / 0 / 0",
+      "midPhraseBias": "0",
+      "midPhraseCount": 1540,
+      "pauseEnd": "-",
+      "pauseEndBias": "-",
+      "pauseStart": "-",
+      "pauseStartBias": "-",
+      "pauses": 0,
+      "worst": []
+    },
+    {
+      "name": "nova-3.b-vs-a",
+      "label": "Workers AI Deepgram nova-3: run b against its own run a",
+      "takes": 12,
+      "werMean": null,
+      "werWorst": null,
+      "matchedMean": null,
+      "matchedWorst": null,
+      "refused": 0,
+      "latencyMedianMs": null,
+      "latencyMaxMs": null,
+      "wordStart": "0 / 0 / 0",
+      "wordEnd": "0 / 0 / 0",
+      "wordsOver100ms": "0.0%",
+      "wordsOver250ms": "0.0%",
+      "beatStart": "0 / 0 / 0",
+      "beatEnd": "0 / 0 / 0",
+      "beatsOver100ms": "0.0%",
+      "beatsOver250ms": "0.0%",
+      "beatStartBias": "0",
+      "beatEndBias": "0",
+      "sceneStart": "0 / 0 / 0",
+      "afterPause": "-",
+      "afterPauseBias": "-",
+      "afterPauseCount": 0,
+      "midPhrase": "0 / 0 / 0",
+      "midPhraseBias": "0",
+      "midPhraseCount": 1540,
+      "pauseEnd": "-",
+      "pauseEndBias": "-",
+      "pauseStart": "-",
+      "pauseStartBias": "-",
+      "pauses": 0,
+      "worst": []
+    }
+  ],
+  "perTake": [
+    {
+      "slug": "phamhaicnttk21__laravel-crud",
+      "seconds": 38.191,
+      "beats": 14,
+      "scriptWords": 127,
+      "pauses": 19,
+      "whisper-1.a": {
+        "matched": 105,
+        "wer": 0.1732283464566929,
+        "ms": 4129
+      },
+      "whisper-1.b": {
+        "matched": 105,
+        "wer": 0.1732283464566929,
+        "ms": 3238,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 106,
+        "wer": 0.16535433070866143,
+        "ms": 2606,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 106,
+        "wer": 0.16535433070866143,
+        "ms": 3232,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 104,
+        "wer": 0.18110236220472442,
+        "ms": 2795,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 106,
+        "wer": 0.16535433070866143,
+        "ms": 3846,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 98,
+        "wer": 0.2283464566929134,
+        "ms": 5048,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 98,
+        "wer": 0.2283464566929134,
+        "ms": 4152,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 95,
+        "wer": 0.25196850393700787,
+        "ms": 3414,
+        "accepted": false
+      },
+      "nova-3.a": {
+        "matched": 104,
+        "wer": 0.18110236220472442,
+        "ms": 552,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 104,
+        "wer": 0.18110236220472442,
+        "ms": 889,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "dreezytrial__weather-app",
+      "seconds": 44.591,
+      "beats": 14,
+      "scriptWords": 137,
+      "pauses": 19,
+      "whisper-1.a": {
+        "matched": 137,
+        "wer": 0,
+        "ms": 3463
+      },
+      "whisper-1.b": {
+        "matched": 137,
+        "wer": 0,
+        "ms": 4924,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 135,
+        "wer": 0.029197080291970802,
+        "ms": 8463,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 135,
+        "wer": 0.029197080291970802,
+        "ms": 4019,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 135,
+        "wer": 0.029197080291970802,
+        "ms": 3395,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 135,
+        "wer": 0.029197080291970802,
+        "ms": 3559,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 135,
+        "wer": 0.029197080291970802,
+        "ms": 3994,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 135,
+        "wer": 0.029197080291970802,
+        "ms": 3732,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 130,
+        "wer": 0.06569343065693431,
+        "ms": 2904,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 135,
+        "wer": 0.014598540145985401,
+        "ms": 952,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 135,
+        "wer": 0.014598540145985401,
+        "ms": 718,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "hkuds__vimax",
+      "seconds": 47.386063,
+      "beats": 14,
+      "scriptWords": 117,
+      "pauses": 14,
+      "whisper-1.a": {
+        "matched": 117,
+        "wer": 0,
+        "ms": 2877
+      },
+      "whisper-1.b": {
+        "matched": 117,
+        "wer": 0,
+        "ms": 2213,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 117,
+        "wer": 0,
+        "ms": 2713,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 117,
+        "wer": 0,
+        "ms": 4899,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 117,
+        "wer": 0,
+        "ms": 2416,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 117,
+        "wer": 0,
+        "ms": 2693,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 116,
+        "wer": 0.008547008547008548,
+        "ms": 3369,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 116,
+        "wer": 0.008547008547008548,
+        "ms": 3198,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 115,
+        "wer": 0.017094017094017096,
+        "ms": 4097,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 115,
+        "wer": 0.017094017094017096,
+        "ms": 812,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 115,
+        "wer": 0.017094017094017096,
+        "ms": 705,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "restarhalf__chrnova",
+      "seconds": 48.404875,
+      "beats": 14,
+      "scriptWords": 126,
+      "pauses": 17,
+      "whisper-1.a": {
+        "matched": 121,
+        "wer": 0.03968253968253968,
+        "ms": 3506
+      },
+      "whisper-1.b": {
+        "matched": 121,
+        "wer": 0.03968253968253968,
+        "ms": 3692,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 121,
+        "wer": 0.03968253968253968,
+        "ms": 5978,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 121,
+        "wer": 0.03968253968253968,
+        "ms": 9738,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 121,
+        "wer": 0.03968253968253968,
+        "ms": 2369,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 121,
+        "wer": 0.03968253968253968,
+        "ms": 2096,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 118,
+        "wer": 0.06349206349206349,
+        "ms": 3599,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 118,
+        "wer": 0.06349206349206349,
+        "ms": 3827,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 117,
+        "wer": 0.07936507936507936,
+        "ms": 4597,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 124,
+        "wer": 0.023809523809523808,
+        "ms": 670,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 124,
+        "wer": 0.023809523809523808,
+        "ms": 684,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "odysseusyuan__mocreak",
+      "seconds": 49.084063,
+      "beats": 12,
+      "scriptWords": 127,
+      "pauses": 26,
+      "whisper-1.a": {
+        "matched": 121,
+        "wer": 0.047244094488188976,
+        "ms": 2955
+      },
+      "whisper-1.b": {
+        "matched": 121,
+        "wer": 0.047244094488188976,
+        "ms": 3919,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 121,
+        "wer": 0.047244094488188976,
+        "ms": 3640,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 121,
+        "wer": 0.047244094488188976,
+        "ms": 9462,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 121,
+        "wer": 0.047244094488188976,
+        "ms": 3816,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 121,
+        "wer": 0.047244094488188976,
+        "ms": 3425,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 119,
+        "wer": 0.07874015748031496,
+        "ms": 3228,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 119,
+        "wer": 0.07874015748031496,
+        "ms": 3793,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 114,
+        "wer": 0.11811023622047244,
+        "ms": 3191,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 124,
+        "wer": 0.031496062992125984,
+        "ms": 644,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 124,
+        "wer": 0.031496062992125984,
+        "ms": 756,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "sindresorhus__yocto-spinner",
+      "seconds": 49.998313,
+      "beats": 14,
+      "scriptWords": 128,
+      "pauses": 18,
+      "whisper-1.a": {
+        "matched": 124,
+        "wer": 0.03125,
+        "ms": 3594
+      },
+      "whisper-1.b": {
+        "matched": 124,
+        "wer": 0.03125,
+        "ms": 3981,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 127,
+        "wer": 0.0078125,
+        "ms": 2870,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 127,
+        "wer": 0.0078125,
+        "ms": 6213,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 127,
+        "wer": 0.0078125,
+        "ms": 6908,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 127,
+        "wer": 0.0078125,
+        "ms": 4232,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 113,
+        "wer": 0.1171875,
+        "ms": 2972,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 113,
+        "wer": 0.1171875,
+        "ms": 4573,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 121,
+        "wer": 0.0546875,
+        "ms": 5368,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 128,
+        "wer": 0,
+        "ms": 659,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 128,
+        "wer": 0,
+        "ms": 707,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "curzer1995-777__line-local-mcp-user-key",
+      "seconds": 50.83425,
+      "beats": 14,
+      "scriptWords": 132,
+      "pauses": 18,
+      "whisper-1.a": {
+        "matched": 128,
+        "wer": 0.045454545454545456,
+        "ms": 3606
+      },
+      "whisper-1.b": {
+        "matched": 128,
+        "wer": 0.045454545454545456,
+        "ms": 2778,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 129,
+        "wer": 0.03787878787878788,
+        "ms": 7886,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 129,
+        "wer": 0.03787878787878788,
+        "ms": 2943,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 129,
+        "wer": 0.03787878787878788,
+        "ms": 1827,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 129,
+        "wer": 0.03787878787878788,
+        "ms": 3253,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 126,
+        "wer": 0.06818181818181818,
+        "ms": 4310,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 126,
+        "wer": 0.06818181818181818,
+        "ms": 3879,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 126,
+        "wer": 0.06060606060606061,
+        "ms": 5015,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 129,
+        "wer": 0.045454545454545456,
+        "ms": 622,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 129,
+        "wer": 0.045454545454545456,
+        "ms": 661,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "graphdsl__graphql-kotlin-dsl",
+      "seconds": 55.719125,
+      "beats": 14,
+      "scriptWords": 141,
+      "pauses": 18,
+      "whisper-1.a": {
+        "matched": 139,
+        "wer": 0.02127659574468085,
+        "ms": 5728
+      },
+      "whisper-1.b": {
+        "matched": 139,
+        "wer": 0.02127659574468085,
+        "ms": 3143,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 138,
+        "wer": 0.028368794326241134,
+        "ms": 3779,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 138,
+        "wer": 0.028368794326241134,
+        "ms": 2960,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 138,
+        "wer": 0.028368794326241134,
+        "ms": 3953,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 138,
+        "wer": 0.028368794326241134,
+        "ms": 3150,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 138,
+        "wer": 0.028368794326241134,
+        "ms": 4132,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 138,
+        "wer": 0.028368794326241134,
+        "ms": 4448,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 132,
+        "wer": 0.07801418439716312,
+        "ms": 6350,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 139,
+        "wer": 0.02127659574468085,
+        "ms": 626,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 139,
+        "wer": 0.02127659574468085,
+        "ms": 769,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "nidanhis__nidan-docker",
+      "seconds": 61.675063,
+      "beats": 14,
+      "scriptWords": 135,
+      "pauses": 25,
+      "whisper-1.a": {
+        "matched": 130,
+        "wer": 0.05185185185185185,
+        "ms": 3509
+      },
+      "whisper-1.b": {
+        "matched": 130,
+        "wer": 0.05185185185185185,
+        "ms": 4070,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 130,
+        "wer": 0.22962962962962963,
+        "ms": 12767,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 130,
+        "wer": 0.08148148148148149,
+        "ms": 15134,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 130,
+        "wer": 0.08888888888888889,
+        "ms": 14955,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 130,
+        "wer": 0.05185185185185185,
+        "ms": 5804,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 122,
+        "wer": 0.14814814814814814,
+        "ms": 4298,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 122,
+        "wer": 0.14814814814814814,
+        "ms": 4561,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 115,
+        "wer": 0.22962962962962963,
+        "ms": 4804,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 127,
+        "wer": 0.06666666666666667,
+        "ms": 779,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 127,
+        "wer": 0.06666666666666667,
+        "ms": 686,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "sakh1l__quizhub",
+      "seconds": 40.881625,
+      "beats": 14,
+      "scriptWords": 109,
+      "pauses": 17,
+      "whisper-1.a": {
+        "matched": 106,
+        "wer": 0.045871559633027525,
+        "ms": 3060
+      },
+      "whisper-1.b": {
+        "matched": 106,
+        "wer": 0.045871559633027525,
+        "ms": 2992,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 106,
+        "wer": 0.045871559633027525,
+        "ms": 3989,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 106,
+        "wer": 0.045871559633027525,
+        "ms": 4006,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 106,
+        "wer": 0.045871559633027525,
+        "ms": 2188,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 106,
+        "wer": 0.045871559633027525,
+        "ms": 3257,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 101,
+        "wer": 0.11009174311926606,
+        "ms": 2942,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 101,
+        "wer": 0.11009174311926606,
+        "ms": 3135,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 94,
+        "wer": 0.1651376146788991,
+        "ms": 5032,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 106,
+        "wer": 0.045871559633027525,
+        "ms": 568,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 106,
+        "wer": 0.045871559633027525,
+        "ms": 495,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "arshadnyx__rollcut",
+      "seconds": 45.270188,
+      "beats": 15,
+      "scriptWords": 138,
+      "pauses": 22,
+      "whisper-1.a": {
+        "matched": 138,
+        "wer": 0,
+        "ms": 3326
+      },
+      "whisper-1.b": {
+        "matched": 138,
+        "wer": 0,
+        "ms": 4236,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 137,
+        "wer": 0.007246376811594203,
+        "ms": 8565,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 137,
+        "wer": 0.007246376811594203,
+        "ms": 5879,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 137,
+        "wer": 0.007246376811594203,
+        "ms": 4658,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 137,
+        "wer": 0.007246376811594203,
+        "ms": 3679,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 134,
+        "wer": 0.043478260869565216,
+        "ms": 3423,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 134,
+        "wer": 0.043478260869565216,
+        "ms": 4106,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 129,
+        "wer": 0.06521739130434782,
+        "ms": 6371,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 137,
+        "wer": 0.021739130434782608,
+        "ms": 732,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 137,
+        "wer": 0.021739130434782608,
+        "ms": 813,
+        "accepted": true
+      }
+    },
+    {
+      "slug": "jub0t__concat",
+      "seconds": 47.438313,
+      "beats": 15,
+      "scriptWords": 123,
+      "pauses": 16,
+      "whisper-1.a": {
+        "matched": 117,
+        "wer": 0.06504065040650407,
+        "ms": 3772
+      },
+      "whisper-1.b": {
+        "matched": 117,
+        "wer": 0.06504065040650407,
+        "ms": 12366,
+        "accepted": true
+      },
+      "turbo.a": {
+        "matched": 118,
+        "wer": 0.04878048780487805,
+        "ms": 5794,
+        "accepted": true
+      },
+      "turbo.b": {
+        "matched": 118,
+        "wer": 0.04878048780487805,
+        "ms": 3861,
+        "accepted": true
+      },
+      "turbo-vad.a": {
+        "matched": 118,
+        "wer": 0.04878048780487805,
+        "ms": 2154,
+        "accepted": true
+      },
+      "turbo-en.a": {
+        "matched": 118,
+        "wer": 0.04878048780487805,
+        "ms": 2289,
+        "accepted": true
+      },
+      "whisper.a": {
+        "matched": 115,
+        "wer": 0.0975609756097561,
+        "ms": 3710,
+        "accepted": true
+      },
+      "whisper.b": {
+        "matched": 115,
+        "wer": 0.0975609756097561,
+        "ms": 3918,
+        "accepted": true
+      },
+      "tiny-en.a": {
+        "matched": 113,
+        "wer": 0.0975609756097561,
+        "ms": 3730,
+        "accepted": true
+      },
+      "nova-3.a": {
+        "matched": 119,
+        "wer": 0.04878048780487805,
+        "ms": 793,
+        "accepted": true
+      },
+      "nova-3.b": {
+        "matched": 119,
+        "wer": 0.04878048780487805,
+        "ms": 600,
+        "accepted": true
+      }
+    }
+  ]
+}

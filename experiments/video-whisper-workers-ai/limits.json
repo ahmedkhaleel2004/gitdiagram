@@ -1,0 +1,79 @@
+[
+  {
+    "service": "turbo",
+    "minutes": 3.8,
+    "megabytes": 3.6,
+    "scriptWords": 634,
+    "ms": 23965,
+    "ok": true,
+    "heardWords": 614,
+    "lastWordEnd": 227.62
+  },
+  {
+    "service": "whisper",
+    "minutes": 3.8,
+    "megabytes": 3.6,
+    "scriptWords": 634,
+    "ms": 1445,
+    "ok": false,
+    "error": "@cf/openai/whisper 413: {\"errors\":[{\"message\":\"AiError: AiError: Request is too large (04cbd346-fcc9-452c-82b9-a25093c21939)\",\"code\":3006}],\"success\":false,\"result\":{},\"messages\":[]}"
+  },
+  {
+    "service": "nova-3",
+    "minutes": 3.8,
+    "megabytes": 3.6,
+    "scriptWords": 634,
+    "ms": 1175,
+    "ok": true,
+    "heardWords": 616,
+    "lastWordEnd": 227.45212
+  },
+  {
+    "service": "turbo",
+    "minutes": 10.3,
+    "megabytes": 9.9,
+    "scriptWords": 1667,
+    "ms": 35587,
+    "ok": true,
+    "heardWords": 1645,
+    "lastWordEnd": 617.28
+  },
+  {
+    "service": "whisper",
+    "minutes": 10.3,
+    "megabytes": 9.9,
+    "scriptWords": 1667,
+    "ms": 3730,
+    "ok": false,
+    "error": "@cf/openai/whisper 413: {\"errors\":[{\"message\":\"AiError: AiError: Request is too large (146c4412-e489-4084-b2f6-5a9ef950dbb7)\",\"code\":3006}],\"success\":false,\"result\":{},\"messages\":[]}"
+  },
+  {
+    "service": "nova-3",
+    "minutes": 10.3,
+    "megabytes": 9.9,
+    "scriptWords": 1667,
+    "ms": 1992,
+    "ok": true,
+    "heardWords": 1635,
+    "lastWordEnd": 617.34033
+  },
+  {
+    "service": "turbo",
+    "minutes": 30.4,
+    "megabytes": 29.1,
+    "scriptWords": 4884,
+    "ms": 91185,
+    "ok": true,
+    "heardWords": 4827,
+    "lastWordEnd": 1820.84
+  },
+  {
+    "service": "whisper",
+    "minutes": 30.4,
+    "megabytes": 29.1,
+    "scriptWords": 4884,
+    "ms": 6444,
+    "ok": false,
+    "error": "@cf/openai/whisper 413: {\"errors\":[{\"message\":\"AiError: AiError: Request is too large (69c542c7-61c1-4688-9465-7560273f1d65)\",\"code\":3006}],\"success\":false,\"result\":{},\"messages\":[]}"
+  }
+]
