@@ -5,10 +5,8 @@ name: Cost watch
 # fifteen-minute burst of test renders does not trip it; abuse at $50 a day
 # still does within the hour)
 # (scripts/cf-usage.mjs) and fails when that is over the ceiling, so GitHub
-# emails the owner within the hour. Normal is $300 to $400 while the startup
-# credits pay for it (to 2027-10-07): awake render containers are about $230
-# of that and full logs up to $55. Without those two it is $25 to $60 (Vercel
-# was $102.56), and the ceiling was $150.
+# emails the owner within the hour. Normal is $25 to $60, plus up to $55 for
+# logging every request (since 2026-10-07); Vercel was $102.56.
 on:
   schedule:
     - cron: "17 * * * *"
@@ -16,7 +14,7 @@ on:
     inputs:
       ceiling:
         description: "Fail above this many dollars a month"
-        default: "600"
+        default: "200"
 
 permissions:
   contents: read
@@ -35,4 +33,4 @@ jobs:
         run: node scripts/cf-usage.mjs --hours 6 --fail-above "$CEILING"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CEILING: ${{ inputs.ceiling || '600' }}
+          CEILING: ${{ inputs.ceiling || '200' }}

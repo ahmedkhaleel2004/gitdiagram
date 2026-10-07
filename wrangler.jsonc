@@ -46,20 +46,19 @@
     "SITE_ORIGIN": "https://gitdiagram.com",
     // The render pool (workers/render): instances a film's segments spread
     // over, Chromium renders per instance, and how long an idle instance
-    // stays awake (and billed) after its last request. While the startup
-    // credits last (to 2027-10-07) the pool and the generation instance never
-    // sleep: the five-minute cron touches each (RENDER_KEEP_AWAKE), so no
-    // render waits 4 to 5 s for a start. That is about $230 a month of
-    // memory; before the credits run out, drop RENDER_KEEP_AWAKE and set
-    // RENDER_SLEEP_AFTER back to "30s" (about $12 a month).
+    // stays awake (and billed) after its last request. RENDER_KEEP_AWAKE "1"
+    // with RENDER_SLEEP_AFTER "12m" keeps the pool and the generation
+    // instance awake for good (the five-minute cron touches each), so no
+    // render waits 4 to 5 s for a start: about $230 a month of memory against
+    // $12. It ran for an hour on 2026-10-07 and was switched off again until
+    // an invoice shows the startup credits pay for Containers, which
+    // Cloudflare's list of covered products does not name.
     "RENDER_POOL_SIZE": "5",
     // Five more, started only while all of the pool's are busy (several
     // renders at once); a lone render never wakes them.
     "RENDER_POOL_OVERFLOW": "5",
     "RENDER_SEGMENT_CONCURRENCY": "2",
-    // Longer than two cron visits, so one missed visit lets nothing sleep.
-    "RENDER_SLEEP_AFTER": "12m",
-    "RENDER_KEEP_AWAKE": "1",
+    "RENDER_SLEEP_AFTER": "30s",
   },
   // MP4s, posters and video generation need headless Chromium and ffmpeg,
   // which a Worker cannot run: those three routes are handed to containers
