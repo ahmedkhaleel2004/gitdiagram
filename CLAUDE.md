@@ -6,14 +6,14 @@ Guidance for Claude Code in this repository. It says what is true now and what t
 
 GitDiagram (gitdiagram.com) turns a GitHub repository into an interactive Mermaid architecture diagram, plus narrated explainer videos, a public MCP server and sponsor ad slots. It is **one Next.js 16 App Router application** (React 19, TypeScript, Tailwind 4, Bun). There is no separate backend: the API is Next.js Route Handlers under `src/app/api/`. Public repo `ahmedkhaleel2004/gitdiagram`, branch `main`.
 
-**Production is Cloudflare Workers** (OpenNext). Vercel still builds every push to `main` and is the rollback, but it serves no visitors. The site is live with paying sponsors.
+**Production is Cloudflare Workers** (OpenNext). Vercel no longer builds or serves the site (see Hard rules). The site is live with paying sponsors.
 
 ## Hard rules
 
-- **A push to `main` is a production deploy.** `.github/workflows/cloudflare.yml` deploys it to Cloudflare, and Vercel builds it too, even when CI fails. Run the gate (below) first. Pushes that touch only root `*.md`, `docs/**`, `experiments/**` and a few test tools do not deploy to Cloudflare (`paths-ignore` in that workflow).
+- **A push to `main` is a production deploy.** `.github/workflows/cloudflare.yml` deploys it to Cloudflare, even when CI fails. Run the gate (below) first. Pushes that touch only root `*.md`, `docs/**`, `experiments/**` and a few test tools do not deploy to Cloudflare (`paths-ignore` in that workflow).
 - **Commit to `main`; no feature branches or PRs** unless Ahmed asks. `git pull --rebase` before pushing: the `Sponsor README schedule` workflow commits to `main` by itself when a campaign boundary passes.
-- **Keep Vercel building.** Do not delete the Vercel project, its environment variables or its DNS zone, and do not stop its deploys or crons: that wind-down is Ahmed's call. Until he does it, every change must build and run on both. Put platform-only behaviour behind runtime detection: `cloudflareContext()` (`src/server/cloudflare-context.ts`) is defined only on Workers, `process.env.VERCEL` only on Vercel.
-- **Secrets** never go in the repo, CI, logs or chat. They live in the Workers (`wrangler secret list`) and in `~/.config/gitdiagram/` on `ahmed-vps`. A new environment variable must be added to Vercel **and** to the Workers (see Secrets).
+- **Vercel is wound down (2026-10-07, Ahmed's call).** The `gitdiagram` Vercel project is paused and disconnected from GitHub, and the team is on the free Hobby plan, which cannot run this site (crons more often than daily, a 4 GB function, commercial use). It is no longer a rollback: roll back on Cloudflare (below). The project, its environment variables and the old preview projects were left in place; do not delete them without Ahmed's say-so. The code still runs on Vercel and locally (`process.env.VERCEL`, `vercel.json`, `src/proxy.ts`): keep platform-only behaviour behind runtime detection, `cloudflareContext()` (`src/server/cloudflare-context.ts`) being defined only on Workers.
+- **Secrets** never go in the repo, CI, logs or chat. They live in the Workers (`wrangler secret list`) and in `~/.config/gitdiagram/` on `ahmed-vps`. A new environment variable goes on the Workers (see Secrets).
 - **Money.** No real Stripe charges while testing (staging has a test-mode key). Keep paid model, voice and video calls small. Cloudflare has no hard spending cap.
 - **Deleting.** `bun run diagram:delete owner/repo` removes a stored public diagram and is for an owner's request only; it is a dry run without `--apply`. `node scripts/cf-staging.mjs destroy` removes staging. Never delete production R2 objects, Redis keys or Workers without Ahmed's say-so.
 - **Private repositories.** Public reads (pages, Markdown twin, MCP, browse) use only the public R2 namespace. A visitor's GitHub token travels per request and is never stored on the server. `client-ip.ts` is for abuse control only, never authentication.
@@ -79,7 +79,6 @@ A test keeps the two server configs identical apart from name and placement. The
 curl -sI https://gitdiagram.com | grep -iE 'server|server-timing|x-opennext'   # server: cloudflare
 for c in wrangler.edge.jsonc wrangler.jsonc wrangler.server.jsonc wrangler.server-local.jsonc; do bunx wrangler deployments list -c $c | tail -8; done   # the servers' message is the commit
 gh run list -L 10                      # CI, Cloudflare deploy, Cost watch
-vercel ls gitdiagram | head            # is Vercel still building each push
 bun run cf:usage --site                # spend so far and a projected month
 bunx wrangler tail gitdiagram          # live logs (every request is also stored while the credits last)
 bunx wrangler tail gitdiagram-errors   # one site.failure line per failed invocation
@@ -98,7 +97,7 @@ On this server, wrangler needs `CLOUDFLARE_API_TOKEN=$(cat ~/.config/gitdiagram/
 - **Every deploy empties the page cache** (cache keys carry the build id) and cuts open response streams. The script re-uploads the last week's hashed build files so open tabs keep loading; `chunk-reload.ts` covers the rest. There is no Skew Protection on Cloudflare.
 - **Deployed by hand, not by CI:** `workers/presence` (`bunx wrangler deploy` in that folder) and `workers/errors` (`bunx wrangler deploy -c workers/errors/wrangler.jsonc`). Deploy either one before a site deploy that needs the newer version.
 - **Roll back** all four, servers first: `bunx wrangler rollback -c wrangler.server.jsonc`, `bunx wrangler rollback -c wrangler.server-local.jsonc`, `bunx wrangler rollback`, `bunx wrangler rollback -c wrangler.edge.jsonc`. Or pick a version: `bunx wrangler versions list`, then `bunx wrangler versions deploy <version-id>@100%`. Secrets and bindings travel with the version. To take the edge Worker out of the path: `node scripts/cf-routes.mjs gitdiagram`.
-- **Back to Vercel (last resort, Ahmed's call):** set the apex and `www` DNS records on Cloudflare back to DNS-only. Steps and record ids are in `~/repos/general/gitdiagram-cloudflare/STATUS.md` under "Cutover". Not re-checked: whether Vercel's environment and crons are still complete enough to take traffic.
+- **Back to Vercel is no longer a switch:** it would need the Pro plan again, the project unpaused and reconnected, and its environment brought up to date (its `RESEND_*` values are the old account's). The DNS steps are in `~/repos/general/gitdiagram-cloudflare/STATUS.md` under "Cutover".
 
 ### Secrets
 
@@ -176,7 +175,7 @@ On in production (`VIDEO_EXPLAINER_ENABLED=1`, `NEXT_PUBLIC_VIDEO_EXPLAINER=1`).
 - **Render containers** (`workers/render/`, bound in `wrangler.jsonc`): Cloudflare Containers run this same app as a Node server (the repo's `Dockerfile`). A render runs on the pool instance its film hashes to (`renderInstance`); video generation runs on a small `GENERATE` instance. Segments post back through the Worker, where `router.ts` checks each job's signature before waking anything: keep `segmentSignature` in step with `sign` in `segments.ts`. Pool sizes are in `wrangler.jsonc`.
 - **Container image** (`scripts/cf-container-image.mjs`): tagged with a hash of what the containers run and built only when the registry lacks that tag, so most pushes start no rollout.
 - **Runs that die** (`run-journal.ts`, `src/server/drain.ts`): an instance told to stop finishes its work first. A killed one runs no cleanup, so every run keeps a journal entry and holds its lock as a short lease; `reapOrphanedRuns` gives back the budget places of a silent run, and a payer's retry takes the payment over (`claimVideoPayment`).
-- **Feedback** (`/api/video/feedback`): emails `VIDEO_FEEDBACK_TO` through Resend from `feedback@gitdiagram.com`.
+- **Feedback** (`/api/video/feedback`): emails `VIDEO_FEEDBACK_TO` through Resend from `feedback@mail.gitdiagram.com` (a standalone Resend account since 2026-10-07, Google sign-in as ahmed@gitdiagram.com; the comment in `feedback.ts` still names the Vercel Marketplace one, whose key and DNS records are unused but still there).
 - **Analytics**: `video_started`, `video_progress`, `video_shared` (`watch-analytics.ts`), `video_paywall_viewed` and `video_checkout_clicked`, in PostHog (`docs/operations/posthog.md`).
 
 ## Operator dashboard (`/admin`)
@@ -202,7 +201,6 @@ Sign in with `VIDEO_ADMIN_TOKEN` (`~/.config/gitdiagram/video-admin-token`). The
 - Several docs still say Vercel is production (see Layout). This file and the commands above are the reference.
 - Every deploy starts the page cache cold, so many deploys in a day cost R2 writes and slow first views.
 - The audience and country rules trust headers the Worker writes. On any host that does not rewrite them (see `docs/deployment-failover.md`), a caller can forge them; pause videos or open the gate from `/admin` before sending real traffic to such a host.
-- Vercel's crons may still fire beside Cloudflare's. That is safe (the drain is idempotent; the sweep and the daily run claim their work in Redis). Not re-checked whether they are still on.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
