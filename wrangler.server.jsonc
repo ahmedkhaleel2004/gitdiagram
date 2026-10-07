@@ -19,11 +19,12 @@
   // ones. It also keeps the isolates of this 32 MB script in one place, where
   // the whole site's traffic keeps them warm (a new one takes 1 to 2.6 s).
   "placement": { "region": "aws:ca-central-1" },
+  // As for the site's Worker: every request logged while the credits last.
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 0.02,
+    "head_sampling_rate": 1,
   },
-  // As for the site's Worker: failures are logged in full (workers/errors).
+  // As for the site's Worker: failures are also logged by workers/errors.
   "tail_consumers": [{ "service": "gitdiagram-errors" }],
   "vars": {
     "INDEXNOW_ENABLED": "1",

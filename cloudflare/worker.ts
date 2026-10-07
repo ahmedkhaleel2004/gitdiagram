@@ -53,6 +53,7 @@ import { entersProxy, proxyDecision } from "../src/lib/proxy-rules";
 
 import {
   forwardToRender,
+  keepContainersAwake,
   warmContainers,
   type RenderEnv,
 } from "../workers/render/src/container";
@@ -576,7 +577,18 @@ const worker = {
     ctx.waitUntil(run);
     // New container image since the last visit? Start each instance once, so
     // no visitor's render waits for it to be fetched (workers/render).
-    if (controller.cron === WARM_CRON)
+    if (controller.cron === WARM_CRON) {
+      // And keep the pool awake between renders, where the settings say so.
+      ctx.waitUntil(
+        keepContainersAwake(env, origin).catch((error: unknown) =>
+          console.error(
+            JSON.stringify({
+              event: "containers.keep_awake_failed",
+              error: error instanceof Error ? error.message : "unknown",
+            }),
+          ),
+        ),
+      );
       ctx.waitUntil(
         warmContainers(env, origin).then(
           (started) => {
@@ -594,6 +606,7 @@ const worker = {
             ),
         ),
       );
+    }
     await run;
   },
 };

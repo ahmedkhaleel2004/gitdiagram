@@ -81,7 +81,7 @@ for c in wrangler.edge.jsonc wrangler.jsonc wrangler.server.jsonc wrangler.serve
 gh run list -L 10                      # CI, Cloudflare deploy, Cost watch
 vercel ls gitdiagram | head            # is Vercel still building each push
 bun run cf:usage --site                # spend so far and a projected month
-bunx wrangler tail gitdiagram          # live logs (stored logs are sampled at 2%)
+bunx wrangler tail gitdiagram          # live logs (every request is also stored while the credits last)
 bunx wrangler tail gitdiagram-errors   # one site.failure line per failed invocation
 node scripts/video-pipeline-test.mjs health   # video runs made, failed, lost, with reasons
 node scripts/compare-hosts.mjs         # same ~70 requests to two hosts, compared (--a, --b, --only, --json, --verbose)
@@ -137,6 +137,8 @@ A `GET` under `/api/` (not `/api/internal` or `/api/admin`, no `Authorization` o
 ### Cost guards
 
 Billed: Worker requests and CPU, Durable Object requests, R2 writes (two per newly rendered repository page) and reads, and the render containers' memory while awake. Guards: `limits.cpu_ms`, the `LIMIT_*` rate limits in `wrangler.jsonc` (verified search crawlers exempt on repository pages), a zone rate-limiting rule, budget alert emails (a day behind), and the hourly `Cost watch` workflow, which fails (so GitHub emails Ahmed) when the last six hours project past its ceiling for the whole account. Staging load tests count toward it.
+
+**Startup credits pay the bill until 2027-10-07** ($10,000 from Cloudflare for Startups; balance: `GET /accounts/<id>/billing/credits`, or Billing > Credits). Two things are switched on only because of them, about $230 to $290 a month together: the render pool and the generation container never sleep (`RENDER_KEEP_AWAKE`, `RENDER_SLEEP_AFTER` in `wrangler.jsonc`), and every request is logged (`head_sampling_rate` 1 in the four configs). Turn both back before the credits end, and put the `Cost watch` ceiling back to $150. gitdiagram.com and auctionlens.ca are on the Enterprise zone plan through the same program (two of its three domains); what happens to the plan when the year ends is not known.
 
 ### Staging
 

@@ -46,6 +46,12 @@ export interface RenderEnv {
   /** How long an idle instance stays awake, e.g. "30s" (the default). */
   RENDER_SLEEP_AFTER?: string;
   /**
+   * "1" keeps the pool (not its overflow) and the generation instance awake
+   * for good: the cron touches each before `RENDER_SLEEP_AFTER` runs out
+   * (see `keepContainersAwake`). Memory bills for every second of it.
+   */
+  RENDER_KEEP_AWAKE?: string;
+  /**
    * The tag of the image the containers run, set by the deploy
    * (scripts/cf-container-image.mjs). When it changes, each instance is
    * started once ahead of visitors (see `warmContainers`).
@@ -163,6 +169,19 @@ abstract class SiteContainer extends Container<RenderEnv> {
       }),
     );
     return true;
+  }
+
+  /**
+   * A request that does no work: it starts a sleeping container and gives an
+   * awake one another `sleepAfter` before it is told to stop.
+   */
+  async touch(origin: string): Promise<number> {
+    // Any answer will do: the readiness probe's own path (a GET is a 405).
+    const response = await this.fetch(
+      new Request(`${origin}${SEGMENT_PATH}`, { method: "GET" }),
+    );
+    await response.body?.cancel();
+    return response.status;
   }
 
   override onStop({ exitCode, reason }: { exitCode: number; reason: string }) {
@@ -309,6 +328,35 @@ export async function warmContainers(
     stubs.map((stub) => stub.warm(image, origin).catch(() => false)),
   );
   return started.filter(Boolean).length;
+}
+
+/**
+ * With RENDER_KEEP_AWAKE, touch the pool's instances and the generation one
+ * so none is asleep when a visitor's render or video arrives (a start costs
+ * a render 4 to 5 s). Called by the Worker's five-minute cron, so
+ * `RENDER_SLEEP_AFTER` must be longer than that. The overflow instances are
+ * left to sleep: they only run while the whole pool is busy.
+ */
+export async function keepContainersAwake(
+  env: RenderEnv,
+  origin: string,
+): Promise<number> {
+  if (env.RENDER_KEEP_AWAKE?.trim() !== "1") return 0;
+  const stubs = [
+    ...Array.from({ length: poolSize(env) }, (_, index) =>
+      instance(env, index),
+    ),
+    ...(env.GENERATE ? [getContainer(env.GENERATE, "generate")] : []),
+  ];
+  const touched = await Promise.all(
+    stubs.map((stub) =>
+      stub.touch(origin).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  return touched.filter(Boolean).length;
 }
 
 /**

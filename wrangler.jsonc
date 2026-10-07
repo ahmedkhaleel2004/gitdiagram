@@ -18,13 +18,14 @@
   // 8 MB sitemap takes 2.8 s, a page render ~0.1 s), so 30 s cuts nothing
   // real off and bounds what a runaway request can cost.
   "limits": { "cpu_ms": 30000 },
-  // Logs are sampled: at ~16M requests a month, every request logged would
-  // cost more than the Worker itself.
+  // Every request is logged while the startup credits last (to 2027-10-07).
+  // At ~16M requests a month that costs more than the Worker itself: back to
+  // 0.02 (as it was) before they run out.
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 0.02,
+    "head_sampling_rate": 1,
   },
-  // Failures are logged in full by a Tail Worker, which sees every request
+  // Failures are also logged by a Tail Worker, which sees every request
   // whatever the sampling above (workers/errors; deploy it before the site).
   "tail_consumers": [{ "service": "gitdiagram-errors" }],
   // The crons vercel.json runs on Vercel (cloudflare/worker.ts maps each
@@ -45,13 +46,20 @@
     "SITE_ORIGIN": "https://gitdiagram.com",
     // The render pool (workers/render): instances a film's segments spread
     // over, Chromium renders per instance, and how long an idle instance
-    // stays awake (and billed) after its last request.
+    // stays awake (and billed) after its last request. While the startup
+    // credits last (to 2027-10-07) the pool and the generation instance never
+    // sleep: the five-minute cron touches each (RENDER_KEEP_AWAKE), so no
+    // render waits 4 to 5 s for a start. That is about $230 a month of
+    // memory; before the credits run out, drop RENDER_KEEP_AWAKE and set
+    // RENDER_SLEEP_AFTER back to "30s" (about $12 a month).
     "RENDER_POOL_SIZE": "5",
     // Five more, started only while all of the pool's are busy (several
     // renders at once); a lone render never wakes them.
     "RENDER_POOL_OVERFLOW": "5",
     "RENDER_SEGMENT_CONCURRENCY": "2",
-    "RENDER_SLEEP_AFTER": "30s",
+    // Longer than two cron visits, so one missed visit lets nothing sleep.
+    "RENDER_SLEEP_AFTER": "12m",
+    "RENDER_KEEP_AWAKE": "1",
   },
   // MP4s, posters and video generation need headless Chromium and ffmpeg,
   // which a Worker cannot run: those three routes are handed to containers
@@ -65,7 +73,7 @@
       // The render pool. Two Chromiums and two encoders per instance, as on
       // Vercel (2 vCPU, 4 GB there); 6 GiB is the least Cloudflare allows
       // with 2 vCPU. Memory and disk bill while an instance is awake, so
-      // five small instances that sleep after 30 s cost less than one big
+      // five small instances that sleep when idle cost less than one big
       // one, and render a film about twice as fast.
       "class_name": "RenderContainer",
       "image": "./Dockerfile",

@@ -25,11 +25,12 @@
   "workers_dev": false,
   "preview_urls": false,
   "limits": { "cpu_ms": 30000 },
+  // As for the site's Worker: every request logged while the credits last.
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 0.02,
+    "head_sampling_rate": 1,
   },
-  // As for the site's Worker: failures are logged in full (workers/errors).
+  // As for the site's Worker: failures are also logged by workers/errors.
   "tail_consumers": [{ "service": "gitdiagram-errors" }],
   "vars": {
     "INDEXNOW_ENABLED": "1",

@@ -1,6 +1,6 @@
 // Keeps every failed request of the site's Workers in the logs.
 //
-// The site's own logs are sampled at 2% (wrangler.jsonc: logging every
+// The site's own logs were sampled at 2% until 2026-10-07 (wrangler.jsonc: logging every
 // request would cost more than the Worker), so 49 of 50 failures left no
 // trace. A Tail Worker is handed every invocation whatever the sampling, and
 // costs only its CPU time: this one drops the healthy ones and logs the rest,
