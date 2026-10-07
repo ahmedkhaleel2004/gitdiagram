@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ADMIN_PROTOCOL,
+  PING_MS,
   tokenFromProtocols,
 } from "../../../src/features/admin/presence-protocol";
 import type { LiveVisitor } from "../../../src/features/admin/types";
@@ -19,6 +20,8 @@ import {
   rollPeak,
   sameText,
   STALE_MS,
+  staleAfter,
+  VISIBLE_STALE_MS,
 } from "./logic";
 
 const NOW = 1_800_000_000_000;
@@ -119,6 +122,18 @@ describe("fresh sockets", () => {
     expect(isFresh(NOW - 3_600_000, NOW - STALE_MS - 1, NOW, STALE_MS)).toBe(
       false,
     );
+  });
+});
+
+describe("how long a tab may stay silent", () => {
+  it("is a few missed pings in view, and longer out of view where timers are slowed", () => {
+    expect(staleAfter({ v: 1 })).toBe(VISIBLE_STALE_MS);
+    expect(staleAfter({ v: 0 })).toBe(STALE_MS);
+    // Three pings in view (and one from a tab that still pings every 30 s).
+    expect(VISIBLE_STALE_MS).toBeGreaterThan(3 * PING_MS);
+    expect(VISIBLE_STALE_MS).toBeGreaterThan(30_000);
+    // A background tab pings about once a minute.
+    expect(STALE_MS).toBeGreaterThan(2 * 60_000);
   });
 });
 

@@ -28,10 +28,12 @@ import type { LiveFeedEvent, PresenceMessage } from "~/features/admin/types";
 // expires. Tokens last five minutes, and a hidden dashboard does not poll, so
 // it asks for one itself when the one it holds is running out.
 //
-// A dashboard out of view for a minute closes its socket and opens a new one
-// (with a fresh snapshot) when it is looked at again: the worker's requests
-// are capped per day, and one left open in a background tab all day would
-// keep it sweeping and taking tokens for nobody.
+// A dashboard out of view keeps its socket for a quarter of an hour, so
+// coming back from another tab shows the site as it is at once, with nothing
+// to reconnect. After that it lets the socket go and opens a new one (with a
+// fresh snapshot) when it is looked at again: one forgotten in a background
+// tab would otherwise keep the worker sweeping and its browser fetching
+// tokens all day for nobody.
 
 const PING_MS = 5_000;
 // No pong this long after a ping: the connection died without closing (the
@@ -43,7 +45,7 @@ const PONG_TIMEOUT_MS = 2 * PING_MS + 2_000;
 // every three minutes.
 const RENEW_BEFORE_MS = 2 * 60_000;
 // Out of view this long, the dashboard lets its socket go.
-const HIDDEN_CLOSE_MS = 60_000;
+const HIDDEN_CLOSE_MS = 15 * 60_000;
 
 export type LinkStatus = "connecting" | "live" | "offline";
 

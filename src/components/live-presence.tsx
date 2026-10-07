@@ -4,7 +4,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { reconnectDelay } from "~/features/admin/live-link";
-import { HIDDEN_REPORT_MS, MAX_PATH } from "~/features/admin/presence-protocol";
+import {
+  HIDDEN_REPORT_MS,
+  MAX_PATH,
+  PING_MS,
+} from "~/features/admin/presence-protocol";
 
 // Each open tab holds one small WebSocket to the presence worker
 // (workers/presence), so the operator's dashboard counts exactly who is on the
@@ -13,18 +17,19 @@ import { HIDDEN_REPORT_MS, MAX_PATH } from "~/features/admin/presence-protocol";
 // from), the browser's time zone setting, and a random id this browser keeps
 // so several tabs count as one person.
 //
-// Every connection and message is a request Cloudflare counts against the
-// worker's free daily allowance, so a tab spends as few as it can. It opens
-// once the tab has been in view for 15 seconds in all (a visit that bounces
-// straight off, or a tab opened in the background and never looked at, never
-// connects), retries
-// gently with random spacing (so a worker deploy does not bring every tab
-// back at once) and stops after a few failures until the tab is used again,
-// skips automated browsers, and closes on pagehide so the back/forward cache
-// still works. It only reports a page or visibility that changed (the worker
-// closes a tab that sends more than a person would), and says it went out of
-// view only once it has been for a minute, so a quick look elsewhere costs
-// nothing.
+// The count is meant to be people really looking at the site, as soon as they
+// are. So the socket opens once the tab has been in view for two seconds in
+// all: long enough that a page prefetched or opened and closed at once, or a
+// tab opened in the background and never looked at, never connects; short
+// enough that a real short visit is counted. (It was 15 seconds while the
+// worker ran on Cloudflare's free daily requests; on the paid plan a
+// connection costs next to nothing.) It retries gently with random spacing
+// (so a worker deploy does not bring every tab back at once) and stops after
+// a few failures until the tab is used again, skips automated browsers, and
+// closes on pagehide so the back/forward cache still works. It only reports a
+// page or visibility that changed (the worker closes a tab that sends more
+// than a person would), and says it went out of view once it has been for a
+// few seconds, so flicking past another tab sends nothing.
 //
 // Paths are sent as they are, repository pages included. Whether a
 // repository is private is not known here cheaply (the GitHub token is
@@ -32,8 +37,7 @@ import { HIDDEN_REPORT_MS, MAX_PATH } from "~/features/admin/presence-protocol";
 // shows by name on the operator's dashboard (and only there).
 
 const PRESENCE_URL = process.env.NEXT_PUBLIC_PRESENCE_URL?.replace(/\/$/, "");
-const PING_MS = 30_000;
-const IN_VIEW_BEFORE_OPEN_MS = 15_000;
+const IN_VIEW_BEFORE_OPEN_MS = 2_000;
 const MAX_FAILURES = 6;
 const STORAGE_KEY = "gd-presence-id";
 const ID = /^[a-z0-9]{8,24}$/;
@@ -214,6 +218,9 @@ export function LivePresence() {
       if (visible() === "1") {
         viewedSince ??= now;
         hiddenAt = null;
+        // Pings may have been slowed while out of view, and the worker takes
+        // a tab in view that misses a few to be gone: say it is here now.
+        send("ping");
       } else {
         if (viewedSince !== null) viewedMs += now - viewedSince;
         viewedSince = null;

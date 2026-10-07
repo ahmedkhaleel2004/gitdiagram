@@ -4,7 +4,9 @@ import type { LiveVisitor } from "./types";
 // however many tabs it has open. They are here now if one of their tabs is in
 // view, or was within the last two minutes (they may have switched to their
 // editor while a diagram generates). Background tabs left open for longer
-// still count as tabs, not as people here.
+// still count as tabs, not as people here. A tab says it went out of view a
+// few seconds after it did (HIDDEN_REPORT_MS, which must stay shorter than
+// RECENT_MS), and the two minutes run from when it really went.
 //
 // The presence worker (workers/presence) imports this file too, so the daily
 // peak it records and the count the dashboard shows use the same rule.

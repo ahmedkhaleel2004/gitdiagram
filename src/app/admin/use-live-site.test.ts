@@ -135,7 +135,7 @@ describe("the dashboard's live socket", () => {
     expect(socket.sent).toEqual([`t:${newer}`]);
   });
 
-  it("lets its socket go after a minute out of view, and comes back when shown", () => {
+  it("keeps its socket through minutes out of view, lets it go after a quarter of an hour, and comes back when shown", () => {
     const { result, rerender, onTokenNeeded } = setup(
       token(DASHBOARD_TOKEN_MS),
     );
@@ -147,19 +147,22 @@ describe("the dashboard's live socket", () => {
         act(() => socket.receive("pong"));
       }
     };
-    // A quick look elsewhere keeps it.
+    // Minutes in another tab keep it.
     act(() => setVisibility("hidden"));
-    wait(30_000);
+    wait(10 * 60_000);
     act(() => setVisibility("visible"));
     wait(60_000);
     expect(socket.closedWith).toBeNull();
     act(() => setVisibility("hidden"));
+    wait(14 * 60_000);
+    expect(socket.closedWith).toBeNull();
     wait(60_000);
     expect(socket.closedWith).toBe(1000);
     expect(result.current.status).toBe("offline");
     act(() => vi.advanceTimersByTime(10 * 60_000));
     expect(FakeSocket.instances).toHaveLength(1);
     // Its token ran out meanwhile: it asks for one, then connects.
+    onTokenNeeded.mockClear();
     act(() => setVisibility("visible"));
     expect(onTokenNeeded).toHaveBeenCalled();
     rerender({ presence: { url: URL, token: token(DASHBOARD_TOKEN_MS) } });

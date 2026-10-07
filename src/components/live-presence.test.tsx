@@ -1,7 +1,12 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { HIDDEN_REPORT_MS, MAX_PATH } from "~/features/admin/presence-protocol";
+import {
+  HIDDEN_REPORT_MS,
+  MAX_PATH,
+  PING_MS,
+} from "~/features/admin/presence-protocol";
+import { RECENT_MS } from "~/features/admin/presence";
 import { FakeSocket, setVisibility } from "~/test/fake-socket";
 
 const navigation = vi.hoisted(() => ({ pathname: "/" }));
@@ -26,7 +31,7 @@ const told = (socket: FakeSocket) =>
   socket.sent.filter((message) => message !== "ping");
 
 /** Keeps the tab in view long enough for it to connect. */
-const idle = () => act(() => vi.advanceTimersByTime(15_000));
+const idle = () => act(() => vi.advanceTimersByTime(2_000));
 
 beforeEach(() => {
   vi.resetModules();
@@ -48,9 +53,9 @@ afterEach(() => {
 });
 
 describe("live presence", () => {
-  it("connects once the tab has been in view a while, as one browser", async () => {
+  it("connects once the tab has been in view two seconds, as one browser", async () => {
     await mount();
-    act(() => vi.advanceTimersByTime(14_999));
+    act(() => vi.advanceTimersByTime(1_999));
     expect(FakeSocket.instances).toHaveLength(0);
     act(() => vi.advanceTimersByTime(1));
     const query = params(FakeSocket.last);
@@ -72,12 +77,12 @@ describe("live presence", () => {
 
   it("counts time in view across looks, and never connects for a quick visit", async () => {
     await mount();
-    act(() => vi.advanceTimersByTime(10_000));
+    act(() => vi.advanceTimersByTime(1_500));
     act(() => setVisibility("hidden"));
     act(() => vi.advanceTimersByTime(60_000));
     expect(FakeSocket.instances).toHaveLength(0);
     act(() => setVisibility("visible"));
-    act(() => vi.advanceTimersByTime(4_999));
+    act(() => vi.advanceTimersByTime(499));
     expect(FakeSocket.instances).toHaveLength(0);
     act(() => vi.advanceTimersByTime(1));
     expect(FakeSocket.instances).toHaveLength(1);
@@ -111,6 +116,27 @@ describe("live presence", () => {
     expect(told(socket)).toEqual(["v:0"]);
     act(() => setVisibility("visible"));
     expect(told(socket)).toEqual(["v:0", "v:1"]);
+  });
+
+  it("says it went out of view within seconds, well inside the time someone still counts as here", async () => {
+    expect(HIDDEN_REPORT_MS).toBeLessThanOrEqual(10_000);
+    expect(HIDDEN_REPORT_MS * 4).toBeLessThan(RECENT_MS);
+  });
+
+  it("pings often, and at once when looked at again", async () => {
+    await mount();
+    idle();
+    const socket = FakeSocket.last!;
+    act(() => socket.open());
+    act(() => vi.advanceTimersByTime(PING_MS));
+    expect(socket.sent).toEqual(["ping"]);
+    act(() => setVisibility("hidden"));
+    act(() => vi.advanceTimersByTime(1_000));
+    socket.sent = [];
+    // Its timers may have been slowed meanwhile; the worker must not take a
+    // tab in view for gone.
+    act(() => setVisibility("visible"));
+    expect(socket.sent).toEqual(["ping"]);
   });
 
   it("stays out of automated browsers", async () => {

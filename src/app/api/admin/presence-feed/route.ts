@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Called by the presence worker (never a browser) when a dashboard connects
- * and every minute while one is open: marks the feed watched, and hands over
+ * and about every minute while one is open: marks the feed watched, and hands over
  * the events parked while nobody was (see live-events.ts).
  */
 export async function POST(request: Request): Promise<Response> {

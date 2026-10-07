@@ -12,7 +12,7 @@ import {
   SIGNED_OUT_EVERYWHERE,
 } from "../../../src/features/admin/presence-protocol";
 import type { PresenceMessage } from "../../../src/features/admin/types";
-import { MAX_MESSAGES_PER_WINDOW } from "./logic";
+import { MAX_MESSAGES_PER_WINDOW, STALE_MS, VISIBLE_STALE_MS } from "./logic";
 
 // The Durable Object and the Worker in front of it, in the Workers runtime
 // (@cloudflare/vitest-plugin). Sockets are opened through the Worker as the
@@ -144,6 +144,8 @@ afterEach(async () => {
       async (_, state) => {
         for (const ws of state.getWebSockets()) ws.close(1000, "test over");
         await state.storage.deleteAlarm();
+        // When the site was last asked for parked events.
+        state.storage.sql.exec("DELETE FROM kv WHERE k = 'site-drain'");
       },
     );
 });
@@ -243,13 +245,23 @@ describe("dashboards", () => {
     );
   });
 
-  it("ask the site again at every sweep, and not while none is open", async () => {
+  it("ask the site again each minute, not at every sweep, and not while none is open", async () => {
     await visit();
     expect(await runDurableObjectAlarm(global())).toBe(true);
     expect(siteCalls()).toHaveLength(0);
     const admin = await dashboard();
     expect(siteCalls()).toHaveLength(1);
     parked = [{ kind: "video.started", at: Date.now() - 5_000 }];
+    // A sweep seconds after the last call leaves the site alone.
+    expect(await runDurableObjectAlarm(global())).toBe(true);
+    expect(siteCalls()).toHaveLength(1);
+    // A minute on (as stored: the object may have hibernated since).
+    await runInDurableObject(global(), (_, state) => {
+      state.storage.sql.exec(
+        "UPDATE kv SET v = ? WHERE k = 'site-drain'",
+        String(Date.now() - 60_000),
+      );
+    });
     expect(await runDurableObjectAlarm(global())).toBe(true);
     expect(siteCalls()).toHaveLength(2);
     await vi.waitFor(() =>
@@ -261,10 +273,19 @@ describe("dashboards", () => {
     );
   });
 
-  it("still open when the site cannot be reached", async () => {
+  it("still open when the site cannot be reached, and ask again at the next sweep", async () => {
     vi.mocked(globalThis.fetch).mockRejectedValue(new Error("offline"));
     const admin = await dashboard();
     await vi.waitFor(() => expect(admin.messages[0]?.type).toBe("snapshot"));
+    expect(siteCalls()).toHaveLength(1);
+    expect(await runDurableObjectAlarm(global())).toBe(true);
+    expect(siteCalls()).toHaveLength(2);
+  });
+
+  it("ask the site at once when another connects, however lately it was asked", async () => {
+    await dashboard();
+    await dashboard();
+    expect(siteCalls()).toHaveLength(2);
   });
 
   it("get a snapshot that says which protocol the worker speaks", async () => {
@@ -448,6 +469,62 @@ describe("sweeps", () => {
     );
     expect(alarm).not.toBeNull();
     expect(alarm! - Date.now()).toBeGreaterThan(60_000);
+  });
+
+  it("run every few seconds while a dashboard watches", async () => {
+    await visit();
+    await dashboard(Date.now() + 5 * 60_000);
+    const alarm = await runInDurableObject(global(), (_, state) =>
+      state.storage.getAlarm(),
+    );
+    expect(alarm! - Date.now()).toBeGreaterThan(5_000);
+    expect(alarm! - Date.now()).toBeLessThanOrEqual(15_000);
+  });
+
+  it("take a silent tab in view for gone sooner than one out of view", async () => {
+    const seen = await visit({ p: "/in-view" });
+    const away = await visit({ p: "/out-of-view" });
+    const heard = await visit({ p: "/heard-from" });
+    away.send("v:0");
+    await vi.waitFor(async () =>
+      expect(
+        (await attachments(global(), "visitor")).find(
+          (a) => a.p === "/out-of-view",
+        )?.v,
+      ).toBe(0),
+    );
+    // Connected a while ago, and no ping since: longer than a tab in view is
+    // given, shorter than one out of view is.
+    const quiet = Date.now() - VISIBLE_STALE_MS - 1_000;
+    expect(Date.now() - quiet).toBeLessThan(STALE_MS);
+    await rewrite(global(), (a) =>
+      a.k === "visitor"
+        ? {
+            ...a,
+            t: quiet,
+            // A message counts as being there, ping or not.
+            a:
+              a.p === "/heard-from" ? Date.now() : a.p === "/in-view" ? 0 : a.a,
+          }
+        : a,
+    );
+    const code = closed(seen);
+    const admin = await dashboard();
+    await vi.waitFor(() => expect(admin.messages[0]?.type).toBe("snapshot"));
+    const snapshot = admin.messages[0]!;
+    if (snapshot.type !== "snapshot") throw new Error("not a snapshot");
+    // Left out of the count at once, and closed at the sweep.
+    expect(snapshot.visitors.map((v) => v.p).sort()).toEqual([
+      "/heard-from",
+      "/out-of-view",
+    ]);
+    expect(await runDurableObjectAlarm(global())).toBe(true);
+    expect(await code).toBe(1000);
+    expect(
+      (await attachments(global(), "visitor")).map((a) => a.p).sort(),
+    ).toEqual(["/heard-from", "/out-of-view"]);
+    expect(away.readyState).toBe(WebSocket.OPEN);
+    expect(heard.readyState).toBe(WebSocket.OPEN);
   });
 
   it("close visitors that went quiet", async () => {

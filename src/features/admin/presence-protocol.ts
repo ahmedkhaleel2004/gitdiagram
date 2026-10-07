@@ -8,7 +8,7 @@
  * sends it in every snapshot; a dashboard that reads another number (or none,
  * from a worker older than this) shows that one of them needs deploying.
  */
-export const PRESENCE_PROTOCOL = 3;
+export const PRESENCE_PROTOCOL = 4;
 
 /**
  * The dashboard offers this WebSocket subprotocol, followed by its token as a
@@ -23,8 +23,8 @@ export const ADMIN_PROTOCOL = "gd-admin";
  * worker cannot see the admin session: a browser that was signed out gets no
  * new tokens, so the worker closes its socket when the last one runs out
  * ("Sign out everywhere" closes every dashboard at once). Not shorter, because
- * handing the open socket a new one wakes the worker, and every wake counts
- * against Cloudflare's free daily requests.
+ * a dashboard has to fetch and hand over a new one before the old runs out,
+ * and a background tab's timers can be slowed to once a minute.
  */
 export const DASHBOARD_TOKEN_MS = 5 * 60_000;
 
@@ -47,19 +47,32 @@ export const SIGNED_OUT_EVERYWHERE = "admin.signed_out_everywhere";
 export const FEED_EVENTS = 200;
 
 /**
- * How long a tab waits, once out of view, before saying so: a quick look at
- * another tab and back sends nothing (every message is a request Cloudflare
- * counts). The worker dates "hidden since" back by this much, so who counts
- * as here (RECENT_MS in presence.ts, which must be longer) is unchanged.
+ * How long a tab waits, once out of view, before saying so: long enough that
+ * flicking past another tab and back sends nothing and does not make the
+ * dashboard's list flicker, short enough that the operator sees who is really
+ * looking. (It was a minute while the worker ran on Cloudflare's free daily
+ * requests; on the paid plan the messages cost next to nothing.) The worker
+ * dates "hidden since" back by this much, so who counts as here (RECENT_MS in
+ * presence.ts, which must be longer) is unchanged.
  */
-export const HIDDEN_REPORT_MS = 60_000;
+export const HIDDEN_REPORT_MS = 5_000;
+
+/**
+ * How often a tab sends its keep-alive ping. The runtime answers pings
+ * without waking the worker, so they cost nothing; the worker takes a tab in
+ * view to be gone once several in a row are missing (VISIBLE_STALE_MS in
+ * workers/presence/src/logic.ts, which must stay well over this).
+ */
+export const PING_MS = 15_000;
 
 /**
  * While no dashboard is open, the site parks feed events in Redis instead of
- * sending each to the worker (every one would be two requests Cloudflare
- * counts). An open dashboard's worker calls the site when it connects and at
- * every sweep (each minute), which takes the parked events and marks the feed
- * watched for this long, so events go straight to the worker meanwhile.
+ * sending each to the worker, where nobody would see it arrive. An open
+ * dashboard's worker calls the site when it connects and each minute after,
+ * which takes the parked events and marks the feed watched for this long, so
+ * events go straight to the worker meanwhile. The operator sees no
+ * difference: the parked events are in the first snapshot, at their own
+ * times.
  */
 export const FEED_WATCH_MS = 150_000;
 

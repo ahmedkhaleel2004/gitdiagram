@@ -23,8 +23,8 @@ import { upstashEval } from "~/server/storage/upstash";
 // the moment it arrives. Sending is best effort and never slows or fails the
 // request it describes.
 //
-// While no dashboard is open, events wait in Redis instead (the worker runs on
-// Cloudflare's free daily requests, and each event sent is two). The worker
+// While no dashboard is open, events wait in Redis instead: nobody would see
+// them arrive, and the worker need not wake for each. The worker
 // takes them when a dashboard connects, and every minute while one is open,
 // through /api/admin/presence-feed, which also marks the feed watched for
 // FEED_WATCH_MS so events meanwhile go straight to it. If Redis cannot be

@@ -12,17 +12,30 @@ import {
   tokenExpiry,
 } from "../../../src/features/admin/presence-protocol";
 
-// Tabs ping every 30 s (throttled to about once a minute in the background).
-// A socket silent for longer than this lost its network without closing.
+// Tabs ping every PING_MS (15 s; ones from before protocol 4 every 30 s), and
+// a background tab's timers can be slowed to about once a minute. A socket
+// silent for longer than this lost its network without closing.
 export const STALE_MS = 150_000;
+// A tab in view pings on time, so it is known to be gone much sooner: a
+// laptop whose lid closed, or a phone that locked before the tab could say it
+// was hidden, stops counting as a person here after three missed pings, not
+// two and a half minutes. If this is ever wrong about a tab, the tab
+// reconnects within seconds.
+export const VISIBLE_STALE_MS = 50_000;
+
+/** How long a tab may stay silent before it counts as gone. */
+export const staleAfter = (visitor: { v: 0 | 1 }) =>
+  visitor.v === 1 ? VISIBLE_STALE_MS : STALE_MS;
 // Dashboards ping every 5 s, but a background dashboard's timers can slow to
 // once a minute, so allow a little more than that.
 export const ADMIN_STALE_MS = 90_000;
 // A tab sends a message when it changes page or goes in or out of view. More
 // changes (or messages the worker does not understand) than this in a minute
-// is a script, not a person; the socket is closed. Messages that change
-// nothing are not held against a person, but every message wakes the object,
-// so there is a looser cap on all of them too.
+// is a script, not a person; the socket is closed (a person can go out of
+// view and come back at most once every HIDDEN_REPORT_MS, which is 24 changes
+// a minute). Messages that change nothing are not held against a person, but
+// every message wakes the object, so there is a looser cap on all of them
+// too: this is what stops one script running up millions of wake-ups.
 export const MESSAGE_WINDOW_MS = 60_000;
 export const MAX_MESSAGES_PER_WINDOW = 30;
 export const MAX_FRAMES_PER_WINDOW = 120;
@@ -86,8 +99,8 @@ export function countMessage(
 }
 
 /**
- * Whether a socket is still really there: it connected recently, or the
- * runtime answered one of its pings recently. A laptop that went to sleep or
+ * Whether a socket is still really there: it connected (or was last heard
+ * from) recently, or the runtime answered one of its pings recently. A laptop that went to sleep or
  * lost its network keeps a socket open on our side that never pings again.
  */
 export function isFresh(

@@ -34,7 +34,7 @@ import {
   type Peak,
   rollPeak,
   sameText,
-  STALE_MS,
+  staleAfter,
   utcDay,
 } from "./logic";
 
@@ -53,10 +53,12 @@ import {
 // the sockets' attachments after it hibernates), so a tab's message costs one
 // attachment read and write, not a pass over every socket.
 //
-// Everything here runs on Cloudflare's free daily requests (the Worker and
-// the object together), so nothing wakes it that need not: while no dashboard
-// is open the site parks its events, and the object fetches them (a
-// subrequest, which is free) when a dashboard connects and at every sweep.
+// This ran on Cloudflare's free daily requests until the account moved to the
+// paid plan, where a million requests cost cents. What is left of that
+// frugality is only what costs the operator nothing: while no dashboard is
+// open the site parks its events, and the object fetches them when a
+// dashboard connects and each minute while one stays open. The limits on
+// what one visitor may send are for abuse, not cost.
 
 export interface Env {
   PRESENCE: DurableObjectNamespace<Presence>;
@@ -75,11 +77,16 @@ type VisitorAttachment = { k: "visitor" } & LiveVisitor & {
     mw?: number;
     mc?: number;
     mf?: number;
+    /** When the tab last sent a message: it was there then, ping or not. */
+    a?: number;
   };
 /** A dashboard: when it connected, and when its token expires. */
 type AdminAttachment = { k: "admin"; t?: number; x?: number };
 type Attachment = VisitorAttachment | AdminAttachment;
 type FeedEvent = Record<string, unknown> & { kind: string };
+
+/** When a tab connected or last sent a message, whichever is later. */
+const lastSeen = (state: VisitorAttachment) => Math.max(state.t, state.a ?? 0);
 
 const isEvent = (value: unknown): value is FeedEvent =>
   Boolean(value) &&
@@ -93,11 +100,19 @@ const MAX_EVENT_BYTES = 4_000;
 // Quiet sockets are closed first, so a network is never refused for tabs
 // that are long gone.
 const MAX_SOCKETS_PER_NETWORK = 64;
-// How often quiet sockets are swept: often while a dashboard watches, rarely
-// while only visitors are connected (so gone tabs still free their network's
-// places), never while nobody is. Every sweep is a request Cloudflare counts.
-const SWEEP_MS = 60_000;
+// How often quiet sockets are swept. Often while a dashboard watches: a
+// snapshot leaves quiet tabs out by itself, but an open dashboard only hears
+// that one is gone when a sweep closes it. Rarely while only visitors are
+// connected (nobody is looking, and counts and peaks never use quiet sockets;
+// it is there so gone tabs free their network's places), never while nobody
+// is.
+const SWEEP_MS = 15_000;
 const IDLE_SWEEP_MS = 15 * 60_000;
+// How often an open dashboard's object asks the site for parked events and
+// marks the feed watched. Well inside FEED_WATCH_MS; not every sweep, because
+// each call is a request to the site and a Redis command for (almost always)
+// nothing.
+const SITE_DRAIN_MS = 60_000;
 // A dashboard's messages are its renewed tokens.
 const MAX_ADMIN_MESSAGE = 200;
 // A job with no end event (its server died) drops off after this long. An
@@ -112,8 +127,11 @@ const DRAIN_TIMEOUT_MS = 3_000;
 const EXPIRY_HEADER = "x-presence-admin-expiry";
 
 export class Presence extends DurableObject<Env> {
-  private roster: Map<string, { ws: WebSocket; visitor: LiveVisitor }> | null =
-    null;
+  /** `seen`: when the tab connected or last sent a message. */
+  private roster: Map<
+    string,
+    { ws: WebSocket; visitor: LiveVisitor; seen: number }
+  > | null = null;
   private outbox = new Outbox();
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private peakDirty = false;
@@ -141,7 +159,7 @@ export class Presence extends DurableObject<Env> {
   }
 
   private async acceptAdmin(request: Request): Promise<Response> {
-    await this.drainSite();
+    await this.drainSite(true);
     const now = Date.now();
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
@@ -200,7 +218,7 @@ export class Presence extends DurableObject<Env> {
       k: "visitor",
       ...visitor,
     } satisfies VisitorAttachment);
-    this.roster?.set(id, { ws: server, visitor });
+    this.roster?.set(id, { ws: server, visitor, seen: now });
     this.queue({ type: "join", visitor });
     if (visible) this.peakDirty = true;
     this.scheduleFlush();
@@ -266,11 +284,13 @@ export class Presence extends DurableObject<Env> {
     next.mw = allowance.mw;
     next.mc = allowance.mc;
     next.mf = allowance.mf;
+    next.a = now;
     ws.serializeAttachment(next);
+    const entry = this.roster?.get(state.id);
+    if (entry) entry.seen = now;
     // Only someone who was not already counted can raise the peak.
     if (update?.v === 1 && !isHere(state, now)) this.peakDirty = true;
     if (!update) return;
-    const entry = this.roster?.get(state.id);
     if (entry)
       entry.visitor = { ...entry.visitor, p: next.p, v: next.v, h: next.h };
     this.queue(update);
@@ -286,18 +306,18 @@ export class Presence extends DurableObject<Env> {
   }
 
   /**
-   * Every minute while a dashboard is open (and as a dashboard's token runs
-   * out), every 15 minutes while only visitors are connected: close sockets
-   * that went quiet (visitors and dashboards), close dashboards whose token
-   * ran out, forget orphaned jobs, and start a new day's peak at midnight
-   * UTC. Counts and peaks only ever use live sockets, so the slow sweep is
-   * there to give a network back the places its vanished tabs held.
+   * Every 15 seconds while a dashboard is open (and as a dashboard's token
+   * runs out), every 15 minutes while only visitors are connected: close
+   * sockets that went quiet (visitors and dashboards), close dashboards whose
+   * token ran out, forget orphaned jobs, and start a new day's peak at
+   * midnight UTC. Counts and peaks only ever use live sockets, so the slow
+   * sweep is there to give a network back the places its vanished tabs held.
    */
   async alarm() {
     if (this.admins().length) await this.drainSite();
     const now = Date.now();
-    for (const { ws, visitor } of this.getRoster().values())
-      if (!this.isLive(ws, visitor.t, STALE_MS, now)) this.drop(ws);
+    for (const { ws, visitor, seen } of this.getRoster().values())
+      if (!this.isLive(ws, seen, staleAfter(visitor), now)) this.drop(ws);
     for (const ws of this.admins()) {
       const state = ws.deserializeAttachment() as AdminAttachment | null;
       if (state?.x && state.x <= now) this.drop(ws, 4001, "Token expired");
@@ -345,7 +365,10 @@ export class Presence extends DurableObject<Env> {
     let left = 0;
     for (const ws of sockets) {
       const state = ws.deserializeAttachment() as Attachment | null;
-      if (state?.k === "visitor" && !this.isLive(ws, state.t, STALE_MS, now))
+      if (
+        state?.k === "visitor" &&
+        !this.isLive(ws, lastSeen(state), staleAfter(state), now)
+      )
         this.drop(ws);
       else left += 1;
     }
@@ -372,6 +395,7 @@ export class Presence extends DurableObject<Env> {
 
   private isLive(
     ws: WebSocket,
+    /** When it connected, or was last heard from. */
     connectedAt: number,
     staleMs: number,
     now: number,
@@ -395,12 +419,24 @@ export class Presence extends DurableObject<Env> {
 
   /**
    * Tells the site a dashboard is watching (so it sends events straight
-   * here for a while) and takes the events it parked while none was.
+   * here for a while) and takes the events it parked while none was. Once
+   * every SITE_DRAIN_MS, unless `now` (a dashboard connecting must not open
+   * without them). The time of the last call is stored, because the object
+   * may have hibernated since.
    */
-  private async drainSite() {
+  private async drainSite(now = false) {
     const origin = this.env.SITE_ORIGIN?.replace(/\/$/, "");
     const secret = this.env.PRESENCE_SECRET ?? "";
     if (!origin || secret.length < 32) return;
+    const sql = this.ctx.storage.sql;
+    const started = Date.now();
+    if (!now) {
+      const last = sql
+        .exec<{ v: string }>("SELECT v FROM kv WHERE k = 'site-drain'")
+        .toArray()[0];
+      // A second's slack, so the sweep a minute later is not a moment early.
+      if (last && started - Number(last.v) < SITE_DRAIN_MS - 1_000) return;
+    }
     let events: unknown;
     try {
       const response = await fetch(`${origin}/api/admin/presence-feed`, {
@@ -416,6 +452,10 @@ export class Presence extends DurableObject<Env> {
     } catch {
       return; // The next sweep tries again.
     }
+    sql.exec(
+      "INSERT OR REPLACE INTO kv (k, v) VALUES ('site-drain', ?)",
+      String(started),
+    );
     if (!Array.isArray(events)) return;
     for (const event of events.slice(-FEED_EVENTS))
       if (isEvent(event)) await this.ingest(event, Date.now());
@@ -521,8 +561,12 @@ export class Presence extends DurableObject<Env> {
         if (ws.readyState !== WebSocket.OPEN) continue;
         const state = ws.deserializeAttachment() as Attachment | null;
         if (state?.k !== "visitor") continue;
-        const { k: _, mw: __, mc: ___, mf: ____, ...visitor } = state;
-        this.roster.set(state.id, { ws, visitor: normalizeVisitor(visitor) });
+        const { k: _, mw: __, mc: ___, mf: ____, a: _____, ...visitor } = state;
+        this.roster.set(state.id, {
+          ws,
+          visitor: normalizeVisitor(visitor),
+          seen: lastSeen(state),
+        });
       }
     }
     return this.roster;
@@ -531,8 +575,8 @@ export class Presence extends DurableObject<Env> {
   /** Open tabs whose connection is still alive. */
   private visitors(now: number): LiveVisitor[] {
     const list: LiveVisitor[] = [];
-    for (const { ws, visitor } of this.getRoster().values())
-      if (this.isLive(ws, visitor.t, STALE_MS, now)) list.push(visitor);
+    for (const { ws, visitor, seen } of this.getRoster().values())
+      if (this.isLive(ws, seen, staleAfter(visitor), now)) list.push(visitor);
     return list;
   }
 

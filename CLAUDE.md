@@ -184,7 +184,7 @@ On in production (`VIDEO_EXPLAINER_ENABLED=1`, `NEXT_PUBLIC_VIDEO_EXPLAINER=1`).
 Sign in with `VIDEO_ADMIN_TOKEN` (`~/.config/gitdiagram/video-admin-token`). The browser keeps a signed, HttpOnly cookie that also makes it a video admin. "Sign out everywhere" bumps a session generation in Redis; rotating the token is the hard stop.
 
 - **Live switches** (`src/server/admin/controls.ts`): Redis hash `admin:v1:controls`, read with a 1 s cache. Starting a video fails closed when the controls cannot be read. These switches change what visitors get: flip them only when asked.
-- **Live presence** (`workers/presence`): a Worker and one Durable Object on Cloudflare's free plan (100k requests a day), so tabs connect late and report rarely. **Bump `PRESENCE_PROTOCOL` (`presence-protocol.ts`) with any protocol change and deploy the worker before the site.**
+- **Live presence** (`workers/presence`): a Worker and one Durable Object on the account's Workers Paid plan (it was built for the free plan's 100k requests a day; that limit is gone). A tab connects after two seconds in view and reports going out of view after five; the per-network and per-socket limits that remain are against abuse, not cost (`workers/presence/README.md`). **Bump `PRESENCE_PROTOCOL` (`presence-protocol.ts`) with any protocol change and deploy the worker before the site.**
 - **Live feed** (`emitLiveEvent`, `src/server/admin/live-events.ts`): best effort, never blocks. Repository names are sent only once ingestion confirms the repo is public.
 - **View as a visitor from another country** (`view-as.ts`): a signed cookie; `isVideoAdmin` is false meanwhile.
 
