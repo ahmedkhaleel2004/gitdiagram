@@ -4,12 +4,15 @@ import "server-only";
 // accounting (explainer/director.ts) and the /admin credit estimate
 // (admin/claude-credit.ts). Cache writes cost 1.25× input for 5 minutes and 2×
 // for an hour; cache reads have their own rate per model (0.1× input on most,
-// 0.05× on Opus 5.5, 0.025× on Fable 5.1). Checked 2026-09-25.
+// 0.05× on Opus 5.5, 0.025× on Fable 5.1). Haiku 5.5 alone charges by prompt
+// length: every rate is 5× on a prompt over 100,000 tokens. Checked 2026-10-07.
 
 export interface ClaudePrice {
   input: number;
   output: number;
   cacheRead: number;
+  /** Every rate is multiplied by `times` on a prompt over `over` tokens. */
+  longPrompt?: { over: number; times: number };
 }
 
 const PRICES: Record<string, ClaudePrice> = {
@@ -19,6 +22,12 @@ const PRICES: Record<string, ClaudePrice> = {
   "claude-opus-5": { input: 5, output: 25, cacheRead: 0.5 },
   "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2 },
   "claude-sonnet-5": { input: 2, output: 10, cacheRead: 0.2 },
+  "claude-haiku-5-5": {
+    input: 0.1,
+    output: 0.5,
+    cacheRead: 0.01,
+    longPrompt: { over: 100_000, times: 5 },
+  },
   "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.1 },
 };
 
@@ -49,14 +58,23 @@ export interface ClaudeTokens {
   output: number;
 }
 
-/** List-price cost in USD of the given tokens. */
+/** List-price cost in USD of the given tokens (one request's, for Haiku 5.5). */
 export function claudeCostUsd(price: ClaudePrice, tokens: ClaudeTokens) {
+  const cacheWrite5m = tokens.cacheWrite5m ?? 0;
+  const cacheWrite1h = tokens.cacheWrite1h ?? 0;
+  const cacheRead = tokens.cacheRead ?? 0;
+  const prompt = tokens.input + cacheWrite5m + cacheWrite1h + cacheRead;
+  const times =
+    price.longPrompt && prompt > price.longPrompt.over
+      ? price.longPrompt.times
+      : 1;
   return (
-    (tokens.input * price.input +
-      (tokens.cacheWrite5m ?? 0) * price.input * 1.25 +
-      (tokens.cacheWrite1h ?? 0) * price.input * 2 +
-      (tokens.cacheRead ?? 0) * price.cacheRead +
-      tokens.output * price.output) /
+    ((tokens.input * price.input +
+      cacheWrite5m * price.input * 1.25 +
+      cacheWrite1h * price.input * 2 +
+      cacheRead * price.cacheRead +
+      tokens.output * price.output) *
+      times) /
     1_000_000
   );
 }

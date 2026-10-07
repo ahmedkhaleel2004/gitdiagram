@@ -172,7 +172,9 @@ describe("video making controls", () => {
   it("describes who gets which model the way videos are made", () => {
     renderControls();
     expect(
-      screen.getByText(/written by Claude Opus and designed by GPT-6\.1 Sol/),
+      screen.getByText(
+        /written by Claude Opus and designed by Claude Haiku 5\.5/,
+      ),
     ).toBeInTheDocument();
   });
 });

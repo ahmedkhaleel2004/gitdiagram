@@ -33,4 +33,13 @@ describe("Claude prices", () => {
       }),
     ).toBeCloseTo(4 + 5 + 8 + 0.2 + 20);
   });
+
+  it("prices Haiku 5.5 five times higher on a prompt over 100,000 tokens", () => {
+    const price = claudePrice("claude-haiku-5-5")!;
+    const short = { input: 20_000, cacheRead: 80_000, output: 1_000_000 };
+    expect(claudeCostUsd(price, short)).toBeCloseTo(0.002 + 0.0008 + 0.5);
+    expect(claudeCostUsd(price, { ...short, input: 20_001 })).toBeCloseTo(
+      (0.0020001 + 0.0008 + 0.5) * 5,
+    );
+  });
 });

@@ -82,7 +82,12 @@ interface UsageResult {
 /** List-price cost in USD of one usage report row. */
 export function priceUsage(row: UsageResult): number {
   // Unknown models are priced as the most expensive one, so the balance errs low.
-  const price = (row.model && claudePrice(row.model)) || HIGHEST_CLAUDE_PRICE;
+  // A row sums many requests, so a per-request long-prompt rate cannot be
+  // told here; the site's prompts stay under it.
+  const price = {
+    ...((row.model && claudePrice(row.model)) || HIGHEST_CLAUDE_PRICE),
+    longPrompt: undefined,
+  };
   const writes = row.cache_creation ?? {};
   const tokenCost = claudeCostUsd(price, {
     input: row.uncached_input_tokens,

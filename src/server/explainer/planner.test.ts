@@ -6,9 +6,10 @@ import { canGenerateVideos } from "./config";
 import { choosePlanner, premiumPlanner } from "./planner";
 
 const OPUS = { model: "claude-opus-5-5", effort: "low" };
+const HAIKU = { model: "claude-haiku-5-5", effort: "medium" };
 const SOL = { model: "gpt-6.1-sol", effort: "medium" };
-// Opus writes the script, Sol designs the scenes.
-const STANDARD = { ...OPUS, designer: SOL };
+// Opus writes the script, Haiku designs the scenes, Sol stands behind both.
+const STANDARD = { ...OPUS, designer: HAIKU, fallback: SOL };
 // With VIDEO_PREMIUM_OPUS_DESIGNS=1 (set by choose(), so the routing shows):
 // Opus writes and designs; Sol takes over both if Opus fails.
 const PREMIUM = { ...OPUS, fallback: SOL };
@@ -83,14 +84,22 @@ describe("choosing the video planner", () => {
     expect(choice.planner).toEqual(STANDARD);
   });
 
-  it("lets Sol write the standard script too when configured", async () => {
+  it("lets one model write and design the standard films when configured", async () => {
+    vi.stubEnv("VIDEO_STANDARD_MODEL", "gpt-6.1-sol");
     vi.stubEnv("VIDEO_STANDARD_DIRECTOR_MODEL", "gpt-6.1-sol");
     expect((await choose()).planner).toEqual(SOL);
   });
 
-  it("has Sol design premium films by default", () => {
+  it("has Haiku design premium films by default, with Sol behind", () => {
     vi.stubEnv("OPENAI_API_KEY", "sk-test");
     expect(premiumPlanner()).toEqual(STANDARD);
+    vi.stubEnv("OPENAI_API_KEY", "");
+    expect(premiumPlanner()).toEqual({ ...OPUS, designer: HAIKU });
+  });
+
+  it("needs no stand-in when Sol designs under Opus: Sol already takes over", async () => {
+    vi.stubEnv("VIDEO_STANDARD_MODEL", "gpt-6.1-sol");
+    expect((await choose()).planner).toEqual({ ...OPUS, designer: SOL });
   });
 
   it("gives Opus no stand-in without an OpenAI key", () => {
@@ -101,6 +110,7 @@ describe("choosing the video planner", () => {
 
   it("lets Sol make premium films alone when it is the premium model", () => {
     vi.stubEnv("VIDEO_PLANNER_MODEL", "gpt-6.1-sol");
+    vi.stubEnv("VIDEO_STANDARD_MODEL", "gpt-6.1-sol");
     expect(premiumPlanner()).toEqual({ ...SOL, effort: "low" });
   });
 });
@@ -122,6 +132,7 @@ describe("whether videos can be made", () => {
   it("needs no Claude key when every model is a GPT", () => {
     keys("", "sk-test");
     vi.stubEnv("VIDEO_PLANNER_MODEL", "gpt-6.1-sol");
+    vi.stubEnv("VIDEO_STANDARD_MODEL", "gpt-6.1-sol");
     vi.stubEnv("VIDEO_STANDARD_DIRECTOR_MODEL", "gpt-6.1-sol");
     expect(canGenerateVideos()).toBe(true);
   });

@@ -5,10 +5,11 @@ import { errorText, logEvent } from "~/server/log";
 import type { Effort, Planner } from "./director";
 
 // Which model makes a video. Claude Opus tells the better story (see
-// experiments/video-models), so it writes every script, and GPT-6.1 Sol designs
-// the scenes, which blind-judged about level with Opus designing (see
-// experiments/video-bespoke). Premium films go where the most people will
-// watch:
+// experiments/video-models), so it writes every script, and Claude Haiku 5.5
+// at medium effort designs the scenes: blind-judged level with GPT-6.1 Sol at
+// under a third of the price (see experiments/video-haiku-designer). Sol
+// stands behind both, so films are still made when the Claude API fails or
+// its credit runs out. Premium films go where the most people will watch:
 // - the operator's videos,
 // - popular repositories, whoever asks (VIDEO_PREMIUM_MIN_STARS),
 // - a priority visitor's first video of the day (takePremiumVideo).
@@ -35,47 +36,82 @@ function readEffort(name: string, fallback: Effort): Effort {
     : fallback;
 }
 
-/** The standard films' designer, and the model that stands in for Opus. */
+/** The films' scene designer. */
 function standardDesigner() {
   return {
-    model: process.env.VIDEO_STANDARD_MODEL?.trim() || "gpt-6.1-sol",
+    model: process.env.VIDEO_STANDARD_MODEL?.trim() || "claude-haiku-5-5",
     effort: readEffort("VIDEO_STANDARD_EFFORT", "medium"),
   };
 }
 
 /**
- * Claude Opus writes the script and GPT-6.1 Sol designs the scenes. With
- * VIDEO_PREMIUM_OPUS_DESIGNS=1, Opus designs too; when it then fails for any
- * reason but a refusal (out of credit, overloaded), the standard designer
- * takes over both roles if its key is set, so the film is still made.
+ * GPT-6.1 Sol (VIDEO_FALLBACK_MODEL), when `model` is on the other provider
+ * and Sol's key is set: what fails one Claude model (no credit, an outage)
+ * usually fails the others too.
+ */
+function otherProvider(model: string) {
+  const fallback = {
+    model: process.env.VIDEO_FALLBACK_MODEL?.trim() || "gpt-6.1-sol",
+    effort: readEffort("VIDEO_FALLBACK_EFFORT", "medium"),
+  };
+  return isOpenAIModel(fallback.model) !== isOpenAIModel(model) &&
+    hasKeyFor(fallback.model)
+    ? fallback
+    : undefined;
+}
+
+/**
+ * A designer on the director's own provider leaves nobody to make the film
+ * when that provider fails, so the other provider's model stands behind both.
+ */
+function withProviderFallback(planner: Planner): Planner {
+  const { designer } = planner;
+  if (
+    !designer ||
+    isOpenAIModel(designer.model) !== isOpenAIModel(planner.model)
+  )
+    return planner;
+  const fallback = otherProvider(planner.model);
+  return fallback ? { ...planner, fallback } : planner;
+}
+
+/**
+ * Claude Opus writes the script and the standard designer designs the scenes.
+ * With VIDEO_PREMIUM_OPUS_DESIGNS=1, Opus designs too; when it then fails for
+ * any reason but a refusal (out of credit, overloaded), the other provider's
+ * model takes over both roles if its key is set, so the film is still made.
  */
 export function premiumPlanner(): Planner {
   const model = process.env.VIDEO_PLANNER_MODEL?.trim() || "claude-opus-5-5";
   const effort = readEffort("VIDEO_PLANNER_EFFORT", "low");
-  const sol = standardDesigner();
-  if (sol.model === model) return { model, effort };
+  const designer = standardDesigner();
+  if (designer.model === model) return { model, effort };
   if (process.env.VIDEO_PREMIUM_OPUS_DESIGNS?.trim() !== "1")
-    return { model, effort, designer: sol };
-  return { model, effort, ...(hasKeyFor(sol.model) ? { fallback: sol } : {}) };
+    return withProviderFallback({ model, effort, designer });
+  const fallback =
+    isOpenAIModel(designer.model) !== isOpenAIModel(model) &&
+    hasKeyFor(designer.model)
+      ? designer
+      : otherProvider(model);
+  return { model, effort, ...(fallback ? { fallback } : {}) };
 }
 
 /**
- * Claude Opus writes the script (one call, where the story is made) and
- * GPT-6.1 Sol at medium effort designs the scenes. Blind-judged about level
- * with Opus alone and faster than Sol alone (see experiments/video-bespoke).
- * VIDEO_STANDARD_DIRECTOR_MODEL set to the standard model makes Sol do both.
- * When the director fails (but not on a refusal), Sol writes the script too.
+ * Claude Opus writes the script (one call, where the story is made) and the
+ * standard designer designs the scenes. VIDEO_STANDARD_DIRECTOR_MODEL set to
+ * the standard model makes that model do both. When the director fails (but
+ * not on a refusal), the other provider's model writes the script too.
  */
 function standardPlanner(): Planner {
   const designer = standardDesigner();
   const director =
     process.env.VIDEO_STANDARD_DIRECTOR_MODEL?.trim() || "claude-opus-5-5";
   if (director === designer.model) return designer;
-  return {
+  return withProviderFallback({
     model: director,
     effort: readEffort("VIDEO_PLANNER_EFFORT", "low"),
     designer,
-  };
+  });
 }
 
 /** Every model a video may be made with, for checking their keys. */

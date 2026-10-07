@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { stream, create } = vi.hoisted(() => ({
+const { stream, create, claudeCreate } = vi.hoisted(() => ({
   stream: vi.fn(),
   create: vi.fn(),
+  claudeCreate: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/sdk", () => {
@@ -23,7 +24,7 @@ vi.mock("@anthropic-ai/sdk", () => {
   return {
     default: class {
       static APIError = APIError;
-      messages = { stream };
+      messages = { stream, create: claudeCreate };
     },
   };
 });
@@ -40,6 +41,7 @@ import {
   designGroups,
   pickScript,
   SCRIPT_HARD_WORD_LIMIT,
+  shotList,
   VideoRefusalError,
   type Planner,
 } from "./director";
@@ -64,6 +66,9 @@ const OPUS: Planner = { model: "claude-opus-5-5", effort: "low" };
 const SOL: Planner = { model: "gpt-6.1-sol", effort: "medium" };
 const STANDARD: Planner = { ...OPUS, designer: SOL };
 const PREMIUM: Planner = { ...OPUS, fallback: SOL };
+const HAIKU: Planner = { model: "claude-haiku-5-5", effort: "medium" };
+// Opus writes, Haiku designs, Sol stands behind both.
+const ALL_CLAUDE: Planner = { ...OPUS, designer: HAIKU, fallback: SOL };
 const PICTURE = {
   id: "img1",
   mediaType: "image/webp" as const,
@@ -223,6 +228,7 @@ const openAIRequests = () =>
 beforeEach(() => {
   stream.mockReset();
   create.mockReset();
+  claudeCreate.mockReset();
   vi.spyOn(console, "info").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
@@ -581,6 +587,73 @@ describe("the designers", () => {
     expect(retry.messages[0]!.content.some((b) => b.cache_control)).toBe(false);
   });
 
+  it("warms a Claude designer's cache while Opus directs, cut off at one token", async () => {
+    stream.mockReturnValueOnce(scriptReply(120));
+    claudeCreate.mockResolvedValue({
+      usage: {
+        input_tokens: 0,
+        output_tokens: 1,
+        cache_creation_input_tokens: 1_000_000,
+        cache_read_input_tokens: 0,
+      },
+    });
+    const writers = createFilmWriters(input, ALL_CLAUDE);
+    await writers.direct();
+    expect(claudeCreate).toHaveBeenCalledTimes(1);
+    const warm = claudeCreate.mock.calls[0]![0] as {
+      model: string;
+      max_tokens: number;
+      messages: Array<{ content: Array<{ cache_control?: unknown }> }>;
+    };
+    expect(warm.model).toBe("claude-haiku-5-5");
+    expect(warm.max_tokens).toBe(1);
+    expect(warm.messages[0]!.content.at(-2)!.cache_control).toBeTruthy();
+    // Opus read 1M and wrote 1M tokens ($4.20); Haiku wrote 1M for five
+    // minutes at the long-prompt rate (5 × $0.125) and one token out.
+    expect(writers.usage.costUsd).toBeCloseTo(4.2 + 0.625);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("hands a scene a Claude designer failed to the other provider, not to Opus", async () => {
+    stream.mockImplementation((request: { model: string }) => {
+      if (request.model === "claude-haiku-5-5")
+        return failing(new Error("credit balance is too low"));
+      throw new Error("Opus must not be asked");
+    });
+    create.mockImplementation(async (request: OpenAIRequest) =>
+      openAIShotsReply(request),
+    );
+    const writers = createFilmWriters(input, ALL_CLAUDE);
+    const designed = await writers.design(script);
+    expect(designed.size).toBe(6);
+    expect(create).toHaveBeenCalledTimes(6);
+    expect(openAIRequests().every((r) => r.model === "gpt-6.1-sol")).toBe(true);
+  });
+
+  it("reads shots a designer sent as a JSON string, stray ending and all", async () => {
+    stream.mockImplementation(
+      (request: Parameters<typeof claudeShotsReply>[0]) => {
+        const task = request.messages[0]!.content.at(-1)!.text!;
+        const beats = /beats ([\d, ]+) and submit/.exec(task)![1]!.split(", ");
+        const shots = JSON.stringify(
+          beats.map((beat) => ({ beat: Number(beat), elements: [] })),
+        );
+        return reply({
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              name: "write_shots",
+              input: { shots: `${shots}}` },
+            },
+          ],
+        });
+      },
+    );
+    const designed = await createFilmWriters(input, HAIKU).design(script);
+    expect(designed.size).toBe(6);
+  });
+
   it("draws a single failed scene as plain type", async () => {
     create.mockImplementation(async (request: OpenAIRequest) => {
       if (JSON.stringify(request.input).includes("scene s2"))
@@ -618,6 +691,17 @@ describe("the designers", () => {
     deadline.abort(new Error("deadline"));
     await expect(run).rejects.toThrow("deadline");
     expect(stream).not.toHaveBeenCalled();
+  });
+});
+
+describe("shotList", () => {
+  it("takes an array, a JSON string of one, or nothing", () => {
+    expect(shotList([{ beat: 0 }])).toEqual([{ beat: 0 }]);
+    expect(shotList('[{"beat":0}]')).toEqual([{ beat: 0 }]);
+    expect(shotList('[{"beat":0}]\n}')).toEqual([{ beat: 0 }]);
+    expect(shotList('{"beat":0}')).toEqual([]);
+    expect(shotList("not json")).toEqual([]);
+    expect(shotList(undefined)).toEqual([]);
   });
 });
 

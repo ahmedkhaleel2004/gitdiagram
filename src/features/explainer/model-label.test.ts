@@ -13,6 +13,12 @@ describe("model labels", () => {
     ]);
   });
 
+  it("names the Haiku designer", () => {
+    expect(modelLabel("claude-opus-5-5+claude-haiku-5-5")).toBe(
+      "Claude Opus 5.5 and Claude Haiku 5.5",
+    );
+  });
+
   it("still names videos made with GPT-6 Sol", () => {
     expect(modelLabel("claude-opus-5-5+gpt-6-sol")).toBe(
       "Claude Opus 5.5 and GPT-6 Sol",

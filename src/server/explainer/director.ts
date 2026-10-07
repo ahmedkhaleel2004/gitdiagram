@@ -150,53 +150,52 @@ function addUsage(
  * so they are always cached, for an hour: videos are minutes apart, and the
  * 2× write pays for itself on the second read.
  */
-async function callClaudeTool(
-  params: ToolCall & { client: Anthropic },
-): Promise<Json> {
-  const { client, model, usage } = params;
-  const stream = client.messages.stream(
-    {
-      model,
-      max_tokens: MAX_TOKENS,
-      system: [
-        {
-          type: "text",
-          text: params.system,
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      tools: [SCRIPT_TOOL, SHOTS_TOOL] as Anthropic.Tool[],
-      tool_choice: { type: "auto" },
-      messages: [
-        {
-          role: "user",
-          content: [
-            // Pictures sit inside the cached prefix, before the repository text.
-            ...params.images.map((image) => ({
-              type: "image" as const,
-              source: {
-                type: "base64" as const,
-                media_type: image.mediaType,
-                data: image.data,
-              },
-            })),
-            {
-              type: "text",
-              text: params.context,
-              ...(params.cache
-                ? { cache_control: { type: "ephemeral" as const } }
-                : {}),
+function claudeRequest(
+  params: Omit<ToolCall, "usage" | "signal" | "tool">,
+  maxTokens = MAX_TOKENS,
+): Anthropic.MessageCreateParamsNonStreaming {
+  return {
+    model: params.model,
+    max_tokens: maxTokens,
+    system: [
+      {
+        type: "text",
+        text: params.system,
+        cache_control: { type: "ephemeral", ttl: "1h" },
+      },
+    ],
+    tools: [SCRIPT_TOOL, SHOTS_TOOL] as Anthropic.Tool[],
+    tool_choice: { type: "auto" },
+    messages: [
+      {
+        role: "user",
+        content: [
+          // Pictures sit inside the cached prefix, before the repository text.
+          ...params.images.map((image) => ({
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: image.mediaType,
+              data: image.data,
             },
-            { type: "text", text: params.task },
-          ],
-        },
-      ],
-      output_config: { effort: params.effort },
-    },
-    { signal: params.signal },
-  );
-  const message = await stream.finalMessage();
-  const u = message.usage;
+          })),
+          {
+            type: "text",
+            text: params.context,
+            ...(params.cache
+              ? { cache_control: { type: "ephemeral" as const } }
+              : {}),
+          },
+          { type: "text", text: params.task },
+        ],
+      },
+    ],
+    output_config: { effort: params.effort },
+  };
+}
+
+/** Adds a Claude reply's tokens and list-price cost to the film's usage. */
+function addClaudeUsage(usage: ModelUsage, model: string, u: Anthropic.Usage) {
   const cacheWrite = u.cache_creation_input_tokens ?? 0;
   const cacheRead = u.cache_read_input_tokens ?? 0;
   // Written for an hour: the tools and system prompt; for the default five
@@ -215,6 +214,31 @@ async function callClaudeTool(
         output: u.output_tokens,
       }),
   );
+}
+
+/**
+ * Writes a Claude designer's shared prefix (tools, system prompt, pictures,
+ * repository block) into the cache with a reply cut off at one token.
+ */
+async function prewarmClaude(
+  params: Omit<ToolCall, "task" | "tool" | "cache"> & { client: Anthropic },
+): Promise<void> {
+  const message = await params.client.messages.create(
+    claudeRequest({ ...params, task: "Wait for the task.", cache: true }, 1),
+    { signal: params.signal },
+  );
+  addClaudeUsage(params.usage, params.model, message.usage);
+}
+
+async function callClaudeTool(
+  params: ToolCall & { client: Anthropic },
+): Promise<Json> {
+  const { client, model, usage } = params;
+  const stream = client.messages.stream(claudeRequest(params), {
+    signal: params.signal,
+  });
+  const message = await stream.finalMessage();
+  addClaudeUsage(usage, model, message.usage);
   if (message.stop_reason === "refusal")
     throw new VideoRefusalError("The model declined this repository.");
   // A tool call cut off here still parses, as whatever came before the cut.
@@ -374,6 +398,26 @@ async function withRetry<T>(
   }
 }
 
+/**
+ * The shots of a designer's reply. Claude Haiku 5.5 sends the array as a JSON
+ * string in about one reply in five, usually with a stray character after the
+ * closing bracket (experiments/video-haiku-designer), so a string is parsed,
+ * whole or up to its last bracket. Anything else is no shots.
+ */
+export function shotList(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  const text = value.trim();
+  for (const candidate of [text, text.slice(0, text.lastIndexOf("]") + 1)])
+    try {
+      const parsed: unknown = JSON.parse(candidate);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // Try the next reading.
+    }
+  return [];
+}
+
 /** Scenes as the designers get them: each run of adjacent beats in one scene. */
 export function designGroups(
   script: Script,
@@ -480,14 +524,26 @@ export function createFilmWriters(
   }
 
   /**
-   * Write the designers' shared prefix into OpenAI's cache while a different
-   * model directs, so the parallel designers all read it (0.1× input) instead
-   * of each writing their own (1.25×). Best effort; never rejects.
+   * Write the designers' shared prefix into their provider's cache while a
+   * different model directs, so the parallel designers all read it (0.1×
+   * input) instead of each writing their own (1.25×). Best effort; never
+   * rejects.
    */
   async function prewarm(signal?: AbortSignal): Promise<void> {
     const client = clientFor(designer.model);
-    if (!(client instanceof OpenAI)) return;
     try {
+      if (!(client instanceof OpenAI)) {
+        await prewarmClaude({
+          ...designer,
+          client,
+          images,
+          context,
+          system,
+          usage,
+          signal,
+        });
+        return;
+      }
       const response = await client.responses.create(
         openAIRequest(
           {
@@ -602,9 +658,7 @@ export function createFilmWriters(
      */
     async direct(signal?: AbortSignal): Promise<Script> {
       const warming =
-        designer.model !== director.model && isOpenAIModel(designer.model)
-          ? prewarm(signal)
-          : null;
+        designer.model !== director.model ? prewarm(signal) : null;
       try {
         return await directWith(signal);
       } catch (error) {
@@ -633,7 +687,8 @@ export function createFilmWriters(
 
     /**
      * One designer per scene, all at once. A scene whose designer fails is
-     * tried once more on another model (the director's, else the fallback);
+     * tried once more on another model (the director's or the fallback,
+     * whichever is on the other provider);
      * a beat still without a shot is drawn as plain type. When more than a
      * third of the beats have no shot, the film is not worth storing and this
      * throws.
@@ -647,9 +702,15 @@ export function createFilmWriters(
       const outline = scriptForDesigners(script);
       const designed = new Map<number, Json>();
       const primary = designer;
-      const second = [director, fallback].find(
+      // The other provider first: what fails one model (no credit, an
+      // outage) usually fails its provider's other models too.
+      const others = [director, fallback].filter(
         (role): role is Role => !!role && role.model !== primary.model,
       );
+      const second =
+        others.find(
+          (role) => isOpenAIModel(role.model) !== isOpenAIModel(primary.model),
+        ) ?? others[0];
       const designWith = async (
         group: { scene: string; beats: number[] },
         role: Role,
@@ -670,7 +731,7 @@ export function createFilmWriters(
             }),
           signal,
         );
-        const shots = Array.isArray(raw.shots) ? raw.shots : [];
+        const shots = shotList(raw.shots);
         for (const shot of shots) {
           const beat = Number((shot as Json).beat);
           if (group.beats.includes(beat)) designed.set(beat, shot as Json);
