@@ -11,11 +11,11 @@
     "@cloudflare/containers": "0.3.7"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260925.1",
-    "@types/node": "26.6.2",
+    "@cloudflare/workers-types": "5.20261008.1",
+    "@types/node": "26.6.4",
     "typescript": "7.0.2",
-    "vitest": "4.1.11",
-    "wrangler": "4.146.0"
+    "vitest": "5.0.3",
+    "wrangler": "4.148.0"
   },
   "overrides": {
     "sharp": "0.35.5"

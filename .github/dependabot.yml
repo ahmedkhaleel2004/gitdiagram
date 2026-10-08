@@ -45,6 +45,14 @@ updates:
         update-types:
           - "version-update:semver-major"
 
+  - package-ecosystem: "bun"
+    directory: "/workers/render"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
+    cooldown:
+      default-days: 3
+
   - package-ecosystem: "github-actions"
     directory: "/"
     patterns:
