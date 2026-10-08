@@ -125,13 +125,18 @@ describe("paid sponsor schedule", () => {
     expect(pickSponsorCampaign(shared, "/facebook/react", 7)).toBe(
       pickSponsorCampaign(shared, "/facebook/react", 7),
     );
-    // A busy page alternates over the hours of a run...
-    const home = Array.from(
-      { length: 720 },
-      (_, hour) => pickSponsorCampaign(shared, "/", hour)!.id,
-    ).filter((id) => id === "alpha").length;
-    expect(home / 720).toBeGreaterThan(0.44);
-    expect(home / 720).toBeLessThan(0.56);
+    // A page gets each sponsor for exactly half the hours of a 30-day run,
+    // whenever the run starts...
+    for (const start of [0, 7, 492_113]) {
+      const hours = Array.from(
+        { length: 720 },
+        (_, hour) => pickSponsorCampaign(shared, "/", start + hour)!.id,
+      );
+      expect(hours.filter((id) => id === "alpha")).toHaveLength(360);
+      // ...and for half the days at any one hour of the day.
+      const sameHour = hours.filter((_, hour) => hour % 24 === 9);
+      expect(sameHour.filter((id) => id === "alpha")).toHaveLength(15);
+    }
     // ...and pages split evenly within an hour.
     const pages = Array.from(
       { length: 2000 },

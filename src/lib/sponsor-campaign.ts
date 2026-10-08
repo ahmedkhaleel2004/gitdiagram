@@ -129,9 +129,11 @@ export function renderedSponsorSchedule(now = Date.now()) {
 
 /**
  * The one ad a page view shows. With two shared campaigns each page takes one
- * per hour, from a hash of its path and the hour: the server-rendered HTML and
- * the browser pick the same ad (no swap after load), a page never flips while
- * open, and over a 30-day run each sponsor gets about half of every page.
+ * per hour: a hash of its path says which one it starts on, and it takes turns
+ * from there. The server-rendered HTML and the browser pick the same ad (no
+ * swap after load), a page never flips while open, and over a 30-day run each
+ * sponsor gets exactly half of every page's hours. The turn order also shifts
+ * by one each day, so neither sponsor keeps the same hours of the day.
  */
 export function pickSponsorCampaign<T>(
   campaigns: readonly T[],
@@ -141,11 +143,12 @@ export function pickSponsorCampaign<T>(
   if (campaigns.length < 2) return campaigns[0];
   // FNV-1a: tiny, stable and well spread for short strings.
   let hash = 0x811c9dc5;
-  for (const char of `${pathname}:${bucket}`) {
+  for (const char of pathname) {
     hash ^= char.charCodeAt(0);
     hash = Math.imul(hash, 0x01000193);
   }
-  return campaigns[(hash >>> 0) % campaigns.length];
+  const turn = (hash >>> 0) + bucket + Math.floor(bucket / 24);
+  return campaigns[turn % campaigns.length];
 }
 
 function nextSponsorTransition(now: number) {
