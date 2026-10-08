@@ -600,7 +600,7 @@ function build() {
     // The label sits on the route's longest stretch: on the line where the
     // line is long enough to show either side of it, beside the line where
     // it is not.
-    var labelW = e.label ? e.label.length * 12.2 + 22 : 0;
+    var labelW = e.label ? e.label.length * 13.4 + 22 : 0;
     function labelAt(q) {
       var best = 0;
       var longest = -1;
@@ -622,7 +622,7 @@ function build() {
     }
     if (e.label) {
       var at = labelAt(pts);
-      label = h("div", "mono", "position:absolute;left:" + at.left + ";top:" + at.top + ";width:260px;text-align:center;font:600 20px/34px 'Geist Mono';color:var(--ink-2)", layer, '<span style="background:var(--paper);padding:3px 9px;border-radius:6px">' + esc(e.label) + "</span>");
+      label = h("div", "mono", "position:absolute;left:" + at.left + ";top:" + at.top + ";width:260px;text-align:center;font:600 22px/34px 'Geist Mono';color:var(--ink-2)", layer, '<span style="background:var(--paper);padding:3px 9px;border-radius:6px">' + esc(e.label) + "</span>");
       nodes.push(label);
     }
     // Packets ride in their own box, so an arrow that exits takes a packet
@@ -792,6 +792,14 @@ function build() {
           // An arrow spans the canvas; shrinking it would slide it sideways.
           if (!it.arrow) tl.to(it.el, { scale: 0.9, duration: 0.25, ease: "power2.in" }, t);
           it.gone = true;
+          // An arrow leaves with either of its ends: a line to nothing reads
+          // as a mistake.
+          Object.keys(items).forEach(function (id) {
+            var arrow = items[id];
+            if (!arrow.arrow || arrow.gone || (arrow.built.from !== it && arrow.built.to !== it)) return;
+            tl.to(nodesOf(arrow), { opacity: 0, duration: 0.25, ease: "power2.in" }, t);
+            arrow.gone = true;
+          });
         });
         break;
       case "strike":

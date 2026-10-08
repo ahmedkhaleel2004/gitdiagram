@@ -18,8 +18,8 @@ and made films about 1.5 times as long.
   reels and old films are untouched. `svg` and `move` are no longer offered.
 - **Engine (all films, old ones too):** arrows route around every card of the
   scene, near-level arrows run straight, an arrow's label sits beside a line
-  too short to carry it, the camera frames again after something leaves, a
-  replaced box label stays centred.
+  too short to carry it, the camera frames again after something leaves, an
+  arrow leaves with either of its ends, a replaced box label stays centred.
 - **Length:** 195 to 220 words (was 110 to 130), 20 to 26 beats, 8 to 10
   scenes. The voice reads about 2.7 words a second, so that is 80 to 85 s
   (production films before averaged 54 s).
@@ -46,14 +46,17 @@ its landscape MP4 rendered in 66 s on this server.
 
 What is left is mostly taste, not breakage: Haiku still sometimes puts eight
 or nine elements in a scene (everything gets small), and long code lines are
-cut. The new films were not judged blind against the old ones; the numbers
-above and the contact sheets are the evidence.
+cut. `judge.ts` showed Claude Opus old and new films of the three repositories
+both sets hold, blind: it preferred the new one twice (7 to 5, 7 to 6) and
+the old one once (7 to 6). Its complaints about the new films (an arrow left
+pointing at something that had exited, arrow labels jammed between boxes, an
+empty browser window) were fixed after that look and not judged again.
 
 ## Files
 
 - `serve.ts` (the stage, port 4611), `fetch-prod.ts` (newest production
   films), `audit.ts` (defects and contact sheets), `run.ts read | direct |
-design | rebuild`, `voice.ts` (times a real take), `shot.ts`, `reel.ts`.
+design | rebuild`, `voice.ts` (times a real take), `shot.ts`, `reel.ts`, `judge.ts`.
 - `. experiments/video-hillclimb/env.sh`, then
   `bun --conditions=react-server experiments/video-hillclimb/<file>`.
 - Output in `out/` (ignored). Spend: about $3.50.

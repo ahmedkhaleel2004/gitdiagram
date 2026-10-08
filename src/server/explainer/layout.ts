@@ -25,7 +25,7 @@ const DENSITY = { min: 0.6, max: 1.3 };
 const TURN_GAIN = 1.12;
 const MAX_DEPTH = 5;
 const MAX_CHILDREN = 8;
-const GAP = { row: 0.55, col: 0.4, rowArrow: 1.15, colArrow: 0.9 };
+const GAP = { row: 0.65, col: 0.5, rowArrow: 1.15, colArrow: 0.9 };
 /** Inside a browser window: the sides, and the bar above. */
 const FRAME = { pad: 0.35, bar: 0.45 };
 
@@ -468,7 +468,7 @@ export function solveLayout(params: {
       return row
         ? Math.max(
             GAP.rowArrow * tight,
-            arrow.label ? arrow.label * 0.105 + 0.75 : 0,
+            arrow.label ? arrow.label * 0.112 + 1 : 0,
           )
         : (GAP.colArrow + (arrow.label ? 0.1 : 0)) * tight;
     });

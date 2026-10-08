@@ -56,7 +56,7 @@ Layout: nested rows and columns of element ids.
 - The frame is wide and short: about 13 units by 6. A box is about 3.5 × 1.3; a chip 2.5 × 0.6; a code or terminal panel about 0.4 per line plus 0.7, and 6 to 9 wide; a heading line 1.2; a picture up to 5.4 tall. A column taller than 6, or a row wider than 13, shrinks the whole scene, so: at most four children across a row, at most four down a column, and a panel of more than six lines shares its column with nothing taller than a chip.
 - Compose with asymmetry: the subject takes one side (or the top), its supports a column beside it (or a row beneath). A path of parts is one row, in the order the story visits them.
 - A row of four is the widest a path can be: give its boxes short labels and no "sub", and its arrows no labels. A path of five or more parts is two scenes, or a row of the three that matter.
-- Arrows join neighbours: two children next to each other in the same row or column. An arrow between elements that are not neighbours crosses whatever stands between them, so arrange the layout around the arrows you need.
+- Arrows join neighbours: two children next to each other in the same row or column. An arrow between elements that are not neighbours crosses whatever stands between them, so arrange the layout around the arrows you need. Every box in a path is joined to the next by an arrow; nothing in a diagram of parts stands unconnected.
 
 Every element: { "id": snake_case unique within its scene, "kind", "at": one word copied exactly from this beat's narration (optional; without it the element appears as the beat starts) }, plus its kind's fields (limits are hard; longer text is cut):
 - heading: text (≤60; best under 30). Big serif display text; wrap one or two words in *asterisks* to set them in italic accent.
@@ -71,7 +71,7 @@ Every element: { "id": snake_case unique within its scene, "kind", "at": one wor
 - bars: items (≤6 of { label ≤20, value number }), unit (≤6). Horizontal bar chart.
 - number: value (number), prefix (≤3), suffix (≤6), label (≤32). A big figure that rolls up.
 - stamp: text (≤14), tone. Slams in at an angle.
-- browser: url (≤60). A browser window; give it content with "in" in the layout.
+- browser: url (≤60). A browser window; give it content with "in" in the layout, and bring its first content in on the same beat: an empty window is a blank frame.
 - request: method (GET, POST, …), url (≤60), status (number or null), lines (≤5 body lines, ≤60 chars). An HTTP exchange card.
 - list: items (≤4, ≤48 chars). Use sparingly.
 - image: src (a picture id: img1, img2, …; only when pictures are attached), fit "contain" | "cover". A README picture in a card.
