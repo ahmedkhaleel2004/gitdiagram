@@ -56,7 +56,7 @@ export interface Planner extends Role {
 const MAX_TOKENS = 32_000;
 // A script over SCRIPT_WORD_LIMIT goes back once to be shortened. If neither
 // version fits, one a little over (a few seconds more film) is still used.
-export const SCRIPT_HARD_WORD_LIMIT = 168;
+export const SCRIPT_HARD_WORD_LIMIT = 275;
 // Every call writing the script (first draft, retries, the shortening and a
 // fallback model's draft) counts; each can run to MAX_TOKENS.
 const MAX_DIRECTOR_CALLS = 3;
@@ -734,7 +734,9 @@ export function createFilmWriters(
         const shots = shotList(raw.shots);
         for (const shot of shots) {
           const beat = Number((shot as Json).beat);
-          if (group.beats.includes(beat)) designed.set(beat, shot as Json);
+          // The scene's layout rides on each of its shots (see normalizeShots).
+          if (group.beats.includes(beat))
+            designed.set(beat, { ...(shot as Json), layout: raw.layout });
         }
       };
       // Settled, not raced: once aborted, no designer is still running (and

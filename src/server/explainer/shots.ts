@@ -12,6 +12,7 @@ import {
   type ShotKind,
   type ShotPlan,
 } from "~/features/explainer/types";
+import { parseLayout, solveLayout } from "./layout";
 import type { Script } from "./script";
 import {
   clip,
@@ -106,6 +107,9 @@ function cueWord(value: unknown, narration: string): string | null {
   return words(narration).includes(word) ? word : null;
 }
 
+// Elements whose designer wrote coordinates (films designed before layouts).
+const placedByDesigner = new WeakSet<ShotElement>();
+
 // A designer numbers tree rows before unknown paths are dropped; this maps each
 // original row (1-based) to the row it became, so highlights land on the right one.
 const treeRowMaps = new WeakMap<ShotElement, Map<number, number>>();
@@ -150,6 +154,11 @@ function normalizeElement(
   const x = clamp(number(raw.x, 0.8), CANVAS.left, CANVAS.right - w);
   const y = clamp(number(raw.y, 1), CANVAS.top, CANVAS.bottom - h);
   const element: ShotElement = { ...base, x, y, w, h };
+  if (
+    Number.isFinite(Number(raw.x ?? NaN)) &&
+    Number.isFinite(Number(raw.y ?? NaN))
+  )
+    placedByDesigner.add(element);
   const tone = SHOT_TONES.includes(text(raw.tone)) ? text(raw.tone) : "plain";
   switch (kind) {
     case "heading":
@@ -171,6 +180,18 @@ function normalizeElement(
         .map((line) => {
           const clean = text(line).replace(/\t/g, "  ").replace(/\s+$/, "");
           return clean.length > 72 ? clean.slice(0, 71) + "…" : clean;
+        });
+      // Indentation every line shares only narrows the panel's type.
+      const indent = Math.min(
+        ...lines
+          .filter((line) => line.trim() && line.trim() !== "…")
+          .map((line) => /^ */.exec(line)![0].length),
+      );
+      if (Number.isFinite(indent) && indent > 0)
+        lines.forEach((line, i) => {
+          lines[i] = line.startsWith(" ".repeat(indent))
+            ? line.slice(indent)
+            : line.trimStart();
         });
       element.title = clip(raw.title, 60);
       element.lines = lines;
@@ -480,6 +501,17 @@ export function normalizeShots(
   // A designer who reuses an id in a scene means the newest element by it, so
   // later arrows and actions naming it land there (it is stored as `id_2`).
   let aliases = new Map<string, string>();
+  // Scenes as runs of beats, and whether each is laid out here (the designer
+  // sent a layout, or no coordinates at all) or keeps the designer's own.
+  const sceneOf: number[] = [];
+  const sceneLayouts: unknown[] = [];
+  script.beats.forEach((beat, index) => {
+    const first = index === 0 || script.beats[index - 1]!.scene !== beat.scene;
+    if (first) sceneLayouts.push(undefined);
+    sceneOf.push(sceneLayouts.length - 1);
+    sceneLayouts[sceneLayouts.length - 1] ??= designed.get(index)?.layout;
+  });
+  const solved = sceneLayouts.map(() => true);
   script.beats.forEach((beat, index) => {
     const where = `beat ${index}`;
     const first = index === 0 || script.beats[index - 1]!.scene !== beat.scene;
@@ -511,6 +543,18 @@ export function normalizeShots(
         where,
       );
       if (!element) continue;
+      if (
+        placedByDesigner.has(element) &&
+        sceneLayouts[sceneOf[index]!] == null
+      )
+        solved[sceneOf[index]!] = false;
+      // Hand-drawn shapes belong to films whose designer placed everything.
+      if (element.kind === "svg" && sceneLayouts[sceneOf[index]!] != null) {
+        warnings.push(
+          `dropped svg ${element.id} from a laid-out scene (${where})`,
+        );
+        continue;
+      }
       let id = element.id;
       for (let n = 2; sceneIds.has(id); n++) id = `${element.id}_${n}`;
       aliases.set(element.id, id);
@@ -559,6 +603,8 @@ export function normalizeShots(
       const rowMap = rowMaps.get(targets[0] ?? "");
       if (rowMap && Array.isArray(action.rows))
         action.rows = remapRows(action.rows as number[], rowMap);
+      // A layout decides where things sit; the designer knows no coordinates.
+      if (action.do === "move" && solved[sceneOf[index]!]) continue;
       if (action.do === "move") {
         const moved = present.get(targets[0]!)!;
         // The whole element stays on the canvas where it lands.
@@ -574,7 +620,8 @@ export function normalizeShots(
       if (action.do === "exit")
         for (const target of targets) present.delete(target);
     }
-    warnOverlaps([...present.values()], warnings, where);
+    if (!solved[sceneOf[index]!])
+      warnOverlaps([...present.values()], warnings, where);
     beats.push({
       scene: beat.scene,
       narration: beat.narration,
@@ -586,10 +633,88 @@ export function normalizeShots(
       actions,
     });
   });
+  sceneLayouts.forEach((layout, scene) => {
+    if (solved[scene])
+      layOut(
+        beats.filter((_, index) => sceneOf[index] === scene),
+        layout,
+        facts,
+      );
+  });
   return {
     plan: { title: script.title, outro: script.outro, beats },
     warnings: warnings.done(),
   };
+}
+
+/**
+ * Places one scene's elements from its layout (layout.ts). Elements sharing
+ * a slot take turns: each leaves on the cue that brings the next one in.
+ */
+function layOut(
+  beats: ShotBeat[],
+  layout: unknown,
+  facts: PlanRepositoryFacts,
+) {
+  const parsed = parseLayout(layout);
+  const solve = (all: ShotElement[]) =>
+    solveLayout({
+      layout: parsed,
+      elements: all.filter((element) => element.kind !== "arrow"),
+      arrows: all.filter((element) => element.kind === "arrow"),
+      actions: beats.flatMap((beat) => beat.actions),
+      pictures: facts.pictureSizes,
+    });
+  const { slots } = solve(beats.flatMap((beat) => beat.elements));
+  const entry = (id: string) => {
+    const beat = beats.findIndex((b) => b.elements.some((e) => e.id === id));
+    const order =
+      beat < 0 ? -1 : beats[beat]!.elements.findIndex((e) => e.id === id);
+    return { beat, order };
+  };
+  for (const slot of slots) {
+    const groups = slot
+      .map((ids) => ({ ids, at: entry(ids[0]!) }))
+      .filter((group) => group.at.beat >= 0)
+      .sort((a, b) => a.at.beat - b.at.beat || a.at.order - b.at.order);
+    for (let i = 1; i < groups.length; i++) {
+      const next = groups[i]!;
+      const beat = beats[next.at.beat]!;
+      const exited = new Set(
+        beats
+          .slice(0, next.at.beat + 1)
+          .flatMap((b) => b.actions)
+          .filter((action) => action.do === "exit")
+          .flatMap((action) => action.target),
+      );
+      const leaving = groups[i - 1]!.ids.filter((id) => !exited.has(id));
+      if (leaving.length)
+        beat.actions.unshift({
+          do: "exit",
+          at: beat.elements[next.at.order]!.at,
+          target: leaving,
+        });
+    }
+  }
+  // A beat that clears the screen starts afresh: what comes after it is laid
+  // out on its own, with the whole frame to itself.
+  const phases: ShotElement[][] = [];
+  const live = new Set<string>();
+  for (const beat of beats) {
+    const gone = new Set(
+      beat.actions.filter((a) => a.do === "exit").flatMap((a) => a.target),
+    );
+    const cleared = live.size > 0 && [...live].every((id) => gone.has(id));
+    if (!phases.length || (cleared && beat.elements.length)) phases.push([]);
+    for (const id of gone) live.delete(id);
+    for (const element of beat.elements) {
+      phases.at(-1)!.push(element);
+      if (element.kind !== "arrow") live.add(element.id);
+    }
+    for (const action of beat.actions)
+      if (action.do === "restore") for (const id of action.target) live.add(id);
+  }
+  if (phases.length > 1) for (const phase of phases) solve(phase);
 }
 
 function warnOverlaps(

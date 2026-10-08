@@ -21,15 +21,16 @@ export interface Script {
   beats: ScriptBeat[];
 }
 
-// At a natural speaking pace (about 2.1 words a second, with pauses) this
-// keeps the film near a minute. Longer scripts go back to the director once.
-// The prompt asks for 110 to 130; the limit leaves room for drafts a little
-// over, since a shortening call resends the whole repository (at a limit of
-// 140, about a third of first drafts went back, nearly all at 141 to 160).
-export const SCRIPT_WORD_TARGET = 125;
-export const SCRIPT_WORD_LIMIT = 160;
-/** The prompt asks for twelve to sixteen beats; more also goes back once. */
-export const MAX_BEATS = 22;
+// The voice reads about 2.7 words a second (measured on finished films), so
+// this keeps the film near eighty-five seconds. Longer scripts go back to the
+// director once. The prompt asks for 195 to 220; the limit leaves room for
+// drafts a little over, since a shortening call resends the whole repository
+// (when films were a minute, a limit 10 words over the range sent a third of
+// first drafts back, nearly all of them within 30 words of it).
+export const SCRIPT_WORD_TARGET = 210;
+export const SCRIPT_WORD_LIMIT = 260;
+/** The prompt asks for twenty to twenty-six beats; more also goes back once. */
+export const MAX_BEATS = 34;
 // Far past anything a director writes; only bounds a runaway reply.
 const MAX_RAW_BEATS = 64;
 
@@ -60,7 +61,7 @@ export function normalizeScript(
     }))
     .filter((beat) => beat.narration);
   const script = {
-    title: clip(clean(input.title) || name, 28),
+    title: clip(clean(input.title) || name, 40),
     outro: clip(clean(input.outro), 60),
     beats,
   };

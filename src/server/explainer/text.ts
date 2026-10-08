@@ -54,6 +54,8 @@ export interface PlanRepositoryFacts {
   sourceText: string;
   /** Ids of the README pictures stored with the film (plan.images). */
   images?: string[];
+  /** Those pictures' sizes in pixels, so a layout can keep their shape. */
+  pictureSizes?: Record<string, { width: number; height: number }>;
   /**
    * All the repository material the writers read (README, tree, sources,
    * description); on-screen web addresses must appear in it. Defaults to

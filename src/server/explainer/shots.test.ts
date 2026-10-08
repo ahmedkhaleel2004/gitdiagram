@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
+  DESIGNER_ACTIONS,
+  DESIGNER_KINDS,
   SHOT_ACTIONS,
   SHOT_ICONS,
   SHOT_KINDS,
@@ -512,12 +514,23 @@ describe("explainer shots", () => {
         actions: { items: { properties: { do: { enum: unknown } } } };
       };
     };
+    // Designers are offered everything but what needs coordinates.
     expect(shape.properties.elements.items.properties.kind.enum).toBe(
-      SHOT_KINDS,
+      DESIGNER_KINDS,
     );
     expect(shape.properties.actions.items.properties.do.enum).toBe(
-      SHOT_ACTIONS,
+      DESIGNER_ACTIONS,
     );
+    expect(
+      SHOT_KINDS.filter(
+        (kind) => !(DESIGNER_KINDS as readonly string[]).includes(kind),
+      ),
+    ).toEqual(["svg"]);
+    expect(
+      SHOT_ACTIONS.filter(
+        (action) => !(DESIGNER_ACTIONS as readonly string[]).includes(action),
+      ),
+    ).toEqual(["move"]);
 
     // The engine's tables live in kit.js; its builders and transitions in shots.js.
     const engine = ["kit.js", "shots.js"]
@@ -535,15 +548,16 @@ describe("explainer shots", () => {
     expect(SHOT_ACTIONS.filter((action) => !handled.has(action))).toEqual([]);
 
     const kinds = SHOT_SYSTEM.slice(
-      SHOT_SYSTEM.indexOf("Kinds and their extra fields"),
+      SHOT_SYSTEM.indexOf("plus its kind's fields"),
       SHOT_SYSTEM.indexOf("Actions change the canvas"),
     );
-    for (const kind of SHOT_KINDS) expect(kinds).toContain(`\n- ${kind}:`);
+    for (const kind of DESIGNER_KINDS) expect(kinds).toContain(`\n- ${kind}:`);
+    expect(SHOT_SYSTEM).not.toContain("\n- svg:");
     const actions = SHOT_SYSTEM.slice(
       SHOT_SYSTEM.indexOf("Actions change the canvas"),
       SHOT_SYSTEM.indexOf("Scene transitions"),
     );
-    for (const action of SHOT_ACTIONS)
+    for (const action of DESIGNER_ACTIONS)
       expect(actions).toMatch(new RegExp(`\\b${action}\\b`));
   });
 
@@ -667,9 +681,6 @@ describe("the engine's field values", () => {
     const box = SHOT_SYSTEM.slice(SHOT_SYSTEM.indexOf("\n- box:"));
     for (const icon of SHOT_ICONS) expect(box).toContain(icon);
     for (const tone of SHOT_TONES) expect(box).toContain(`"${tone}"`);
-    const svg = SHOT_SYSTEM.slice(SHOT_SYSTEM.indexOf("\n- svg:"));
-    for (const shape of SVG_SHAPES) expect(svg).toContain(shape);
-    for (const paint of SVG_PAINT) expect(svg).toContain(paint);
     for (const transition of SHOT_TRANSITIONS)
       expect(SHOT_SYSTEM).toContain(`"${transition}"`);
   });

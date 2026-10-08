@@ -557,13 +557,15 @@ function build() {
   // ---------- arrows ----------
   // A moving end redraws its arrows in this many straight tweens.
   var REROUTE_STEPS = 10;
-  function buildArrow(e, layer, items) {
+  function buildArrow(e, layer, items, cards) {
     var a = items[e.from];
     var b = items[e.to];
     if (!a || !b) return null;
-    // The rects the route was last drawn between, and that route.
+    // The rects the route was last drawn between, and that route. It keeps
+    // clear of every other card the scene will hold, on screen yet or not.
     var ends = { a: rectOf(a), b: rectOf(b) };
-    var pts = route(ends.a, ends.b);
+    var around = (cards || []).filter(function (c) { return c.id !== e.from && c.id !== e.to; });
+    var pts = route(ends.a, ends.b, around);
     var svg = document.createElementNS(NS, "svg");
     svg.setAttribute("class", "wires");
     svg.setAttribute("data-id", e.id);
@@ -595,14 +597,32 @@ function build() {
     svg.appendChild(head);
     var nodes = [svg];
     var label = null;
+    // The label sits on the route's longest stretch: on the line where the
+    // line is long enough to show either side of it, beside the line where
+    // it is not.
+    var labelW = e.label ? e.label.length * 12.2 + 22 : 0;
     function labelAt(q) {
-      var mid = q[Math.floor((q.length - 1) / 2)];
-      var nxt = q[Math.floor((q.length - 1) / 2) + 1];
-      return { left: (mid[0] + nxt[0]) / 2 - 130 + "px", top: (mid[1] + nxt[1]) / 2 - 17 + "px" };
+      var best = 0;
+      var longest = -1;
+      for (var i = 1; i < q.length; i++) {
+        var len = Math.abs(q[i][0] - q[i - 1][0]) + Math.abs(q[i][1] - q[i - 1][1]);
+        if (len > longest + 1) {
+          longest = len;
+          best = i;
+        }
+      }
+      var p0 = q[best - 1];
+      var p1 = q[best];
+      var flat = Math.abs(p1[1] - p0[1]) < Math.abs(p1[0] - p0[0]);
+      var dx = 0;
+      var dy = 0;
+      if (flat && longest < labelW + 56) dy = -24;
+      else if (!flat && longest < 34 + 44) dx = labelW / 2 + 12;
+      return { left: (p0[0] + p1[0]) / 2 - 130 + dx + "px", top: (p0[1] + p1[1]) / 2 - 17 + dy + "px" };
     }
     if (e.label) {
       var at = labelAt(pts);
-      label = h("div", "mono", "position:absolute;left:" + at.left + ";top:" + at.top + ";width:260px;text-align:center;font:600 18px/34px 'Geist Mono';color:var(--ink-2)", layer, '<span style="background:var(--paper);padding:3px 9px;border-radius:6px">' + esc(e.label) + "</span>");
+      label = h("div", "mono", "position:absolute;left:" + at.left + ";top:" + at.top + ";width:260px;text-align:center;font:600 20px/34px 'Geist Mono';color:var(--ink-2)", layer, '<span style="background:var(--paper);padding:3px 9px;border-radius:6px">' + esc(e.label) + "</span>");
       nodes.push(label);
     }
     // Packets ride in their own box, so an arrow that exits takes a packet
@@ -904,6 +924,15 @@ function build() {
       });
     });
 
+    // Every card the scene will hold, for arrows to route around. A browser
+    // window frames other cards, so arrows may cross it.
+    var cards = [];
+    sc.beats.forEach(function (bi) {
+      beats[bi].elements.forEach(function (e) {
+        if (e.kind !== "arrow" && e.kind !== "browser") cards.push({ id: e.id, x: e.x * U, y: e.y * U, w: e.w * U, h: e.h * U });
+      });
+    });
+
     var empty = true;
     sc.beats.forEach(function (bi, j) {
       var beat = beats[bi];
@@ -924,7 +953,7 @@ function build() {
         var t = x.t;
         var built;
         if (e.kind === "arrow") {
-          built = buildArrow(e, cam, sc.items);
+          built = buildArrow(e, cam, sc.items, cards);
           // Never drawn before both of its ends are on screen.
           if (built) t = Math.max(t, sc.items[e.from].t, sc.items[e.to].t);
         } else if (B[e.kind]) built = B[e.kind](e, cam, future[e.id] || []);
@@ -960,6 +989,9 @@ function build() {
               clone.style.width = room + "px";
             } else clone.style.width = Math.max(lab.offsetWidth, host.clientWidth - lab.offsetLeft - (parseFloat(hs.paddingRight) || 0)) + "px";
             fitText(clone, host.clientHeight - lab.offsetTop, 12);
+            // A replacement with fewer lines stands where the middle of the
+            // old label was, not at its top.
+            if (e.kind === "box" && clone.offsetHeight < lab.offsetHeight) clone.style.top = lab.offsetTop + (lab.offsetHeight - clone.offsetHeight) / 2 + "px";
             return clone;
           });
         }
@@ -975,11 +1007,18 @@ function build() {
         camTo(sc, autoView(sc), j === 0 ? null : TB[bi].start - 0.3);
         sc.focused = false;
       }
+      var left = null;
       beat.actions.forEach(function (a) {
         var cued = cueTime(bi, a.at);
         var t = Math.max(floor + 0.35, cued == null ? (TB[bi].start + TB[bi].end) / 2 : cued - 0.03);
-        applyAction(a, Math.min(t, sc.tOut - 0.35), sc);
+        t = Math.min(t, sc.tOut - 0.35);
+        applyAction(a, t, sc);
+        if (a.do === "exit") left = left == null ? t : Math.max(left, t);
+        else if (a.do === "focus" || a.do === "reset") left = null;
       });
+      // What is left after something leaves is framed again, so the scene
+      // never sits small beside the space it left.
+      if (left != null && !sc.focused && left + 0.9 < sc.tOut) camTo(sc, autoView(sc), left + 0.1, 0.7);
     });
 
     // A scene the designer never delivered still says its line on screen.

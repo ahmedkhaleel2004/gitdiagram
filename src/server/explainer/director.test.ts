@@ -516,8 +516,8 @@ describe("the director", () => {
 
   it("does not accept a shortened script that is still far too long, nor rewrite it on another model", async () => {
     stream
-      .mockReturnValueOnce(scriptReply(240))
-      .mockReturnValueOnce(scriptReply(200));
+      .mockReturnValueOnce(scriptReply(340))
+      .mockReturnValueOnce(scriptReply(300));
     await expect(createFilmWriters(input, PREMIUM).direct()).rejects.toThrow(
       /too long/,
     );
@@ -525,30 +525,30 @@ describe("the director", () => {
   });
 
   it("keeps a draft a little past the prompt's range without shortening it", async () => {
-    stream.mockReturnValueOnce(scriptReply(148));
+    stream.mockReturnValueOnce(scriptReply(212));
     const script = await createFilmWriters(input, OPUS).direct();
     expect(stream).toHaveBeenCalledTimes(1);
-    expect(script.beats[0]!.narration.split(" ")).toHaveLength(37);
+    expect(script.beats[0]!.narration.split(" ")).toHaveLength(53);
   });
 
   it("keeps a slightly long first draft when shortening fails", async () => {
     stream
-      .mockReturnValueOnce(scriptReply(164))
+      .mockReturnValueOnce(scriptReply(268))
       .mockReturnValue(failing(new Error("overloaded")));
     const script = await createFilmWriters(input, OPUS).direct();
-    expect(script.beats[0]!.narration.split(" ")).toHaveLength(41);
+    expect(script.beats[0]!.narration.split(" ")).toHaveLength(67);
   });
 
   it("sends a script with too many beats back to be shortened", async () => {
     stream
-      .mockReturnValueOnce(scriptReply(120, "tool_use", 24))
+      .mockReturnValueOnce(scriptReply(144, "tool_use", 36))
       .mockReturnValueOnce(scriptReply(120, "tool_use", 16));
     const script = await createFilmWriters(input, OPUS).direct();
     expect(stream).toHaveBeenCalledTimes(2);
     const trim = stream.mock.calls[1]![0] as {
       messages: Array<{ content: Array<{ text?: string }> }>;
     };
-    expect(trim.messages[0]!.content.at(-1)!.text).toContain("22 beats");
+    expect(trim.messages[0]!.content.at(-1)!.text).toContain("34 beats");
     expect(script.beats).toHaveLength(16);
   });
 
@@ -707,9 +707,9 @@ describe("shotList", () => {
 
 describe("pickScript", () => {
   it("prefers a draft within the limit, then the shorter within the hard limit", () => {
-    const long = scriptOf(41); // 164 words
-    const longer = scriptOf(42); // 168 words
-    const fits = scriptOf(30); // 120 words
+    const long = scriptOf(67); // 268 words
+    const longer = scriptOf(68); // 272 words
+    const fits = scriptOf(45); // 180 words
     expect(pickScript([long, fits])).toBe(fits);
     expect(pickScript([longer, long])).toBe(long);
     expect(pickScript([long, null])).toBe(long);
@@ -718,10 +718,10 @@ describe("pickScript", () => {
   });
 
   it("joins beats rather than losing the ending when too many remain", () => {
-    const many = scriptOf(4, (i) => `s${Math.floor(i / 3)}`, 26);
+    const many = scriptOf(4, (i) => `s${Math.floor(i / 3)}`, 36);
     many.beats.at(-1)!.narration = "the very end";
     const picked = pickScript([many, null])!;
-    expect(picked.beats).toHaveLength(22);
+    expect(picked.beats).toHaveLength(34);
     expect(picked.beats.at(-1)!.narration).toMatch(/the very end$/);
     const words = (s: Script) =>
       s.beats.map((beat) => beat.narration).join(" ");

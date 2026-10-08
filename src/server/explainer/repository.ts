@@ -150,6 +150,12 @@ export async function readRepositoryForVideo(params: {
       // README examples are real code too; on-screen code may quote either.
       sourceText: `${source.text}\n${prepared.readme}`,
       images: pictures.map((picture) => picture.id),
+      pictureSizes: Object.fromEntries(
+        pictures.map((picture) => [
+          picture.id,
+          { width: picture.width, height: picture.height },
+        ]),
+      ),
       // What the writers read; on-screen web addresses must come from it.
       material: repositoryContext(prompt),
     },

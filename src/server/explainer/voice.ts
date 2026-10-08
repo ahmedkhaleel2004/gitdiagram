@@ -25,7 +25,7 @@ const VOICE_MODEL = "google/gemini-3.8-flash-tts";
 const VOICE_NAME = "Charon";
 const STYLE =
   "a warm, confident senior engineer telling a smart colleague the story of a project they love; natural conversational pace with varied rhythm, breathing at commas and full stops";
-// One take of a minute's script comes back in well under this.
+// One take of a film's script (about 85 s of speech) comes back in about 30 s.
 const TAKE_TIMEOUT_MS = 90_000;
 const PAUSE_KEY = "video:v1:voice:paused-until";
 // How long new videos wait after the balance ran out before trying again.

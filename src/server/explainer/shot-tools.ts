@@ -1,6 +1,6 @@
 import {
-  SHOT_ACTIONS,
-  SHOT_KINDS,
+  DESIGNER_ACTIONS,
+  DESIGNER_KINDS,
   SHOT_TRANSITIONS,
 } from "~/features/explainer/types";
 
@@ -44,6 +44,11 @@ export const SHOTS_TOOL = {
   input_schema: {
     type: "object",
     properties: {
+      layout: {
+        type: "object",
+        description:
+          'The whole scene\'s arrangement: nested {"row":[…]} and {"col":[…]} of element ids, {"id":…,"in":{…}} for a browser window around a layout, {"slot":[…]} for elements that take turns in one place.',
+      },
       shots: arr({
         type: "object",
         properties: {
@@ -53,11 +58,7 @@ export const SHOTS_TOOL = {
             type: "object",
             properties: {
               id: str,
-              kind: { type: "string", enum: SHOT_KINDS },
-              x: num,
-              y: num,
-              w: num,
-              h: num,
+              kind: { type: "string", enum: DESIGNER_KINDS },
               at: str,
               text: str,
               size: str,
@@ -81,8 +82,6 @@ export const SHOTS_TOOL = {
               url: str,
               method: str,
               status: { type: ["integer", "null"] },
-              viewBox: str,
-              shapes: arr({ type: "object" }),
               src: str,
               fit: str,
               from: str,
@@ -96,14 +95,12 @@ export const SHOTS_TOOL = {
             type: "object",
             properties: {
               at: str,
-              do: { type: "string", enum: SHOT_ACTIONS },
+              do: { type: "string", enum: DESIGNER_ACTIONS },
               target: {},
               lines: arr({ type: "integer" }),
               rows: arr({ type: "integer" }),
               text: str,
               value: num,
-              x: num,
-              y: num,
               line: str,
             },
             required: ["do"],
@@ -112,6 +109,6 @@ export const SHOTS_TOOL = {
         required: ["beat", "elements", "actions"],
       }),
     },
-    required: ["shots"],
+    required: ["layout", "shots"],
   },
 };

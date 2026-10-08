@@ -119,7 +119,7 @@ export async function createVideoCheckout(params: {
           product_data: {
             name: `Explainer video of ${username}/${repo}`,
             description:
-              "A narrated one-minute video of the repository, made by GitDiagram. It stays free for everyone to watch. If it can't be made, you get your money back.",
+              "A narrated video of the repository, about 90 seconds long, made by GitDiagram. It stays free for everyone to watch. If it can't be made, you get your money back.",
           },
         },
       },

@@ -29,6 +29,11 @@ export const SHOT_KINDS = [
   "arrow",
 ] as const;
 export type ShotKind = (typeof SHOT_KINDS)[number];
+/**
+ * What designers are offered today. The engine still draws "svg" for films
+ * made before layouts, where the designer placed every element by hand.
+ */
+export const DESIGNER_KINDS = SHOT_KINDS.filter((kind) => kind !== "svg");
 
 export const SHOT_ACTIONS = [
   "highlight",
@@ -50,6 +55,10 @@ export const SHOT_ACTIONS = [
   "reset",
 ] as const;
 type ShotActionName = (typeof SHOT_ACTIONS)[number];
+/** "move" needs coordinates, which designers no longer write. */
+export const DESIGNER_ACTIONS = SHOT_ACTIONS.filter(
+  (action) => action !== "move",
+);
 
 // The values the engine draws for a few element fields; anything else falls
 // back to the first entry. A test checks each list against shots.js.

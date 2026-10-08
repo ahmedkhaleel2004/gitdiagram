@@ -485,7 +485,7 @@ export function ExplainerVideo({
             ? price !== null
               ? `${PAYABLE[state.paused ?? "limit"]} You can still have this one made for ${formatPrice(price)}, and it will be free for everyone to watch.`
               : PAUSED[state.paused ?? "limit"]
-            : "A narrated one-minute tour: what the project does, how its parts fit together, and a few of the decisions inside."}
+            : "A narrated 90-second tour: what the project does, how its parts fit together, and a few of the decisions inside."}
         </p>
       )}
       <div className={styles.cta}>

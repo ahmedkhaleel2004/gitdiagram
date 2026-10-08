@@ -8,23 +8,99 @@
   function rectOf(item) {
     return { x: item.pos.x * U, y: item.pos.y * U, w: item.pos.w * U, h: item.pos.h * U };
   }
-  function route(a, b) {
+  // The plain route between two rects: out of the side that faces the other,
+  // straight when they line up, one dog-leg when they do not.
+  function direct(a, b, sideways) {
     var ac = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
     var bc = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
-    var gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
-    var gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
-    if (gapX >= gapY) {
+    if (sideways) {
       var right = bc.x >= ac.x;
       var x1 = right ? a.x + a.w + 6 : a.x - 6;
       var x2 = right ? b.x - 10 : b.x + b.w + 10;
       var mx = (x1 + x2) / 2;
-      return Math.abs(ac.y - bc.y) < 4 ? [[x1, ac.y], [x2, ac.y]] : [[x1, ac.y], [mx, ac.y], [mx, bc.y], [x2, bc.y]];
+      // Nearly level: one straight line both ends can take beats a small kink.
+      var ly = level(ac.y, bc.y, a.y, a.h, b.y, b.h);
+      if (ly != null) return [[x1, ly], [x2, ly]];
+      return [[x1, ac.y], [mx, ac.y], [mx, bc.y], [x2, bc.y]];
     }
     var down = bc.y >= ac.y;
     var y1 = down ? a.y + a.h + 6 : a.y - 6;
     var y2 = down ? b.y - 10 : b.y + b.h + 10;
     var my = (y1 + y2) / 2;
-    return Math.abs(ac.x - bc.x) < 4 ? [[ac.x, y1], [ac.x, y2]] : [[ac.x, y1], [ac.x, my], [bc.x, my], [bc.x, y2]];
+    var lx = level(ac.x, bc.x, a.x, a.w, b.x, b.w);
+    if (lx != null) return [[lx, y1], [lx, y2]];
+    return [[ac.x, y1], [ac.x, my], [bc.x, my], [bc.x, y2]];
+  }
+  // Where a straight line can join two ends whose centres are nearly in
+  // line: between the centres, inside the middle of both. Null when the
+  // ends are too far out of line for that.
+  function level(c1, c2, s1, len1, s2, len2) {
+    if (Math.abs(c1 - c2) < 4) return c1;
+    if (Math.abs(c1 - c2) > 0.3 * Math.min(len1, len2)) return null;
+    var lo = Math.max(s1 + len1 * 0.2, s2 + len2 * 0.2);
+    var hi = Math.min(s1 + len1 * 0.8, s2 + len2 * 0.8);
+    if (lo > hi) return null;
+    return Math.max(lo, Math.min(hi, (c1 + c2) / 2));
+  }
+  // One corner: out of a's side, into b's top or bottom (or the other way round).
+  function corner(a, b, sideFirst) {
+    var ac = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+    var bc = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    if (sideFirst) {
+      var right = bc.x >= ac.x;
+      var down = bc.y >= ac.y;
+      return [[right ? a.x + a.w + 6 : a.x - 6, ac.y], [bc.x, ac.y], [bc.x, down ? b.y - 10 : b.y + b.h + 10]];
+    }
+    var below = bc.y >= ac.y;
+    var east = bc.x >= ac.x;
+    return [[ac.x, below ? a.y + a.h + 6 : a.y - 6], [ac.x, bc.y], [east ? b.x - 10 : b.x + b.w + 10, bc.y]];
+  }
+  function crosses(p, q, r, pad) {
+    var x0 = Math.min(p[0], q[0]), x1 = Math.max(p[0], q[0]);
+    var y0 = Math.min(p[1], q[1]), y1 = Math.max(p[1], q[1]);
+    return x1 > r.x + pad && x0 < r.x + r.w - pad && y1 > r.y + pad && y0 < r.y + r.h - pad;
+  }
+  // How bad a route is: every card it runs through counts far more than its
+  // length, and a corner a little more than none.
+  function cost(pts, a, b, obstacles) {
+    var hits = 0;
+    var length = 0;
+    for (var i = 1; i < pts.length; i++) {
+      var p = pts[i - 1], q = pts[i];
+      length += Math.abs(q[0] - p[0]) + Math.abs(q[1] - p[1]);
+      for (var k = 0; k < obstacles.length; k++) if (crosses(p, q, obstacles[k], 2)) hits++;
+      // Doubling back through one of its own ends.
+      if (crosses(p, q, a, 8) || crosses(p, q, b, 12)) hits++;
+    }
+    // A corner cut too close to an end leaves a stub too short to read.
+    var last = pts.length - 1;
+    var stub = Math.min(
+      Math.abs(pts[1][0] - pts[0][0]) + Math.abs(pts[1][1] - pts[0][1]),
+      Math.abs(pts[last][0] - pts[last - 1][0]) + Math.abs(pts[last][1] - pts[last - 1][1]),
+    );
+    return hits * 10000 + length + (pts.length - 2) * 70 + (stub < 26 ? 4000 : 0);
+  }
+  // The route an arrow takes. With the scene's other cards given, the plain
+  // route gives way to one that runs through none of them.
+  function route(a, b, obstacles) {
+    var gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
+    var gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
+    var plain = direct(a, b, gapX >= gapY);
+    if (!obstacles) return plain;
+    var best = plain;
+    var bestCost = cost(plain, a, b, obstacles);
+    if (bestCost < 4000) return plain;
+    var others = [];
+    if (gapX > 16 && gapY > 16) others.push(corner(a, b, true), corner(a, b, false));
+    if (Math.min(gapX, gapY) > 16) others.push(direct(a, b, gapX < gapY));
+    others.forEach(function (pts) {
+      var c = cost(pts, a, b, obstacles);
+      if (c < bestCost - 1) {
+        best = pts;
+        bestCost = c;
+      }
+    });
+    return best;
   }
   function pathOf(pts) {
     return "M" + pts.map(function (q) { return q[0].toFixed(1) + "," + q[1].toFixed(1); }).join(" L");
@@ -36,6 +112,7 @@
   // two routes tween point for point. It draws the same line.
   function square(pts) {
     if (pts.length === 4) return pts;
+    if (pts.length === 3) return [pts[0], pts[1], pts[1].slice(), pts[2]];
     var m = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2];
     return [pts[0], m, m.slice(), pts[1]];
   }
