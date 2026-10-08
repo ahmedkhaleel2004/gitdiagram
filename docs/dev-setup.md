@@ -4,7 +4,7 @@ GitDiagram is one Next.js application. The UI and generation API run together; n
 
 ## Prerequisites
 
-- Node.js 22: `22.12` or newer for Next.js and the tooling, and `22.22.2` or newer to run the tests (jsdom 30). CI and Vercel use Node 22 (`engines.node`); Node `24.15` or newer also works locally.
+- Node.js 22: `22.12` or newer for Next.js and the tooling, and `22.22.2` or newer to run the tests (jsdom 30). CI uses Node 22 (`engines.node`); Node `24.15` or newer also works locally.
 - Bun `1.3.14`, the version pinned in `packageManager`, CI and the `Dockerfile`. Do not move to Bun 1.4 yet: it rewrites `bun.lock`.
 
 ```bash
@@ -21,7 +21,7 @@ cp .env.example .env
 
 Use `bun ci` when you want an exact frozen-lockfile install, such as in CI.
 
-`bun install` also turns on the versioned git hooks in `.githooks/` (the `prepare` script sets `core.hooksPath`). The pre-push hook runs the fast CI checks (formatting, lint, typecheck and knip) in a few seconds, because Vercel deploys every push to `main` even when CI fails. Skip it once with `git push --no-verify`.
+`bun install` also turns on the versioned git hooks in `.githooks/` (the `prepare` script sets `core.hooksPath`). The pre-push hook runs the fast CI checks (formatting, lint, typecheck and knip) in a few seconds, because a push to `main` deploys to production even when CI fails. Skip it once with `git push --no-verify`.
 
 ## Configure
 
@@ -119,7 +119,7 @@ bun run knip           # unused files, exports and dependencies
 bun audit
 bun run test
 bun run build
-bun run check:video-tracing   # after build: video routes trace ffmpeg and Chromium only where needed, within size ceilings
+bun run check:video-tracing   # after build: video routes trace ffmpeg, never the Chromium launcher where it is not needed, within size ceilings
 bun run perf:budget           # after build: route, chunk and video engine size budgets
 ```
 
@@ -130,17 +130,10 @@ The test suite includes real Mermaid parser contract tests for the deterministic
 ## Troubleshooting
 
 - **Typecheck or build fails on files under `.next/dev/types`.** `tsconfig.json` includes the route type validators that `next dev` generates there, and a stale copy from an older checkout can break `bun run typecheck` and `bun run build`. Delete it with `rm -rf .next/dev`; the next `bun run dev` regenerates it.
-- **MP4 renders.** `puppeteer-core` is pinned to the release built for the Chromium major that `@sparticuz/chromium` ships (see `lib/puppeteer/revisions.js` in puppeteer-core). Bump the two together, only when a new `@sparticuz/chromium` major is out; until then, skip Dependabot's puppeteer-core bumps.
+- **MP4 renders.** Renders launch the Chromium named by `VIDEO_RENDER_CHROME_PATH` (Debian's, in the render container). `puppeteer-core` is pinned and bumped by hand so it keeps matching that Chromium (see `lib/puppeteer/revisions.js` in puppeteer-core); Dependabot leaves it alone. The Bun dev server cannot load the render externals: run `next dev` under Node to test renders locally.
 
 ## Deploy
 
-The primary deployment is Vercel with Bun as both the package manager and the server runtime for Route Handlers. The route-level `runtime = "nodejs"` declarations select Next.js's server runtime rather than Edge; the project-level `bunVersion` setting makes Vercel execute those Functions with Bun. Add the variables from `.env.example` to the Vercel project, then deploy:
+Production is Cloudflare Workers, built with OpenNext. A push to `main` deploys it (`.github/workflows/cloudflare.yml`). "Hosting on Cloudflare" in [CLAUDE.md](../CLAUDE.md) covers deploying by hand, rolling back, secrets and staging.
 
-```bash
-vercel deploy
-vercel deploy --prod
-```
-
-Local `.env` files and tooling artifacts are excluded by `.vercelignore`.
-
-The same source can be redeployed to Railway later through `Dockerfile` and `railway.json`. Those files are an offline recovery recipe, not a live standby. The container uses Next.js standalone output, listens on Railway's injected `PORT`, runs as a non-root user, and checks `/api/healthz` before promotion. `NEXT_PUBLIC_*` values are compiled in at build time, so they must be passed as build arguments (the `Dockerfile` declares them); MP4 renders there call the server on `http://127.0.0.1:$PORT` unless `VIDEO_INTERNAL_ORIGIN` is set. See [deployment-failover.md](deployment-failover.md) for the recovery procedure, including why the video gate and per-network limits must not be trusted outside Vercel.
+The same source can be redeployed to Railway later through `Dockerfile` and `railway.json`. Those files are an offline recovery recipe, not a live standby. The container uses Next.js standalone output, listens on Railway's injected `PORT`, runs as a non-root user, and checks `/api/healthz` before promotion. `NEXT_PUBLIC_*` values are compiled in at build time, so they must be passed as build arguments (the `Dockerfile` declares them); MP4 renders there call the server on `http://127.0.0.1:$PORT` unless `VIDEO_INTERNAL_ORIGIN` is set. See [deployment-failover.md](deployment-failover.md) for the recovery procedure, including why the video gate and per-network limits must not be trusted on a host that does not write the request headers the Worker does.

@@ -87,7 +87,6 @@ async function settle<T>(promise: Promise<T>): Promise<T> {
 
 beforeEach(() => {
   process.env = { ...originalEnv, CACHE_KEY_SECRET: "secret" };
-  delete process.env.VERCEL_DEPLOYMENT_ID;
   delete process.env.VIDEO_SEGMENT_FAN_OUT;
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -377,19 +376,6 @@ describe("rendering in segments", () => {
     const mp4 = await settle(render());
     expect(mp4.toString()).toBe("SSSSSSSS");
     expect(most).toBe(3);
-  });
-
-  it("pins every segment request to the running deployment", async () => {
-    process.env.VERCEL_DEPLOYMENT_ID = "dpl_123";
-    const fetchMock = vi.fn(async () =>
-      answer([{ type: "ready", sfx: [] }, done("X")]),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    await settle(render());
-    for (const [, init] of fetchMock.mock.calls as unknown as Array<
-      [string, RequestInit]
-    >)
-      expect(init.headers).toMatchObject({ "x-deployment-id": "dpl_123" });
   });
 
   it("logs how many busy answers a render met", async () => {

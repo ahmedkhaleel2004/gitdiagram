@@ -340,8 +340,6 @@ describe("the run journal (Redis)", () => {
     });
     expect(await reapOrphanedRuns(Date.now() + 3_600_000)).toBe(0);
     expect(await counter(slot.keys[0]!)).toBe("1");
-    // Another platform's runs are counted apart.
-    expect((await readVideoHealth(1, "vercel")).generate.started).toBe(0);
   });
 
   it("gives back what a run that died had reserved, once, and counts it lost", async () => {

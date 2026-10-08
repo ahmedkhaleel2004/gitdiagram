@@ -28,8 +28,8 @@
   // Failures are also logged by a Tail Worker, which sees every request
   // whatever the sampling above (workers/errors; deploy it before the site).
   "tail_consumers": [{ "service": "gitdiagram-errors" }],
-  // The crons vercel.json runs on Vercel (cloudflare/worker.ts maps each
-  // schedule to its route; a test keeps the three files in step).
+  // cloudflare/worker.ts maps each schedule to its internal route (CRON_ROUTES
+  // in src/lib/cloudflare-edge.ts; a test keeps the two in step).
   "triggers": {
     "crons": ["*/5 * * * *", "*/15 * * * *", "0 13 * * *"],
   },
@@ -40,7 +40,7 @@
   // workers.dev; `node scripts/cf-routes.mjs gitdiagram` gives it the routes
   // back.
   "vars": {
-    // On Vercel, VERCEL_ENV=production turns IndexNow pings on.
+    // Turns IndexNow pings on (off everywhere else).
     "INDEXNOW_ENABLED": "1",
     // Where the cron handler and internal calls address the site.
     "SITE_ORIGIN": "https://gitdiagram.com",

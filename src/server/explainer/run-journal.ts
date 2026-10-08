@@ -51,8 +51,9 @@ interface RunRecord {
   jobId?: string;
 }
 
-/** Where this server runs, so each platform's runs are counted apart. */
-const platform = () => (process.env.VERCEL ? "vercel" : "cloudflare");
+// Counters and failure records carry the platform's name, from when runs on
+// two hosts were counted apart; stored names keep it.
+const PLATFORM = "cloudflare";
 
 const utcDay = (now: number) => new Date(now).toISOString().slice(0, 10);
 
@@ -63,7 +64,7 @@ async function count(kind: RunKind, what: string, now = Date.now()) {
 redis.call("EXPIRE", KEYS[1], ARGV[2])
 return 1`,
     keys: [key],
-    args: [`${platform()}:${kind}:${what}`, HEALTH_TTL_SECONDS],
+    args: [`${PLATFORM}:${kind}:${what}`, HEALTH_TTL_SECONDS],
   });
 }
 
@@ -85,7 +86,7 @@ return 1`,
     args: [
       JSON.stringify({
         at: new Date().toISOString(),
-        on: platform(),
+        on: PLATFORM,
         ...failure,
       }),
       FAILURES_KEPT,
@@ -248,13 +249,12 @@ export type VideoHealth = Record<
 >;
 
 /**
- * How the pipeline did on one platform over the last `days` UTC days (today
+ * How the pipeline did over the last `days` UTC days (today
  * included): runs started, completed, failed and lost. Started minus the
  * other three are still running, or were lost and not noticed yet.
  */
 export async function readVideoHealth(
   days = 2,
-  on: "cloudflare" | "vercel" = "cloudflare",
   now = Date.now(),
 ): Promise<VideoHealth> {
   const health: VideoHealth = {
@@ -274,7 +274,8 @@ export async function readVideoHealth(
       : Object.entries(stored ?? {});
     for (const [name, value] of entries) {
       const [where, kind, what] = name.split(":");
-      if (where !== on || (kind !== "generate" && kind !== "render")) continue;
+      if (where !== PLATFORM || (kind !== "generate" && kind !== "render"))
+        continue;
       if (what && what in health[kind])
         health[kind][what as keyof VideoHealth[RunKind]] += Number(value) || 0;
     }

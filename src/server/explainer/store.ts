@@ -28,7 +28,6 @@ import {
 } from "~/server/storage/r2";
 import { SITE_URL } from "~/lib/site";
 import { notifyIndexNow } from "~/server/visibility/indexnow";
-import { purgeVideoResponse } from "./cache";
 import { indexVideo } from "./video-index";
 
 // Explainer videos live beside diagrams but under their own prefix, so they can
@@ -202,7 +201,6 @@ export async function writeVideo(
     ]);
     await putJsonObject(bucket(), artifactKey, artifact);
     await indexVideo(artifact);
-    await purgeVideoResponse(owner, repo);
     // Best effort and never throws: search engines hear about the watch page.
     void notifyIndexNow([
       `${SITE_URL}/${owner.toLowerCase()}/${repo.toLowerCase()}/video`,

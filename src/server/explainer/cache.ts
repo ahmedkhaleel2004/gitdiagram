@@ -1,12 +1,11 @@
 import "server-only";
 
-import { dangerouslyDeleteByTag } from "@vercel/functions";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 // A new video for a repository replaces the stored one. The version it
 // replaced keeps its files until the next regeneration, so open tabs still
-// play; older versions are deleted (see pruneVideoFiles). Every cached copy
-// that still names an old version is dropped here.
+// play; older versions are deleted (see pruneVideoFiles). The pages that
+// name the video are refreshed here.
 
 const repoKey = (username: string, repo: string) =>
   `${username.toLowerCase()}/${repo.toLowerCase()}`;
@@ -17,30 +16,13 @@ export const VIDEO_CATALOG_TAG = "explainer-video-catalog";
 export const videoSummaryTag = (username: string, repo: string) =>
   `explainer-video-summary:${repoKey(username, repo)}`;
 
-/** The CDN's copy of /api/video for a repository that has a video. */
+/**
+ * Marks an answer that names a repository's current video. The edge keeps a
+ * tagged answer only briefly (cloudflare/edge-answers.ts), since nothing
+ * tells every location when the video is replaced.
+ */
 export const videoResponseTag = (username: string, repo: string) =>
   `video/${repoKey(username, repo)}`;
-
-/**
- * Drop the CDN's copy of the repository's /api/video answer, so the next
- * viewer is sent the new video. Never throws; a no-op off Vercel.
- */
-export async function purgeVideoResponse(
-  username: string,
-  repo: string,
-): Promise<void> {
-  try {
-    await dangerouslyDeleteByTag(videoResponseTag(username, repo));
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: "video.cache_purge_failed",
-        repository: repoKey(username, repo),
-        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
-      }),
-    );
-  }
-}
 
 /**
  * Refresh the pages that name the video: its watch page (link preview and

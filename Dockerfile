@@ -49,10 +49,9 @@ ENV PORT=3000
 # of Next's default of refusing new connections at once (src/server/drain.ts).
 ENV NEXT_MANUAL_SIG_HANDLE=1
 
-# @sparticuz/chromium only runs on Vercel and AWS Lambda, so off Vercel the
-# renders launch Debian's Chromium. A container has no user namespaces for
-# Chrome's sandbox and a small /dev/shm, as on Vercel, where the same two
-# flags are set. The films bring their own fonts; the system ones only cover
+# Renders launch Debian's Chromium. A container has no user namespaces for
+# Chrome's sandbox and a small /dev/shm, hence the two flags below. The films
+# bring their own fonts; the system ones only cover
 # what those lack, which otherwise renders as empty boxes: emoji, Chinese,
 # Japanese and Korean text, and (fonts-noto-core) Arabic, Hebrew, Thai and
 # the Indian scripts, all of which stored videos contain. tini is the init

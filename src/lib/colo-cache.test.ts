@@ -856,7 +856,9 @@ describe("answerFromCopy", () => {
     expect(await fresh!.text()).toBe("<p>new</p>");
     expect(fresh!.headers.get("x-opennext-cache")).toBe("HIT");
     expect(restarts).toBe(1);
-  });
+    // Real decompression between timer steps: slow on a busy machine (it
+    // timed out in CI on 2026-10-06), so it gets more than the default 5 s.
+  }, 20_000);
 
   it("rechecks an old copy with the server after answering from it", async () => {
     const asked: Request[] = [];

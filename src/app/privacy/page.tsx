@@ -38,7 +38,7 @@ const sections: TextPageSection[] = [
   {
     heading: "Abuse control and cookies",
     body: [
-      "Your IP address and approximate location (from our host, Vercel) are used to apply rate limits and daily limits and to decide where videos are available. A random ID cookie, kept for up to a year, counts video limits per browser. Rate-limit counters expire on their own.",
+      "Your IP address and approximate location (from our host, Cloudflare) are used to apply rate limits and daily limits and to decide where videos are available. A random ID cookie, kept for up to a year, counts video limits per browser. Rate-limit counters expire on their own.",
     ],
   },
   {
@@ -50,7 +50,7 @@ const sections: TextPageSection[] = [
   {
     heading: "Who processes data",
     body: [
-      "Vercel (hosting), Cloudflare (storage and live visitor counts), Upstash (rate-limit counters), PostHog (analytics), Resend (delivering feedback emails), Stripe (payments), GitHub (repository data), and the AI providers that write diagrams, videos and narration (OpenAI, Anthropic and OpenRouter). Repository content is sent to those AI providers only to make what you asked for.",
+      "Cloudflare (hosting, storage and live visitor counts), Upstash (rate-limit counters), PostHog (analytics), Resend (delivering feedback emails), Stripe (payments), GitHub (repository data), and the AI providers that write diagrams, videos and narration (OpenAI, Anthropic and OpenRouter). Repository content is sent to those AI providers only to make what you asked for.",
     ],
   },
   {
@@ -75,7 +75,7 @@ export default function PrivacyPage() {
   return (
     <TextPage
       title="Privacy Policy"
-      updated="September 29, 2026"
+      updated="October 8, 2026"
       sections={sections}
     />
   );

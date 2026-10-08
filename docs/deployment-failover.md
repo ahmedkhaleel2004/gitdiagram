@@ -2,8 +2,8 @@
 
 GitDiagram has one application implementation and one live deployment target:
 
-- **Live production:** Vercel serves the frontend and every backend Route Handler at `gitdiagram.com`.
-- **Offline recovery option:** `Dockerfile` and `railway.json` can package the same application for Railway if Vercel must be replaced later.
+- **Live production:** Cloudflare Workers serve the site at `gitdiagram.com` (see "Hosting on Cloudflare" in [CLAUDE.md](../CLAUDE.md)). A bad release is rolled back there, with `wrangler rollback`.
+- **Offline recovery option:** `Dockerfile` and `railway.json` can package the same application for Railway if Cloudflare itself must be replaced. The `Dockerfile` is also the image the render containers run, so it is built on every change to what they run.
 
 There is no deployed Railway service, connected Railway source, Railway domain, or Railway DNS record. Railway is not receiving traffic and is not part of the normal request path.
 
@@ -14,7 +14,7 @@ The repository keeps a production-only Docker path that:
 - builds the existing Next.js application with `output: "standalone"`;
 - runs the generated server as a non-root user;
 - respects the platform-provided `PORT`;
-- exposes the same UI, Route Handlers, graph compiler, quota logic, cancellation protocol, and persistence code as Vercel;
+- exposes the same UI, Route Handlers, graph compiler, quota logic, cancellation protocol, and persistence code as production;
 - uses `/api/healthz` as its deployment health check.
 
 This is not the old Python/FastAPI backend. No Python service or second API implementation is required.
@@ -46,23 +46,23 @@ Do not run these commands during normal operation. In a real recovery:
    `railway up` does not connect the service to GitHub and does not create a public domain by itself.
 
 6. Add a temporary Railway domain, then verify health, cost estimation, a small streamed generation, cancellation, and persisted diagram state.
-7. Only after those checks pass, make an explicit routing decision. Keep Vercel intact until the incident is resolved.
+7. Only after those checks pass, make an explicit routing decision. Keep the Cloudflare Workers intact until the incident is resolved.
 
-### Trust boundaries outside Vercel
+### Trust boundaries outside Cloudflare
 
-Several controls read request headers that Vercel's edge sets on every request: `x-vercel-ip-*` (country, region, city, latitude and longitude) and `x-forwarded-for` / `x-real-ip`. Behind Railway's proxy, or any other host, a client can set or prefix them. On such a host:
+Several controls read request headers that the site's Worker writes on every request (`cloudflare/worker.ts`): `x-vercel-ip-*` (country, region, city, latitude and longitude) and `x-forwarded-for` / `x-real-ip`. Behind Railway's proxy, or any other host, a client can set or prefix them. On such a host:
 
 - the video early-access gate (`audience.ts`) can be passed by sending a matching `x-vercel-ip-*` location;
 - per-network (per-IP) video and MP4 limits and the diagram generation rate limit can be dodged by changing `x-forwarded-for` on each request.
 
-The overall daily caps, the per-browser limits and the complimentary token quota still bound total spend. Before sending real traffic to a non-Vercel host, pause new videos or open the gate to everyone from `/admin` so the location rule is not relied on, and consider lowering the overall daily limits.
+The overall daily caps, the per-browser limits and the complimentary token quota still bound total spend. Before sending real traffic to any other host, pause new videos or open the gate to everyone from `/admin` so the location rule is not relied on, and consider lowering the overall daily limits.
 
 Because the whole Next.js application moves together, recovery does not need a browser CORS toggle, a public backend selector, or a data migration. R2 owns diagram artifacts and Upstash owns shared quota, cancellation, lock, and failure state.
 
-## Return to Vercel
+## Return to Cloudflare
 
 1. Verify `https://gitdiagram.com/api/healthz` and a small production generation.
-2. Restore `gitdiagram.com` to the intended Vercel deployment if routing changed.
+2. Point `gitdiagram.com` back at the Workers if routing changed.
 3. Remove the temporary Railway domains and delete the Railway service.
 4. Confirm the Railway project has no services and the DNS zone has no Railway records.
 

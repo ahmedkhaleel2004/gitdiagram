@@ -9,8 +9,7 @@ import { isInVideoRegion } from "./audience";
 import { isVideoAdmin } from "./limits";
 
 // Feedback on a video goes straight to the operator's inbox as a plain-text
-// email through Resend (installed from the Vercel Marketplace, which sets
-// RESEND_API_KEY and RESEND_EMAIL_DOMAIN). Only people in the priority places
+// email through Resend (RESEND_API_KEY and RESEND_EMAIL_DOMAIN). Only people in the priority places
 // see the button, the audience whose opinion matters most during early access.
 
 interface FeedbackConfig {

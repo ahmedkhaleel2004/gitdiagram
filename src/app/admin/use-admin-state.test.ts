@@ -29,7 +29,7 @@ const adminState = (overrides: Partial<LiveControls> = {}): AdminState => ({
   diagramQuota: null,
   mcp: null,
   presence: null,
-  deployment: { commit: null, region: null },
+  deployment: { commit: null },
 });
 
 /** A response the test hands back whenever it likes (or the caller aborts). */

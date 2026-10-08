@@ -116,10 +116,7 @@ export function AdminDashboard() {
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-[hsl(var(--neo-soft-text))]">
           {state?.deployment.commit ? (
-            <span className="font-mono">
-              {state.deployment.commit}
-              {state.deployment.region ? ` · ${state.deployment.region}` : ""}
-            </span>
+            <span className="font-mono">{state.deployment.commit}</span>
           ) : null}
           <button
             type="button"

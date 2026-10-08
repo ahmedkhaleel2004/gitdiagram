@@ -145,7 +145,7 @@ export function containerRefusal(
   };
 }
 
-/** The internal route each cron schedule calls (same as vercel.json). */
+/** The internal route each cron schedule in wrangler.jsonc calls. */
 export const CRON_ROUTES: Record<string, string> = {
   "*/5 * * * *": "/api/internal/browse-index/drain",
   "*/15 * * * *": "/api/internal/video-payments/sweep",

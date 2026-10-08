@@ -12,7 +12,7 @@ GitDiagram (gitdiagram.com) turns a GitHub repository into an interactive Mermai
 
 - **A push to `main` is a production deploy.** `.github/workflows/cloudflare.yml` deploys it to Cloudflare, even when CI fails. Run the gate (below) first. Pushes that touch only root `*.md`, `docs/**`, `experiments/**` and a few test tools do not deploy to Cloudflare (`paths-ignore` in that workflow).
 - **Commit to `main`; no feature branches or PRs** unless Ahmed asks. `git pull --rebase` before pushing: the `Sponsor README schedule` workflow commits to `main` by itself when a campaign boundary passes.
-- **Vercel is wound down (2026-10-07, Ahmed's call).** The `gitdiagram` Vercel project is paused and disconnected from GitHub. The team was dropped to the free Hobby plan, which blocked every project on it within the hour (the month's earlier traffic counted against the free limits), so it is back on Pro ($22.60) until 2026-11-07: downgrade again just before then, after checking the last 30 days' usage against Hobby's limits (Settings, Usage). Hobby cannot run this site anyway (crons more often than daily, a 4 GB function, commercial use). It is no longer a rollback: roll back on Cloudflare (below). The project, its environment variables and the old preview projects were left in place; do not delete them without Ahmed's say-so. The code still runs on Vercel and locally (`process.env.VERCEL`, `vercel.json`, `src/proxy.ts`): keep platform-only behaviour behind runtime detection, `cloudflareContext()` (`src/server/cloudflare-context.ts`) being defined only on Workers.
+- **Vercel is wound down (2026-10-07, Ahmed's call).** The `gitdiagram` Vercel project is paused and disconnected from GitHub. The team was dropped to the free Hobby plan, which blocked every project on it within the hour (the month's earlier traffic counted against the free limits), so it is back on Pro ($22.60) until 2026-11-07: downgrade again just before then, after checking the last 30 days' usage against Hobby's limits (Settings, Usage). Hobby cannot run this site anyway (crons more often than daily, a 4 GB function, commercial use). It is no longer a rollback: roll back on Cloudflare (below). The project, its environment variables and the old preview projects were left in place; do not delete them without Ahmed's say-so. The code that only ran on Vercel was removed on 2026-10-08 (`vercel.json`, its bundled Chromium, release pinning, CDN purge by tag), so the app no longer runs there as it is. The same code still runs on Workers, in the render containers and locally (`src/proxy.ts` on the last two): keep Workers-only behaviour behind runtime detection, `cloudflareContext()` (`src/server/cloudflare-context.ts`) being defined only on Workers.
 - **Secrets** never go in the repo, CI, logs or chat. They live in the Workers (`wrangler secret list`) and in `~/.config/gitdiagram/` on `ahmed-vps`. A new environment variable goes on the Workers (see Secrets).
 - **Money.** No real Stripe charges while testing (staging has a test-mode key). Keep paid model, voice and video calls small. Cloudflare has no hard spending cap.
 - **Deleting.** `bun run diagram:delete owner/repo` removes a stored public diagram and is for an owner's request only; it is a dry run without `--apply`. `node scripts/cf-staging.mjs destroy` removes staging. Never delete production R2 objects, Redis keys or Workers without Ahmed's say-so.
@@ -36,7 +36,7 @@ bun run check          # lint + typecheck
 bun run format:check   # prettier (format:write to fix)
 bun run knip           # unused files, exports, dependencies
 bun run build          # production build
-bun run check:video-tracing   # after build: video routes trace ffmpeg/Chromium only where needed
+bun run check:video-tracing   # after build: video routes trace ffmpeg, and the Chromium launcher only where needed
 bun run perf:budget    # after build: bundle budgets
 ```
 
@@ -58,7 +58,7 @@ Environment: copy `.env.example` to `.env`. The least that runs generation local
 - `public/video-engine/`: The shot engine that plays and renders videos.
 - `scripts/`: Deploy (`cf-*.sh`, `cf-*.mjs`), checks, benchmarks, operator tools.
 - `plugins/gitdiagram/`, `server.json`: The OpenAI plugin package and the MCP Registry entry.
-- `docs/`: `dev-setup.md`, `operations/` (PostHog, sponsor bookings, traffic protection), `HISTORY.md`. `architecture.md`, `deployment-failover.md` and the hosting parts of `dev-setup.md` and `README.md` still describe Vercel as production: out of date.
+- `docs/`: `dev-setup.md`, `architecture.md`, `deployment-failover.md` (the offline Docker recipe), `operations/` (PostHog, sponsor bookings, traffic protection), `HISTORY.md`.
 
 ## Hosting on Cloudflare
 
@@ -97,11 +97,11 @@ On this server, wrangler needs `CLOUDFLARE_API_TOKEN=$(cat ~/.config/gitdiagram/
 - **Every deploy empties the page cache** (cache keys carry the build id) and cuts open response streams. The script re-uploads the last week's hashed build files so open tabs keep loading; `chunk-reload.ts` covers the rest. There is no Skew Protection on Cloudflare.
 - **Deployed by hand, not by CI:** `workers/presence` (`bunx wrangler deploy` in that folder) and `workers/errors` (`bunx wrangler deploy -c workers/errors/wrangler.jsonc`). Deploy either one before a site deploy that needs the newer version.
 - **Roll back** all four, servers first: `bunx wrangler rollback -c wrangler.server.jsonc`, `bunx wrangler rollback -c wrangler.server-local.jsonc`, `bunx wrangler rollback`, `bunx wrangler rollback -c wrangler.edge.jsonc`. Or pick a version: `bunx wrangler versions list`, then `bunx wrangler versions deploy <version-id>@100%`. Secrets and bindings travel with the version. To take the edge Worker out of the path: `node scripts/cf-routes.mjs gitdiagram`.
-- **Back to Vercel is no longer a switch:** it would need the Pro plan again, the project unpaused and reconnected, and its environment brought up to date (its `RESEND_*` values are the old account's). The DNS steps are in `~/repos/general/gitdiagram-cloudflare/STATUS.md` under "Cutover".
+- **Back to Vercel is no longer a switch:** it would need the Pro plan again, the project unpaused and reconnected, its environment brought up to date (its `RESEND_*` values are the old account's), and the Vercel-only code restored (`git log -- vercel.json` finds the commit that removed it). The DNS steps are in `~/repos/general/gitdiagram-cloudflare/STATUS.md` under "Cutover".
 
 ### Secrets
 
-They live in the site's Worker and both servers (`wrangler secret list`, also with `-c wrangler.server.jsonc` and `-c wrangler.server-local.jsonc`); the edge Worker has three (`CRON_SECRET` and the two Upstash ones). The full set is in `~/.config/gitdiagram/cloudflare/production.env.json` on `ahmed-vps` (`vercel env pull` returns `[SENSITIVE]` for Sensitive values, so Vercel is not a source). `scripts/cf-secrets.mjs` reads the file (`--names`, or pipe to `wrangler secret bulk`). To add one: `bunx wrangler secret put NAME` for each Worker, or add it to the JSON file and run `bun run cf:deploy --secrets`; then add it to Vercel too. Render containers get every string var and secret of the site's Worker as their environment.
+They live in the site's Worker and both servers (`wrangler secret list`, also with `-c wrangler.server.jsonc` and `-c wrangler.server-local.jsonc`); the edge Worker has three (`CRON_SECRET` and the two Upstash ones). The full set is in `~/.config/gitdiagram/cloudflare/production.env.json` on `ahmed-vps` (`vercel env pull` returns `[SENSITIVE]` for Sensitive values, so Vercel is not a source). `scripts/cf-secrets.mjs` reads the file (`--names`, or pipe to `wrangler secret bulk`). To add one: `bunx wrangler secret put NAME` for each Worker, or add it to the JSON file and run `bun run cf:deploy --secrets`; Render containers get every string var and secret of the site's Worker as their environment.
 
 ### What the site's Worker does that Vercel's platform did
 
@@ -110,10 +110,10 @@ They live in the site's Worker and both servers (`wrangler secret list`, also wi
 - Writes Vercel-style request headers from Cloudflare's data (`x-vercel-ip-*`, `x-forwarded-for`, `x-real-ip`, `x-forwarded-host/proto`) and drops a caller's own copies. The audience and limit rules read these.
 - Firewall: per-address rate limits (`ratelimits` bindings) on the generation routes and repository pages; ClaudeBot, Amazonbot and Brightbot blocked on repository pages; scanner paths answered 404; `www` redirected to the apex.
 - Hands `/api/video/generate`, `/api/video/render` and `/api/video/render/segment` to the render containers, after answering wrong-method and cross-origin calls itself so a stray request never wakes one.
-- Runs the three crons (`triggers.crons` in `wrangler.jsonc`, to the same internal routes with `CRON_SECRET`). A test keeps `vercel.json`, `wrangler.jsonc` and the map in step.
+- Runs the three crons (`triggers.crons` in `wrangler.jsonc`, to the same internal routes with `CRON_SECRET`). A test keeps `wrangler.jsonc` and the map (`CRON_ROUTES`) in step.
 - Adds `next.config.js` site-wide headers where OpenNext leaves them off, strips `s-maxage` and `Vercel-*` response headers, gives outgoing `fetch` a User-Agent (GitHub refuses requests without one), and adds `Server-Timing: edge;dur=...;desc="warm"|"new isolate"`.
 
-**The Next.js proxy is not in the Cloudflare build** (`scripts/cf-drop-proxy.mjs` removes it). `src/proxy.ts` (Vercel, local) and the Worker entry both apply the rules in `src/lib/proxy-rules.ts` (forged Server Actions, lowercase repository URLs, the Markdown twin, counting crawler fetches). Change the rules there, not in `proxy.ts`.
+**The Next.js proxy is not in the Cloudflare build** (`scripts/cf-drop-proxy.mjs` removes it). `src/proxy.ts` (local, the render containers) and the Worker entry both apply the rules in `src/lib/proxy-rules.ts` (forged Server Actions, lowercase repository URLs, the Markdown twin, counting crawler fetches). Change the rules there, not in `proxy.ts`.
 
 **Static files** are answered by Workers Assets without running a Worker. `scripts/cf-asset-headers.mjs` turns `next.config.js` `headers()` into a `_headers` file at build time; conditional rules (`has`/`missing`) are not supported there.
 
@@ -171,11 +171,11 @@ On in production (`VIDEO_EXPLAINER_ENABLED=1`, `NEXT_PUBLIC_VIDEO_EXPLAINER=1`).
 - **Paid videos** (`payments.ts`, `/api/video/checkout`): anyone the free rules hold back is offered a paid video through Stripe Checkout (`VIDEO_PRICE_CENTS`, and the live **Sell videos** switch). The generate route claims the session in Redis (`video:v1:paid:<id>`). Every failure refunds, and a 15-minute cron refunds payments never claimed and runs that died. Do not change refund or claim logic without tests.
 - **Storage** (`store.ts`): R2 `video/v1/<owner>/<repo>/`, `.video-cache/` locally. Files live in a version folder, so every file URL is immutable. The gallery and sitemap read a Redis index (`video-index.ts`) backfilled from R2.
 - **Playback** (`explainer-player.tsx`, `public/video-engine/`): the shot engine runs in a same-origin iframe with its own strict CSP and follows the audio clock. **With any change under `public/video-engine`, bump `ENGINE_VERSION` in `src/features/explainer/engine.ts` and every `?v=` in `stage.html` and `engine.css` together** (a test enforces it).
-- **MP4s** (`/api/video/render`, `segments.ts`, `render.ts`, `ffmpeg.ts`, `feed-edit.ts`): headless Chromium seeks the stage frame by frame into ffmpeg, as HMAC-signed segment jobs (key derived from `CACHE_KEY_SECRET`), then joins them with the soundtrack. `/api/video/render` and `/api/video/generate` must trace no Chromium (`check:video-tracing`). The Bun dev server cannot load these externals: run `next dev` under Node to test renders locally.
+- **MP4s** (`/api/video/render`, `segments.ts`, `render.ts`, `ffmpeg.ts`, `feed-edit.ts`): headless Chromium seeks the stage frame by frame into ffmpeg, as HMAC-signed segment jobs (key derived from `CACHE_KEY_SECRET`), then joins them with the soundtrack. Chromium is the render container's own (`VIDEO_RENDER_CHROME_PATH`); `/api/video/render` and `/api/video/generate` must not trace its launcher (`check:video-tracing`). The Bun dev server cannot load these externals: run `next dev` under Node to test renders locally.
 - **Render containers** (`workers/render/`, bound in `wrangler.jsonc`): Cloudflare Containers run this same app as a Node server (the repo's `Dockerfile`). A render runs on the pool instance its film hashes to (`renderInstance`); video generation runs on a small `GENERATE` instance. Segments post back through the Worker, where `router.ts` checks each job's signature before waking anything: keep `segmentSignature` in step with `sign` in `segments.ts`. Pool sizes are in `wrangler.jsonc`.
 - **Container image** (`scripts/cf-container-image.mjs`): tagged with a hash of what the containers run and built only when the registry lacks that tag, so most pushes start no rollout.
 - **Runs that die** (`run-journal.ts`, `src/server/drain.ts`): an instance told to stop finishes its work first. A killed one runs no cleanup, so every run keeps a journal entry and holds its lock as a short lease; `reapOrphanedRuns` gives back the budget places of a silent run, and a payer's retry takes the payment over (`claimVideoPayment`).
-- **Feedback** (`/api/video/feedback`): emails `VIDEO_FEEDBACK_TO` through Resend from `feedback@mail.gitdiagram.com` (a standalone Resend account since 2026-10-07, Google sign-in as ahmed@gitdiagram.com; the comment in `feedback.ts` still names the Vercel Marketplace one, whose key and DNS records are unused but still there).
+- **Feedback** (`/api/video/feedback`): emails `VIDEO_FEEDBACK_TO` through Resend from `feedback@mail.gitdiagram.com` (a standalone Resend account since 2026-10-07, Google sign-in as ahmed@gitdiagram.com; the older Vercel Marketplace account's key and DNS records are unused but still there).
 - **Analytics**: `video_started`, `video_progress`, `video_shared` (`watch-analytics.ts`), `video_paywall_viewed` and `video_checkout_clicked`, in PostHog (`docs/operations/posthog.md`).
 
 ## Operator dashboard (`/admin`)
@@ -198,7 +198,6 @@ Sign in with `VIDEO_ADMIN_TOKEN` (`~/.config/gitdiagram/video-admin-token`). The
 
 ## Known weak spots
 
-- Several docs still say Vercel is production (see Layout). This file and the commands above are the reference.
 - Every deploy starts the page cache cold, so many deploys in a day cost R2 writes and slow first views.
 - The audience and country rules trust headers the Worker writes. On any host that does not rewrite them (see `docs/deployment-failover.md`), a caller can forge them; pause videos or open the gate from `/admin` before sending real traffic to such a host.
 

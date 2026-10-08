@@ -2,7 +2,7 @@ import "server-only";
 
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, statfs, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, statfs } from "node:fs/promises";
 import { freemem, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
@@ -16,7 +16,6 @@ import {
   videoCodecArgs,
   type RenderFormat,
 } from "./ffmpeg";
-import { deploymentHeaders, pinToDeployment } from "./render-origin";
 
 // The stage lays out in CSS pixels at its native size; the device scale factor
 // turns that into the output resolution.
@@ -38,46 +37,10 @@ const FEED_INSETS = { top: 140, bottom: 320, right: 150 };
 
 type StageWindow = Window & { __renderSeek: (time: number) => void };
 
-// @sparticuz/chromium unpacks Chromium and its fonts into /tmp, and treats a
-// path as ready as soon as it exists. Two renders starting together on a cold
-// instance would launch from half-written files, and the damage outlives the
-// request, so every render on an instance shares one unpacking.
-let launcher: Promise<string> | null = null;
-
-async function unpackChromium(): Promise<string> {
-  const chromium = (await import("@sparticuz/chromium")).default;
-  const binary = await chromium.executablePath();
-  // Chromium in --single-process often crashes, even on the way out of a
-  // render that worked, and every crash dumped a core file (~70 MB on disk)
-  // into /tmp. A few renders filled a warm instance's /tmp and then every
-  // render there failed, so Chromium starts with core dumps off.
-  const path = join(tmpdir(), "chromium-no-core");
-  await writeFile(path, `#!/bin/sh\nulimit -c 0\nexec "${binary}" "$@"\n`, {
-    mode: 0o755,
-  });
-  return path;
-}
-
 /** Launch Chromium with its profile in `dir`, which the caller removes. */
 async function launchBrowser(dir: string): Promise<Browser> {
   const userDataDir = join(dir, "profile");
   const puppeteer = (await import("puppeteer-core")).default;
-  if (process.env.VERCEL) {
-    const chromium = (await import("@sparticuz/chromium")).default;
-    // The default graphics mode emulates a GPU on the CPU (SwiftShader), which
-    // is far slower for a 2D page than Chrome's own software renderer.
-    chromium.setGraphicsMode = false;
-    launcher ??= unpackChromium().catch((error: unknown) => {
-      launcher = null;
-      throw error;
-    });
-    return puppeteer.launch({
-      args: [...chromium.args, "--disable-gpu"],
-      executablePath: await launcher,
-      headless: "shell",
-      userDataDir,
-    });
-  }
   const executablePath = process.env.VIDEO_RENDER_CHROME_PATH?.trim();
   if (!executablePath)
     throw new Error(
@@ -231,10 +194,7 @@ async function openStage(
     height: frame.cssHeight,
     deviceScaleFactor: scale,
   });
-  // The stage and everything it loads come from the release that started the
-  // render, even if a deploy lands while it runs.
-  await page.setExtraHTTPHeaders(deploymentHeaders());
-  await page.goto(pinToDeployment(`${origin}${STAGE_PATH}`), {
+  await page.goto(`${origin}${STAGE_PATH}`, {
     waitUntil: "load",
     timeout: 30_000,
   });

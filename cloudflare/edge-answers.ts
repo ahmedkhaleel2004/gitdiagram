@@ -26,9 +26,9 @@ const answers = () => (opened ??= caches.open(EDGE_ANSWERS_CACHE));
 // Refreshes under way in this isolate, so a burst of stale hits starts one.
 const refreshing = new Set<string>();
 
-// An answer with a cache tag is one Vercel's CDN was told to drop when its
-// subject changed (a regenerated video). Here only the location that hears of
-// the change drops its copy, so every location lets go of tagged answers soon.
+// An answer with a cache tag names something that can be replaced (a
+// regenerated video). No location hears of the change, so every location
+// lets go of tagged answers soon.
 const TAGGED_FRESH_SECONDS = 60;
 const TAGGED_STALE_SECONDS = 600;
 

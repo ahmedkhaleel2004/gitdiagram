@@ -20,7 +20,6 @@ import {
   untilAborted,
   type RenderFormat,
 } from "./ffmpeg";
-import { deploymentHeaders } from "./render-origin";
 
 // An MP4 is rendered as ~5 s segments by parallel calls to the segment route,
 // then joined. Those calls are server to server: each carries an HMAC of its
@@ -168,7 +167,6 @@ function postJob(
   return fetch(`${origin}/api/video/render/segment`, {
     method: "POST",
     headers: {
-      ...deploymentHeaders(),
       "Content-Type": "application/json",
       "X-Video-Segment": sign(job),
       [SEGMENT_WAITED_HEADER]: String(waited),

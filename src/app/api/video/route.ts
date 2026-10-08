@@ -156,8 +156,8 @@ export async function GET(request: Request): Promise<Response> {
       },
       {
         headers: {
-          // A stored video changes only when the operator regenerates it,
-          // which drops this copy by its tag (see purgeVideoResponse).
+          // A stored video changes only when the operator regenerates it;
+          // the tag keeps the edge's copy short-lived (see videoResponseTag).
           "Cache-Control":
             "public, max-age=0, s-maxage=60, stale-while-revalidate=600",
           "Vercel-Cache-Tag": videoResponseTag(username, repo),

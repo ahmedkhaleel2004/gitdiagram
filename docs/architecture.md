@@ -5,12 +5,12 @@
 ## Stack
 
 - **Application:** Next.js 16 App Router, React 19, TypeScript, Tailwind CSS, and Radix UI
-- **Generation API:** same-origin Next.js Route Handlers running on Vercel's Bun runtime
+- **Generation API:** same-origin Next.js Route Handlers
 - **Storage:** Cloudflare R2 for diagram artifacts
 - **Coordination:** Upstash Redis for quota accounting, cancellation, locks, and short-lived failure state
 - **AI:** OpenAI or OpenRouter through `AI_PROVIDER`
 - **Analytics:** PostHog
-- **Deployment:** Vercel is the only live runtime; an offline Railway/Docker recipe is retained for disaster recovery
+- **Deployment:** Cloudflare Workers through OpenNext (four Workers from one build), with Cloudflare Containers for MP4 renders; an offline Railway/Docker recipe is retained for disaster recovery
 
 There is no separate FastAPI implementation, Postgres database, or Neon runtime.
 
@@ -18,7 +18,7 @@ The same application also serves feature-flagged explainer videos (`/api/video/*
 
 ## Production architecture
 
-Vercel serves both the UI and the generation endpoints:
+The Workers serve both the UI and the generation endpoints:
 
 - `/api/generate/cost` estimates a run after bounded GitHub ingestion, same-origin and rate limited.
 - `/api/generate/stream` streams Server-Sent Events for explanation and graph progress.
@@ -26,11 +26,11 @@ Vercel serves both the UI and the generation endpoints:
 - `/api/diagram-state` reads and writes the persisted result contract.
 - `/api/healthz` provides a lightweight deployment health check.
 
-Long-running generation uses a 300-second Vercel function budget with a shorter application deadline so quota reconciliation and persistence still have time to finish. Requests use explicit upstream deadlines, retries, structured logs, heartbeats, and distributed cancellation rather than process-local state.
+Long-running generation uses a 300-second route budget with a shorter application deadline so quota reconciliation and persistence still have time to finish. Requests use explicit upstream deadlines, retries, structured logs, heartbeats, and distributed cancellation rather than process-local state.
 
 The default managed OpenAI pipeline uses one GPT-6 Luna request at low reasoning to produce a source-grounded graph and short streamed overview. The model returns a compact graph without redundant descriptions or type captions. Graphs are validated and compiled deterministically; additional Luna calls are reserved for structural repairs at medium reasoning or one recovery after an 18-second slow request. The slow connection is cancelled before its replacement starts; its unavailable partial usage is included as an estimated cost. Managed GPT-6 Luna and GPT-5.6 requests explicitly use Fast mode (`service_tier: "priority"`); estimates include its premium, and final costs use the model and tier actually served. User-supplied keys retain standard service and their configured model. Explicit model overrides and OpenRouter retain the two-stage pipeline. Output token estimates reserve quota but do not cap provider output.
 
-The same Next.js application can also build into a minimal, non-root standalone Docker image for Railway. No Railway service, source connection, or Railway domain is kept live. The checked-in `Dockerfile` and `railway.json` are a cold recovery recipe that can recreate the full application later without reviving a second backend implementation. See [deployment-failover.md](deployment-failover.md).
+The same Next.js application also builds into a minimal, non-root standalone Docker image: the render containers run it, and it could run on Railway. No Railway service, source connection, or Railway domain is kept live. The checked-in `Dockerfile` and `railway.json` are a cold recovery recipe that can recreate the full application later without reviving a second backend implementation. See [deployment-failover.md](deployment-failover.md).
 
 ## How generation works
 

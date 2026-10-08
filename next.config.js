@@ -54,18 +54,14 @@ const videoStagePolicy = [
   "frame-ancestors 'self'",
 ].join("; ");
 
-// Explainer videos are rendered to MP4 in headless Chromium with ffmpeg. Both
-// ship native binaries that must stay out of the bundle and be traced into the
-// functions that launch them. The render route only mixes and joins with
-// ffmpeg (segments and posters render through /api/video/render/segment), so
-// it and the generate route (which asks the segment route for its poster)
-// leave Chromium's ~60 MB out; their code (ffmpeg.ts) never imports the
-// Chromium half (render.ts), and scripts/check-video-render-tracing.mjs keeps
-// it that way. All of bin/ is needed even with graphics mode off:
-// @sparticuz/chromium unpacks swiftshader.tar.br on every launch regardless.
-const chromiumFiles = ["./node_modules/@sparticuz/chromium/bin/**"];
+// Explainer videos are rendered to MP4 in headless Chromium with ffmpeg.
+// Chromium is the render container's own (VIDEO_RENDER_CHROME_PATH); ffmpeg
+// ships a native binary that must stay out of the bundle and be traced into
+// the routes that run it. The render route only mixes and joins with ffmpeg
+// (segments and posters render through /api/video/render/segment), and it and
+// the generate route never import the Chromium half (render.ts):
+// scripts/check-video-render-tracing.mjs keeps it that way.
 const ffmpegFiles = ["./node_modules/ffmpeg-static/ffmpeg"];
-const videoRenderFiles = [...chromiumFiles, ...ffmpegFiles];
 
 // IndexNow proves ownership with a key file at the site root: /<key>.txt is
 // served by /api/indexnow-key (src/server/visibility/indexnow.ts).
@@ -77,19 +73,11 @@ const indexNowRewrites = /^[A-Za-z0-9-]{8,128}$/.test(indexNowKey)
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: false,
-  serverExternalPackages: [
-    "@sparticuz/chromium",
-    "puppeteer-core",
-    "ffmpeg-static",
-  ],
+  serverExternalPackages: ["puppeteer-core", "ffmpeg-static"],
   outputFileTracingIncludes: {
     "/api/video/render": ffmpegFiles,
-    "/api/video/render/segment": videoRenderFiles,
+    "/api/video/render/segment": ffmpegFiles,
     "/api/video/generate": ffmpegFiles,
-  },
-  outputFileTracingExcludes: {
-    "/api/video/render": chromiumFiles,
-    "/api/video/generate": chromiumFiles,
   },
   allowedDevOrigins: ["127.0.0.1"],
   ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),

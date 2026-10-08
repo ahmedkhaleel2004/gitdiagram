@@ -30,11 +30,7 @@ export function indexNowKey(): string | null {
 }
 
 function enabled() {
-  return (
-    indexNowKey() !== null &&
-    (process.env.VERCEL_ENV === "production" ||
-      process.env.INDEXNOW_ENABLED === "1")
-  );
+  return indexNowKey() !== null && process.env.INDEXNOW_ENABLED === "1";
 }
 
 /** Only this site's own absolute URLs, once each. */

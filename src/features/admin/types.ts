@@ -90,7 +90,7 @@ export interface AdminState {
   } | null;
   /** Where the dashboard opens its live socket, with a short-lived token. */
   presence: { url: string; token: string } | null;
-  deployment: { commit: string | null; region: string | null };
+  deployment: { commit: string | null };
 }
 
 /**

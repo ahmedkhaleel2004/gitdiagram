@@ -41,7 +41,7 @@ const state: AdminState = {
   diagramQuota: null,
   mcp: null,
   presence: null,
-  deployment: { commit: null, region: null },
+  deployment: { commit: null },
 };
 
 afterEach(cleanup);

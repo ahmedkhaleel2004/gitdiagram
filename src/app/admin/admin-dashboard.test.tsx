@@ -43,7 +43,7 @@ const adminState = (overrides: Partial<AdminState> = {}): AdminState => ({
   diagramQuota: null,
   mcp: null,
   presence: null,
-  deployment: { commit: null, region: null },
+  deployment: { commit: null },
   ...overrides,
 });
 

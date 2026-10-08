@@ -1,12 +1,13 @@
-// Run after `bun run build`. The MP4 renderer needs native binaries that Next
-// only ships because next.config.js lists them in outputFileTracingIncludes.
-// Both failure modes are silent: ffmpeg-static only warns when its binary
-// download fails, and a traced path that does not exist is skipped. Either way
-// the deploy succeeds and renders fail in production, so fail the build here.
+// Run after `bun run build`. The MP4 renderer needs ffmpeg's native binary,
+// which Next only ships because next.config.js lists it in
+// outputFileTracingIncludes. Both failure modes are silent: ffmpeg-static only
+// warns when its binary download fails, and a traced path that does not exist
+// is skipped. Either way the deploy succeeds and renders fail in production,
+// so fail the build here.
 //
 // The other way round, the render route only joins segments: it must not ship
-// Chromium (its binary, or the JS that launches it), and no render function
-// may quietly grow past its size ceiling.
+// the JS that launches Chromium, and no render route may quietly grow past
+// its size ceiling.
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -16,16 +17,9 @@ const ffmpeg = {
   file: "node_modules/ffmpeg-static/ffmpeg",
   minBytes: 10_000_000,
 };
-const chromium = {
-  file: "node_modules/@sparticuz/chromium/bin/chromium.br",
-  minBytes: 10_000_000,
-};
 
-// Anything under these paths means a function ships Chromium.
-const chromiumPackages = [
-  "node_modules/@sparticuz/chromium/",
-  "node_modules/puppeteer-core/",
-];
+// Anything under this path means a route ships the Chromium launcher.
+const chromiumPackages = ["node_modules/puppeteer-core/"];
 
 const MB = 1_000_000;
 
@@ -45,9 +39,9 @@ const routes = [
   },
   {
     route: "api/video/render/segment",
-    requiredFiles: [ffmpeg, chromium],
+    requiredFiles: [ffmpeg],
     forbidden: [],
-    maxBytes: 95 * MB,
+    maxBytes: 15 * MB,
   },
   {
     route: "api/video/generate",
@@ -115,6 +109,6 @@ if (failures.length) {
   process.exitCode = 1;
 } else {
   console.log(
-    "Video render routes trace the ffmpeg and Chromium binaries they need, and only those.",
+    "Video render routes trace the ffmpeg binary they need, and no more than they should.",
   );
 }

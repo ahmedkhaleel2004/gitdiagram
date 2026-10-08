@@ -11,11 +11,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}));
 vi.mock("~/features/explainer/engine", () => ({ ENGINE_VERSION: "15" }));
-vi.mock("./cache", () => ({
-  purgeVideoResponse: vi.fn(async () => {
-    mocks.calls.push("purge");
-  }),
-}));
 vi.mock("~/server/visibility/indexnow", () => ({
   notifyIndexNow: vi.fn(async (urls: string[]) => {
     mocks.calls.push(`indexnow ${urls.join(" ")}`);
@@ -147,7 +142,6 @@ describe("explainer video storage", () => {
       `put ${current}/beat-00.mp3`,
       `put ${root}/artifact.json`,
       "index",
-      "purge",
       "indexnow https://gitdiagram.com/acme/widget/video",
       "list",
       `delete ${root}/1780000000000/beat-00.mp3`,
@@ -192,7 +186,6 @@ describe("local video storage", () => {
       `${Date.parse("2026-09-03T00:00:00.000Z")}/beat-00.mp3`,
       "artifact.json",
     ]);
-    expect(mocks.calls).not.toContain("purge");
   });
 
   it("deletes a failed upload's files but keeps the version tabs still show", async () => {

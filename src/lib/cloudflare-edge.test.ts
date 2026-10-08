@@ -98,18 +98,11 @@ describe("isContainerPath", () => {
 });
 
 describe("CRON_ROUTES", () => {
-  it("matches vercel.json and wrangler.jsonc", () => {
-    const vercel = JSON.parse(readFileSync("vercel.json", "utf8")) as {
-      crons: { path: string; schedule: string }[];
-    };
-    expect(CRON_ROUTES).toEqual(
-      Object.fromEntries(
-        vercel.crons.map((cron) => [cron.schedule, cron.path]),
-      ),
-    );
+  it("has a route for every cron in wrangler.jsonc, and no others", () => {
     const wrangler = readFileSync("wrangler.jsonc", "utf8");
-    for (const schedule of Object.keys(CRON_ROUTES))
-      expect(wrangler).toContain(JSON.stringify(schedule));
+    const crons = /"crons":\s*\[([^\]]*)\]/.exec(wrangler)?.[1] ?? "";
+    const schedules = [...crons.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(Object.keys(CRON_ROUTES).sort()).toEqual(schedules.sort());
   });
 });
 

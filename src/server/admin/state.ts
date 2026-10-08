@@ -111,11 +111,7 @@ export async function readAdminState(): Promise<AdminState> {
     mcp,
     presence: url && token ? { url, token } : null,
     deployment: {
-      commit:
-        (
-          process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GIT_COMMIT_SHA
-        )?.slice(0, 7) ?? null,
-      region: process.env.VERCEL_REGION ?? null,
+      commit: process.env.GIT_COMMIT_SHA?.slice(0, 7) ?? null,
     },
   };
 }

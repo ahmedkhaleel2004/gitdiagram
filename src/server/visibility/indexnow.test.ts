@@ -17,7 +17,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockResolvedValue(new Response(null, { status: 202 }));
   process.env.INDEXNOW_KEY = KEY;
-  process.env.VERCEL_ENV = "production";
+  process.env.INDEXNOW_ENABLED = "1";
 });
 afterEach(() => {
   process.env = { ...originalEnv };
@@ -45,9 +45,9 @@ describe("IndexNow", () => {
   });
 
   it("stays quiet outside production and without a valid key", async () => {
-    process.env.VERCEL_ENV = "preview";
+    delete process.env.INDEXNOW_ENABLED;
     await notifyIndexNow(["https://gitdiagram.com/a/b"]);
-    process.env.VERCEL_ENV = "production";
+    process.env.INDEXNOW_ENABLED = "1";
     process.env.INDEXNOW_KEY = "short";
     await notifyIndexNow(["https://gitdiagram.com/a/b"]);
     expect(indexNowKey()).toBeNull();
