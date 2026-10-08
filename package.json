@@ -58,7 +58,7 @@
     "resend": "^6.32.1",
     "server-only": "^0.0.1",
     "sonner": "^2.0.8",
-    "stripe": "^22.6.2",
+    "stripe": "^23.0.0",
     "tailwind-merge": "^3.7.0",
     "zod": "^4.6.5"
   },
