@@ -93,6 +93,16 @@ export async function getCachedBrowseIndex(): Promise<
   return sharedBrowseIndexRead();
 }
 
+/**
+ * How many diagrams the index lists, from the small manifest. robots.txt
+ * counts sitemap pages with it: reading the whole index for that put about
+ * 170,000 entries in the placed server's memory on every refresh of the
+ * file, and got the server killed for memory several times an hour.
+ */
+export async function getCachedBrowseIndexTotal(): Promise<number | null> {
+  return (await getCachedRecentBrowseIndex())?.total ?? null;
+}
+
 export async function getCachedBrowsePage(
   query: BrowseQuery,
 ): Promise<BrowsePageResult | null> {

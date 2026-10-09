@@ -1,6 +1,9 @@
 import type { MetadataRoute } from "next";
 import { unstable_cache } from "next/cache";
-import { getCachedBrowseIndex } from "~/server/browse-index-cache";
+import {
+  getCachedBrowseIndex,
+  getCachedBrowseIndexTotal,
+} from "~/server/browse-index-cache";
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
 import { GUIDE_UPDATED } from "~/features/guide/content";
 import { SITE_URL } from "~/lib/site";
@@ -87,11 +90,13 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
   ];
 }
 
+// Only a count is needed here, and robots.txt calls this on the placed
+// server, which must never hold the whole index (CLAUDE.md, the 128 MB rule).
 export async function generateSitemaps() {
-  const browseEntries = await getCachedBrowseIndex().catch(() => null);
+  const browseTotal = await getCachedBrowseIndexTotal().catch(() => null);
   const videoRoutes = await getVideoRoutes().catch(() => []);
   const sitemapCount = getSitemapCount(
-    (browseEntries?.length ?? 0) + videoRoutes.length,
+    (browseTotal ?? 0) + videoRoutes.length,
     getStaticRoutes(new Date()).length,
   );
 

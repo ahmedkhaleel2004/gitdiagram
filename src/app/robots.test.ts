@@ -9,13 +9,18 @@ const store = vi.hoisted(() => ({
   }>,
   videos: [] as Array<{ owner: string; repo: string; createdAt?: string }>,
   videosOn: true,
+  wholeIndexReads: 0,
 }));
 
 vi.mock("next/cache", () => ({
   unstable_cache: (read: () => Promise<unknown>) => read,
 }));
 vi.mock("~/server/browse-index-cache", () => ({
-  getCachedBrowseIndex: async () => store.browse,
+  getCachedBrowseIndex: async () => {
+    store.wholeIndexReads += 1;
+    return store.browse;
+  },
+  getCachedBrowseIndexTotal: async () => store.browse.length,
 }));
 vi.mock("~/server/explainer/config", () => ({
   isVideoExplainerEnabled: () => store.videosOn,
@@ -44,6 +49,7 @@ beforeEach(() => {
   store.browse = [];
   store.videos = [];
   store.videosOn = true;
+  store.wholeIndexReads = 0;
 });
 
 describe("robots.txt", () => {
@@ -97,6 +103,14 @@ describe("robots.txt", () => {
       "https://gitdiagram.com/sitemap/0.xml",
       "https://gitdiagram.com/sitemap/1.xml",
     ]);
+  });
+
+  it("never reads the whole browse index", async () => {
+    // It renders on the placed server, which the whole index can kill.
+    // 25 repositories and the six fixed pages make four pages of ten.
+    store.browse = Array.from({ length: 25 }, (_, index) => entry(index));
+    expect((await robots()).sitemap).toHaveLength(4);
+    expect(store.wholeIndexReads).toBe(0);
   });
 
   it("does not list an empty shard when videos are off", async () => {
