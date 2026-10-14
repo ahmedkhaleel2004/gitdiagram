@@ -3,6 +3,8 @@
 // without loading Next.js: the Cloudflare build leaves the proxy out
 // (scripts/cf-drop-proxy.mjs).
 
+import { markdownSponsorCampaign } from "./sponsor-campaign";
+
 interface HeaderReader {
   get(name: string): string | null;
 }
@@ -35,9 +37,16 @@ const NOT_PAGES = /^\/(?:api|phx9a|_next)\//;
 /**
  * Where the Markdown twin of a repository page lives, when this request asks
  * for it: /{owner}/{repo}.md, or the page URL with `Accept: text/markdown`
- * (agents; browsers never send it). User agents are never sniffed.
+ * (agents; browsers never send it). User agents are never sniffed. While a
+ * sponsor has the Markdown placement, the path names its campaign, so the
+ * page cache keeps one copy per sponsor and the line starts and stops on the
+ * campaign's own dates, whatever is cached.
  */
-function markdownRoute(pathname: string, accept: string | null): string | null {
+function markdownRoute(
+  pathname: string,
+  accept: string | null,
+  now: number,
+): string | null {
   const match = /^\/([^/]+)\/([^/]+?)(\.md)?\/?$/.exec(pathname);
   if (!match) return null;
   const [, owner, repo, extension] = match;
@@ -46,7 +55,12 @@ function markdownRoute(pathname: string, accept: string | null): string | null {
   }
   const wantsMarkdown =
     Boolean(extension) || MARKDOWN_ACCEPT.test(accept ?? "");
-  return wantsMarkdown ? `/${owner}/${repo}/llms.txt` : null;
+  if (!wantsMarkdown) return null;
+  const sponsor = markdownSponsorCampaign(
+    `/${owner}/${repo}`.toLowerCase(),
+    now,
+  );
+  return `/${owner}/${repo}/llms.txt${sponsor ? `/${sponsor.id}` : ""}`;
 }
 
 /** Which part of the site a counted fetch was for. */
@@ -85,12 +99,13 @@ export function proxyDecision(
   method: string,
   pathname: string,
   headers: HeaderReader,
+  now = Date.now(),
 ): { decision: ProxyDecision; surface: string | null } {
   if (headers.get("next-action") !== null)
     return { decision: { action: "reject" }, surface: null };
   const reads = method === "GET" || method === "HEAD";
   const markdown = reads
-    ? markdownRoute(pathname, headers.get("accept"))
+    ? markdownRoute(pathname, headers.get("accept"), now)
     : null;
   const surface = fetchSurface(pathname, Boolean(markdown));
   if (!reads) return { decision: { action: "next" }, surface };

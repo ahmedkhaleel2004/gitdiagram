@@ -72,6 +72,21 @@ No custom UTM link was supplied in the accepted email thread. If one is supplied
 set the campaign destination in `src/lib/sponsor-campaign.ts`; existing UTM
 parameters are preserved and missing defaults filled in.
 
+## Markdown placement
+
+A booking can also buy a line in the Markdown twin of repository pages
+(`/{owner}/{repo}.md`, what agents read): set `markdown: true` on its campaign.
+No campaign has it yet. The line reads `Sponsored by [Name](link): message
+[action](link)`, under the page's links and above the overview, with the
+creative's own name, message and button text. Its link is
+`/out/{campaign}?placement=markdown`, so clicks are counted and tagged
+`utm_content=markdown` like any other placement; fetches by automated agents are
+not counted as clicks. There are no impressions for it: `/admin` counts known
+agents' fetches of Markdown pages as a whole. The line appears and disappears on
+the campaign's dates whatever is cached (the request is routed to a copy named
+after the campaign), and two campaigns with the placement take hourly turns per
+page as on the website.
+
 ## Website impressions
 
 An impression is recorded immediately when the ad renders on a page, including

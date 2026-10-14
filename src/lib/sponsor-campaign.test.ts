@@ -4,6 +4,7 @@ import {
   activeSponsorCampaigns,
   coderabbitCampaign,
   lastBookedSponsorCampaign,
+  markdownSponsorCampaign,
   meteoropsCampaign,
   nangoCampaign,
   pickSponsorCampaign,
@@ -241,5 +242,42 @@ describe("sponsorAnswer", () => {
     expect(sponsorAnswer("gitdiagram.com", 0, sentCampaign.id).preview).toBe(
       false,
     );
+  });
+});
+
+describe("the Markdown placement", () => {
+  const HOUR = 60 * 60 * 1000;
+  const website = campaign("website-only", "shared", 0, 10 * HOUR);
+  const booked = { ...campaign("with-markdown", "shared", 0, 10 * HOUR) };
+  booked.markdown = true;
+
+  it("goes only to a campaign booked with it, and only while it runs", () => {
+    const campaigns = [website, booked];
+    expect(markdownSponsorCampaign("/acme/demo", HOUR, campaigns)).toBe(booked);
+    expect(
+      markdownSponsorCampaign("/acme/demo", 10 * HOUR, campaigns),
+    ).toBeUndefined();
+    expect(
+      markdownSponsorCampaign("/acme/demo", HOUR, [website]),
+    ).toBeUndefined();
+  });
+
+  it("is shared by two such campaigns in equal hourly turns", () => {
+    const other = { ...campaign("also-markdown", "shared", 0, 10 * HOUR) };
+    other.markdown = true;
+    const shown = Array.from(
+      { length: 10 },
+      (_, hour) =>
+        markdownSponsorCampaign("/acme/demo", hour * HOUR, [booked, other])?.id,
+    );
+    expect(shown.filter((id) => id === booked.id)).toHaveLength(5);
+    expect(shown.filter((id) => id === other.id)).toHaveLength(5);
+  });
+
+  it("is not part of any booking yet", () => {
+    for (const { startsAt } of scheduledSponsorCampaigns)
+      expect(
+        markdownSponsorCampaign("/acme/demo", Date.parse(startsAt)),
+      ).toBeUndefined();
   });
 });

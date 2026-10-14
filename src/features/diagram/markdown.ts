@@ -33,6 +33,14 @@ function formatDay(value: string | null): string | null {
     : null;
 }
 
+export type MarkdownSponsor = {
+  name: string;
+  message: string;
+  action: string;
+  /** The click-through address (/out/{campaign}), never the sponsor's own. */
+  url: string;
+};
+
 export function repositoryMarkdown(params: {
   owner: string;
   repo: string;
@@ -40,8 +48,10 @@ export function repositoryMarkdown(params: {
   readout: DiagramReadout;
   /** The watch page, when a video tour of the repository exists. */
   videoUrl?: string | null;
+  /** The sponsor with the Markdown placement now, labelled as one. */
+  sponsor?: MarkdownSponsor | null;
 }): string {
-  const { owner, repo, diagram, readout, videoUrl } = params;
+  const { owner, repo, diagram, readout, videoUrl, sponsor } = params;
   const name = `${owner}/${repo}`;
   const urls = repositoryUrls(owner, repo);
   const day = formatDay(readout.lastSuccessfulAt);
@@ -54,6 +64,12 @@ export function repositoryMarkdown(params: {
     `- Repository: ${urls.github}`,
     ...(videoUrl ? [`- Video tour (about a minute): ${videoUrl}`] : []),
     "",
+    ...(sponsor
+      ? [
+          `Sponsored by [${inline(sponsor.name)}](${sponsor.url}): ${inline(sponsor.message)} [${inline(sponsor.action)}](${sponsor.url})`,
+          "",
+        ]
+      : []),
   ];
 
   if (readout.explanation) {

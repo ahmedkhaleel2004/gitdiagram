@@ -2,6 +2,8 @@ export const websiteSponsorPlacements = ["home", "diagram", "browse"] as const;
 export const sponsorPlacements = [
   ...websiteSponsorPlacements,
   "readme",
+  // The Markdown twin of a repository page, which agents read.
+  "markdown",
 ] as const;
 export type SponsorPlacement = (typeof sponsorPlacements)[number];
 export type WebsiteSponsorPlacement = (typeof websiteSponsorPlacements)[number];
@@ -20,6 +22,8 @@ export type SponsorCampaign = {
   endsAt: string;
   // The paid run's first day when it differs from `startsAt` (a lead-in).
   bookedFrom?: string;
+  // The booking also buys a line in the Markdown twin of repository pages.
+  markdown?: boolean;
 };
 
 // Keep completed campaigns here so links in older README revisions still work.
@@ -149,6 +153,23 @@ export function pickSponsorCampaign<T>(
   }
   const turn = (hash >>> 0) + bucket + Math.floor(bucket / 24);
   return campaigns[turn % campaigns.length];
+}
+
+/**
+ * The campaign whose line a repository page's Markdown twin carries now, if
+ * any. Only campaigns booked with `markdown` count; two of them take the same
+ * hourly turns per page as the website ad.
+ */
+export function markdownSponsorCampaign(
+  pagePath: string,
+  now = Date.now(),
+  campaigns: readonly SponsorCampaign[] = scheduledSponsorCampaigns,
+): SponsorCampaign | undefined {
+  return pickSponsorCampaign(
+    activeSponsorCampaigns(now, campaigns).filter(({ markdown }) => markdown),
+    pagePath,
+    Math.floor(now / SPONSOR_ROTATION_MS),
+  );
 }
 
 function nextSponsorTransition(now: number) {

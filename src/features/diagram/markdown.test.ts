@@ -87,6 +87,36 @@ describe("repositoryMarkdown", () => {
   });
 });
 
+describe("the sponsor line", () => {
+  it("is labelled and links only through the site's click-through", () => {
+    const markdown = repositoryMarkdown({
+      owner: "acme",
+      repo: "demo",
+      diagram: "flowchart TD\n  A --> B",
+      readout,
+      sponsor: {
+        name: "Acme",
+        message: "Ship\nfaster.",
+        action: "Try Acme",
+        url: "https://gitdiagram.com/out/acme-2027-01?placement=markdown",
+      },
+    });
+    expect(markdown).toContain(
+      "\n\nSponsored by [Acme](https://gitdiagram.com/out/acme-2027-01?placement=markdown): Ship faster. [Try Acme](https://gitdiagram.com/out/acme-2027-01?placement=markdown)\n\n## Overview",
+    );
+  });
+
+  it("is absent without a sponsor", () => {
+    const markdown = repositoryMarkdown({
+      owner: "acme",
+      repo: "demo",
+      diagram: "flowchart TD\n  A --> B",
+      readout,
+    });
+    expect(markdown).not.toContain("Sponsored");
+  });
+});
+
 describe("missingDiagramMarkdown", () => {
   it("tells the agent how to make one", () => {
     const markdown = missingDiagramMarkdown("acme", "demo");
