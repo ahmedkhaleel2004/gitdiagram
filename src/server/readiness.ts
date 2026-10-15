@@ -21,7 +21,9 @@ function hasProviderKey(): boolean {
       ? "META_API_KEY"
       : provider === "openrouter"
         ? "OPENROUTER_API_KEY"
-        : "OPENAI_API_KEY";
+        : provider === "requesty"
+          ? "REQUESTY_API_KEY"
+          : "OPENAI_API_KEY";
   return Boolean(process.env[keyName]?.trim());
 }
 
