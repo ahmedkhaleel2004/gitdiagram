@@ -101,9 +101,23 @@ const config = {
         destination: "/:username/:repo/opengraph-image",
         permanent: true,
       },
+      // /:username/:repo/commit/:sha is a page (a commit's diagram), so it is
+      // not redirected: `commit` is left out of the general rule below. Only
+      // what lies under it (a commit's checks, files) goes back to that page.
+      {
+        source: "/:username/:repo/commit/:sha/:path+",
+        destination: "/:username/:repo/commit/:sha",
+        permanent: false,
+      },
       {
         source:
-          "/:username/:repo/:view(tree|blob|issues|pull|pulls|commit|commits|releases|actions)/:path*",
+          "/:username/:repo/:view(tree|blob|issues|pull|pulls|commits|releases|actions)/:path*",
+        destination: "/:username/:repo",
+        permanent: false,
+      },
+      // A bare /commit has no commit to show.
+      {
+        source: "/:username/:repo/commit",
         destination: "/:username/:repo",
         permanent: false,
       },

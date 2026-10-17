@@ -1,9 +1,10 @@
 /**
  * Deletes a repository's stored public diagram (an owner asked for it):
  * the artifact, its preview sidecar, the artifacts of its commit diagrams, its
- * failure status and its browse index entry. Dry run unless --apply. Needs the R2 and Upstash settings in the
- * environment; afterwards POST { diagram: { username, repo } } to
- * /api/internal/revalidate with CRON_SECRET to drop the cached pages.
+ * failure status and its browse index entry. Dry run unless --apply. Needs the
+ * R2 and Upstash settings in the environment; afterwards POST
+ * { diagram: { username, repo } } to /api/internal/revalidate with
+ * CRON_SECRET to drop the cached pages.
  *
  *   bun scripts/delete-diagram.ts owner/repo [--apply]
  */
