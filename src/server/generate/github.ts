@@ -768,15 +768,26 @@ export async function resolveCommit(
   githubPat?: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const resolve = async (token: string | undefined) =>
-    resolveCommitSha({
+  const resolve = async (token: string | undefined) => {
+    const headers = await getGitHubApiHeaders({ githubPat: token });
+    const hasCallerGithubPat = Boolean(token?.trim());
+    const sha = await resolveCommitSha({
       username,
       repo,
       commit,
-      headers: await getGitHubApiHeaders({ githubPat: token }),
-      hasCallerGithubPat: Boolean(token?.trim()),
+      headers,
+      hasCallerGithubPat,
       signal,
     });
+    if (!hasCallerGithubPat) {
+      // The server's own credentials can read private repositories; a commit
+      // they resolve must not confirm one to a caller who brought no token.
+      const metadata = await getRepoMetadata(username, repo, headers, signal);
+      if (metadata.isPrivate)
+        throw new Error(PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR);
+    }
+    return sha;
+  };
   try {
     return await resolve(githubPat);
   } catch (error) {

@@ -80,6 +80,22 @@ describe("connection rows", () => {
     );
     expect(evidenceUrl("owner", "a.ts")).toBeNull();
   });
+
+  it("links the file at the commit a diagram was made from", () => {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    expect(evidenceUrl("owner/repo", "src/a b.ts", sha)).toBe(
+      `https://github.com/owner/repo/blob/${sha}/src/a%20b.ts`,
+    );
+    expect(evidenceUrl("owner/repo", "src/a.ts", sha.toUpperCase())).toBe(
+      `https://github.com/owner/repo/blob/${sha}/src/a.ts`,
+    );
+  });
+
+  it("falls back to HEAD when the commit is not a SHA", () => {
+    expect(evidenceUrl("owner/repo", "a.ts", "../evil")).toBe(
+      "https://github.com/owner/repo/blob/HEAD/a.ts",
+    );
+  });
 });
 
 describe("connections list", () => {
@@ -104,6 +120,22 @@ describe("connections list", () => {
     );
     expect(items[1]).toHaveTextContent(
       "Voice agent → OfficeManager (dashed) — no file cited; inferred",
+    );
+  });
+
+  it("links each file at the commit when the diagram is of a commit", () => {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    render(
+      <DiagramConnections
+        graph={graph}
+        repository="Graphene-Lab/AgentBridge"
+        commit={sha}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Connections/ }));
+    expect(screen.getByRole("link", { name: "SipBridge.cs" })).toHaveAttribute(
+      "href",
+      `https://github.com/Graphene-Lab/AgentBridge/blob/${sha}/SipBridge.cs`,
     );
   });
 

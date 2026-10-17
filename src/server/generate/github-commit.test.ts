@@ -89,6 +89,32 @@ describe("commit resolution", () => {
 
     expect(urlsOf(fetchMock)).toEqual([
       `https://api.github.com/repos/acme/demo/commits/${FULL.slice(0, 7)}`,
+      "https://api.github.com/repos/acme/demo",
+    ]);
+  });
+
+  it("does not resolve a private repository's commit for a caller without a token", async () => {
+    vi.stubGlobal("fetch", createFetch({ isPrivate: true }));
+
+    const error = await resolveCommit("acme", "demo", FULL.slice(0, 7)).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(classifyGitHubError(error, false)?.errorCode).toBe(
+      "GITHUB_AUTH_REQUIRED",
+    );
+  });
+
+  it("resolves a private repository's commit for a caller with a token", async () => {
+    const fetchMock = createFetch({ isPrivate: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      resolveCommit("acme", "demo", FULL.slice(0, 7), "caller-token"),
+    ).resolves.toBe(FULL);
+
+    expect(urlsOf(fetchMock)).toEqual([
+      `https://api.github.com/repos/acme/demo/commits/${FULL.slice(0, 7)}`,
     ]);
   });
 

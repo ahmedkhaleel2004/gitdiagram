@@ -232,6 +232,7 @@ export function RepositoryWorkspace({
                 <GenerationActivity
                   state={presented.state}
                   repository={repository}
+                  commit={commit}
                 />
                 <DiagramMetadata
                   lastGenerated={presented.lastGenerated}
