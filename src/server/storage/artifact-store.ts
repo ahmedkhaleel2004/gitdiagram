@@ -116,6 +116,7 @@ function toDiagramStateResponse(
     latestSessionAudit: toStoredSessionSummary(artifact.latestSessionSummary),
     lastSuccessfulAt: artifact.lastSuccessfulAt,
     visibility: artifact.visibility,
+    ...(artifact.commit ? { commit: artifact.commit } : {}),
   };
 }
 
@@ -129,6 +130,8 @@ export async function getStoredDiagramArtifact(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
 }): Promise<{
   artifact: DiagramArtifact;
   location: StorageLocation;
@@ -159,6 +162,8 @@ export async function getStoredDiagramState(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
 }): Promise<DiagramStateResponse | null> {
   const result = await getStoredDiagramArtifact(params);
   if (!result) {
@@ -255,6 +260,8 @@ export async function writeDiagramArtifact(params: {
   repo: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
   stargazerCount: number | null;
   diagram: string;
   explanation: string;
@@ -271,6 +278,7 @@ export async function writeDiagramArtifact(params: {
     visibility: params.visibility,
     username: params.username,
     repo: params.repo,
+    ...(params.commit ? { commit: params.commit } : {}),
     stargazerCount: params.stargazerCount,
     diagram: params.diagram,
     explanation: params.explanation,
@@ -287,6 +295,12 @@ export async function writeDiagramArtifact(params: {
     waitMs: ARTIFACT_LOCK_WAIT_MS,
     callback: async () => {
       const currentArtifact = await getArtifactForLocation(location);
+      // A full SHA names one tree forever, so its stored diagram is kept as
+      // first written: a second run for the same commit (two tabs, a retry)
+      // must not replace what visitors have already been shown.
+      if (params.commit && currentArtifact?.diagram) {
+        return false;
+      }
       if (
         currentArtifact &&
         !shouldReplaceSessionSummary(
@@ -308,6 +322,8 @@ export async function updateArtifactLatestSessionSummary(params: {
   repo: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
   latestSessionSummary: GenerationSessionAudit;
 }): Promise<boolean> {
   const location = getWriteLocation(params);

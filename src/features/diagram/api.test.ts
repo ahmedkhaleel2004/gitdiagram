@@ -450,3 +450,95 @@ function configuredCredentialResponse(): Response {
     },
   });
 }
+
+describe("commit requests", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+
+  it("sends the commit with the diagram state read", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ diagram: null, commit: sha }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getDiagramState("acme", "demo", "0123456");
+
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body as string)).toEqual({
+      username: "acme",
+      repo: "demo",
+      commit: "0123456",
+    });
+  });
+
+  it("surfaces the server's commit explanation with its status and code", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json(
+          {
+            ok: false,
+            error: "That short SHA matches more than one commit.",
+            error_code: "COMMIT_AMBIGUOUS",
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    const error = await getDiagramState("acme", "demo", "deadbeef").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(DiagramStreamHttpError);
+    expect(error).toMatchObject({
+      message: "That short SHA matches more than one commit.",
+      status: 422,
+      errorCode: "COMMIT_AMBIGUOUS",
+    });
+  });
+
+  it("keeps an outage generic", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json(
+            { ok: false, error: "Diagram state is temporarily unavailable." },
+            { status: 503 },
+          ),
+        ),
+    );
+
+    await expect(getDiagramState("acme", "demo", sha)).rejects.toThrow(
+      "Diagram state is temporarily unavailable.",
+    );
+  });
+
+  it("sends the commit with a generation only when there is one", async () => {
+    const fetchMock = vi.fn(async () =>
+      streamResponse([
+        new TextEncoder().encode('data: {"status":"complete"}\n\n'),
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const handlers = { onMessage: vi.fn() };
+
+    await streamDiagramGeneration(
+      { username: "acme", repo: "demo", commit: sha },
+      handlers,
+    );
+    await streamDiagramGeneration({ username: "acme", repo: "demo" }, handlers);
+
+    const bodies = (
+      fetchMock.mock.calls as unknown as Array<[string, RequestInit]>
+    ).map(
+      ([, init]) => JSON.parse(init.body as string) as Record<string, unknown>,
+    );
+    expect(bodies[0]).toMatchObject({
+      username: "acme",
+      repo: "demo",
+      commit: sha,
+    });
+    expect(bodies[1]).not.toHaveProperty("commit");
+  });
+});

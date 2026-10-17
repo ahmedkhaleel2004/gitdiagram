@@ -16,6 +16,8 @@ import { resolveRequestCredentials } from "~/server/http/request-credentials";
 interface AdmittedGenerationRequest {
   username: string;
   repo: string;
+  /** Lowercase SHA as the visitor gave it (short or full), if any. */
+  commit?: string;
   apiKey?: string;
   githubPat?: string;
   githubStorageKey?: string;
@@ -83,6 +85,7 @@ export async function admitGenerationRequest(
   const {
     username,
     repo,
+    commit,
     session_id: requestedSessionId,
     cancel_token: cancelToken,
   } = parsed.data;
@@ -206,6 +209,7 @@ export async function admitGenerationRequest(
     value: {
       username,
       repo,
+      ...(commit ? { commit } : {}),
       apiKey,
       githubPat,
       githubStorageKey,

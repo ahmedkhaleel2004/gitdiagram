@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  COMMIT_SHA_INVALID_ERROR,
+  MAX_COMMIT_INPUT_LENGTH,
+  parseCommitSha,
+} from "~/features/diagram/commit";
 import type { DiagramStreamMessage } from "~/features/diagram/types";
 
 export const MAX_GENERATION_REQUEST_BYTES = 16 * 1024;
@@ -19,6 +24,11 @@ export const githubRepoSchema = z
   // interpolated into a GitHub API path, retargeting the request.
   .refine((value) => value !== "." && value !== "..");
 export const credentialSchema = z.string().trim().min(1).max(2_048);
+/**
+ * A commit SHA as the visitor gave it. Its format is checked separately (see
+ * `parseCommitSha`) so a malformed SHA gets its own error, not a generic one.
+ */
+export const commitInputSchema = z.string().max(MAX_COMMIT_INPUT_LENGTH);
 
 export const generationSessionIdSchema = z.uuid();
 export const generationCancelTokenSchema = z.uuid();
@@ -27,6 +37,7 @@ const generateRequestSchema = z
   .strictObject({
     username: githubUsernameSchema,
     repo: githubRepoSchema,
+    commit: commitInputSchema.optional(),
     api_key: credentialSchema.optional(),
     github_pat: credentialSchema.optional(),
     session_id: generationSessionIdSchema.optional(),
@@ -38,7 +49,10 @@ const generateRequestSchema = z
     { message: "session_id and cancel_token must be provided together." },
   );
 
-type GenerateRequest = z.infer<typeof generateRequestSchema>;
+type GenerateRequest = Omit<z.infer<typeof generateRequestSchema>, "commit"> & {
+  /** Lowercase, 7 to 40 hexadecimal characters; absent for the default branch. */
+  commit?: string;
+};
 
 export type GenerateRequestParseResult =
   | { success: true; data: GenerateRequest }
@@ -46,7 +60,8 @@ export type GenerateRequestParseResult =
       success: false;
       status: 400 | 413 | 415;
       error: string;
-      errorCode: "VALIDATION_ERROR" | "PAYLOAD_TOO_LARGE";
+      errorCode:
+        "VALIDATION_ERROR" | "PAYLOAD_TOO_LARGE" | "COMMIT_SHA_INVALID";
     };
 
 export async function parseGenerateRequest(
@@ -120,7 +135,19 @@ export async function parseGenerateRequest(
     };
   }
 
-  return { success: true, data: parsed.data };
+  const { commit: commitInput, ...fields } = parsed.data;
+  if (commitInput === undefined) return { success: true, data: fields };
+
+  const commit = parseCommitSha(commitInput);
+  if (!commit) {
+    return {
+      success: false,
+      status: 400,
+      error: COMMIT_SHA_INVALID_ERROR,
+      errorCode: "COMMIT_SHA_INVALID",
+    };
+  }
+  return { success: true, data: { ...fields, commit: commit.sha } };
 }
 
 export function sseMessage(payload: DiagramStreamMessage): string {

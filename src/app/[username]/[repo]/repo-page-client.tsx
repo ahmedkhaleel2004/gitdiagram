@@ -16,6 +16,7 @@ import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { isExampleRepo } from "~/lib/exampleRepos";
 import { VIDEOS_ENABLED } from "~/lib/video-flag";
+import { githubCommitUrl, parseCommitSha } from "~/features/diagram/commit";
 import { githubAccessTitle } from "~/features/diagram/github-access";
 import controls from "~/components/generation/workspace.module.css";
 
@@ -46,6 +47,11 @@ const PrivateReposDialog = dynamic(
 type RepoPageClientProps = {
   username: string;
   repo: string;
+  /**
+   * The commit this page shows, as written in the address (short or full);
+   * absent on the repository's own page, which shows the default branch.
+   */
+  commit?: string;
   initialState?: DiagramStateResponse | null;
   initialStateIsAuthoritative?: boolean;
   /** Server-rendered text of the stored diagram, shown under the workspace. */
@@ -55,6 +61,7 @@ type RepoPageClientProps = {
 export default function RepoPageClient({
   username,
   repo,
+  commit,
   initialState = null,
   initialStateIsAuthoritative = false,
   readout,
@@ -66,6 +73,7 @@ export default function RepoPageClient({
   const normalizedRepo = repo.toLowerCase();
   const repository = `${normalizedUsername}/${normalizedRepo}`;
   const {
+    commit: resolvedCommit,
     diagram,
     error,
     loading,
@@ -83,12 +91,20 @@ export default function RepoPageClient({
     normalizedRepo,
     initialState,
     initialStateIsAuthoritative,
+    commit,
   );
+  // The SHA shown and linked: only a well-formed one, so a malformed address
+  // never produces a link to a GitHub page that does not exist.
+  const shownCommit =
+    resolvedCommit && parseCommitSha(resolvedCommit)
+      ? resolvedCommit
+      : undefined;
   const hasDiagram = Boolean(diagram);
   const publicDiagram = usePublicDiagram({
     owner: normalizedUsername,
     repo: normalizedRepo,
-    ready: hasDiagram && state.status === "complete",
+    // README embeds and the recent list are for a repository's own diagram.
+    ready: !commit && hasDiagram && state.status === "complete",
     knownPublicAt: initialStateIsAuthoritative
       ? initialState?.lastSuccessfulAt
       : null,
@@ -125,16 +141,24 @@ export default function RepoPageClient({
       <main>
         <RepositoryWorkspace
           repository={repository}
+          commit={shownCommit}
           state={state}
           loading={loading}
           lastGenerated={lastGenerated}
           onRegenerate={() => void handleRegenerate()}
           onCancel={handleCancel}
           onRenderError={handleDiagramRenderError}
-          regenerateDisabled={isExampleRepo(normalizedUsername, normalizedRepo)}
+          regenerateDisabled={
+            Boolean(commit) || isExampleRepo(normalizedUsername, normalizedRepo)
+          }
+          regenerateDisabledReason={
+            commit
+              ? "A commit's diagram never changes, so it is not regenerated."
+              : undefined
+          }
           readme={publicDiagram ?? undefined}
           video={
-            VIDEOS_ENABLED ? (
+            VIDEOS_ENABLED && !commit ? (
               <ExplainerVideo
                 username={normalizedUsername}
                 repo={normalizedRepo}
@@ -142,7 +166,7 @@ export default function RepoPageClient({
             ) : undefined
           }
           info={
-            VIDEOS_ENABLED ? (
+            VIDEOS_ENABLED && !commit ? (
               <VideoInfo username={normalizedUsername} repo={normalizedRepo} />
             ) : undefined
           }
@@ -169,13 +193,19 @@ export default function RepoPageClient({
                 </button>
               )}
               <a
-                href={`https://github.com/${repository}`}
+                href={
+                  shownCommit
+                    ? githubCommitUrl(repository, shownCommit)
+                    : `https://github.com/${repository}`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className={controls.actionButton}
               >
                 <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                Open repository on GitHub
+                {shownCommit
+                  ? "Open commit on GitHub"
+                  : "Open repository on GitHub"}
               </a>
             </>
           }

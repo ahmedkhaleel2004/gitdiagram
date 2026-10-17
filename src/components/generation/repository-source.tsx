@@ -1,15 +1,19 @@
 import type { RefObject } from "react";
 import { ArrowUpRight, GitBranch, Square } from "lucide-react";
+import { CommitLink } from "./commit-link";
 import styles from "./workspace.module.css";
 
 export function RepositorySource({
   repository,
+  commit,
   active,
   stopRef,
   onCancel,
   onRetry,
 }: {
   repository: string;
+  /** Full SHA of the commit being diagrammed; absent for the default branch. */
+  commit?: string;
   active: boolean;
   stopRef: RefObject<HTMLButtonElement | null>;
   onCancel: () => void;
@@ -29,6 +33,7 @@ export function RepositorySource({
           <span>{owner} / </span>
           <strong>{name}</strong>
         </a>
+        {commit && <CommitLink repository={repository} commit={commit} />}
         {active ? (
           <button
             ref={stopRef}

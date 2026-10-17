@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 
+import { isFullCommitSha } from "~/features/diagram/commit";
 import type { ArtifactVisibility } from "~/server/storage/types";
 import { readRequiredEnv } from "~/server/storage/config";
 
@@ -23,6 +24,21 @@ function createPatNamespace(githubPat: string): string {
   return createHmac("sha256", secret).update(trimmedPat).digest("hex");
 }
 
+/**
+ * The commit part of a storage key. Only a complete SHA is ever stored under:
+ * a short SHA would let two spellings of one commit hold two artifacts, and a
+ * branch name would make an "immutable" diagram move.
+ */
+function normalizeCommit(commit: string): string {
+  const normalized = commit.trim().toLowerCase();
+  if (!isFullCommitSha(normalized)) {
+    throw new Error(
+      "A commit storage location requires the full 40-character commit SHA.",
+    );
+  }
+  return normalized;
+}
+
 export interface StorageLocation {
   visibility: ArtifactVisibility;
   bucket: string;
@@ -38,16 +54,41 @@ export function getPublicPreviewKey(username: string, repo: string): string {
   return `public-preview/v1/${normalizeSegment(username)}/${normalizeSegment(repo)}.json`;
 }
 
+/**
+ * Where a repository's public commit diagrams live: one object per full SHA,
+ * under the repository's own folder. The default-branch artifact stays at
+ * `public/v1/<owner>/<repo>.json`, which has two segments after `v1` where a
+ * commit key has four, so the two kinds can never share a key.
+ */
+export function getPublicCommitKeyPrefix(
+  username: string,
+  repo: string,
+): string {
+  return `public/v1/${normalizeSegment(username)}/${normalizeSegment(repo)}/commit/`;
+}
+
 export function getPublicLocation(
   username: string,
   repo: string,
+  commit?: string,
 ): StorageLocation {
   const normalizedUsername = normalizeSegment(username);
   const normalizedRepo = normalizeSegment(repo);
+  const bucket = readRequiredEnv("R2_PUBLIC_BUCKET");
+
+  if (commit !== undefined) {
+    const sha = normalizeCommit(commit);
+    return {
+      visibility: "public",
+      bucket,
+      artifactKey: `${getPublicCommitKeyPrefix(username, repo)}${sha}.json`,
+      statusKey: `status:v1:public:${normalizedUsername}:${normalizedRepo}:commit:${sha}`,
+    };
+  }
 
   return {
     visibility: "public",
-    bucket: readRequiredEnv("R2_PUBLIC_BUCKET"),
+    bucket,
     artifactKey: `public/v1/${normalizedUsername}/${normalizedRepo}.json`,
     statusKey: `status:v1:public:${normalizedUsername}:${normalizedRepo}`,
   };
@@ -57,14 +98,26 @@ export function getPrivateLocation(
   username: string,
   repo: string,
   githubPat: string,
+  commit?: string,
 ): StorageLocation {
   const normalizedUsername = normalizeSegment(username);
   const normalizedRepo = normalizeSegment(repo);
   const namespace = createPatNamespace(githubPat);
+  const bucket = readRequiredEnv("R2_PRIVATE_BUCKET");
+
+  if (commit !== undefined) {
+    const sha = normalizeCommit(commit);
+    return {
+      visibility: "private",
+      bucket,
+      artifactKey: `private/v1/${namespace}/${normalizedUsername}/${normalizedRepo}/commit/${sha}.json`,
+      statusKey: `status:v1:private:${namespace}:${normalizedUsername}:${normalizedRepo}:commit:${sha}`,
+    };
+  }
 
   return {
     visibility: "private",
-    bucket: readRequiredEnv("R2_PRIVATE_BUCKET"),
+    bucket,
     artifactKey: `private/v1/${namespace}/${normalizedUsername}/${normalizedRepo}.json`,
     statusKey: `status:v1:private:${namespace}:${normalizedUsername}:${normalizedRepo}`,
   };
@@ -84,15 +137,18 @@ export function getWriteLocation(params: {
   repo: string;
   visibility: ArtifactVisibility;
   githubPat?: string;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
 }): StorageLocation {
   if (params.visibility !== "private") {
-    return getPublicLocation(params.username, params.repo);
+    return getPublicLocation(params.username, params.repo, params.commit);
   }
 
   return getPrivateLocation(
     params.username,
     params.repo,
     params.githubPat ?? "",
+    params.commit,
   );
 }
 
@@ -107,13 +163,22 @@ export function getReadLocations(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
 }): StorageLocation[] {
   const locations: StorageLocation[] = [];
   if (params.githubPat?.trim()) {
     locations.push(
-      getPrivateLocation(params.username, params.repo, params.githubPat),
+      getPrivateLocation(
+        params.username,
+        params.repo,
+        params.githubPat,
+        params.commit,
+      ),
     );
   }
-  locations.push(getPublicLocation(params.username, params.repo));
+  locations.push(
+    getPublicLocation(params.username, params.repo, params.commit),
+  );
   return locations;
 }

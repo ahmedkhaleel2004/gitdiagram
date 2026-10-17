@@ -1,7 +1,7 @@
 /**
  * Deletes a repository's stored public diagram (an owner asked for it):
- * the artifact, its preview sidecar, its failure status and its browse index
- * entry. Dry run unless --apply. Needs the R2 and Upstash settings in the
+ * the artifact, its preview sidecar, the artifacts of its commit diagrams, its
+ * failure status and its browse index entry. Dry run unless --apply. Needs the R2 and Upstash settings in the
  * environment; afterwards POST { diagram: { username, repo } } to
  * /api/internal/revalidate with CRON_SECRET to drop the cached pages.
  *
@@ -9,6 +9,7 @@
  */
 import { removeBrowseIndexEntry } from "../src/server/storage/browse-diagrams";
 import {
+  getPublicCommitKeyPrefix,
   getPublicLocation,
   getPublicPreviewKey,
 } from "../src/server/storage/cache-key";
@@ -29,6 +30,19 @@ for (const key of keys) {
   const exists = await hasObject(location.bucket, key);
   console.log(`${exists ? "found  " : "missing"} ${key}`);
   if (exists && apply) {
+    await deleteObject(location.bucket, key);
+    console.log(`deleted ${key}`);
+  }
+}
+
+// Commit diagrams live under the repository's own commit/ folder.
+const commitArtifacts = await listObjects(
+  location.bucket,
+  getPublicCommitKeyPrefix(username, repo),
+);
+for (const { key } of commitArtifacts) {
+  console.log(`found   ${key}`);
+  if (apply) {
     await deleteObject(location.bucket, key);
     console.log(`deleted ${key}`);
   }

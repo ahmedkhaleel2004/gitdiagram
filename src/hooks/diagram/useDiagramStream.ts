@@ -46,6 +46,8 @@ function toOutcome(
 interface UseDiagramStreamOptions {
   username: string;
   repo: string;
+  /** A commit SHA to diagram instead of the default branch. */
+  commit?: string;
   initialState?: DiagramStreamState;
   onComplete: (result: {
     diagram: string;
@@ -59,6 +61,7 @@ interface UseDiagramStreamOptions {
 export function useDiagramStream({
   username,
   repo,
+  commit,
   initialState,
   onComplete,
 }: UseDiagramStreamOptions) {
@@ -251,6 +254,7 @@ export function useDiagramStream({
         {
           username,
           repo,
+          ...(commit ? { commit } : {}),
           signal: abortController.signal,
         },
         {
@@ -280,7 +284,7 @@ export function useDiagramStream({
     return abortController.signal.aborted || !buffers.outcome
       ? { status: "aborted" }
       : buffers.outcome;
-  }, [handleStreamMessage, repo, username]);
+  }, [commit, handleStreamMessage, repo, username]);
 
   const cancelGeneration = useCallback(() => {
     activeGenerationRef.current?.abort();

@@ -162,3 +162,88 @@ describe("persistGenerationResult", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/acme/demo/diagram.png");
   });
 });
+
+describe("persistGenerationResult for a commit", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+
+  async function run(
+    overrides: Partial<Parameters<typeof persistGenerationResult>[0]> = {},
+  ) {
+    const params = {
+      ...baseParams(),
+      visibility: "public" as const,
+      commit: sha,
+      ...overrides,
+    };
+    await persistGenerationResult(params);
+    for (const task of params.postResponseTasks) {
+      await task();
+    }
+  }
+
+  it("stores under the commit and clears only that commit's failure summary", async () => {
+    await run();
+
+    expect(mocks.saveSuccessfulDiagramState).toHaveBeenCalledWith(
+      expect.objectContaining({ commit: sha, visibility: "public" }),
+    );
+    expect(mocks.clearSuccessfulDiagramFailureSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ commit: sha }),
+    );
+  });
+
+  it("refreshes only the commit's page and cached read", async () => {
+    await run();
+
+    expect(mocks.revalidatePath).toHaveBeenCalledTimes(1);
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(
+      `/acme/demo/commit/${sha}`,
+    );
+    expect(mocks.revalidateTag).toHaveBeenCalledWith(
+      `public-diagram-state:acme:demo:commit:${sha}`,
+      { expire: 0 },
+    );
+  });
+
+  it("leaves the default branch's preview, browse index and search pings alone", async () => {
+    await run();
+
+    expect(mocks.writePublicDiagramPreview).not.toHaveBeenCalled();
+    expect(
+      mocks.updatePublicBrowseIndexForSuccessfulDiagram,
+    ).not.toHaveBeenCalled();
+    expect(mocks.revalidateBrowseIndexCache).not.toHaveBeenCalled();
+    expect(mocks.notifyIndexNow).not.toHaveBeenCalled();
+  });
+
+  it("does nothing more when the commit already had a diagram", async () => {
+    mocks.saveSuccessfulDiagramState.mockResolvedValue(false);
+
+    await run();
+
+    expect(mocks.clearSuccessfulDiagramFailureSummary).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed commit run's audit under that commit", async () => {
+    await run({
+      audit: { ...audit, status: "failed" as const },
+      successfulDiagramState: null,
+    });
+
+    expect(mocks.persistTerminalSessionAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ commit: sha }),
+    );
+    expect(mocks.saveSuccessfulDiagramState).not.toHaveBeenCalled();
+  });
+
+  it("does not announce a private commit diagram anywhere", async () => {
+    await run({ visibility: "private", githubPat: "caller-token" });
+
+    expect(mocks.saveSuccessfulDiagramState).toHaveBeenCalledWith(
+      expect.objectContaining({ commit: sha, visibility: "private" }),
+    );
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.notifyIndexNow).not.toHaveBeenCalled();
+  });
+});

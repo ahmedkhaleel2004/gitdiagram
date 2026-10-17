@@ -435,3 +435,161 @@ describe("public diagram previews", () => {
     );
   });
 });
+
+describe("commit diagrams", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const otherSha = "89abcdef0123456789abcdef0123456789abcdef";
+
+  function writeAtCommit(
+    commit: string | undefined,
+    artifact: DiagramArtifact,
+  ) {
+    return writeDiagramArtifact({
+      username: artifact.username,
+      repo: artifact.repo,
+      visibility: artifact.visibility,
+      ...(commit ? { commit } : {}),
+      stargazerCount: artifact.stargazerCount,
+      diagram: artifact.diagram,
+      explanation: artifact.explanation,
+      graph: artifact.graph,
+      generatedAt: artifact.generatedAt,
+      usedOwnKey: artifact.usedOwnKey,
+      latestSessionSummary: artifact.latestSessionSummary,
+      lastSuccessfulAt: artifact.lastSuccessfulAt,
+    });
+  }
+
+  function artifactFor(sessionId: string, diagram: string, minute: number) {
+    return createArtifact({
+      sessionId,
+      createdAt: `2026-07-13T12:0${minute}:00.000Z`,
+      updatedAt: `2026-07-13T12:0${minute}:30.000Z`,
+      diagram,
+    });
+  }
+
+  beforeEach(() => {
+    process.env.R2_PUBLIC_BUCKET = "test-public-bucket";
+    process.env.R2_PRIVATE_BUCKET = "test-private-bucket";
+    process.env.CACHE_KEY_SECRET = "test-cache-key-secret";
+    vi.clearAllMocks();
+    storageMocks.withDistributedLock.mockImplementation(async ({ callback }) =>
+      callback(),
+    );
+    storageMocks.getJsonObject.mockResolvedValue(null);
+  });
+
+  it("writes under the SHA's own key and records the commit in the artifact", async () => {
+    const artifact = artifactFor("session-1", "commit diagram", 1);
+
+    await expect(writeAtCommit(sha, artifact)).resolves.toBe(true);
+
+    expect(storageMocks.putJsonObject).toHaveBeenCalledWith(
+      "test-public-bucket",
+      `public/v1/acme/demo/commit/${sha}.json`,
+      expect.objectContaining({ commit: sha, diagram: "commit diagram" }),
+    );
+  });
+
+  it("does not put a commit on a default-branch artifact", async () => {
+    await writeAtCommit(undefined, artifactFor("session-1", "branch", 1));
+
+    expect(storageMocks.putJsonObject).toHaveBeenCalledWith(
+      "test-public-bucket",
+      "public/v1/acme/demo.json",
+      expect.not.objectContaining({ commit: expect.anything() }),
+    );
+  });
+
+  it("keeps different commits and the default branch in separate objects under separate locks", async () => {
+    await writeAtCommit(sha, artifactFor("s1", "one", 1));
+    await writeAtCommit(otherSha, artifactFor("s2", "two", 2));
+    await writeAtCommit(undefined, artifactFor("s3", "three", 3));
+
+    const keys = storageMocks.putJsonObject.mock.calls.map(
+      (call) => call[1] as string,
+    );
+    expect(new Set(keys).size).toBe(3);
+    const lockKeys = storageMocks.withDistributedLock.mock.calls.map(
+      ([options]) => (options as unknown as { key: string }).key,
+    );
+    expect(new Set(lockKeys).size).toBe(3);
+  });
+
+  it("never replaces a stored commit diagram, even with a newer session", async () => {
+    const stored = artifactFor("session-first", "first diagram", 1);
+    storageMocks.getJsonObject.mockResolvedValue(stored);
+
+    await expect(
+      writeAtCommit(sha, artifactFor("session-newer", "newer diagram", 5)),
+    ).resolves.toBe(false);
+
+    expect(storageMocks.putJsonObject).not.toHaveBeenCalled();
+  });
+
+  it("still writes a commit diagram over a stored failure with no diagram", async () => {
+    storageMocks.getJsonObject.mockResolvedValue({
+      ...artifactFor("session-failed", "", 1),
+      diagram: "",
+      explanation: "",
+    });
+
+    await expect(
+      writeAtCommit(sha, artifactFor("session-ok", "diagram", 2)),
+    ).resolves.toBe(true);
+  });
+
+  it("reads a commit's stored diagram from its own key and reports the commit", async () => {
+    storageMocks.getJsonObject.mockResolvedValue({
+      ...artifactFor("session-1", "commit diagram", 1),
+      commit: sha,
+    });
+
+    const state = await getStoredDiagramState({
+      username: "acme",
+      repo: "demo",
+      commit: sha,
+    });
+
+    expect(storageMocks.getJsonObject).toHaveBeenCalledWith(
+      "test-public-bucket",
+      `public/v1/acme/demo/commit/${sha}.json`,
+    );
+    expect(state).toMatchObject({ diagram: "commit diagram", commit: sha });
+  });
+
+  it("keeps private commit diagrams in the caller's own namespace", async () => {
+    const artifact = {
+      ...artifactFor("session-1", "private", 1),
+      visibility: "private" as const,
+    };
+
+    await writeDiagramArtifact({
+      username: "acme",
+      repo: "demo",
+      visibility: "private",
+      githubPat: "token",
+      commit: sha,
+      stargazerCount: null,
+      diagram: artifact.diagram,
+      explanation: artifact.explanation,
+      graph,
+      generatedAt: artifact.generatedAt,
+      usedOwnKey: true,
+      latestSessionSummary: artifact.latestSessionSummary,
+      lastSuccessfulAt: artifact.lastSuccessfulAt,
+    });
+
+    expect(storageMocks.putJsonObject).toHaveBeenCalledWith(
+      "test-private-bucket",
+      expect.stringMatching(
+        new RegExp(
+          `^private/v1/[0-9a-f]{64}/acme/demo/commit/${sha}\\.json$`,
+          "u",
+        ),
+      ),
+      expect.objectContaining({ commit: sha }),
+    );
+  });
+});

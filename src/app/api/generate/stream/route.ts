@@ -131,6 +131,7 @@ export async function POST(request: Request) {
   const {
     username,
     repo,
+    commit: requestedCommit,
     apiKey,
     githubPat,
     githubStorageKey,
@@ -266,6 +267,9 @@ export async function POST(request: Request) {
         let terminalPayload: DiagramStreamMessage | null = null;
         let terminalErrorCode: string | null = null;
         let repositoryVerified = false;
+        // The full SHA the run was pinned to, known once GitHub resolved it.
+        // Storage and page refreshes use only this, never the typed SHA.
+        let resolvedCommit: string | undefined;
         let successfulDiagramState: SuccessfulDiagramState | null = null;
         const invocationStartedAt = performance.now();
         const stageTimingsMs: Record<string, number> = {};
@@ -377,12 +381,21 @@ export async function POST(request: Request) {
           }
 
           const githubStartedAt = performance.now();
-          const githubData = await getGithubData(
-            username,
-            repo,
-            githubPat,
-            generationAbortController.signal,
-          );
+          const githubData = requestedCommit
+            ? await getGithubData(
+                username,
+                repo,
+                githubPat,
+                generationAbortController.signal,
+                { commit: requestedCommit },
+              )
+            : await getGithubData(
+                username,
+                repo,
+                githubPat,
+                generationAbortController.signal,
+              );
+          resolvedCommit = githubData.commitSha;
           repositoryVerified = true;
           recordTiming("github", githubStartedAt);
           storageVisibility = githubData.isPrivate ? "private" : "public";
@@ -816,6 +829,7 @@ export async function POST(request: Request) {
             username,
             repo,
             branch: githubData.defaultBranch,
+            commit: githubData.commitSha,
             pathTypes: githubData.pathTypes,
           });
           recordTiming("diagram_compile", diagramCompileStartedAt);
@@ -950,6 +964,7 @@ export async function POST(request: Request) {
               accounting,
               apiKey,
               audit,
+              commit: resolvedCommit,
               githubStorageKey,
               postResponseTasks,
               quotaReservation,
