@@ -42,7 +42,7 @@ export function RepositoryToolbar({
   getSvg: () => SVGSVGElement | null;
   pending: boolean;
   video?: { id: string; open: boolean; toggle: () => void };
-  readme?: { owner: string; repo: string };
+  readme?: { owner: string; repo: string; commit?: string };
 }) {
   return (
     <div className={styles.resultToolbar}>

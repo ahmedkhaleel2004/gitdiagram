@@ -1,6 +1,8 @@
 import { after, type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
+import { isFullCommitSha } from "~/features/diagram/commit";
+
 import {
   getPublicDiagramPreview,
   writePublicDiagramPreview,
@@ -22,6 +24,7 @@ const previewQuerySchema = z.object({
     .trim()
     .max(MAX_LAST_SUCCESSFUL_AT_LENGTH)
     .optional(),
+  commit: z.string().refine(isFullCommitSha).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -30,6 +33,7 @@ export async function GET(request: NextRequest) {
     repo: request.nextUrl.searchParams.get("repo") ?? undefined,
     lastSuccessfulAt:
       request.nextUrl.searchParams.get("lastSuccessfulAt") ?? undefined,
+    commit: request.nextUrl.searchParams.get("commit") ?? undefined,
   });
   if (!parsed.success) {
     return NextResponse.json(
@@ -42,6 +46,7 @@ export async function GET(request: NextRequest) {
     username,
     repo,
     lastSuccessfulAt: expectedLastSuccessfulAt,
+    commit,
   } = parsed.data;
 
   let preview: Awaited<ReturnType<typeof getPublicDiagramPreview>>;
@@ -50,6 +55,7 @@ export async function GET(request: NextRequest) {
       username,
       repo,
       expectedLastSuccessfulAt,
+      commit,
     });
   } catch (error) {
     console.error(
@@ -73,6 +79,7 @@ export async function GET(request: NextRequest) {
 
   const servedPreview = preview;
   if (
+    !commit &&
     servedPreview.source === "artifact" &&
     expectedLastSuccessfulAt === servedPreview.lastSuccessfulAt
   ) {

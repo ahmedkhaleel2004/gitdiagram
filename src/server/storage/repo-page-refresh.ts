@@ -36,7 +36,7 @@ export function refreshDiagramPagesHere(username: string, repo: string): void {
 
 /**
  * The same for one commit's page and its cached read. A commit diagram has no
- * link-preview picture or README picture of its own, and a generation of it
+ * link-preview picture of its own (it does have a README picture), and a generation of it
  * leaves the default-branch page and every other commit untouched.
  */
 export function refreshCommitDiagramPagesHere(
@@ -44,7 +44,9 @@ export function refreshCommitDiagramPagesHere(
   repo: string,
   commit: string,
 ): void {
-  revalidatePath(getCommitPagePath(username, repo, commit));
+  const commitPath = getCommitPagePath(username, repo, commit);
+  revalidatePath(commitPath);
+  revalidatePath(`${commitPath}/diagram.png`);
   revalidateTag(getPublicDiagramStateCacheTag(username, repo, commit), {
     expire: 0,
   });

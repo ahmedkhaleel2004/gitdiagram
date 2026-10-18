@@ -16,7 +16,11 @@ import { Toaster } from "~/components/ui/sonner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { isExampleRepo } from "~/lib/exampleRepos";
 import { VIDEOS_ENABLED } from "~/lib/video-flag";
-import { githubCommitUrl, parseCommitSha } from "~/features/diagram/commit";
+import {
+  githubCommitUrl,
+  isFullCommitSha,
+  parseCommitSha,
+} from "~/features/diagram/commit";
 import { githubAccessTitle } from "~/features/diagram/github-access";
 import controls from "~/components/generation/workspace.module.css";
 
@@ -103,8 +107,12 @@ export default function RepoPageClient({
   const publicDiagram = usePublicDiagram({
     owner: normalizedUsername,
     repo: normalizedRepo,
-    // README embeds and the recent list are for a repository's own diagram.
-    ready: !commit && hasDiagram && state.status === "complete",
+    commit: commit ? shownCommit : undefined,
+    // A commit's embeds need its full SHA, which the server resolves.
+    ready:
+      hasDiagram &&
+      state.status === "complete" &&
+      (!commit || Boolean(shownCommit && isFullCommitSha(shownCommit))),
     knownPublicAt: initialStateIsAuthoritative
       ? initialState?.lastSuccessfulAt
       : null,

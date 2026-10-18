@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { permanentRedirect } from "next/navigation";
+import { RepositoryReadout } from "~/components/generation/repository-readout";
+import { diagramReadout } from "~/features/diagram/readout";
 import { parseCommitSha, shortCommitSha } from "~/features/diagram/commit";
 import { isPlaceholderRepo } from "~/lib/placeholder-repo";
 import { SITE_URL } from "~/lib/site";
@@ -92,6 +94,8 @@ export default async function CommitRepo({ params }: CommitPageProps) {
     ? await readPublicDiagramState(username, repo, commit.sha)
     : { state: null };
 
+  const readout = state ? diagramReadout(state, username, repo) : null;
+
   return (
     <RepoPageClient
       key={`${username}/${repo}/${sha}`}
@@ -100,6 +104,15 @@ export default async function CommitRepo({ params }: CommitPageProps) {
       commit={commit?.sha ?? sha}
       initialState={state}
       initialStateIsAuthoritative={Boolean(state)}
+      readout={
+        readout && commit?.full ? (
+          <RepositoryReadout
+            repository={`${username}/${repo}`}
+            readout={readout}
+            commit={commit.sha}
+          />
+        ) : undefined
+      }
     />
   );
 }

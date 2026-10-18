@@ -177,13 +177,19 @@ export async function getPublicDiagramPreview(params: {
   username: string;
   repo: string;
   expectedLastSuccessfulAt?: string;
+  /** Full SHA: read that commit's diagram instead (it has no sidecar). */
+  commit?: string;
 }): Promise<{
   diagram: string;
   lastSuccessfulAt: string;
   source: "artifact" | "sidecar";
 } | null> {
-  const location = getPublicLocation(params.username, params.repo);
-  if (params.expectedLastSuccessfulAt) {
+  const location = getPublicLocation(
+    params.username,
+    params.repo,
+    params.commit,
+  );
+  if (params.expectedLastSuccessfulAt && params.commit === undefined) {
     const preview = await getJsonObject<PublicDiagramPreview>(
       location.bucket,
       getPublicPreviewKey(params.username, params.repo),

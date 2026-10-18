@@ -8,17 +8,20 @@ export interface PublicDiagram {
   owner: string;
   repo: string;
   lastSuccessfulAt: string | null;
+  /** Full SHA when this is a commit's diagram. */
+  commit?: string;
 }
 
 async function fetchPublicDiagram(
   owner: string,
   repo: string,
+  commit: string | undefined,
   signal: AbortSignal,
 ): Promise<string | null | false> {
   // Answers only from the public namespace: a private repository's diagram
   // is stored apart and never found here.
   const response = await fetch(
-    `/api/diagram-preview?${new URLSearchParams({ username: owner, repo }).toString()}`,
+    `/api/diagram-preview?${new URLSearchParams({ username: owner, repo, ...(commit ? { commit } : {}) }).toString()}`,
     { credentials: "omit", signal },
   );
   if (!response.ok) return false;
@@ -38,11 +41,14 @@ async function fetchPublicDiagram(
 export function usePublicDiagram({
   owner,
   repo,
+  commit,
   ready,
   knownPublicAt,
 }: {
   owner: string;
   repo: string;
+  /** Full SHA of the commit the page shows; absent for the default branch. */
+  commit?: string;
   /** A finished diagram is on screen. */
   ready: boolean;
   /** When the server rendered a stored public diagram, its time. */
@@ -53,23 +59,33 @@ export function usePublicDiagram({
   useEffect(() => {
     if (!ready) return;
     const confirm = (lastSuccessfulAt: string | null) => {
-      const diagram = { owner, repo, lastSuccessfulAt };
+      const diagram = {
+        owner,
+        repo,
+        lastSuccessfulAt,
+        ...(commit ? { commit } : {}),
+      };
       setFound(diagram);
-      recordRecentDiagram(diagram);
+      // The recent list is for a repository's own diagram.
+      if (!commit) recordRecentDiagram(diagram);
     };
     if (knownPublicAt) {
       confirm(knownPublicAt);
       return;
     }
     const controller = new AbortController();
-    fetchPublicDiagram(owner, repo, controller.signal)
+    fetchPublicDiagram(owner, repo, commit, controller.signal)
       .then((result) => {
         if (result !== false && !controller.signal.aborted) confirm(result);
       })
       // Unknown means not offered: a private diagram must never be.
       .catch(() => undefined);
     return () => controller.abort();
-  }, [knownPublicAt, owner, ready, repo]);
+  }, [commit, knownPublicAt, owner, ready, repo]);
 
-  return found?.owner === owner && found.repo === repo ? found : null;
+  return found?.owner === owner &&
+    found.repo === repo &&
+    found.commit === commit
+    ? found
+    : null;
 }

@@ -195,9 +195,12 @@ describe("persistGenerationResult for a commit", () => {
   it("refreshes only the commit's page and cached read", async () => {
     await run();
 
-    expect(mocks.revalidatePath).toHaveBeenCalledTimes(1);
+    expect(mocks.revalidatePath).toHaveBeenCalledTimes(2);
     expect(mocks.revalidatePath).toHaveBeenCalledWith(
       `/acme/demo/commit/${sha}`,
+    );
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(
+      `/acme/demo/commit/${sha}/diagram.png`,
     );
     expect(mocks.revalidateTag).toHaveBeenCalledWith(
       `public-diagram-state:acme:demo:commit:${sha}`,

@@ -57,7 +57,7 @@ export function RepositoryWorkspace({
   /** More lines for the Info panel, mounted only while it is open. */
   info?: ReactNode;
   /** A stored public diagram, which the Export menu offers for READMEs. */
-  readme?: { owner: string; repo: string };
+  readme?: { owner: string; repo: string; commit?: string };
 }) {
   const {
     presented,
