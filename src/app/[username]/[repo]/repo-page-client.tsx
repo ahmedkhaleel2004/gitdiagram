@@ -149,12 +149,7 @@ export default function RepoPageClient({
           onCancel={handleCancel}
           onRenderError={handleDiagramRenderError}
           regenerateDisabled={
-            Boolean(commit) || isExampleRepo(normalizedUsername, normalizedRepo)
-          }
-          regenerateDisabledReason={
-            commit
-              ? "A commit's diagram never changes, so it is not regenerated."
-              : undefined
+            !commit && isExampleRepo(normalizedUsername, normalizedRepo)
           }
           readme={publicDiagram ?? undefined}
           video={
