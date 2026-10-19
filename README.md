@@ -11,9 +11,9 @@ Visualize any codebase: turn any public or private GitHub repository into an int
 
 <!-- sponsor:start -->
 
-> <a href="https://gitdiagram.com/out/sent-2026-09?placement=readme"><picture><source media="(prefers-color-scheme: dark)" srcset="./public/sponsors/sent-logo-dark.svg" /><img src="./public/sponsors/sent-logo.png" alt="Sent" width="104" align="middle" /></picture></a>&nbsp;&nbsp; <sub>Sponsored</sub>
+> <a href="https://gitdiagram.com/out/coderabbit-2026-10?placement=readme"><picture><source media="(prefers-color-scheme: dark)" srcset="./public/sponsors/coderabbit-wordmark-white.svg" /><img src="./public/sponsors/coderabbit-wordmark.svg" alt="CodeRabbit" width="156" align="middle" /></picture></a>&nbsp;&nbsp; <sub>Sponsored</sub>
 >
-> SMS, WhatsApp, and RCS through one API. [Try Sent →](https://gitdiagram.com/out/sent-2026-09?placement=readme)
+> AI code reviews for your pull requests. [Try CodeRabbit →](https://gitdiagram.com/out/coderabbit-2026-10?placement=readme)
 
 <!-- sponsor:end -->
 
