@@ -168,7 +168,9 @@ describe("advertise availability", () => {
     ).toBe("https://www.coderabbit.ai/");
     expect(
       screen.getByRole("link", { name: "Sentry" }).getAttribute("href"),
-    ).toBe("https://sentry.io/");
+    ).toBe(
+      "https://sentry.io/signup/?utm_source=gitdiagram&utm_medium=partner&utm_campaign=general-fy27q3-evergreen&utm_content=partner-static-trysentry",
+    );
     // Paid links are marked for search engines.
     expect(screen.getByRole("link", { name: "Sent" }).getAttribute("rel")).toBe(
       "sponsored noopener",

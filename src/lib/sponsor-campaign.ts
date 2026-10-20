@@ -79,7 +79,9 @@ export const sentryCampaign = {
   id: "sentry-2026-12",
   sponsor: "Sentry",
   package: "shared",
-  destination: "https://sentry.io/",
+  // Sentry's own tracking link (Kaytlyn, 2026-10-20); its UTM tags are kept as sent.
+  destination:
+    "https://sentry.io/signup/?utm_source=gitdiagram&utm_medium=partner&utm_campaign=general-fy27q3-evergreen&utm_content=partner-static-trysentry",
   utmCampaign: "sentry_30_days",
   startsAt: nangoCampaign.endsAt,
   endsAt: "2027-01-18T05:00:00.000Z",
