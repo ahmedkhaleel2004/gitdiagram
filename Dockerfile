@@ -8,6 +8,11 @@ COPY package.json bun.lock ./
 COPY patches ./patches
 RUN bun install --frozen-lockfile
 
+# Turbopack's build cache from the last image build, when the deploy passes
+# one in (--build-context next-cache=<dir>, scripts/cf-container-image.mjs);
+# empty otherwise.
+FROM scratch AS next-cache
+
 FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
@@ -34,8 +39,14 @@ ENV NEXT_PUBLIC_VIDEO_EXPLAINER=$NEXT_PUBLIC_VIDEO_EXPLAINER
 # The dependencies are mounted for the build rather than copied in (a
 # gigabyte, about 13 s); the standalone output traces what it needs from them.
 RUN --mount=type=bind,from=dependencies,source=/app/node_modules,target=/app/node_modules,rw \
-  node scripts/build-mcp-app.mjs \
+  --mount=type=bind,from=next-cache,target=/tmp/next-cache \
+  mkdir -p .next/cache && cp -a /tmp/next-cache/. .next/cache/ \
+  && node scripts/build-mcp-app.mjs \
   && NEXT_SKIP_TYPECHECK=1 node node_modules/next/dist/bin/next build
+
+# The cache this build leaves, for the next one (--target next-cache-out).
+FROM scratch AS next-cache-out
+COPY --from=builder /app/.next/cache /
 
 FROM node:22-bookworm-slim AS runner
 

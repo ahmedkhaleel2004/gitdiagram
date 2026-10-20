@@ -26,3 +26,4 @@ cloudflare
 # image build makes its own.
 public/mcp-app
 next-env.d.ts
+*.tsbuildinfo

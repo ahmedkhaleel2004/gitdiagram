@@ -72,6 +72,18 @@ jobs:
           path: .next/cache
           key: cf-next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
           restore-keys: cf-next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+      # The containers' image is named after what goes into it, and its own
+      # Next build keeps a Turbopack cache too, under the image's name: a
+      # deploy that leaves the image alone neither builds nor saves it.
+      - name: Name the containers' image
+        id: image
+        run: echo "tag=$(node scripts/cf-container-image.mjs --tag)" >> "$GITHUB_OUTPUT"
+      - name: Restore the image build's Next.js cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/cf-image-next
+          key: cf-image-next-${{ hashFiles('bun.lock') }}-${{ steps.image.outputs.tag }}
+          restore-keys: cf-image-next-${{ hashFiles('bun.lock') }}-
       # The last builds' hashed script and style files, uploaded again so tabs
       # opened before this deploy keep working (scripts/cf-deploy.sh).
       - name: Restore earlier builds' static files
@@ -98,3 +110,4 @@ jobs:
           # Build the containers' image with BuildKit, reusing the last
           # image's layers (scripts/cf-container-image.mjs).
           CF_IMAGE_BUILDX: "1"
+          CF_IMAGE_NEXT_CACHE: ${{ runner.temp }}/cf-image-next

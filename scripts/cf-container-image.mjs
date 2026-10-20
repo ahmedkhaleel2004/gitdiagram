@@ -16,9 +16,20 @@
 //                                                the same, and write a wrangler config that uses the reference
 //
 // Needs Docker for a build, and CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID.
+// In CI, CF_IMAGE_BUILDX=1 builds with BuildKit from the last image's layers,
+// and CF_IMAGE_NEXT_CACHE names a folder kept between deploys for the image's
+// own Next.js build cache.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -169,6 +180,16 @@ function buildWithCache(reference) {
     );
     if (created.status !== 0) throw new Error("No BuildKit builder.");
   }
+  // Turbopack's cache from the last image build (CF_IMAGE_NEXT_CACHE, a
+  // folder CI keeps between deploys), so the image's Next build recompiles
+  // only what changed. Both builds below must see the same folder, or the
+  // second would not find the first's layers.
+  const nextCache = process.env.CF_IMAGE_NEXT_CACHE;
+  const common = ["--builder", builder, "--platform", "linux/amd64"];
+  if (nextCache) {
+    mkdirSync(nextCache, { recursive: true });
+    common.push("--build-context", `next-cache=${nextCache}`);
+  }
   // As `wrangler containers build` runs it (no build arguments, no
   // provenance), plus the cache.
   const built = spawnSync(
@@ -176,11 +197,8 @@ function buildWithCache(reference) {
     [
       "buildx",
       "build",
-      "--builder",
-      builder,
+      ...common,
       "--push",
-      "--platform",
-      "linux/amd64",
       "--provenance=false",
       "-t",
       reference,
@@ -195,6 +213,33 @@ function buildWithCache(reference) {
     { cwd: root, stdio: ["ignore", 2, 2] },
   );
   if (built.status !== 0) throw new Error("The container image build failed.");
+  if (nextCache) keepNextCache(nextCache, common);
+}
+
+/** Replaces the folder with the cache the build just left (best effort). */
+function keepNextCache(folder, common) {
+  const fresh = `${folder}.new`;
+  rmSync(fresh, { recursive: true, force: true });
+  const exported = spawnSync(
+    "docker",
+    [
+      "buildx",
+      "build",
+      ...common,
+      "--target",
+      "next-cache-out",
+      "--output",
+      `type=local,dest=${fresh}`,
+      ".",
+    ],
+    { cwd: root, stdio: ["ignore", "ignore", 2] },
+  );
+  if (exported.status !== 0) {
+    console.error("The image's Next.js cache was not kept.");
+    return;
+  }
+  rmSync(folder, { recursive: true, force: true });
+  renameSync(fresh, folder);
 }
 
 /** wrangler.jsonc as an object: comments and trailing commas removed. */
