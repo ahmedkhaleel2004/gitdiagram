@@ -61,7 +61,7 @@ describe("sanitizeMermaidSourceForRender", () => {
 });
 
 describe("enforceSafeMermaidLinks", () => {
-  it("keeps only HTTPS GitHub links", () => {
+  it("keeps only HTTPS GitHub links and opens them in a new tab", () => {
     const root = document.createElement("div");
     root.innerHTML = [
       '<a id="safe" href="https://github.com/acme/demo">safe</a>',
@@ -76,6 +76,7 @@ describe("enforceSafeMermaidLinks", () => {
     expect(root.querySelector("#safe")?.getAttribute("rel")).toBe(
       "noopener noreferrer",
     );
+    expect(root.querySelector("#safe")?.getAttribute("target")).toBe("_blank");
     expect(root.querySelector("#unsafe")?.hasAttribute("href")).toBe(false);
   });
 });

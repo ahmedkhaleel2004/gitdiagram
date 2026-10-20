@@ -47,6 +47,7 @@ export function enforceSafeMermaidLinks(root: ParentNode): void {
 
       anchor.setAttribute("href", url.toString());
       anchor.removeAttribute("xlink:href");
+      anchor.setAttribute("target", "_blank");
       anchor.setAttribute("rel", "noopener noreferrer");
     } catch {
       anchor.removeAttribute("href");
