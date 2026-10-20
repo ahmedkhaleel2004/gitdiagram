@@ -12,7 +12,6 @@ FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
-COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -31,7 +30,12 @@ ENV NEXT_PUBLIC_VIDEO_EXPLAINER=$NEXT_PUBLIC_VIDEO_EXPLAINER
 
 # Match the standalone runtime. Bun's Linux ARM64 worker can crash while Next
 # runs its TypeScript build; Bun still handles the frozen dependency install.
-RUN node scripts/build-mcp-app.mjs && node node_modules/next/dist/bin/next build
+# Types are checked by the deploy's own build (scripts/cf-build.sh), not here.
+# The dependencies are mounted for the build rather than copied in (a
+# gigabyte, about 13 s); the standalone output traces what it needs from them.
+RUN --mount=type=bind,from=dependencies,source=/app/node_modules,target=/app/node_modules,rw \
+  node scripts/build-mcp-app.mjs \
+  && NEXT_SKIP_TYPECHECK=1 node node_modules/next/dist/bin/next build
 
 FROM node:22-bookworm-slim AS runner
 
@@ -74,9 +78,12 @@ RUN groupadd --system --gid 1001 nodejs \
   && mkdir .next \
   && chown nextjs:nodejs .next
 
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# --link makes each copy a layer of its own, so a cached build can push the
+# app without first fetching the Chromium layer beneath it. Linked copies
+# cannot look up names, hence the numeric nextjs:nodejs.
+COPY --link --from=builder --chown=1001:1001 /app/public ./public
+COPY --link --from=builder --chown=1001:1001 /app/.next/standalone ./
+COPY --link --from=builder --chown=1001:1001 /app/.next/static ./.next/static
 
 USER nextjs
 

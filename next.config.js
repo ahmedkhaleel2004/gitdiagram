@@ -81,6 +81,9 @@ const config = {
   },
   allowedDevOrigins: ["127.0.0.1"],
   ...(process.env.RAILWAY_DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
+  // A deploy checks types once, with the repo's own TypeScript after the build
+  // (scripts/cf-build.sh), instead of in each of its two Next builds.
+  typescript: { ignoreBuildErrors: process.env.NEXT_SKIP_TYPECHECK === "1" },
   transpilePackages: ["@aws-sdk/client-s3"],
   async redirects() {
     return [

@@ -18,7 +18,11 @@ while IFS= read -r name; do
   unset "$name"
 done < <(env | grep -oE '^(VERCEL[A-Z0-9_]*|TURBO_[A-Z0-9_]*|NX_DAEMON)' || true)
 
-bunx opennextjs-cloudflare build "$@"
+# Next's own type check runs the older TypeScript, single-threaded, inside the
+# build; the repo's TypeScript (the CI gate) checks the same files, the route
+# types the build generates included, in a third of the time.
+NEXT_SKIP_TYPECHECK=1 bunx opennextjs-cloudflare build "$@"
+bun run typecheck
 
 # OpenNext copies the working tree's .env files into the bundle as fallback
 # values. Runtime configuration comes only from the Worker's own secrets and

@@ -118,12 +118,83 @@ async function ensureImage() {
     return reference;
   }
   console.error(`container image ${tag}: building and pushing`);
+  if (process.env.CF_IMAGE_BUILDX) {
+    buildWithCache(reference);
+    return reference;
+  }
   const built = wrangler(
     ["containers", "build", "-p", "-t", `${REPOSITORY}:${tag}`, "."],
     { stdio: ["ignore", 2, 2] },
   );
   if (built.status !== 0) throw new Error("The container image build failed.");
   return reference;
+}
+
+/**
+ * The same build in CI, where Docker starts with no layers: BuildKit (a
+ * docker-container builder, CF_IMAGE_BUILDX=1) reuses the layers of the last
+ * image it pushed, which carries its own cache record under the `buildcache`
+ * tag. The Chromium and fonts layer (about 700 MB) then keeps its digest, so
+ * it is neither installed nor uploaded again.
+ */
+function buildWithCache(reference) {
+  const registry = reference.split("/")[0];
+  const cache = `${reference.slice(0, reference.lastIndexOf(":"))}:buildcache`;
+  const credentials = wrangler([
+    "containers",
+    "registries",
+    "credentials",
+    registry,
+    "--push",
+    "--pull",
+    "--json",
+  ]);
+  if (credentials.status !== 0)
+    throw new Error(`No registry credentials: ${credentials.stderr}`);
+  const { username, password } = JSON.parse(credentials.stdout);
+  const login = spawnSync(
+    "docker",
+    ["login", "--username", username, "--password-stdin", registry],
+    { input: password, stdio: ["pipe", 2, 2] },
+  );
+  if (login.status !== 0) throw new Error("docker login failed.");
+  // A BuildKit container builder: Docker's own cannot push without loading
+  // the whole image into its store first.
+  const builder = "cf-image";
+  if (spawnSync("docker", ["buildx", "inspect", builder]).status !== 0) {
+    const created = spawnSync(
+      "docker",
+      ["buildx", "create", "--name", builder, "--driver", "docker-container"],
+      { stdio: ["ignore", 2, 2] },
+    );
+    if (created.status !== 0) throw new Error("No BuildKit builder.");
+  }
+  // As `wrangler containers build` runs it (no build arguments, no
+  // provenance), plus the cache.
+  const built = spawnSync(
+    "docker",
+    [
+      "buildx",
+      "build",
+      "--builder",
+      builder,
+      "--push",
+      "--platform",
+      "linux/amd64",
+      "--provenance=false",
+      "-t",
+      reference,
+      "-t",
+      cache,
+      "--cache-from",
+      `type=registry,ref=${cache}`,
+      "--cache-to",
+      "type=inline",
+      ".",
+    ],
+    { cwd: root, stdio: ["ignore", 2, 2] },
+  );
+  if (built.status !== 0) throw new Error("The container image build failed.");
 }
 
 /** wrangler.jsonc as an object: comments and trailing commas removed. */

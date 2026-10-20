@@ -21,3 +21,8 @@ docs
 .open-next-history
 workers
 cloudflare
+
+# Written by the host build, which can run beside the image build; the
+# image build makes its own.
+public/mcp-app
+next-env.d.ts

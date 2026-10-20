@@ -64,6 +64,14 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - name: Install dependencies
         run: bun ci
+      # Turbopack's build cache: a push that changes a few files recompiles
+      # only those (about 60 s of build down to about 20 s).
+      - name: Restore the Next.js build cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .next/cache
+          key: cf-next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
+          restore-keys: cf-next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
       # The last builds' hashed script and style files, uploaded again so tabs
       # opened before this deploy keep working (scripts/cf-deploy.sh).
       - name: Restore earlier builds' static files
@@ -87,3 +95,6 @@ jobs:
           # No production secrets here, so pages prerendered by this build
           # have no data: the Worker renders them on first request instead.
           CF_SKIP_CACHE_POPULATE: "1"
+          # Build the containers' image with BuildKit, reusing the last
+          # image's layers (scripts/cf-container-image.mjs).
+          CF_IMAGE_BUILDX: "1"
