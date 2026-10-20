@@ -76,4 +76,17 @@ export const sponsorCreatives: Record<SponsorCampaignId, SponsorCreative> = {
       readmeWidth: 120,
     },
   },
+  "sentry-2026-12": {
+    name: "Sentry",
+    message: "Code breaks, fix it faster.",
+    action: "Try Sentry",
+    logo: {
+      src: "/sponsors/sentry-wordmark.svg",
+      darkSrc: "/sponsors/sentry-wordmark-white.svg",
+      width: 200,
+      height: 44,
+      kind: "wordmark",
+      readmeWidth: 112,
+    },
+  },
 };

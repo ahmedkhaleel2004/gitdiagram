@@ -29,6 +29,10 @@ const pinnedLogoHashes: Record<string, string> = {
     "b8ea24ebf4ae7f26be02e3df29a25c7c21f0e85afd5841cff0f10a3a6abd41df",
   "/sponsors/meteorops-wordmark-white.png":
     "3caf51e1d83f887e848c9aa431c7382c6cf0d4c4a4342cf8464772cf6bfe27ff",
+  "/sponsors/sentry-wordmark.svg":
+    "7767fb969e8b8f120cad6e5f21a283cca6487ea9c15d4c1965d1ab0d1834d838",
+  "/sponsors/sentry-wordmark-white.svg":
+    "833659a964309982d4a0d2573edc2dae3209166cf68e2ee012b2e62e70f67539",
 };
 
 it("has a creative for every scheduled campaign", () => {

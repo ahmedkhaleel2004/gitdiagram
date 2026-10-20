@@ -73,11 +73,25 @@ export const meteoropsCampaign = {
   endsAt: nangoCampaign.endsAt,
 } as const satisfies SponsorCampaign;
 
+// Paid October 19, 2026 (signed contract, October 13): a shared website spot
+// plus the Markdown line, December 19–January 18 Toronto.
+export const sentryCampaign = {
+  id: "sentry-2026-12",
+  sponsor: "Sentry",
+  package: "shared",
+  destination: "https://sentry.io/",
+  utmCampaign: "sentry_30_days",
+  startsAt: nangoCampaign.endsAt,
+  endsAt: "2027-01-18T05:00:00.000Z",
+  markdown: true,
+} as const satisfies SponsorCampaign;
+
 export const scheduledSponsorCampaigns = [
   sentCampaign,
   coderabbitCampaign,
   nangoCampaign,
   meteoropsCampaign,
+  sentryCampaign,
 ] as const;
 export type ScheduledSponsorCampaign =
   (typeof scheduledSponsorCampaigns)[number];

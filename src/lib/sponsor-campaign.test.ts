@@ -10,6 +10,7 @@ import {
   pickSponsorCampaign,
   scheduledSponsorCampaigns,
   sentCampaign,
+  sentryCampaign,
   sponsorAnswer,
   type SponsorCampaign,
   type SponsorPackage,
@@ -69,15 +70,24 @@ describe("paid sponsor schedule", () => {
       end - Date.parse("2026-10-20T00:00:00-04:00"),
     ).toBeGreaterThanOrEqual(30 * 86400000);
     // Nango and MeteorOps: the two shared halves of the website (no README)
-    // for the same 30 full days, then vacant.
+    // for the same 30 full days, then Sentry for 30 days, then vacant.
     const nangoEnd = Date.parse(nangoCampaign.endsAt);
+    const sentryEnd = Date.parse(sentryCampaign.endsAt);
     expect(activeReadmeSponsorCampaign(end)).toBeUndefined();
     expect(activeSponsorCampaigns(nangoEnd - 1).map(({ id }) => id)).toEqual([
       meteoropsCampaign.id,
       nangoCampaign.id,
     ]);
-    expect(activeSponsorCampaigns(nangoEnd)).toEqual([]);
     expect(nangoEnd - end).toBe(30 * 86400000);
+    expect(activeSponsorCampaigns(nangoEnd).map(({ id }) => id)).toEqual([
+      sentryCampaign.id,
+    ]);
+    expect(activeReadmeSponsorCampaign(nangoEnd)).toBeUndefined();
+    expect(activeSponsorCampaigns(sentryEnd - 1)[0]?.id).toBe(
+      sentryCampaign.id,
+    );
+    expect(activeSponsorCampaigns(sentryEnd)).toEqual([]);
+    expect(sentryEnd - nangoEnd).toBe(30 * 86400000);
   });
 
   // Rotation splits the website between at most two shared campaigns; an
@@ -150,12 +160,12 @@ describe("paid sponsor schedule", () => {
   it("finds the last booked campaign until it ends", () => {
     expect(
       lastBookedSponsorCampaign(Date.parse(sentCampaign.startsAt))?.id,
-    ).toBe(nangoCampaign.id);
+    ).toBe(sentryCampaign.id);
     expect(
-      lastBookedSponsorCampaign(Date.parse(nangoCampaign.endsAt) - 1)?.id,
-    ).toBe(nangoCampaign.id);
+      lastBookedSponsorCampaign(Date.parse(sentryCampaign.endsAt) - 1)?.id,
+    ).toBe(sentryCampaign.id);
     expect(
-      lastBookedSponsorCampaign(Date.parse(nangoCampaign.endsAt)),
+      lastBookedSponsorCampaign(Date.parse(sentryCampaign.endsAt)),
     ).toBeUndefined();
   });
 
@@ -274,10 +284,10 @@ describe("the Markdown placement", () => {
     expect(shown.filter((id) => id === other.id)).toHaveLength(5);
   });
 
-  it("is not part of any booking yet", () => {
-    for (const { startsAt } of scheduledSponsorCampaigns)
+  it("goes only to Sentry among the bookings", () => {
+    for (const { id, startsAt } of scheduledSponsorCampaigns)
       expect(
-        markdownSponsorCampaign("/acme/demo", Date.parse(startsAt)),
-      ).toBeUndefined();
+        markdownSponsorCampaign("/acme/demo", Date.parse(startsAt))?.id,
+      ).toBe(id === "sentry-2026-12" ? id : undefined);
   });
 });

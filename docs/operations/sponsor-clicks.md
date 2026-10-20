@@ -1,5 +1,21 @@
 # Sponsor campaign reporting and scheduling
 
+## Sentry
+
+`sentry-2026-12` is a shared website spot (homepage, repository pages and
+browse; no README) plus the labelled line in the Markdown twin of repository
+pages (`markdown: true`). Signed contract October 13, 2026 (Functional
+Software, Inc. dba Sentry; Matt Henderson, with Kaytlyn Fehr handling it from
+December), paid by card on October 19, 2026 ($999, non-refundable). It starts
+when Nango and MeteorOps end, `2026-12-19T05:00:00Z`, and runs 30 days to
+`2027-01-18T05:00:00Z`. If a second shared sponsor books those days, the two
+rotate 50/50 (`pickSponsorCampaign`), as the contract allows. Clicks go to
+`https://sentry.io/` with the site's default UTM tags
+(`utm_campaign=sentry_30_days`); no tracking link was supplied. The line,
+button text and wordmarks are the ones previewed to them on October 13; no
+changes were asked for before they paid. Their first right to book the next
+30 days was offered on October 14 and declined on October 15.
+
 ## MeteorOps
 
 `meteorops-2026-11` is the other shared website spot beside Nango (homepage,
