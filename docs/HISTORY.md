@@ -4,6 +4,16 @@ Dated background that used to sit in `CLAUDE.md`. Nothing here is a rule or a st
 
 The longer `CLAUDE.md` from before the cleanup of 2026-10-06, with more detail per feature (model choices, limits and their defaults, render timings, cache internals), is in git: `git show 3bb4210:CLAUDE.md`. Its statements about hosting ("Vercel serves gitdiagram.com until the DNS cutover") were already out of date when it was replaced.
 
+## 2026-10-20: deploys made faster
+
+Measured on GitHub's runner (4 processors), whole Cloudflare workflow from push to done.
+
+- Before: about 2 min 10 s when the render containers' image was unchanged, about 5 min 40 s when it changed (5 of the 8 deploys before it). Of those 5:40, about 3 minutes went to the image: a second Next build with its type check (about 46 s), Chromium installed again (33 s), and the whole image pushed again, its 700 MB Chromium layer alone taking about 75 s, because a fresh runner has no Docker layers and a rebuilt layer gets a new digest. The site's own build was about 60 s, 19 s of it Next's single-threaded type check, with no build cache kept; the two servers uploaded one after the other (about 36 s).
+- After (commits `27a448e` and `225bc11`): 1 min 51 s for an unchanged image (the first run, with an empty build cache), 2 min 20 s for a changed image with the image's own build cache still empty. With a warm cache the image step measured 54 s in the lab against 79 s cold, so a changed image should now take about 2 minutes (an estimate).
+- What did it: Turbopack's `.next/cache` kept between deploys (site build about 60 s to about 20 s); the image built in the background with BuildKit from the last image's layers (`buildcache` tag), so Chromium is never reinstalled or re-uploaded, `COPY --link` (no download of the Chromium layer to add the app on top), the dependencies mounted instead of copied (about 13 s), and its own Turbopack cache (its Next build 33 s to 7 s); types checked once, by TypeScript 7 after the build (about 6 s); the servers uploaded together.
+- The image starts building at the start of the deploy, beside the site's build, not after it: although the two share the 4 processors (without the caches each build took twice as long), with the caches it measured 15 to 20 s faster.
+- Not done: caching `node_modules` instead of Bun's package cache (about 5 s at best), a bigger runner (paid), skipping the image's Next build altogether by reusing the site's (the two builds differ: the site's drops the proxy and has the public keys compiled in).
+
 ## 2026-10-06: CLAUDE.md cleaned up
 
 Checked that day: gitdiagram.com answered `server: cloudflare` with OpenNext headers; nameservers were Cloudflare's; the four Workers were deployed at commit `3bb4210`; Vercel was still building every push to `main` (last production build about 10 hours earlier). Corrected in the rewrite:
