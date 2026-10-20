@@ -90,8 +90,9 @@ export const scheduledSponsorCampaigns = [
   sentCampaign,
   coderabbitCampaign,
   nangoCampaign,
-  meteoropsCampaign,
+  // Before MeteorOps so Sentry's logo leads it in the /advertise row.
   sentryCampaign,
+  meteoropsCampaign,
 ] as const;
 export type ScheduledSponsorCampaign =
   (typeof scheduledSponsorCampaigns)[number];
