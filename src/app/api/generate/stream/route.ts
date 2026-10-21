@@ -131,6 +131,7 @@ export async function POST(request: Request) {
   const {
     username,
     repo,
+    branch,
     apiKey,
     githubPat,
     githubStorageKey,
@@ -382,12 +383,15 @@ export async function POST(request: Request) {
             repo,
             githubPat,
             generationAbortController.signal,
+            ...(branch ? [branch] : []),
           );
           repositoryVerified = true;
           recordTiming("github", githubStartedAt);
           storageVisibility = githubData.isPrivate ? "private" : "public";
           if (!githubPat?.trim() && !githubData.isPrivate)
-            liveLabel = `${username}/${repo}`;
+            liveLabel = branch
+              ? `${username}/${repo} (${branch})`
+              : `${username}/${repo}`;
           announceStarted();
           const context = prepareRepositoryContext(githubData);
           const analysisModel = selectAnalysisModel({
@@ -404,6 +408,7 @@ export async function POST(request: Request) {
           const sources = await fetchSourceContext({
             username,
             repo,
+            branch,
             githubData,
             selectedPaths: context.selectedPaths,
             referencePaths: context.referencePaths,
@@ -815,7 +820,7 @@ export async function POST(request: Request) {
             graph: validGraph,
             username,
             repo,
-            branch: githubData.defaultBranch,
+            branch: branch?.trim() || githubData.defaultBranch,
             pathTypes: githubData.pathTypes,
           });
           recordTiming("diagram_compile", diagramCompileStartedAt);
@@ -950,6 +955,7 @@ export async function POST(request: Request) {
               accounting,
               apiKey,
               audit,
+              branch,
               githubStorageKey,
               postResponseTasks,
               quotaReservation,

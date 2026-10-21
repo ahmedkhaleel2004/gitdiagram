@@ -29,6 +29,7 @@ export interface FinalizeGenerationStreamParams {
   rateLimitedWindowStartSeconds: number;
   recordTiming: (stage: string, startedAt: number) => void;
   repo: string;
+  branch?: string;
   repositoryVerified: boolean;
   sendTerminal: (
     audit: GenerationSessionAudit,
@@ -104,6 +105,7 @@ export async function finalizeGenerationStream(
     persistenceWarning = await persistGenerationResult({
       username: params.username,
       repo: params.repo,
+      branch: params.branch,
       githubPat: params.githubStorageKey,
       visibility: params.storageVisibility,
       audit,

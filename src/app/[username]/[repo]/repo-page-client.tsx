@@ -46,6 +46,7 @@ const PrivateReposDialog = dynamic(
 type RepoPageClientProps = {
   username: string;
   repo: string;
+  branch?: string;
   initialState?: DiagramStateResponse | null;
   initialStateIsAuthoritative?: boolean;
   /** Server-rendered text of the stored diagram, shown under the workspace. */
@@ -55,6 +56,7 @@ type RepoPageClientProps = {
 export default function RepoPageClient({
   username,
   repo,
+  branch,
   initialState = null,
   initialStateIsAuthoritative = false,
   readout,
@@ -83,6 +85,7 @@ export default function RepoPageClient({
     normalizedRepo,
     initialState,
     initialStateIsAuthoritative,
+    branch,
   );
   const hasDiagram = Boolean(diagram);
   const publicDiagram = usePublicDiagram({
@@ -125,6 +128,7 @@ export default function RepoPageClient({
       <main>
         <RepositoryWorkspace
           repository={repository}
+          branch={branch}
           state={state}
           loading={loading}
           lastGenerated={lastGenerated}
@@ -169,7 +173,11 @@ export default function RepoPageClient({
                 </button>
               )}
               <a
-                href={`https://github.com/${repository}`}
+                href={
+                  branch
+                    ? `https://github.com/${repository}/tree/${branch}`
+                    : `https://github.com/${repository}`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className={controls.actionButton}

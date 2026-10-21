@@ -440,5 +440,6 @@ export function isPagePath(pathname: string): boolean {
   if (segments.length === 0) return true;
   if (segments.length === 1) return !segments[0]!.includes(".");
   if (segments.length === 2) return true;
-  return segments.length === 3 && segments[2] === "video";
+  if (segments.length === 3 && segments[2] === "video") return true;
+  return segments.length >= 4 && segments[2] === "tree";
 }

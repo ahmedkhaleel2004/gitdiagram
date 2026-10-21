@@ -1,7 +1,7 @@
 "use client";
 
 import type { RefObject } from "react";
-import { ChevronDown, Clapperboard, RotateCcw, Scan } from "lucide-react";
+import { ChevronDown, Clapperboard, GitBranch, RotateCcw, Scan } from "lucide-react";
 import { GitHubIcon } from "~/components/icons/github-icon";
 import { DiagramExport } from "./diagram-export";
 import { NewBadge } from "~/components/new-badge";
@@ -9,6 +9,7 @@ import styles from "./workspace.module.css";
 
 export function RepositoryToolbar({
   repository,
+  branch,
   diagram,
   historyId,
   historyVisible,
@@ -24,6 +25,7 @@ export function RepositoryToolbar({
   readme,
 }: {
   repository: string;
+  branch?: string;
   diagram: string;
   historyId: string;
   historyVisible: boolean;
@@ -43,12 +45,32 @@ export function RepositoryToolbar({
       <h1 className={styles.repositoryTitle}>
         <a
           className={styles.actionButton}
-          href={`https://github.com/${repository}`}
+          href={
+            branch
+              ? `https://github.com/${repository}/tree/${branch}`
+              : `https://github.com/${repository}`
+          }
           target="_blank"
           rel="noopener noreferrer"
         >
           <GitHubIcon width={15} height={15} aria-hidden="true" />
           <span>{repository}</span>
+          {branch && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.25rem",
+                fontSize: "0.75rem",
+                padding: "0.125rem 0.375rem",
+                borderRadius: "0.25rem",
+                opacity: 0.85,
+              }}
+            >
+              <GitBranch size={12} aria-hidden="true" />
+              <span>{branch}</span>
+            </span>
+          )}
         </a>
       </h1>
       <div className={styles.actions}>

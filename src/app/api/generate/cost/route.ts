@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { username, repo } = parsed.data;
+    const { username, repo, branch } = parsed.data;
     const { apiKey, githubPat } = await resolveRequestCredentials(request, {
       apiKey: parsed.data.api_key,
       githubPat: parsed.data.github_pat,
@@ -141,7 +141,13 @@ export async function POST(request: Request) {
       }
     }
 
-    const githubData = await getGithubData(username, repo, githubPat, signal);
+    const githubData = await getGithubData(
+      username,
+      repo,
+      githubPat,
+      signal,
+      ...(branch ? [branch] : []),
+    );
     const context = prepareRepositoryContext(githubData);
     const analysisModel = selectAnalysisModel({
       provider,

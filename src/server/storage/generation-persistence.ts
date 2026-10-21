@@ -27,6 +27,7 @@ export interface SuccessfulDiagramState {
 export async function persistGenerationResult(params: {
   username: string;
   repo: string;
+  branch?: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
   audit: GenerationSessionAudit;
@@ -61,6 +62,7 @@ export async function persistGenerationResult(params: {
       const artifactWritten = await saveSuccessfulDiagramState({
         username: params.username,
         repo: params.repo,
+        branch: params.branch,
         githubPat: params.githubPat,
         visibility: params.visibility,
         stargazerCount: successfulDiagramState.stargazerCount,
@@ -78,6 +80,7 @@ export async function persistGenerationResult(params: {
             await clearSuccessfulDiagramFailureSummary({
               username: params.username,
               repo: params.repo,
+              branch: params.branch,
               githubPat: params.githubPat,
               visibility: params.visibility,
             });
@@ -101,6 +104,7 @@ export async function persistGenerationResult(params: {
             await writePublicDiagramPreview({
               username: params.username,
               repo: params.repo,
+              branch: params.branch,
               diagram: successfulDiagramState.diagram,
               lastSuccessfulAt,
             });
@@ -116,14 +120,20 @@ export async function persistGenerationResult(params: {
         });
         params.postResponseTasks.push(async () => {
           try {
-            refreshDiagramPagesHere(params.username, params.repo);
-            await updatePublicBrowseIndexForSuccessfulDiagram({
-              username: params.username,
-              repo: params.repo,
-              lastSuccessfulAt,
-              stargazerCount: successfulDiagramState.stargazerCount,
-            });
-            revalidateBrowseIndexCache();
+            refreshDiagramPagesHere(
+              params.username,
+              params.repo,
+              params.branch,
+            );
+            if (!params.branch) {
+              await updatePublicBrowseIndexForSuccessfulDiagram({
+                username: params.username,
+                repo: params.repo,
+                lastSuccessfulAt,
+                stargazerCount: successfulDiagramState.stargazerCount,
+              });
+              revalidateBrowseIndexCache();
+            }
           } catch (error) {
             console.error(
               "Failed to update browse index after completion:",
@@ -133,17 +143,20 @@ export async function persistGenerationResult(params: {
         });
         // Tell Bing and the other IndexNow engines the page changed. It
         // never throws, so a refused ping cannot fail the generation.
-        params.postResponseTasks.push(() =>
-          notifyIndexNow([
-            `${SITE_URL}${getRepoPagePath(params.username, params.repo)}`,
-          ]),
-        );
+        if (!params.branch) {
+          params.postResponseTasks.push(() =>
+            notifyIndexNow([
+              `${SITE_URL}${getRepoPagePath(params.username, params.repo)}`,
+            ]),
+          );
+        }
       }
     } else {
       const auditPersistenceStartedAt = performance.now();
       await persistTerminalSessionAudit({
         username: params.username,
         repo: params.repo,
+        branch: params.branch,
         githubPat: params.githubPat,
         visibility: params.visibility,
         audit: params.audit,
