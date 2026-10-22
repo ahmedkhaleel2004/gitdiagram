@@ -229,9 +229,10 @@ export async function getSponsorStats(): Promise<SponsorStats> {
       throw new Error("Sponsor analytics returned inconsistent totals.");
     }
     return { ...recent, ...lifetime, githubStars };
-  } catch {
+  } catch (error) {
     console.warn(
       "Sponsor analytics unavailable; serving the dated fallback snapshot.",
+      error instanceof Error ? `${error.name}: ${error.message}` : error,
     );
     return { ...VERIFIED_SNAPSHOT, githubStars };
   }
