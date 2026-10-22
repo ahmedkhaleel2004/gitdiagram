@@ -33,6 +33,10 @@ const pinnedLogoHashes: Record<string, string> = {
     "7767fb969e8b8f120cad6e5f21a283cca6487ea9c15d4c1965d1ab0d1834d838",
   "/sponsors/sentry-wordmark-white.svg":
     "833659a964309982d4a0d2573edc2dae3209166cf68e2ee012b2e62e70f67539",
+  "/sponsors/temporal-wordmark.svg":
+    "bf66c5517502e435b783c2c5f42e4d574073c5c36b472ee277d5e16ea0b74b86",
+  "/sponsors/temporal-wordmark-white.svg":
+    "ee6560527b80f0e786507a37690b68b0906739e969c67bc605a0f191bf08f551",
 };
 
 it("has a creative for every scheduled campaign", () => {

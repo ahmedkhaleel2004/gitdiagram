@@ -1,5 +1,20 @@
 # Sponsor campaign reporting and scheduling
 
+## Temporal
+
+Two bookings from Temporal Technologies, Inc. (Teresa Czornyj, with Mike
+Partin), agreed October 20, 2026 and billed together on Stripe invoice
+NIKTVZPC-0001 (US$4,498, due November 6; their accounts team pays by bank
+transfer). `temporal-2026-12` is the other shared website spot beside Sentry,
+`2026-12-19T05:00:00Z` to `2027-01-18T05:00:00Z` ($999), rotating 50/50 with
+it. `temporal-2027-01` is the exclusive campaign right after (website and
+GitHub README, no Markdown line), to `2027-02-17T05:00:00Z` ($3,499). Clicks go
+to `https://temporal.io/` with the site's default UTM tags
+(`utm_campaign=temporal_30_days` and `temporal_exclusive_30_days`) until
+Temporal sends its own link and button text. The line, button and horizontal
+wordmark are the ones previewed to them on October 19. If the invoice is not
+paid before December 19, both campaigns come off the schedule.
+
 ## Sentry
 
 `sentry-2026-12` is a shared website spot (homepage, repository pages and

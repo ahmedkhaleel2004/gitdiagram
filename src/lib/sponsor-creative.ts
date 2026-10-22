@@ -89,4 +89,30 @@ export const sponsorCreatives: Record<SponsorCampaignId, SponsorCreative> = {
       readmeWidth: 112,
     },
   },
+  "temporal-2026-12": {
+    name: "Temporal",
+    message: "The world's best AI runs on Temporal.",
+    action: "Try Temporal",
+    logo: {
+      src: "/sponsors/temporal-wordmark.svg",
+      darkSrc: "/sponsors/temporal-wordmark-white.svg",
+      width: 1548.8,
+      height: 390.4,
+      kind: "wordmark",
+      readmeWidth: 112,
+    },
+  },
+  "temporal-2027-01": {
+    name: "Temporal",
+    message: "The world's best AI runs on Temporal.",
+    action: "Try Temporal",
+    logo: {
+      src: "/sponsors/temporal-wordmark.svg",
+      darkSrc: "/sponsors/temporal-wordmark-white.svg",
+      width: 1548.8,
+      height: 390.4,
+      kind: "wordmark",
+      readmeWidth: 112,
+    },
+  },
 };

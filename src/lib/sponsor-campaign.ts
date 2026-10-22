@@ -88,6 +88,28 @@ export const sentryCampaign = {
   markdown: true,
 } as const satisfies SponsorCampaign;
 
+// Agreed October 20, 2026 (invoice NIKTVZPC-0001, due November 6): the other
+// shared half beside Sentry, then the exclusive run right after it.
+export const temporalSharedCampaign = {
+  id: "temporal-2026-12",
+  sponsor: "Temporal",
+  package: "shared",
+  destination: "https://temporal.io/",
+  utmCampaign: "temporal_30_days",
+  startsAt: sentryCampaign.startsAt,
+  endsAt: sentryCampaign.endsAt,
+} as const satisfies SponsorCampaign;
+
+export const temporalExclusiveCampaign = {
+  id: "temporal-2027-01",
+  sponsor: "Temporal",
+  package: "exclusive",
+  destination: "https://temporal.io/",
+  utmCampaign: "temporal_exclusive_30_days",
+  startsAt: sentryCampaign.endsAt,
+  endsAt: "2027-02-17T05:00:00.000Z",
+} as const satisfies SponsorCampaign;
+
 export const scheduledSponsorCampaigns = [
   sentCampaign,
   coderabbitCampaign,
@@ -95,6 +117,8 @@ export const scheduledSponsorCampaigns = [
   // Before MeteorOps so Sentry's logo leads it in the /advertise row.
   sentryCampaign,
   meteoropsCampaign,
+  temporalSharedCampaign,
+  temporalExclusiveCampaign,
 ] as const;
 export type ScheduledSponsorCampaign =
   (typeof scheduledSponsorCampaigns)[number];

@@ -6,6 +6,7 @@ import {
   nangoCampaign,
   sentCampaign,
   sentryCampaign,
+  temporalExclusiveCampaign,
   type BookedSponsorCampaign,
 } from "~/lib/sponsor-campaign";
 import type { SponsorStats } from "~/server/sponsor-stats";
@@ -30,20 +31,19 @@ const stats: SponsorStats = {
 
 describe("advertise availability", () => {
   it("follows the booked schedule instead of fixed dates", () => {
-    // Nango and MeteorOps hold both shared halves; Sentry holds one half
-    // after them, so the other half opens when they end.
+    // Nango and MeteorOps hold both shared halves, then Sentry and Temporal,
+    // then Temporal alone, so nothing opens before Temporal's run ends.
     for (const now of [
       Date.parse(sentCampaign.startsAt),
       Date.parse(coderabbitCampaign.endsAt) - 1,
     ]) {
       expect(createSponsorBooking(now)).toMatchObject({
-        availability:
-          "Shared spot from December 19, 2026. Exclusive from January 18, 2027.",
+        availability: "Next available: February 17, 2027.",
         offerTiming:
-          "A shared spot can start from December 19, 2026. Exclusive campaigns start from January 18, 2027, after Sentry’s run.",
+          "New campaigns start from February 17, 2027, after Temporal’s run.",
         bookedBy: {
-          label: "December 19 campaign booked by",
-          name: "Sentry",
+          label: "January 18 campaign booked by",
+          name: "Temporal",
         },
       });
       expect(
@@ -126,14 +126,26 @@ describe("advertise availability", () => {
         .availability,
     ).toBe("Shared spot available now. Exclusive from December 19, 2026.");
     expect(
-      createSponsorBooking(Date.parse(nangoCampaign.startsAt)).availability,
+      createSponsorBooking(Date.parse(nangoCampaign.startsAt), [
+        nangoCampaign,
+        meteoropsCampaign,
+        sentryCampaign,
+      ]).availability,
     ).toBe(
       "Shared spot from December 19, 2026. Exclusive from January 18, 2027.",
     );
     expect(
-      createSponsorBooking(Date.parse(sentryCampaign.startsAt)).availability,
+      createSponsorBooking(Date.parse(sentryCampaign.startsAt), [
+        sentryCampaign,
+      ]).availability,
     ).toBe("Shared spot available now. Exclusive from January 18, 2027.");
-    expect(createSponsorBooking(Date.parse(sentryCampaign.endsAt))).toEqual({
+    for (const campaign of [nangoCampaign, sentryCampaign])
+      expect(
+        createSponsorBooking(Date.parse(campaign.startsAt)).availability,
+      ).toBe("Next available: February 17, 2027.");
+    expect(
+      createSponsorBooking(Date.parse(temporalExclusiveCampaign.endsAt)),
+    ).toEqual({
       availability: "Available now.",
       offerTiming: "New campaigns can start right away.",
       bookedBy: null,
@@ -149,12 +161,15 @@ describe("advertise availability", () => {
         )}
       />,
     );
-    expect(screen.getByText("December 19 campaign booked by")).toBeTruthy();
-    // Sentry's logo: once in the advertiser row, twice in the booking note.
-    expect(screen.getAllByAltText("Sentry").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("January 18 campaign booked by")).toBeTruthy();
+    // Temporal's logo: once in the advertiser row, twice in the booking note.
+    expect(screen.getAllByAltText("Temporal").length).toBeGreaterThanOrEqual(2);
     view.rerender(
       <SponsorPageContent
-        content={createSponsorContent(stats, Date.parse(sentryCampaign.endsAt))}
+        content={createSponsorContent(
+          stats,
+          Date.parse(temporalExclusiveCampaign.endsAt),
+        )}
       />,
     );
     expect(screen.queryByText(/campaign booked by/)).toBeNull();
