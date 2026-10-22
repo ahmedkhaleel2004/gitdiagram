@@ -36,7 +36,7 @@ jobs:
       # ESLint, Vitest (jsdom), Prettier and the budget scripts run on Node,
       # not Bun. The version comes from engines.node in package.json.
       - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: package.json
       - name: Setup Bun
@@ -64,7 +64,11 @@ jobs:
         # patterns) has no patched release yet, so an override cannot fix it.
         # braces only arrives through eslint-config-next's fast-glob (lint
         # tooling, our own globs). Remove this ignore once braces ships a fix.
-        run: bun audit --ignore=GHSA-vfj7-8cjw-p6xm
+        # GHSA-5j98-mcp5-4vw2 (glob 10.2-10.4) is in glob's command-line tool
+        # (-c/--cmd), which nothing here runs: glob 10.3.3 is pinned exactly by
+        # @node-minify/core, a build-time dependency of OpenNext, and Bun only
+        # supports top-level overrides. Remove once node-minify moves past it.
+        run: bun audit --ignore=GHSA-vfj7-8cjw-p6xm --ignore=GHSA-5j98-mcp5-4vw2
       - name: Tests
         run: bun run test
         env:
