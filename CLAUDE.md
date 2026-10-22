@@ -78,7 +78,7 @@ A test keeps the two server configs identical apart from name and placement. The
 ```bash
 curl -sI https://gitdiagram.com | grep -iE 'server|server-timing|x-opennext'   # server: cloudflare
 for c in wrangler.edge.jsonc wrangler.jsonc wrangler.server.jsonc wrangler.server-local.jsonc; do bunx wrangler deployments list -c $c | tail -8; done   # the servers' message is the commit
-gh run list -L 10                      # CI, Cloudflare deploy, Cost watch
+gh run list -L 10                      # CI, Cloudflare deploy
 bun run cf:usage --site                # spend so far and a projected month
 bunx wrangler tail gitdiagram          # live logs (every request is also stored while the credits last)
 bunx wrangler tail gitdiagram-errors   # one site.failure line per failed invocation
@@ -136,7 +136,7 @@ A `GET` under `/api/` (not `/api/internal` or `/api/admin`, no `Authorization` o
 
 ### Cost guards
 
-Billed: Worker requests and CPU, Durable Object requests, R2 writes (two per newly rendered repository page) and reads, and the render containers' memory while awake. Guards: `limits.cpu_ms`, the `LIMIT_*` rate limits in `wrangler.jsonc` (verified search crawlers exempt on repository pages), a zone rate-limiting rule, budget alert emails (a day behind), and the hourly `Cost watch` workflow, which fails (so GitHub emails Ahmed) when the last six hours project past its ceiling for the whole account. Staging load tests count toward it.
+Billed: Worker requests and CPU, Durable Object requests, R2 writes (two per newly rendered repository page) and reads, and the render containers' memory while awake. Guards: `limits.cpu_ms`, the `LIMIT_*` rate limits in `wrangler.jsonc` (verified search crawlers exempt on repository pages), and a zone rate-limiting rule. No spend alerts on purpose (Ahmed, 2026-10-19: no usage or budget alerts on Cloudflare): the billing alerts were deleted and the `Cost watch` workflow lost its hourly schedule on 2026-10-22; it still runs by hand (`gh workflow run "Cost watch"`) to project the month.
 
 **Startup credits** ($10,000 from Cloudflare for Startups, to 2027-10-07; balance: `GET /accounts/<id>/billing/credits`, or Billing > Credits). **Not yet proven to pay for anything:** the first invoice since they arrived is due about 2026-10-28, and Cloudflare's list of covered products names Workers, Durable Objects and R2 but not Containers or Workers Logs. Until an invoice shows them applied, spend as if the card pays. Switched on because of them: every request is logged (`head_sampling_rate` 1 in the four configs; inside the included 20M events at today's traffic), and gitdiagram.com and auctionlens.ca are on the Enterprise zone plan at $0 (they revert to Free when the program ends). Built but off: `RENDER_KEEP_AWAKE` (`wrangler.jsonc`), which keeps the render containers awake for about $230 a month.
 

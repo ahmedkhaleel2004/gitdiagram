@@ -1,15 +1,12 @@
 name: Cost watch
 
-# Cloudflare has no spending cap, and its own budget emails run a day behind.
-# Every hour this projects a month from the last six hours of usage (long enough that a
-# fifteen-minute burst of test renders does not trip it; abuse at $50 a day
-# still does within the hour)
-# (scripts/cf-usage.mjs) and fails when that is over the ceiling, so GitHub
-# emails the owner within the hour. Normal is $25 to $60, plus up to $55 for
-# logging every request (since 2026-10-07); Vercel was $102.56.
+# A Cloudflare spend projection, run by hand only: it projects a month from the
+# last N hours of usage (scripts/cf-usage.mjs) and fails above the ceiling.
+# The hourly schedule was removed on 2026-10-22 on Ahmed's rule: no usage or
+# budget alerts on Cloudflare ("go all out on cloudflare cuz its good"); it had
+# failed and emailed him every hour at a projected ~$222 a month.
+# Run it with: gh workflow run "Cost watch" -f ceiling=300
 on:
-  schedule:
-    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       ceiling:
