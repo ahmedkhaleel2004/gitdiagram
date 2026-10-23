@@ -104,10 +104,7 @@ describe("sponsor stats", () => {
       "timestamp < toDateTime(1789603200, 'UTC')",
     );
     // No forced recomputation: PostHog may reuse its result for the same query.
-    expect([recent.refresh, lifetime.refresh]).toEqual([
-      "blocking",
-      "blocking",
-    ]);
+    expect([recent.refresh, lifetime.refresh]).toEqual(["async", "async"]);
     expect(JSON.stringify(result)).not.toContain("test-query-key");
   });
 
@@ -161,8 +158,11 @@ describe("sponsor stats", () => {
   it("rejects incomplete query responses instead of publishing zero metrics", async () => {
     sources({ recent: [82000, 32000] });
     expect((await getSponsorStats()).monthlyVisitors).toBe(31666);
+    // A bad lifetime row only costs the lifetime totals.
     sources({ lifetime: [900000] });
-    expect((await getSponsorStats()).monthlyVisitors).toBe(31666);
+    const result = await getSponsorStats();
+    expect(result.monthlyVisitors).toBe(32000);
+    expect(result.lifetimeVisitors).toBe(366235);
   });
 
   it("rejects inconsistent audience totals and invalid GitHub data", async () => {
@@ -171,9 +171,49 @@ describe("sponsor stats", () => {
     sources({ lifetime: [900000, 20000, trackedSince] });
     expect((await getSponsorStats()).asOf).toBe("2026-09-17T22:40:53.000Z");
     sources({ lifetime: [900000, 380000, 0] });
-    expect((await getSponsorStats()).asOf).toBe("2026-09-17T22:40:53.000Z");
+    expect((await getSponsorStats()).lifetimeVisitors).toBe(366235);
     sources({ stars: "unknown" });
     expect((await getSponsorStats()).githubStars).toBe(16178);
+  });
+
+  it("waits for a query PostHog runs in the background", async () => {
+    request.mockImplementation(async (url, init) => {
+      if (String(url).includes("github.com"))
+        return Response.json({ stargazers_count: 16200 });
+      if (init?.method === "POST") {
+        const { name } = JSON.parse(init.body as string) as QueryBody;
+        return name === "sponsor-stats-lifetime"
+          ? Response.json({ query_status: { id: "q1", complete: false } })
+          : Response.json({ results: [recentRow] });
+      }
+      expect(String(url)).toContain("/query/q1/");
+      return Response.json({
+        query_status: {
+          id: "q1",
+          complete: true,
+          results: { results: [lifetimeRow] },
+        },
+      });
+    });
+    const result = await getSponsorStats();
+    expect(result.lifetimeVisitors).toBe(380000);
+    expect(result.monthlyVisitors).toBe(32000);
+  });
+
+  it("keeps fresh 30-day figures when the lifetime query fails", async () => {
+    request.mockImplementation(async (url, init) => {
+      if (String(url).includes("github.com"))
+        return Response.json({ stargazers_count: 16200 });
+      const { name } = JSON.parse(init!.body as string) as QueryBody;
+      return name === "sponsor-stats-lifetime"
+        ? new Response(null, { status: 504 })
+        : Response.json({ results: [recentRow] });
+    });
+    const result = await getSponsorStats();
+    expect(result.asOf).toBe("2026-09-17T23:00:00.000Z");
+    expect(result.monthlyVisitors).toBe(32000);
+    expect(result.lifetimeVisitors).toBe(366235);
+    expect(result.trackedSince).toBe("2024-12-26T12:39:22.000Z");
   });
 
   it("does not send credentials to a malformed project URL", async () => {

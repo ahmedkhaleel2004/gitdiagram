@@ -64,22 +64,32 @@ function posthogCredentials() {
   return { apiKey, projectId };
 }
 
-async function queryPostHog(name: string, query: string) {
+const queryStatus = z.object({
+  query_status: z.object({
+    id: z.string(),
+    complete: z.boolean().optional(),
+    error: z.boolean().optional(),
+    error_message: z.string().nullish(),
+    results: z.unknown().optional(),
+  }),
+});
+
+// How long one refresh waits for a query PostHog runs in the background. A
+// query still running after this keeps going on PostHog's side, and the next
+// refresh picks up its cached result.
+const ASYNC_POLL_MS = 1_500;
+const ASYNC_POLLS = 13; // About 20 seconds.
+
+async function postHogRequest(path: string, init: RequestInit = {}) {
   const { apiKey, projectId } = posthogCredentials();
   const response = await fetch(
-    `https://us.posthog.com/api/projects/${projectId}/query/`,
+    `https://us.posthog.com/api/projects/${projectId}/query/${path}`,
     {
-      method: "POST",
+      ...init,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        query: { kind: "HogQLQuery", query },
-        // Reuses PostHog's cached result for an identical query.
-        refresh: "blocking",
-        name,
-      }),
       cache: "no-store",
       signal: AbortSignal.timeout(25_000),
     },
@@ -88,6 +98,39 @@ async function queryPostHog(name: string, query: string) {
     throw new Error(`Sponsor analytics refresh failed (${response.status}).`);
   }
   return (await response.json()) as unknown;
+}
+
+// Asks PostHog for its cached result, or starts the query in the background
+// (no 10-second limit there, which the lifetime scan outgrew in October 2026)
+// and waits for it.
+async function queryPostHog(name: string, query: string) {
+  const first = await postHogRequest("", {
+    method: "POST",
+    body: JSON.stringify({
+      query: { kind: "HogQLQuery", query },
+      // Reuses PostHog's cached result for an identical query.
+      refresh: "async",
+      name,
+    }),
+  });
+  const pending = queryStatus.safeParse(first);
+  if (!pending.success) return first;
+  let status = pending.data.query_status;
+  for (let poll = 0; !status.complete; poll++) {
+    if (poll === ASYNC_POLLS) {
+      throw new Error("Sponsor analytics query is still running.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, ASYNC_POLL_MS));
+    status = queryStatus.parse(
+      await postHogRequest(`${encodeURIComponent(status.id)}/`),
+    ).query_status;
+  }
+  if (status.error) {
+    throw new Error(
+      `Sponsor analytics query failed: ${status.error_message ?? "unknown"}`,
+    );
+  }
+  return status.results;
 }
 
 // Floors the current time to a whole number of seconds `step`.
@@ -208,8 +251,9 @@ export async function getSponsorStats(): Promise<SponsorStats> {
     return VERIFIED_SNAPSHOT;
   }
 
-  const [analytics, stars] = await Promise.allSettled([
-    Promise.all([readRecentStats(), readLifetimeStats()]),
+  const [recent, lifetime, stars] = await Promise.allSettled([
+    readRecentStats(),
+    readLifetimeStats(),
     readGitHubStars(),
   ]);
   if (stars.status === "rejected")
@@ -217,23 +261,47 @@ export async function getSponsorStats(): Promise<SponsorStats> {
   const githubStars =
     stars.status === "fulfilled" ? stars.value : VERIFIED_SNAPSHOT.githubStars;
 
-  try {
-    if (analytics.status === "rejected") throw analytics.reason;
-    const [recent, lifetime] = analytics.value;
-    // Lifetime totals end at the start of the UTC day, up to a day before the
-    // 30-day window ends, but still far exceed it; a smaller one is bad data.
-    if (
-      recent.monthlyVisitors > lifetime.lifetimeVisitors ||
-      recent.monthlyPageviews > lifetime.lifetimePageviews
-    ) {
-      throw new Error("Sponsor analytics returned inconsistent totals.");
-    }
-    return { ...recent, ...lifetime, githubStars };
-  } catch (error) {
+  if (recent.status === "rejected") {
     console.warn(
       "Sponsor analytics unavailable; serving the dated fallback snapshot.",
-      error instanceof Error ? `${error.name}: ${error.message}` : error,
+      describe(recent.reason),
     );
     return { ...VERIFIED_SNAPSHOT, githubStars };
   }
+  // The 30-day figures stay fresh when only the lifetime scan fails; the
+  // lifetime totals then come from the dated snapshot, which they only exceed.
+  let lifetimeStats: Pick<
+    SponsorStats,
+    "trackedSince" | "lifetimeVisitors" | "lifetimePageviews"
+  > = VERIFIED_SNAPSHOT;
+  if (lifetime.status === "fulfilled") {
+    lifetimeStats = lifetime.value;
+  } else {
+    console.warn(
+      "Sponsor lifetime totals unavailable; using the snapshot's.",
+      describe(lifetime.reason),
+    );
+  }
+  // Lifetime totals end at the start of the UTC day, up to a day before the
+  // 30-day window ends, but still far exceed it; a smaller one is bad data.
+  if (
+    recent.value.monthlyVisitors > lifetimeStats.lifetimeVisitors ||
+    recent.value.monthlyPageviews > lifetimeStats.lifetimePageviews
+  ) {
+    console.warn(
+      "Sponsor analytics returned inconsistent totals; serving the dated fallback snapshot.",
+    );
+    return { ...VERIFIED_SNAPSHOT, githubStars };
+  }
+  return {
+    ...recent.value,
+    trackedSince: lifetimeStats.trackedSince,
+    lifetimeVisitors: lifetimeStats.lifetimeVisitors,
+    lifetimePageviews: lifetimeStats.lifetimePageviews,
+    githubStars,
+  };
+}
+
+function describe(error: unknown) {
+  return error instanceof Error ? `${error.name}: ${error.message}` : error;
 }
