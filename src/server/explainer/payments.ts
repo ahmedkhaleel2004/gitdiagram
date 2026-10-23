@@ -72,6 +72,11 @@ async function stripe(): Promise<Stripe> {
   if (!key) throw new Error("STRIPE_SECRET_KEY is not set.");
   stripeModule ??= import("stripe");
   const { default: StripeClient } = await stripeModule;
+  // Workers report a made-up Node version (process.version is "v22.19.0"),
+  // which the Node build sends to Stripe, so Stripe's telemetry kept warning
+  // that the account runs a vulnerable Node. Leave it out, as Stripe's own
+  // Workers build does.
+  if (cloudflareContext()) delete StripeClient.USER_AGENT?.lang_version;
   client = new StripeClient(key, {
     maxNetworkRetries: 2,
     timeout: 10_000,
