@@ -1,4 +1,5 @@
 import type { GithubData } from "./github";
+import { createPathFilter } from "./ignore-rules";
 import type { AIProvider } from "./model-config";
 
 export const MAX_SOURCE_CHARACTERS = 48_000;
@@ -120,7 +121,11 @@ function ranksAhead(
 export function rankSourcePaths(
   data: Pick<GithubData, "pathTypes" | "sourceBlobs">,
   limit: number,
+  extraIgnorePatterns?: readonly string[],
 ): string[] {
+  const isIgnored = extraIgnorePatterns?.length
+    ? createPathFilter(extraIgnorePatterns)
+    : () => false;
   // Scores are fixed per path, so they are computed once; each pick is then
   // one pass over the candidates (in tree order) with only the diversity
   // penalty changing between picks.
@@ -130,6 +135,7 @@ export function rankSourcePaths(
     if (
       type !== "blob" ||
       !isArchitectureSource(path) ||
+      isIgnored(path) ||
       (size !== undefined && size > MAX_SOURCE_FILE_BYTES)
     )
       continue;
@@ -214,14 +220,19 @@ export function rankSourcePaths(
 
 export function selectSourcePaths(
   data: Pick<GithubData, "pathTypes" | "sourceBlobs">,
+  extraIgnorePatterns?: readonly string[],
 ): string[] {
-  return rankSourcePaths(data, MAX_SOURCE_FILES);
+  return rankSourcePaths(data, MAX_SOURCE_FILES, extraIgnorePatterns);
 }
 
-export function prepareRepositoryContext(data: GithubData) {
+export function prepareRepositoryContext(
+  data: GithubData,
+  extraIgnorePatterns?: readonly string[],
+) {
   const ranked = rankSourcePaths(
     data,
     MAX_SOURCE_FILES + MAX_REFERENCE_FILES + MAX_LISTED_FILES,
+    extraIgnorePatterns,
   );
   const selectedPaths = ranked.slice(0, MAX_SOURCE_FILES);
   const referencePaths = ranked.slice(
@@ -229,8 +240,12 @@ export function prepareRepositoryContext(data: GithubData) {
     MAX_SOURCE_FILES + MAX_REFERENCE_FILES,
   );
   const listedPaths = ranked.slice(MAX_SOURCE_FILES + MAX_REFERENCE_FILES);
-  const allPaths = data.fileTree.split("\n");
+  const isIgnored = extraIgnorePatterns?.length
+    ? createPathFilter(extraIgnorePatterns)
+    : () => false;
+  const allPaths = data.fileTree.split("\n").filter((path) => !isIgnored(path));
   const runtimePaths = allPaths.filter(isArchitectureSource);
+
   // Large code repositories do not need test/asset inventories in the model
   // prompt. Keep the original tree for small or primarily non-code projects.
   const contextPaths = runtimePaths.length > 40 ? runtimePaths : allPaths;
