@@ -85,7 +85,7 @@ export default function RootLayout({
         {/* Before any chunk loads: reload once if one fails (see chunk-reload.ts). */}
         <script dangerouslySetInnerHTML={{ __html: chunkReloadScript }} />
       </head>
-      <body className="flex min-h-screen flex-col">
+      <body className="flex min-h-screen flex-col" suppressHydrationWarning>
         <CSPostHogProvider>
           <SponsorCampaignProvider {...renderedSponsorSchedule()}>
             <Header />

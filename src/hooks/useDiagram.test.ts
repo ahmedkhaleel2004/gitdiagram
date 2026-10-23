@@ -161,6 +161,107 @@ describe("useDiagram", () => {
     expect(result.current.diagram).toContain("flowchart TD");
   });
 
+  describe("for a commit", () => {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+
+    it("looks the commit up and reports the resolved SHA", async () => {
+      getDiagramState.mockResolvedValueOnce({
+        diagram: "flowchart TD\nA-->C",
+        explanation: "commit diagram",
+        graph: null,
+        latestSessionAudit: null,
+        lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+        commit: sha,
+      });
+
+      const { result } = renderHook(() =>
+        useDiagram("acme", "demo", null, false, sha.slice(0, 7)),
+      );
+
+      await waitFor(() => expect(result.current.diagram).toContain("A-->C"));
+
+      expect(getDiagramState).toHaveBeenCalledWith(
+        "acme",
+        "demo",
+        sha.slice(0, 7),
+      );
+      expect(result.current.commit).toBe(sha);
+      // A stored diagram is reopened without another model call.
+      expect(runGeneration).not.toHaveBeenCalled();
+    });
+
+    it("generates for the commit only when nothing is stored", async () => {
+      getDiagramState.mockResolvedValueOnce({
+        diagram: null,
+        explanation: null,
+        graph: null,
+        latestSessionAudit: null,
+        lastSuccessfulAt: null,
+        commit: sha,
+      });
+
+      const { result } = renderHook(() =>
+        useDiagram("acme", "demo", null, false, sha.slice(0, 7)),
+      );
+
+      await waitFor(() => expect(runGeneration).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.commit).toBe(sha);
+    });
+
+    it("does not download an authoritative server-rendered commit state twice", async () => {
+      const { result } = renderHook(() =>
+        useDiagram(
+          "acme",
+          "demo",
+          {
+            diagram: "flowchart TD\nA-->B",
+            explanation: "server diagram",
+            graph: null,
+            latestSessionAudit: null,
+            lastSuccessfulAt: "2026-03-28T12:00:00.000Z",
+            commit: sha,
+          },
+          true,
+          sha,
+        ),
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.commit).toBe(sha);
+      expect(getDiagramState).not.toHaveBeenCalled();
+      expect(runGeneration).not.toHaveBeenCalled();
+    });
+
+    it("shows a commit the server rejected as an error, without generating", async () => {
+      getDiagramState.mockRejectedValueOnce(
+        new DiagramStreamHttpError(
+          "We couldn't find that commit in this repository.",
+          404,
+          "COMMIT_NOT_FOUND",
+        ),
+      );
+
+      const { result } = renderHook(() =>
+        useDiagram("acme", "demo", null, false, "deadbeef"),
+      );
+
+      await waitFor(() =>
+        expect(result.current.error).toContain("couldn't find that commit"),
+      );
+      expect(runGeneration).not.toHaveBeenCalled();
+    });
+
+    it("has no commit on a default-branch diagram", async () => {
+      const { result } = renderHook(() => useDiagram("acme", "demo"));
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.commit).toBeUndefined();
+    });
+  });
+
   it("renders an old diagram without surfacing a latest failed audit on refresh", async () => {
     const { result } = renderHook(() =>
       useDiagram("acme", "demo", {

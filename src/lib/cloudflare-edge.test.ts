@@ -484,3 +484,41 @@ describe("isPagePath", () => {
     "/sitemap/0.xml/x/y",
   ])("%s is not", (path) => expect(isPagePath(path)).toBe(false));
 });
+
+describe("commit pages", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const browser = "Mozilla/5.0 Safari";
+
+  it("are pages the edge Worker sends straight to the placed server", () => {
+    expect(isPagePath(`/acme/demo/commit/${sha}`)).toBe(true);
+    expect(isPagePath(`/acme/demo/commit/${sha}/`)).toBe(true);
+    expect(isPagePath("/acme/demo/commit/abc1234")).toBe(true);
+  });
+
+  it("are not pages for other shapes under a repository", () => {
+    expect(isPagePath("/acme/demo/commit")).toBe(false);
+    expect(isPagePath(`/acme/demo/commits/${sha}`)).toBe(false);
+    expect(isPagePath(`/acme/demo/blob/${sha}/commit`)).toBe(false);
+    expect(isPagePath(`/acme/demo/commit/${sha}/files`)).toBe(false);
+  });
+
+  it("are limited per address like repository pages, which each cost a render", () => {
+    expect(edgeDecision(`/acme/demo/commit/${sha}`, browser)).toEqual({
+      action: "limit",
+      limit: "LIMIT_REPO_PAGE",
+    });
+    expect(edgeDecision(`/acme/demo/commit/${sha}`, "bingbot/2.0", true)).toBe(
+      null,
+    );
+  });
+
+  it("keep the blocked crawlers off, and the site's own paths out of it", () => {
+    expect(
+      edgeDecision(`/acme/demo/commit/${sha}`, "Mozilla/5.0 Amazonbot/0.1")
+        ?.action,
+    ).toBe("deny");
+    expect(edgeDecision(`/api/demo/commit/${sha}`, browser)).toBeNull();
+    expect(edgeDecision(`/acme/demo/commit`, browser)).toBeNull();
+    expect(edgeDecision(`/acme/demo/commits/${sha}`, browser)).toBeNull();
+  });
+});

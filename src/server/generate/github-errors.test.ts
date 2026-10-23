@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { classifyGitHubError, GitHubRequestError } from "./github-errors";
+import {
+  classifyGitHubError,
+  CommitResolutionError,
+  GitHubRequestError,
+} from "./github-errors";
 
 describe("GitHub generation errors", () => {
   it.each([
@@ -45,5 +49,38 @@ describe("GitHub generation errors", () => {
   });
   it("does not relabel unrelated model or storage failures", () => {
     expect(classifyGitHubError(new Error("storage failed"), false)).toBeNull();
+  });
+});
+
+describe("commit resolution errors", () => {
+  it.each([
+    ["invalid", "COMMIT_SHA_INVALID", 400],
+    ["not_found", "COMMIT_NOT_FOUND", 404],
+    ["ambiguous", "COMMIT_AMBIGUOUS", 422],
+  ] as const)("maps %s to %s", (failure, errorCode, status) => {
+    expect(
+      classifyGitHubError(new CommitResolutionError(failure), false),
+    ).toMatchObject({ errorCode, status });
+  });
+
+  it("tells the three apart in plain words", () => {
+    const messages = (["invalid", "not_found", "ambiguous"] as const).map(
+      (failure) =>
+        classifyGitHubError(new CommitResolutionError(failure), true)?.message,
+    );
+
+    expect(new Set(messages).size).toBe(3);
+    expect(messages[2]).toMatch(/more than one commit/u);
+  });
+
+  it("keeps the private-repository error distinct from a missing commit", () => {
+    expect(
+      classifyGitHubError(
+        new Error(
+          "A GitHub token is required to analyze a private repository.",
+        ),
+        false,
+      )?.errorCode,
+    ).toBe("GITHUB_AUTH_REQUIRED");
   });
 });

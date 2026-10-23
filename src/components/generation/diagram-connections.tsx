@@ -14,9 +14,12 @@ import styles from "./diagram-connections.module.css";
 export function DiagramConnections({
   graph,
   repository,
+  commit,
 }: {
   graph: DiagramGraph;
   repository: string;
+  /** The commit the diagram was made from; evidence links point at it. */
+  commit?: string;
 }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
@@ -60,7 +63,7 @@ export function DiagramConnections({
           >
             {rows.map((row) => {
               const url = row.evidencePath
-                ? evidenceUrl(repository, row.evidencePath)
+                ? evidenceUrl(repository, row.evidencePath, commit)
                 : null;
               return (
                 <li key={row.key}>

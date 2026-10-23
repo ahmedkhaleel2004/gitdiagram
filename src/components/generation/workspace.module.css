@@ -255,6 +255,27 @@
   width: 100%;
   padding: 14px 5px 4px 0;
 }
+.commitChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 4px 9px;
+  border: 1.5px solid var(--edge);
+  border-radius: 5px;
+  background: var(--wash);
+  color: var(--ink);
+  font-size: 12px;
+  text-decoration: none;
+}
+.commitChip > svg {
+  color: var(--muted);
+}
+.commitSha {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+}
 .repositoryTitle {
   width: fit-content;
   max-width: 100%;

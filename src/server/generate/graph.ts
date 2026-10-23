@@ -452,9 +452,16 @@ export function compileDiagramGraph(params: {
   username: string;
   repo: string;
   branch: string;
+  /**
+   * Full SHA of the commit the diagram is made from. Every node link then
+   * points at that commit (`/blob/<sha>/...`, `/tree/<sha>/...`) instead of
+   * the branch.
+   */
+  commit?: string;
   pathTypes?: ReadonlyMap<string, RepositoryPathType>;
 }): string {
-  const { graph, username, repo, branch, pathTypes } = params;
+  const { graph, username, repo, pathTypes } = params;
+  const ref = params.commit ?? params.branch;
   const lines: string[] = ["flowchart TD"];
   const groupedNodeIds = new Set<string>();
   const classAssignments = new Map<string, string[]>();
@@ -507,7 +514,7 @@ export function compileDiagramGraph(params: {
     lines.push("");
     for (const node of nodesWithPaths) {
       lines.push(
-        `click ${mermaidNodeId(node.id)} "${buildGitHubUrl(node.path!, username, repo, branch, pathTypes?.get(node.path!))}"`,
+        `click ${mermaidNodeId(node.id)} "${buildGitHubUrl(node.path!, username, repo, ref, pathTypes?.get(node.path!))}"`,
       );
     }
   }

@@ -22,6 +22,8 @@ export interface DiagramStateRecord {
   graph: DiagramGraph | null;
   latestSessionAudit: GenerationSessionAudit | null;
   lastSuccessfulAt: string | null;
+  /** Full SHA of the commit the state is for; absent for the default branch. */
+  commit?: string;
 }
 
 function inferVisibility(params: {
@@ -31,27 +33,35 @@ function inferVisibility(params: {
   return params.visibility ?? (params.githubPat?.trim() ? "private" : "public");
 }
 
+/**
+ * What is stored for a repository, or for one commit of it when `commit` (the
+ * full SHA) is given. The two never mix: a commit reads only its own keys, and
+ * the default-branch state is never shown for a commit.
+ */
 export async function getDiagramStateRecord(
   username: string,
   repo: string,
   githubPat?: string,
+  commit?: string,
 ): Promise<DiagramStateRecord> {
   const storedArtifactState = await getStoredDiagramState({
     username,
     repo,
     githubPat,
+    commit,
   });
   if (storedArtifactState) {
-    return storedArtifactState;
+    return commit ? { ...storedArtifactState, commit } : storedArtifactState;
   }
 
   const storedFailureState = await getStoredFailureState({
     username,
     repo,
     githubPat,
+    commit,
   });
   if (storedFailureState) {
-    return storedFailureState;
+    return commit ? { ...storedFailureState, commit } : storedFailureState;
   }
 
   return {
@@ -60,6 +70,7 @@ export async function getDiagramStateRecord(
     graph: null,
     latestSessionAudit: null,
     lastSuccessfulAt: null,
+    ...(commit ? { commit } : {}),
   };
 }
 
@@ -68,6 +79,8 @@ export async function persistTerminalSessionAudit(params: {
   repo: string;
   githubPat?: string;
   visibility?: ArtifactVisibility;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
   audit: GenerationSessionAudit;
 }) {
   if (params.audit.status !== "failed" && params.audit.status !== "succeeded") {
@@ -79,6 +92,7 @@ export async function persistTerminalSessionAudit(params: {
   const artifactUpdated = await updateArtifactLatestSessionSummary({
     username: params.username,
     repo: params.repo,
+    commit: params.commit,
     githubPat: params.githubPat,
     visibility,
     latestSessionSummary: slimAudit,
@@ -88,6 +102,7 @@ export async function persistTerminalSessionAudit(params: {
     await writeFailureSummary({
       username: params.username,
       repo: params.repo,
+      commit: params.commit,
       githubPat: params.githubPat,
       visibility,
       latestSessionSummary: slimAudit,
@@ -99,6 +114,7 @@ export async function persistTerminalSessionAudit(params: {
     await clearFailureSummary({
       username: params.username,
       repo: params.repo,
+      commit: params.commit,
       githubPat: params.githubPat,
       visibility,
     });
@@ -110,6 +126,8 @@ export async function saveSuccessfulDiagramState(params: {
   repo: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
   stargazerCount: number | null;
   explanation: string;
   graph: DiagramGraph;
@@ -122,6 +140,7 @@ export async function saveSuccessfulDiagramState(params: {
   const artifactWritten = await writeDiagramArtifact({
     username: params.username,
     repo: params.repo,
+    commit: params.commit,
     githubPat: params.githubPat,
     visibility: params.visibility,
     stargazerCount: params.stargazerCount,
@@ -146,6 +165,8 @@ export async function clearSuccessfulDiagramFailureSummary(params: {
   repo: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
 }): Promise<void> {
   await clearFailureSummary(params);
 }

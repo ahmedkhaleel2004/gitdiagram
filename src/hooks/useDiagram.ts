@@ -103,7 +103,16 @@ export function useDiagram(
   repo: string,
   initialState?: DiagramStateResponse | null,
   initialStateIsAuthoritative = false,
+  /**
+   * The commit this page shows, as it was in the address (a short SHA is
+   * fine); the default branch when absent.
+   */
+  commit?: string,
 ) {
+  // The full SHA once the server has resolved it, for the link to the commit.
+  const [resolvedCommit, setResolvedCommit] = useState<string | undefined>(
+    commit ? (initialState?.commit ?? commit) : undefined,
+  );
   const [loading, setLoading] = useState<boolean>(
     !Boolean(initialState?.diagram),
   );
@@ -184,6 +193,7 @@ export function useDiagram(
     {
       username,
       repo,
+      commit,
       onComplete: onStreamComplete,
       initialState: toInitialStreamState(initialState),
     },
@@ -284,6 +294,7 @@ export function useDiagram(
       const storedDiagram = stateRecord.diagram;
       const latestAudit = stateRecord.latestSessionAudit;
       const failureMessage = getFailureMessage(latestAudit);
+      if (commit && stateRecord.commit) setResolvedCommit(stateRecord.commit);
       const shouldExposeFailure = !storedDiagram && Boolean(failureMessage);
 
       if (storedDiagram && stateRecord.visibility) {
@@ -329,7 +340,7 @@ export function useDiagram(
 
       return Boolean(storedDiagram);
     },
-    [repositoryAnalytics, setState],
+    [commit, repositoryAnalytics, setState],
   );
 
   const syncDiagramState = useCallback(
@@ -362,7 +373,9 @@ export function useDiagram(
       const startedAt = Date.now();
       let generationStarted = false;
       try {
-        const stateRecord = await getDiagramState(username, repo);
+        const stateRecord = commit
+          ? await getDiagramState(username, repo, commit)
+          : await getDiagramState(username, repo);
         if (!isCurrentSync()) {
           return;
         }
@@ -414,6 +427,7 @@ export function useDiagram(
       applyStoredState,
       beginBackgroundSync,
       beginForegroundOperation,
+      commit,
       finishForegroundOperation,
       isActiveBackgroundSync,
       isActiveForegroundOperation,
@@ -469,7 +483,7 @@ export function useDiagram(
   );
 
   const handleRegenerate = useCallback(async () => {
-    if (isExampleRepo(username, repo)) {
+    if (!commit && isExampleRepo(username, repo)) {
       // The example's Regenerate control stays disabled, but error recovery
       // must still reload its saved diagram after a failed or stopped lookup.
       if (state.status === "error") await getDiagram();
@@ -480,7 +494,14 @@ export function useDiagram(
       "Something went wrong. Please try again later.",
       "regenerate",
     );
-  }, [getDiagram, repo, runGenerationOperation, state.status, username]);
+  }, [
+    commit,
+    getDiagram,
+    repo,
+    runGenerationOperation,
+    state.status,
+    username,
+  ]);
 
   const handleCancel = useCallback(() => {
     // Also invalidate a still-pending cache lookup so it cannot start a new
@@ -588,6 +609,7 @@ export function useDiagram(
   );
 
   return {
+    commit: resolvedCommit,
     diagram,
     error,
     loading,

@@ -5,10 +5,12 @@ import { ChevronDown, Clapperboard, RotateCcw, Scan } from "lucide-react";
 import { GitHubIcon } from "~/components/icons/github-icon";
 import { DiagramExport } from "./diagram-export";
 import { NewBadge } from "~/components/new-badge";
+import { CommitLink } from "./commit-link";
 import styles from "./workspace.module.css";
 
 export function RepositoryToolbar({
   repository,
+  commit,
   diagram,
   historyId,
   historyVisible,
@@ -17,6 +19,7 @@ export function RepositoryToolbar({
   toggleZoom,
   onRegenerate,
   regenerateDisabled,
+  regenerateDisabledReason = "Regeneration is disabled for example repositories.",
   regenerateRef,
   getSvg,
   pending,
@@ -24,6 +27,8 @@ export function RepositoryToolbar({
   readme,
 }: {
   repository: string;
+  /** Full SHA of the commit the diagram shows; absent for the default branch. */
+  commit?: string;
   diagram: string;
   historyId: string;
   historyVisible: boolean;
@@ -32,11 +37,12 @@ export function RepositoryToolbar({
   toggleZoom: () => void;
   onRegenerate: () => void;
   regenerateDisabled: boolean;
+  regenerateDisabledReason?: string;
   regenerateRef: RefObject<HTMLButtonElement | null>;
   getSvg: () => SVGSVGElement | null;
   pending: boolean;
   video?: { id: string; open: boolean; toggle: () => void };
-  readme?: { owner: string; repo: string };
+  readme?: { owner: string; repo: string; commit?: string };
 }) {
   return (
     <div className={styles.resultToolbar}>
@@ -51,6 +57,13 @@ export function RepositoryToolbar({
           <span>{repository}</span>
         </a>
       </h1>
+      {commit && (
+        <CommitLink
+          repository={repository}
+          commit={commit}
+          className={styles.actionButton}
+        />
+      )}
       <div className={styles.actions}>
         {video && (
           <button
@@ -104,11 +117,7 @@ export function RepositoryToolbar({
           type="button"
           className={`${styles.actionButton} ${styles.primary}`}
           disabled={regenerateDisabled || pending}
-          title={
-            regenerateDisabled
-              ? "Regeneration is disabled for example repositories."
-              : undefined
-          }
+          title={regenerateDisabled ? regenerateDisabledReason : undefined}
           onClick={onRegenerate}
         >
           <RotateCcw size={13} aria-hidden="true" /> Regenerate

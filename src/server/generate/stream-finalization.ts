@@ -21,6 +21,8 @@ export interface FinalizeGenerationStreamParams {
   accounting: GenerationUsageAccounting;
   apiKey?: string;
   audit: GenerationSessionAudit;
+  /** Full SHA the run was pinned to; absent for the default branch. */
+  commit?: string;
   /** Where a private result is stored (see RequestCredentials.githubStorageKey). */
   githubStorageKey?: string;
   postResponseTasks: PostResponseTask[];
@@ -104,6 +106,7 @@ export async function finalizeGenerationStream(
     persistenceWarning = await persistGenerationResult({
       username: params.username,
       repo: params.repo,
+      commit: params.commit,
       githubPat: params.githubStorageKey,
       visibility: params.storageVisibility,
       audit,

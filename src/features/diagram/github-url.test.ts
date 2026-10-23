@@ -109,3 +109,61 @@ describe("parseGitHubRepoUrl deep links", () => {
     expect(parseGitHubRepoUrl("https://github.com/vercel//next.js")).toBeNull();
   });
 });
+
+describe("parseGitHubRepoUrl commit urls", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+
+  it("reads the commit out of a GitHub commit url", () => {
+    expect(
+      parseGitHubRepoUrl(`https://github.com/vercel/next.js/commit/${sha}`),
+    ).toEqual({ username: "vercel", repo: "next.js", commit: sha });
+  });
+
+  it("accepts a short SHA, a www host and a trailing slash", () => {
+    expect(
+      parseGitHubRepoUrl("https://www.github.com/acme/demo/commit/0123abc/"),
+    ).toEqual({ username: "acme", repo: "demo", commit: "0123abc" });
+  });
+
+  it("ignores what follows the SHA", () => {
+    for (const suffix of [
+      "/files",
+      "?diff=split",
+      "#diff-abc",
+      "/checks?x=1",
+    ]) {
+      expect(
+        parseGitHubRepoUrl(
+          `https://github.com/acme/demo/commit/${sha}${suffix}`,
+        ),
+      ).toEqual({ username: "acme", repo: "demo", commit: sha });
+    }
+  });
+
+  it("hands the SHA back as written, for the caller to validate", () => {
+    expect(
+      parseGitHubRepoUrl("https://github.com/acme/demo/commit/not-a-sha"),
+    ).toEqual({ username: "acme", repo: "demo", commit: "not-a-sha" });
+  });
+
+  it("strips .git from the repository of a commit url", () => {
+    expect(
+      parseGitHubRepoUrl(`https://github.com/acme/demo.git/commit/${sha}`),
+    ).toEqual({ username: "acme", repo: "demo", commit: sha });
+  });
+
+  it("does not report a commit for other repository pages", () => {
+    for (const url of [
+      "https://github.com/acme/demo/commits/main",
+      "https://github.com/acme/demo/commit",
+      "https://github.com/acme/demo/commit/",
+      "https://github.com/acme/demo/tree/main/commit/abc1234",
+      "https://github.com/acme/demo/pull/1/commits/abc1234",
+      "https://github.com/acme/demo",
+      "acme/demo",
+      "git@github.com:acme/demo.git",
+    ]) {
+      expect(parseGitHubRepoUrl(url)).not.toHaveProperty("commit");
+    }
+  });
+});

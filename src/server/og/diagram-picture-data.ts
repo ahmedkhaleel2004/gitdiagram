@@ -21,10 +21,11 @@ export type DiagramPictureData =
 async function readPictureData(
   username: string,
   repo: string,
+  commit?: string,
 ): Promise<DiagramPictureData | null> {
   // No token: only the public namespace is read, so a private repository's
   // diagram can never be drawn here.
-  const stored = await getStoredDiagramArtifact({ username, repo });
+  const stored = await getStoredDiagramArtifact({ username, repo, commit });
   if (!stored || stored.artifact.visibility !== "public") return null;
   if (!stored.artifact.diagram) return null;
   const graph = diagramGraphSchema.safeParse(stored.artifact.graph);
@@ -36,21 +37,28 @@ async function readPictureData(
 
 /**
  * What the README picture draws for a public repository, or null. Cached
- * under the repository page's own tag, which a new diagram revalidates.
+ * under the repository page's own tag (a commit's under its own), which a new
+ * diagram revalidates.
  */
 export async function getDiagramPictureData(
   username: string,
   repo: string,
+  commit?: string,
 ): Promise<DiagramPictureData | null> {
   const owner = githubUsernameSchema.safeParse(username);
   const name = githubRepoSchema.safeParse(repo);
   if (!owner.success || !name.success) return null;
   return unstable_cache(
-    () => readPictureData(owner.data, name.data),
-    ["diagram-picture", owner.data.toLowerCase(), name.data.toLowerCase()],
+    () => readPictureData(owner.data, name.data, commit),
+    [
+      "diagram-picture",
+      owner.data.toLowerCase(),
+      name.data.toLowerCase(),
+      ...(commit ? [commit] : []),
+    ],
     {
       revalidate: 86400,
-      tags: [getPublicDiagramStateCacheTag(owner.data, name.data)],
+      tags: [getPublicDiagramStateCacheTag(owner.data, name.data, commit)],
     },
   )();
 }

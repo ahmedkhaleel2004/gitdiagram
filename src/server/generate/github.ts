@@ -1,5 +1,6 @@
+import { parseCommitSha } from "~/features/diagram/commit";
 import { getGitHubApiHeaders } from "../github-auth";
-import { GitHubRequestError } from "./github-errors";
+import { CommitResolutionError, GitHubRequestError } from "./github-errors";
 
 interface GitHubRepoResponse {
   default_branch?: string;
@@ -36,6 +37,11 @@ export interface SourceBlob {
 
 export interface GithubData {
   defaultBranch: string;
+  /**
+   * The full SHA of the commit everything below was read at. Absent when the
+   * default branch was read; then `defaultBranch` is the ref.
+   */
+  commitSha?: string;
   fileTree: string;
   readme: string;
   isPrivate: boolean;
@@ -77,6 +83,7 @@ const MAX_PUBLIC_TREE_CACHE_CHARACTERS = 4_000_000;
 // costs a small non-recursive request, so only this many are filled in.
 const MAX_MISSING_TOP_LEVEL_FETCHES = 8;
 const GIT_SHA = /^[a-f0-9]{40,64}$/;
+const FULL_COMMIT_SHA = /^[a-f0-9]{40}$/;
 
 interface PublicTreeCacheEntry {
   etag: string;
@@ -160,22 +167,19 @@ function shouldIncludeFile(path: string): boolean {
     .some((segment) => EXCLUDED_DIRECTORY_SEGMENTS.includes(segment));
 }
 
-async function fetchJsonResult<T>(
+async function fetchGithub(
   url: string,
   headers: HeadersInit,
-  notFoundMessage: string,
   signal?: AbortSignal,
   ifNoneMatch?: string,
-  conflictMessage?: string,
-): Promise<JsonFetchResult<T>> {
+): Promise<Response> {
   const timeoutSignal = AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS);
   const requestHeaders = new Headers(headers);
   if (ifNoneMatch) {
     requestHeaders.set("If-None-Match", ifNoneMatch);
   }
-  let response: Response;
   try {
-    response = await fetch(url, {
+    return await fetch(url, {
       headers: requestHeaders,
       cache: "no-store",
       signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
@@ -186,6 +190,40 @@ async function fetchJsonResult<T>(
     }
     throw error;
   }
+}
+
+async function throwRequestFailed(response: Response): Promise<never> {
+  // GitHub's error body describes *our* credential when the server key is the
+  // one being rejected or throttled, and this message reaches the client and
+  // the persisted audit. Keep the body in the server log only.
+  console.error(
+    JSON.stringify({
+      event: "generate.github.request_failed",
+      status: response.status,
+      request_id: response.headers.get("x-github-request-id"),
+      rate_limit_remaining: response.headers.get("x-ratelimit-remaining"),
+      rate_limit_reset: response.headers.get("x-ratelimit-reset"),
+      retry_after: response.headers.get("retry-after"),
+      body: (await response.text()).slice(0, 500),
+    }),
+  );
+  throw new GitHubRequestError(
+    buildGithubRequestFailedError(response.status),
+    response.status,
+    response.headers.get("x-ratelimit-remaining") === "0" ||
+      response.headers.has("retry-after"),
+  );
+}
+
+async function fetchJsonResult<T>(
+  url: string,
+  headers: HeadersInit,
+  notFoundMessage: string,
+  signal?: AbortSignal,
+  ifNoneMatch?: string,
+  conflictMessage?: string,
+): Promise<JsonFetchResult<T>> {
+  const response = await fetchGithub(url, headers, signal, ifNoneMatch);
 
   if (response.status === 304 && ifNoneMatch) {
     return { notModified: true };
@@ -202,26 +240,7 @@ async function fetchJsonResult<T>(
   }
 
   if (!response.ok) {
-    // GitHub's error body describes *our* credential when the server key is the
-    // one being rejected or throttled, and this message reaches the client and
-    // the persisted audit. Keep the body in the server log only.
-    console.error(
-      JSON.stringify({
-        event: "generate.github.request_failed",
-        status: response.status,
-        request_id: response.headers.get("x-github-request-id"),
-        rate_limit_remaining: response.headers.get("x-ratelimit-remaining"),
-        rate_limit_reset: response.headers.get("x-ratelimit-reset"),
-        retry_after: response.headers.get("retry-after"),
-        body: (await response.text()).slice(0, 500),
-      }),
-    );
-    throw new GitHubRequestError(
-      buildGithubRequestFailedError(response.status),
-      response.status,
-      response.headers.get("x-ratelimit-remaining") === "0" ||
-        response.headers.has("retry-after"),
-    );
+    await throwRequestFailed(response);
   }
 
   return {
@@ -488,11 +507,12 @@ async function getReadme(
   repo: string,
   headers: HeadersInit,
   signal?: AbortSignal,
+  ref?: string,
 ): Promise<string> {
   let data: GitHubReadmeResponse;
   try {
     data = await fetchJson<GitHubReadmeResponse>(
-      `https://api.github.com/repos/${username}/${repo}/readme`,
+      `https://api.github.com/repos/${username}/${repo}/readme${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`,
       headers,
       MISSING_README_MESSAGE,
       signal,
@@ -532,14 +552,119 @@ async function getReadme(
   return readme;
 }
 
+/** What a read of a repository can be pinned to. */
+export interface GithubReadOptions {
+  /**
+   * A commit SHA as the visitor gave it (7 to 40 hexadecimal characters). It
+   * is resolved to the full SHA first, and every later read (tree, README,
+   * source files) is at that commit instead of the default branch.
+   */
+  commit?: string;
+}
+
+function readCommitSha(body: string): string | null {
+  const text = body.trim();
+  if (!text) return null;
+  // `application/vnd.github.sha` answers with the bare SHA; the default media
+  // type answers with the whole commit as JSON.
+  if (text.startsWith("{")) {
+    try {
+      const sha = (JSON.parse(text) as { sha?: unknown }).sha;
+      return typeof sha === "string" ? sha.trim().toLowerCase() : null;
+    } catch {
+      return null;
+    }
+  }
+  return text.toLowerCase();
+}
+
+/**
+ * Resolves a short or full commit SHA to the commit's full SHA through
+ * `GET /repos/{owner}/{repo}/commits/{ref}`. The format is checked before
+ * GitHub is called, and the answer must really be the commit that SHA names:
+ * the endpoint also resolves branch and tag names, and a hexadecimal-looking
+ * branch must not pass for a commit.
+ *
+ * Failures: `CommitResolutionError` for a SHA that is malformed, unknown to
+ * the repository, or ambiguous; "Repository not found." when the repository
+ * cannot be read at all; and the private-repository token error when it is
+ * private and the caller brought no token. GitHub answers 404 for both a
+ * missing commit and an unreadable repository, so a failed lookup is told
+ * apart by reading the repository itself.
+ */
+async function resolveCommitSha(params: {
+  username: string;
+  repo: string;
+  commit: string;
+  headers: HeadersInit;
+  hasCallerGithubPat: boolean;
+  signal?: AbortSignal;
+}): Promise<string> {
+  const parsed = parseCommitSha(params.commit);
+  if (!parsed) throw new CommitResolutionError("invalid");
+  const { username, repo, headers, signal } = params;
+
+  const requestHeaders = new Headers(headers);
+  // Only the SHA is needed: the commit JSON also lists every changed file.
+  requestHeaders.set("Accept", "application/vnd.github.sha");
+  const response = await fetchGithub(
+    `https://api.github.com/repos/${username}/${repo}/commits/${parsed.sha}`,
+    requestHeaders,
+    signal,
+  );
+
+  if (response.ok) {
+    const sha = readCommitSha(await response.text());
+    if (
+      !sha ||
+      !FULL_COMMIT_SHA.test(sha) ||
+      !sha.startsWith(parsed.sha) ||
+      (parsed.full && sha !== parsed.sha)
+    ) {
+      throw new CommitResolutionError("not_found");
+    }
+    return sha;
+  }
+
+  if (
+    response.status === 404 ||
+    response.status === 409 ||
+    response.status === 422
+  ) {
+    const body = (await response.text().catch(() => "")).slice(0, 500);
+    if (response.status === 422 && /ambiguous/i.test(body)) {
+      throw new CommitResolutionError("ambiguous");
+    }
+    const metadata = await getRepoMetadata(username, repo, headers, signal);
+    if (metadata.isPrivate && !params.hasCallerGithubPat) {
+      throw new Error(PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR);
+    }
+    throw new CommitResolutionError("not_found");
+  }
+
+  return throwRequestFailed(response);
+}
+
 async function fetchGithubData(
   username: string,
   repo: string,
   githubPat?: string,
   signal?: AbortSignal,
+  options?: GithubReadOptions,
 ): Promise<GithubData> {
   const hasCallerGithubPat = Boolean(githubPat?.trim());
   const headers = await getGitHubApiHeaders({ githubPat });
+  // The commit comes first: everything else is read at the resolved SHA.
+  const commitSha = options?.commit
+    ? await resolveCommitSha({
+        username,
+        repo,
+        commit: options.commit,
+        headers,
+        hasCallerGithubPat,
+        signal,
+      })
+    : undefined;
   const metadata = await getRepoMetadata(username, repo, headers, signal);
   const { defaultBranch, isPrivate } = metadata;
 
@@ -554,12 +679,12 @@ async function fetchGithubData(
     getFileTree(
       username,
       repo,
-      defaultBranch,
+      commitSha ?? defaultBranch,
       headers,
       !hasCallerGithubPat && !isPrivate,
       signal,
     ),
-    getReadme(username, repo, headers, signal).then(
+    getReadme(username, repo, headers, signal, commitSha).then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error }),
     ),
@@ -572,6 +697,7 @@ async function fetchGithubData(
 
   return {
     ...metadata,
+    ...(commitSha ? { commitSha } : {}),
     fileTree: tree.fileTree,
     readme: readmeResult.ok ? readmeResult.value : "",
     pathTypes: tree.pathTypes,
@@ -580,22 +706,31 @@ async function fetchGithubData(
   };
 }
 
+/** Whether a failed read may succeed again without the caller's own token. */
+function canRetryWithoutToken(
+  error: unknown,
+  githubPat: string | undefined,
+  signal: AbortSignal | undefined,
+): boolean {
+  return (
+    Boolean(githubPat?.trim()) &&
+    error instanceof GitHubRequestError &&
+    [401, 403, 404].includes(error.status) &&
+    !signal?.aborted
+  );
+}
+
 export async function getGithubData(
   username: string,
   repo: string,
   githubPat?: string,
   signal?: AbortSignal,
+  options?: GithubReadOptions,
 ): Promise<GithubData> {
   try {
-    return await fetchGithubData(username, repo, githubPat, signal);
+    return await fetchGithubData(username, repo, githubPat, signal, options);
   } catch (error) {
-    if (
-      !githubPat?.trim() ||
-      !(error instanceof GitHubRequestError) ||
-      ![401, 403, 404].includes(error.status) ||
-      signal?.aborted
-    )
-      throw error;
+    if (!canRetryWithoutToken(error, githubPat, signal)) throw error;
 
     // An expired/restricted saved token must not block public repositories.
     // No caller token means fetchGithubData rejects private metadata BEFORE
@@ -606,6 +741,7 @@ export async function getGithubData(
         repo,
         undefined,
         signal,
+        options,
       );
       console.info(
         JSON.stringify({ event: "generate.github.public_fallback_succeeded" }),
@@ -614,6 +750,51 @@ export async function getGithubData(
     } catch {
       // Preserve the caller's actionable credential/access failure without
       // revealing whether the server can see a private repository.
+      signal?.throwIfAborted();
+      throw error;
+    }
+  }
+}
+
+/**
+ * The full SHA a short or full commit SHA names in this repository, for a
+ * caller that needs it before any ingestion (looking up the stored diagram of
+ * a commit). Same credentials and fallbacks as `getGithubData`.
+ */
+export async function resolveCommit(
+  username: string,
+  repo: string,
+  commit: string,
+  githubPat?: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const resolve = async (token: string | undefined) => {
+    const headers = await getGitHubApiHeaders({ githubPat: token });
+    const hasCallerGithubPat = Boolean(token?.trim());
+    const sha = await resolveCommitSha({
+      username,
+      repo,
+      commit,
+      headers,
+      hasCallerGithubPat,
+      signal,
+    });
+    if (!hasCallerGithubPat) {
+      // The server's own credentials can read private repositories; a commit
+      // they resolve must not confirm one to a caller who brought no token.
+      const metadata = await getRepoMetadata(username, repo, headers, signal);
+      if (metadata.isPrivate)
+        throw new Error(PRIVATE_REPOSITORY_AUTH_REQUIRED_ERROR);
+    }
+    return sha;
+  };
+  try {
+    return await resolve(githubPat);
+  } catch (error) {
+    if (!canRetryWithoutToken(error, githubPat, signal)) throw error;
+    try {
+      return await resolve(undefined);
+    } catch {
       signal?.throwIfAborted();
       throw error;
     }

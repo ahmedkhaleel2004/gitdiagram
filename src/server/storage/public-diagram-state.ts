@@ -18,17 +18,27 @@ const PUBLIC_DIAGRAM_STATE_REVALIDATE_SECONDS = 21600;
 // How long a page rendered after a failed storage read stays cached.
 const STORAGE_FAILURE_REVALIDATE_SECONDS = 60;
 
-function getCachedPublicDiagramState(username: string, repo: string) {
+function getCachedPublicDiagramState(
+  username: string,
+  repo: string,
+  commit?: string,
+) {
   const getCachedState = unstable_cache(
     async () =>
       getStoredDiagramState({
         username,
         repo,
+        ...(commit ? { commit } : {}),
       }),
-    ["public-diagram-state", username.toLowerCase(), repo.toLowerCase()],
+    [
+      "public-diagram-state",
+      username.toLowerCase(),
+      repo.toLowerCase(),
+      ...(commit ? ["commit", commit.toLowerCase()] : []),
+    ],
     {
       revalidate: PUBLIC_DIAGRAM_STATE_REVALIDATE_SECONDS,
-      tags: [getPublicDiagramStateCacheTag(username, repo)],
+      tags: [getPublicDiagramStateCacheTag(username, repo, commit)],
     },
   );
 
@@ -57,19 +67,25 @@ export interface PublicDiagramStateRead {
 }
 
 /**
- * The repository's stored public diagram state. A slow or failing R2 never
- * throws: the caller renders without it, and that render is only cached
- * briefly. Caught outside the cache, so a failed read is never cached as
- * "none". Deduplicated per request (page and metadata share one read).
+ * The repository's stored public diagram state, or the one of `commit` (a full
+ * SHA) when given. A slow or failing R2 never throws: the caller renders
+ * without it, and that render is only cached briefly. Caught outside the
+ * cache, so a failed read is never cached as "none". Deduplicated per request
+ * (page and metadata share one read).
  */
 export const readPublicDiagramState = cache(
-  async (username: string, repo: string): Promise<PublicDiagramStateRead> => {
+  async (
+    username: string,
+    repo: string,
+    commit?: string,
+  ): Promise<PublicDiagramStateRead> => {
     try {
-      const state = await getCachedPublicDiagramState(username, repo);
+      const state = await getCachedPublicDiagramState(username, repo, commit);
       return { state: state?.diagram ? state : null, failed: false };
     } catch (error) {
       logEvent("error", "repo_page.stored_state_failed", {
         repository: `${username}/${repo}`,
+        ...(commit ? { commit } : {}),
         error: errorText(error),
       });
       await shortenPageLifetime().catch(() => undefined);

@@ -18,10 +18,13 @@ import styles from "./workspace.module.css";
 export function GenerationActivity({
   state,
   repository,
+  commit,
 }: {
   state: DiagramStreamState;
   /** "owner/repo", to link each connection's evidence on GitHub. */
   repository?: string;
+  /** The commit the diagram was made from, when it is not the default branch. */
+  commit?: string;
 }) {
   const step = generationStep(state.status);
   const streaming = [
@@ -70,7 +73,11 @@ export function GenerationActivity({
         </div>
       )}
       {repository && state.status === "complete" && state.graph && (
-        <DiagramConnections graph={state.graph} repository={repository} />
+        <DiagramConnections
+          graph={state.graph}
+          repository={repository}
+          commit={commit}
+        />
       )}
     </>
   );

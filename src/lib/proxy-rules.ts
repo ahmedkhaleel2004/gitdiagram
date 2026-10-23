@@ -69,6 +69,7 @@ function fetchSurface(path: string, markdown: boolean): string {
   if (path === "/") return "home";
   if (path === "/llms.txt" || path === "/llms-full.txt") return path.slice(1);
   if (/^\/[^/]+\/[^/]+\/video\/?$/.test(path)) return "watch";
+  if (/^\/[^/]+\/[^/]+\/commit\/[^/]+\/?$/.test(path)) return "repo-commit";
   if (/^\/[^/]+\/[^/]+\/?$/.test(path)) return "repo";
   return path.split("/")[1]?.slice(0, 30) || "other";
 }

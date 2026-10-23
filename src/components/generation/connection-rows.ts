@@ -1,3 +1,4 @@
+import { parseCommitSha } from "~/features/diagram/commit";
 import type { DiagramGraph } from "~/features/diagram/graph";
 
 export interface ConnectionRow {
@@ -26,10 +27,15 @@ export function connectionRows(graph: DiagramGraph): ConnectionRow[] {
 
 /**
  * A GitHub link for a cited file. HEAD follows the default branch the diagram
- * was generated from; every segment is encoded, so a stored path can never
- * leave github.com or the repository.
+ * was generated from; a diagram of a commit links that commit instead, so the
+ * file is the one that was read. Every segment is encoded, so a stored path
+ * can never leave github.com or the repository.
  */
-export function evidenceUrl(repository: string, path: string): string | null {
+export function evidenceUrl(
+  repository: string,
+  path: string,
+  commit?: string,
+): string | null {
   const [owner, repo] = repository.split("/");
   if (!owner || !repo) return null;
   const encoded = path
@@ -38,5 +44,6 @@ export function evidenceUrl(repository: string, path: string): string | null {
     .map(encodeURIComponent)
     .join("/");
   if (!encoded) return null;
-  return `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/blob/HEAD/${encoded}`;
+  const ref = (commit && parseCommitSha(commit)?.sha) || "HEAD";
+  return `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/blob/${ref}/${encoded}`;
 }

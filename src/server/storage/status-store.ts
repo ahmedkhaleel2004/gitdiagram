@@ -22,6 +22,7 @@ function toDiagramStateResponse(
     graph: null,
     latestSessionAudit: summary.latestSessionSummary,
     lastSuccessfulAt: null,
+    ...(summary.commit ? { commit: summary.commit } : {}),
   };
 }
 
@@ -43,6 +44,8 @@ export async function getStoredFailureState(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
 }): Promise<DiagramStateResponse | null> {
   for (const location of getReadLocations(params)) {
     const summary = await getSummaryForLocation(location);
@@ -59,6 +62,8 @@ export async function writeFailureSummary(params: {
   repo: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
   latestSessionSummary: GenerationSessionAudit;
 }): Promise<void> {
   const location = getWriteLocation(params);
@@ -68,6 +73,7 @@ export async function writeFailureSummary(params: {
     visibility: params.visibility,
     username: params.username,
     repo: params.repo,
+    ...(params.commit ? { commit: params.commit } : {}),
     latestSessionSummary: params.latestSessionSummary,
   };
 
@@ -85,6 +91,8 @@ export async function clearFailureSummary(params: {
   repo: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
+  /** Full SHA of the commit a diagram is for; absent for the default branch. */
+  commit?: string;
 }): Promise<void> {
   const location = getWriteLocation(params);
 

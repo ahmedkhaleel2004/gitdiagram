@@ -1,6 +1,7 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import {
+  getCommitPagePath,
   getPublicDiagramStateCacheTag,
   getRepoPagePath,
   getRequestedRepoPagePath,
@@ -31,4 +32,22 @@ export function refreshDiagramPagesHere(username: string, repo: string): void {
     // "max" serves the previous artifact once while refreshing it.
     { expire: 0 },
   );
+}
+
+/**
+ * The same for one commit's page and its cached read. A commit diagram has no
+ * link-preview picture of its own (it does have a README picture), and a generation of it
+ * leaves the default-branch page and every other commit untouched.
+ */
+export function refreshCommitDiagramPagesHere(
+  username: string,
+  repo: string,
+  commit: string,
+): void {
+  const commitPath = getCommitPagePath(username, repo, commit);
+  revalidatePath(commitPath);
+  revalidatePath(`${commitPath}/diagram.png`);
+  revalidateTag(getPublicDiagramStateCacheTag(username, repo, commit), {
+    expire: 0,
+  });
 }

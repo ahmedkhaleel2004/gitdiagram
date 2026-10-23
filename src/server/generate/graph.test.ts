@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { DiagramGraph } from "~/features/diagram/graph";
+import { sanitizeMermaidSourceForRender } from "~/features/diagram/mermaid-security";
 
 import {
   buildFileTreeLookup,
@@ -730,6 +731,92 @@ describe("edge evidence paths", () => {
       });
     expect(compile(withEdges([evidenceEdge("src/api.ts")]))).toBe(
       compile(withEdges([evidenceEdge()])),
+    );
+  });
+});
+
+describe("compileDiagramGraph at a commit", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const graph: DiagramGraph = {
+    groups: [],
+    nodes: [
+      {
+        id: "docker",
+        label: "Dockerfile",
+        type: "file",
+        description: null,
+        groupId: null,
+        path: "Dockerfile",
+        shape: null,
+      },
+      {
+        id: "src",
+        label: "Source",
+        type: "directory",
+        description: null,
+        groupId: null,
+        path: "src/app",
+        shape: null,
+      },
+    ],
+    edges: [],
+  };
+  const pathTypes = new Map<string, "blob" | "tree">([
+    ["Dockerfile", "blob"],
+    ["src/app", "tree"],
+  ]);
+
+  it("links every node to the commit instead of the default branch", () => {
+    const diagram = compileDiagramGraph({
+      graph,
+      username: "acme",
+      repo: "demo",
+      branch: "main",
+      commit: sha,
+      pathTypes,
+    });
+
+    expect(diagram).toContain(
+      `click node_docker "https://github.com/acme/demo/blob/${sha}/Dockerfile"`,
+    );
+    expect(diagram).toContain(
+      `click node_src "https://github.com/acme/demo/tree/${sha}/src/app"`,
+    );
+    expect(diagram).not.toContain("/main/");
+  });
+
+  it("keeps the compiled links inside the GitHub-only allowlist", () => {
+    const diagram = compileDiagramGraph({
+      graph,
+      username: "acme",
+      repo: "demo",
+      branch: "main",
+      commit: sha,
+      pathTypes,
+    });
+
+    expect(sanitizeMermaidSourceForRender(diagram)).toContain(
+      `click node_docker "https://github.com/acme/demo/blob/${sha}/Dockerfile"`,
+    );
+    expect(sanitizeMermaidSourceForRender(diagram)).toContain(
+      `click node_src "https://github.com/acme/demo/tree/${sha}/src/app"`,
+    );
+  });
+
+  it("is unchanged without a commit", () => {
+    const diagram = compileDiagramGraph({
+      graph,
+      username: "acme",
+      repo: "demo",
+      branch: "main",
+      pathTypes,
+    });
+
+    expect(diagram).toContain(
+      'click node_docker "https://github.com/acme/demo/blob/main/Dockerfile"',
+    );
+    expect(diagram).toContain(
+      'click node_src "https://github.com/acme/demo/tree/main/src/app"',
     );
   });
 });

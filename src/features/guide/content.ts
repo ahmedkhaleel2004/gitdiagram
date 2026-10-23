@@ -34,7 +34,7 @@ export function guideSections({ videos }: { videos: boolean }): GuideSection[] {
       id: "one-step",
       heading: "Get a diagram in one step",
       paragraphs: [
-        "Replace `hub` with `diagram` in the repository's GitHub URL: `https://github.com/fastapi/fastapi` becomes [gitdiagram.com/fastapi/fastapi](/fastapi/fastapi). You can also paste a GitHub URL, or just `owner/repo`, on the [home page](/). File, branch, issue and pull request URLs work too; they open the repository's diagram.",
+        "Replace `hub` with `diagram` in the repository's GitHub URL: `https://github.com/fastapi/fastapi` becomes [gitdiagram.com/fastapi/fastapi](/fastapi/fastapi). You can also paste a GitHub URL, or just `owner/repo`, on the [home page](/). File, branch, issue and pull request URLs work too; they open the repository's diagram. A commit URL such as `https://github.com/fastapi/fastapi/commit/<sha>` opens the diagram of that commit, kept as it was then.",
         "If the repository has been diagrammed before, the stored diagram opens at once. Otherwise GitDiagram makes one, usually in about a minute, and keeps it so the next person gets it instantly. Some to try: [FastAPI](/fastapi/fastapi), [Flask](/pallets/flask), [React](/facebook/react) and [Next.js](/vercel/next.js). [Browse](/browse) lists every stored diagram.",
       ],
     },

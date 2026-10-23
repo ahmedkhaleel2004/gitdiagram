@@ -32,6 +32,7 @@ GitDiagram can now turn a repository into a narrated video of about a minute. Th
 - **Watch a repository explained** in a narrated video, or press **Video** on any diagram page.
 - **Explore the architecture** with an AI-generated diagram and streamed explanation.
 - **Jump to the code** by clicking any component's linked file or directory.
+- **Diagram a specific commit** by opening `gitdiagram.com/owner/repo/commit/<sha>` (the same as the GitHub commit URL with `hub` replaced by `diagram`), or by pasting a commit URL or filling in the optional **Commit** field on the home page. A full or short SHA (at least 7 characters) works; every link points at that commit, a commit's diagram is stored once and reopened without another model call, and the default branch's diagram is unaffected.
 - **Use private repositories** with a GitHub token via **Private Repos** in the header.
 - **Export diagrams** as PNG or copy the Mermaid source.
 

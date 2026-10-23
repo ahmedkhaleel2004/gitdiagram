@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { username, repo } = parsed.data;
+    const { username, repo, commit } = parsed.data;
     const { apiKey, githubPat } = await resolveRequestCredentials(request, {
       apiKey: parsed.data.api_key,
       githubPat: parsed.data.github_pat,
@@ -141,7 +141,10 @@ export async function POST(request: Request) {
       }
     }
 
-    const githubData = await getGithubData(username, repo, githubPat, signal);
+    // A commit is estimated from the files at that commit, like its diagram.
+    const githubData = commit
+      ? await getGithubData(username, repo, githubPat, signal, { commit })
+      : await getGithubData(username, repo, githubPat, signal);
     const context = prepareRepositoryContext(githubData);
     const analysisModel = selectAnalysisModel({
       provider,
