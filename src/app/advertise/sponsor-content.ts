@@ -17,13 +17,36 @@ export const sponsorFits = [
   "Observability, logging, and API monitoring",
   "Cloud hosting, databases, CI, and developer infrastructure",
 ];
-// Every scheduled campaign is a booked advertiser; list each sponsor once.
+// Every scheduled campaign is a booked advertiser; list each sponsor once,
+// except those whose creative leaves them out of the logo grid.
 export const advertisers = [
   ...new Map(
-    scheduledSponsorCampaigns.map(({ id, sponsor, destination }) => [
-      sponsor,
-      { name: sponsor, href: destination, logo: sponsorCreatives[id].logo },
-    ]),
+    scheduledSponsorCampaigns.flatMap(({ id, sponsor, destination }) => {
+      const { logo, advertiserRow } = sponsorCreatives[id];
+      if (advertiserRow === false) return [];
+      const row = advertiserRow ?? {
+        src: logo.src,
+        darkSrc: logo.colorDarkSrc ?? logo.darkSrc,
+        scale: 1,
+      };
+      // Same area for every logo, so wide wordmarks don't dominate.
+      const width = Math.round(
+        Math.sqrt((3000 * row.scale * logo.width) / logo.height),
+      );
+      return [
+        [
+          sponsor,
+          {
+            name: sponsor,
+            href: destination,
+            src: row.src,
+            darkSrc: row.darkSrc,
+            width,
+            height: Math.round((width * logo.height) / logo.width),
+          },
+        ] as const,
+      ];
+    }),
   ).values(),
 ];
 export type SponsorMetric = { label: string; value: string; detail: string };

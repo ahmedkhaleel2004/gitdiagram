@@ -37,6 +37,14 @@ const pinnedLogoHashes: Record<string, string> = {
     "bf66c5517502e435b783c2c5f42e4d574073c5c36b472ee277d5e16ea0b74b86",
   "/sponsors/temporal-wordmark-white.svg":
     "ee6560527b80f0e786507a37690b68b0906739e969c67bc605a0f191bf08f551",
+  "/sponsors/sentry-wordmark-bold.svg":
+    "81e6e7f00ca025300305fab558ffde134fad5b41d6e61a9d5a8dbf222a5cef64",
+  "/sponsors/sentry-wordmark-white-bold.svg":
+    "6033ad0cf42f9a0aed59e19bbb770ce25886fa753f818c713d1e3711a1b3b66d",
+  "/sponsors/temporal-wordmark-bold.svg":
+    "9137e1352b7ef7eedb363039b842c2da4efe7bc7ab0eedd6751aed330aa85657",
+  "/sponsors/temporal-wordmark-white-bold.svg":
+    "d847f931e65dcba446ae0a7b280e29a42586b0e34c49e1474ded8a6ff8033e9c",
 };
 
 it("has a creative for every scheduled campaign", () => {
@@ -46,10 +54,15 @@ it("has a creative for every scheduled campaign", () => {
 });
 
 it("never changes a cached sponsor logo in place", () => {
-  const logos = Object.values(sponsorCreatives).flatMap(({ logo }) =>
-    [logo.src, logo.darkSrc, logo.colorDarkSrc].filter(
-      (path) => path !== undefined,
-    ),
+  const logos = Object.values(sponsorCreatives).flatMap(
+    ({ logo, advertiserRow }) =>
+      [
+        logo.src,
+        logo.darkSrc,
+        logo.colorDarkSrc,
+        advertiserRow ? advertiserRow.src : undefined,
+        advertiserRow ? advertiserRow.darkSrc : undefined,
+      ].filter((path) => path !== undefined),
   );
   for (const path of logos) {
     const hash = createHash("sha256")

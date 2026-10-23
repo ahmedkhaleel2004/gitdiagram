@@ -115,38 +115,38 @@
   }
 }
 .advertisers {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px 28px;
-  margin-top: 44px;
+  margin-top: 56px;
 }
 .advertisers > p {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
+  margin-bottom: 18px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
 }
+/* A hairline grid of full-colour logos, one row of equal cells. */
 .advertisers > ul {
-  display: flex;
-  align-items: center;
-  gap: 28px;
+  --grid-line: color-mix(in srgb, var(--ink) 22%, transparent);
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  border-top: 1px solid var(--grid-line);
+  border-left: 1px solid var(--grid-line);
+}
+.advertisers li {
+  border-right: 1px solid var(--grid-line);
+  border-bottom: 1px solid var(--grid-line);
 }
 .advertisers a {
   display: flex;
   align-items: center;
-  min-height: 44px;
+  justify-content: center;
+  height: 112px;
+  padding: 0 18px;
 }
 .advertisers img {
-  filter: grayscale(1);
-  opacity: 0.55;
-  transition:
-    filter 160ms ease,
-    opacity 160ms ease;
-}
-.advertisers a:focus-visible img {
-  filter: none;
-  opacity: 1;
+  width: var(--w);
+  max-width: 100%;
+  height: auto;
 }
 .advertiserLogoDark {
   display: none;
@@ -443,9 +443,11 @@
   text-align: right;
 }
 @media (hover: hover) and (pointer: fine) {
-  .advertisers a:hover img {
-    filter: none;
-    opacity: 1;
+  .advertisers a {
+    transition: background-color 160ms ease;
+  }
+  .advertisers a:hover {
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
   }
   .textLink:hover {
     color: var(--purple);
@@ -534,8 +536,21 @@
     justify-content: flex-start;
   }
   .advertisers {
-    justify-content: flex-start;
-    margin-top: 32px;
+    margin-top: 40px;
+  }
+  .advertisers > ul {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .advertisers li:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+  .advertisers a {
+    height: 92px;
+    padding: 0 14px;
+  }
+  .advertisers img {
+    width: calc(var(--w) * 0.78);
   }
   .contactPrimary,
   .contactCopy {

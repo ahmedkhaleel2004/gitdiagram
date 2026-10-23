@@ -19,6 +19,9 @@ export type SponsorCreative = {
     // Display width in the GitHub README, in pixels.
     readmeWidth: number;
   };
+  // The logo grid on /advertise: false leaves the sponsor out of it; a
+  // heavier copy and a larger area (×scale) even out thin wordmarks.
+  advertiserRow?: false | { src: string; darkSrc: string; scale: number };
 };
 
 // Keyed by campaign ID, so every scheduled campaign must have a creative.
@@ -65,6 +68,7 @@ export const sponsorCreatives: Record<SponsorCampaignId, SponsorCreative> = {
   },
   "meteorops-2026-11": {
     name: "MeteorOps",
+    advertiserRow: false,
     message: "Fix your DevOps bottleneck in 24h",
     action: "Connect with a DevOps Expert",
     logo: {
@@ -79,6 +83,11 @@ export const sponsorCreatives: Record<SponsorCampaignId, SponsorCreative> = {
   "sentry-2026-12": {
     name: "Sentry",
     message: "Code breaks, fix it faster.",
+    advertiserRow: {
+      src: "/sponsors/sentry-wordmark-bold.svg",
+      darkSrc: "/sponsors/sentry-wordmark-white-bold.svg",
+      scale: 1.3,
+    },
     action: "Try Sentry",
     logo: {
       src: "/sponsors/sentry-wordmark.svg",
@@ -92,6 +101,11 @@ export const sponsorCreatives: Record<SponsorCampaignId, SponsorCreative> = {
   "temporal-2026-12": {
     name: "Temporal",
     message: "The world's best AI runs on Temporal.",
+    advertiserRow: {
+      src: "/sponsors/temporal-wordmark-bold.svg",
+      darkSrc: "/sponsors/temporal-wordmark-white-bold.svg",
+      scale: 1.55,
+    },
     action: "Try Temporal",
     logo: {
       src: "/sponsors/temporal-wordmark.svg",
@@ -105,6 +119,11 @@ export const sponsorCreatives: Record<SponsorCampaignId, SponsorCreative> = {
   "temporal-2027-01": {
     name: "Temporal",
     message: "The world's best AI runs on Temporal.",
+    advertiserRow: {
+      src: "/sponsors/temporal-wordmark-bold.svg",
+      darkSrc: "/sponsors/temporal-wordmark-white-bold.svg",
+      scale: 1.55,
+    },
     action: "Try Temporal",
     logo: {
       src: "/sponsors/temporal-wordmark.svg",

@@ -174,6 +174,8 @@ describe("advertise availability", () => {
     );
     expect(screen.queryByText(/campaign booked by/)).toBeNull();
     expect(screen.getByText("Available now.")).toBeTruthy();
+    // MeteorOps is booked but left out of the logo grid.
+    expect(screen.queryByRole("link", { name: "MeteorOps" })).toBeNull();
     // Past advertisers stay listed, and linked, after their runs end.
     expect(
       screen.getByRole("link", { name: "Sent" }).getAttribute("href"),

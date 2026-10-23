@@ -1,5 +1,6 @@
 import { ArrowDown } from "lucide-react";
 import Image from "next/image";
+import type { CSSProperties } from "react";
 import { SponsorEmailActions } from "./sponsor-email-actions";
 import { SponsorPlacementPreview } from "./sponsor-placement-preview";
 import {
@@ -79,16 +80,13 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
           </a>
         </div>
         <div className={styles.advertisers}>
-          <p id="advertisers-label">Advertisers include</p>
+          <p id="advertisers-label">GitDiagram has run campaigns for:</p>
           <ul aria-labelledby="advertisers-label">
-            {advertisers.map(({ name, href, logo }) => {
-              // Same area for every logo, so wide wordmarks don't dominate.
-              const width = Math.round(
-                Math.sqrt((1700 * logo.width) / logo.height),
-              );
+            {advertisers.map(({ name, href, src, darkSrc, width, height }) => {
               const size = {
                 width,
-                height: Math.round((width * logo.height) / logo.width),
+                height,
+                style: { "--w": `${width}px` } as CSSProperties,
               };
               return (
                 <li key={name}>
@@ -99,17 +97,17 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
                     aria-label={name}
                   >
                     <Image
-                      src={logo.src}
+                      src={src}
                       alt=""
                       {...size}
                       className={
-                        logo.darkSrc ? styles.advertiserLogoLight : undefined
+                        darkSrc ? styles.advertiserLogoLight : undefined
                       }
                       unoptimized
                     />
-                    {logo.darkSrc && (
+                    {darkSrc && (
                       <Image
-                        src={logo.colorDarkSrc ?? logo.darkSrc}
+                        src={darkSrc}
                         alt=""
                         {...size}
                         className={styles.advertiserLogoDark}
