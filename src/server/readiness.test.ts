@@ -71,6 +71,26 @@ describe("checkReadiness", () => {
     expect(checkUpstashConnection).not.toHaveBeenCalled();
   });
 
+  it("reads REQUESTY_API_KEY when Requesty is the provider", async () => {
+    process.env.AI_PROVIDER = "requesty";
+    delete process.env.OPENAI_API_KEY;
+
+    await expect(checkReadiness()).resolves.toMatchObject({
+      ok: false,
+      checks: { provider: false },
+    });
+
+    process.env.REQUESTY_API_KEY = "test-requesty-key";
+    try {
+      await expect(checkReadiness()).resolves.toMatchObject({
+        ok: true,
+        checks: { provider: true },
+      });
+    } finally {
+      delete process.env.REQUESTY_API_KEY;
+    }
+  });
+
   it("fails readiness when a dependency check rejects", async () => {
     checkUpstashConnection.mockRejectedValue(new Error("unavailable"));
 
