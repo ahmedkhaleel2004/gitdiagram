@@ -70,6 +70,7 @@ function fetchSurface(path: string, markdown: boolean): string {
   if (path === "/llms.txt" || path === "/llms-full.txt") return path.slice(1);
   if (/^\/[^/]+\/[^/]+\/video\/?$/.test(path)) return "watch";
   if (/^\/[^/]+\/[^/]+\/?$/.test(path)) return "repo";
+  if (/^\/[^/]+\/[^/]+\/tree\/.+$/.test(path)) return "repo";
   return path.split("/")[1]?.slice(0, 30) || "other";
 }
 

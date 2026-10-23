@@ -14,9 +14,13 @@ import {
  * Also what /api/internal/revalidate runs when a diagram was replaced from
  * outside the site (an operator repair).
  */
-export function refreshDiagramPagesHere(username: string, repo: string): void {
-  const normalizedPath = getRepoPagePath(username, repo);
-  const requestedPath = getRequestedRepoPagePath(username, repo);
+export function refreshDiagramPagesHere(
+  username: string,
+  repo: string,
+  branch?: string,
+): void {
+  const normalizedPath = getRepoPagePath(username, repo, branch);
+  const requestedPath = getRequestedRepoPagePath(username, repo, branch);
   revalidatePath(normalizedPath);
   revalidatePath(`${normalizedPath}/opengraph-image`);
   // The README picture (diagram.png) always shows the latest diagram.
@@ -26,7 +30,7 @@ export function refreshDiagramPagesHere(username: string, repo: string): void {
     revalidatePath(`${requestedPath}/opengraph-image`);
   }
   revalidateTag(
-    getPublicDiagramStateCacheTag(username, repo),
+    getPublicDiagramStateCacheTag(username, repo, branch),
     // A regenerated diagram must survive the very next reload.
     // "max" serves the previous artifact once while refreshing it.
     { expire: 0 },

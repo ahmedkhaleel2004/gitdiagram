@@ -18,17 +18,27 @@ const PUBLIC_DIAGRAM_STATE_REVALIDATE_SECONDS = 21600;
 // How long a page rendered after a failed storage read stays cached.
 const STORAGE_FAILURE_REVALIDATE_SECONDS = 60;
 
-function getCachedPublicDiagramState(username: string, repo: string) {
+function getCachedPublicDiagramState(
+  username: string,
+  repo: string,
+  branch?: string,
+) {
   const getCachedState = unstable_cache(
     async () =>
       getStoredDiagramState({
         username,
         repo,
+        branch,
       }),
-    ["public-diagram-state", username.toLowerCase(), repo.toLowerCase()],
+    [
+      "public-diagram-state",
+      username.toLowerCase(),
+      repo.toLowerCase(),
+      ...(branch ? [branch.toLowerCase()] : []),
+    ],
     {
       revalidate: PUBLIC_DIAGRAM_STATE_REVALIDATE_SECONDS,
-      tags: [getPublicDiagramStateCacheTag(username, repo)],
+      tags: [getPublicDiagramStateCacheTag(username, repo, branch)],
     },
   );
 
@@ -63,13 +73,17 @@ export interface PublicDiagramStateRead {
  * "none". Deduplicated per request (page and metadata share one read).
  */
 export const readPublicDiagramState = cache(
-  async (username: string, repo: string): Promise<PublicDiagramStateRead> => {
+  async (
+    username: string,
+    repo: string,
+    branch?: string,
+  ): Promise<PublicDiagramStateRead> => {
     try {
-      const state = await getCachedPublicDiagramState(username, repo);
+      const state = await getCachedPublicDiagramState(username, repo, branch);
       return { state: state?.diagram ? state : null, failed: false };
     } catch (error) {
       logEvent("error", "repo_page.stored_state_failed", {
-        repository: `${username}/${repo}`,
+        repository: `${username}/${repo}${branch ? `@${branch}` : ""}`,
         error: errorText(error),
       });
       await shortenPageLifetime().catch(() => undefined);

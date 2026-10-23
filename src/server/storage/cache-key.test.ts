@@ -114,3 +114,21 @@ describe("getReadLocations", () => {
     ]);
   });
 });
+
+describe("branch locations", () => {
+  it("scopes public and private artifact keys by branch", () => {
+    const pub = getPublicLocation("acme", "demo", "feat/v2");
+    expect(pub.artifactKey).toBe("public/v1/acme/demo/branch/feat%2Fv2.json");
+    expect(pub.statusKey).toBe("status:v1:public:acme:demo:feat%2Fv2");
+
+    const priv = getPrivateLocation("acme", "demo", "token", "v5");
+    expect(priv.artifactKey).toContain("/acme/demo/branch/v5.json");
+    expect(priv.statusKey).toContain(":acme:demo:v5");
+  });
+
+  it("scopes preview keys by branch", () => {
+    expect(getPublicPreviewKey("acme", "demo", "v5")).toBe(
+      "public-preview/v1/acme/demo/branch/v5.json",
+    );
+  });
+});

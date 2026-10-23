@@ -1161,4 +1161,27 @@ describe("POST /api/generate/stream", () => {
       vi.useRealTimers();
     }
   });
+
+  it("passes branch to getGithubData and finalizeGenerationStream", async () => {
+    mockEstimate(100);
+    const response = await POST(
+      request({
+        branch: "release/v5",
+      }),
+    );
+    await response.text();
+
+    expect(mocks.getGithubData).toHaveBeenCalledWith(
+      "openai",
+      "openai-node",
+      undefined,
+      expect.any(AbortSignal),
+      "release/v5",
+    );
+    expect(mocks.finalizeStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branch: "release/v5",
+      }),
+    );
+  });
 });
