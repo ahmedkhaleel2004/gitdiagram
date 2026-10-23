@@ -191,4 +191,14 @@ describe("advertise availability", () => {
       "sponsored noopener",
     );
   });
+
+  it("says plainly when the audience figures could not be loaded", () => {
+    render(<SponsorPageContent content={createSponsorContent(null)} />);
+    expect(
+      screen.getByText(/audience figures could not be loaded/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/unique visitors/)).toBeNull();
+    expect(screen.queryByText(/pageviews$/)).toBeNull();
+    expect(screen.queryByText(/^Updated /)).toBeNull();
+  });
 });

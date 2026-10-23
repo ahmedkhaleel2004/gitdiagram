@@ -56,6 +56,7 @@ beforeEach(() => {
   vi.stubEnv("POSTHOG_PERSONAL_API_KEY", "test-query-key");
   vi.stubEnv("POSTHOG_PROJECT_ID", "113380");
   vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-17T23:41:00Z"));
   request.mockReset();
   sources();
@@ -108,23 +109,28 @@ describe("sponsor stats", () => {
     expect(JSON.stringify(result)).not.toContain("test-query-key");
   });
 
-  it("keeps the verified timestamp when credentials are missing", async () => {
+  it("returns no figures, and asks PostHog nothing, without credentials", async () => {
     vi.stubEnv("POSTHOG_PERSONAL_API_KEY", "");
-    const result = await getSponsorStats();
-    expect(result.asOf).toBe("2026-09-17T22:40:53.000Z");
-    expect(result.monthlyVisitors).toBe(31666);
-    expect(request).not.toHaveBeenCalled();
+    expect(await getSponsorStats()).toBeNull();
+    expect(
+      request.mock.calls.filter(([url]) => String(url).includes("posthog")),
+    ).toEqual([]);
+    expect(console.error).toHaveBeenCalledWith(
+      "Sponsor stats unavailable.",
+      expect.stringContaining("credentials are not configured"),
+    );
   });
 
-  it("does not cache failed refreshes as new successful snapshots", async () => {
+  it("does not cache failed refreshes as successes", async () => {
     request.mockResolvedValue(new Response(null, { status: 503 }));
     for (const { callback } of caches.values()) {
       await expect(callback()).rejects.toThrow("refresh failed");
     }
-    expect((await getSponsorStats()).asOf).toBe("2026-09-17T22:40:53.000Z");
+    expect(await getSponsorStats()).toBeNull();
   });
 
-  it("keeps fresh PostHog figures when GitHub is rate limited", async () => {
+  it("returns no figures when any source fails", async () => {
+    // GitHub rate limited.
     request.mockImplementation(async (url, init) => {
       if (String(url).includes("github.com"))
         return new Response(null, { status: 403 });
@@ -133,47 +139,39 @@ describe("sponsor stats", () => {
         results: [name === "sponsor-stats-lifetime" ? lifetimeRow : recentRow],
       });
     });
-    const result = await getSponsorStats();
-    // The star count falls back to the snapshot's; the audience stays fresh.
-    expect(result.githubStars).toBe(16178);
-    expect(result.asOf).toBe("2026-09-17T23:00:00.000Z");
-    expect(result.monthlyVisitors).toBe(32000);
-    await expect(
-      caches.get("sponsor-stats-stars-v1")!.callback(),
-    ).rejects.toThrow("refresh failed (403)");
-  });
-
-  it("keeps a fresh star count when PostHog fails", async () => {
-    request.mockImplementation(async (url) =>
-      String(url).includes("github.com")
-        ? Response.json({ stargazers_count: 16300 })
-        : new Response(null, { status: 503 }),
+    expect(await getSponsorStats()).toBeNull();
+    // Only the lifetime scan fails.
+    request.mockImplementation(async (url, init) => {
+      if (String(url).includes("github.com"))
+        return Response.json({ stargazers_count: 16200 });
+      const { name } = JSON.parse(init!.body as string) as QueryBody;
+      return name === "sponsor-stats-lifetime"
+        ? new Response(null, { status: 504 })
+        : Response.json({ results: [recentRow] });
+    });
+    expect(await getSponsorStats()).toBeNull();
+    expect(console.error).toHaveBeenLastCalledWith(
+      "Sponsor stats unavailable.",
+      "lifetime totals: Error: Sponsor analytics refresh failed (504).",
     );
-    const result = await getSponsorStats();
-    expect(result.asOf).toBe("2026-09-17T22:40:53.000Z");
-    expect(result.monthlyVisitors).toBe(31666);
-    expect(result.githubStars).toBe(16300);
   });
 
   it("rejects incomplete query responses instead of publishing zero metrics", async () => {
     sources({ recent: [82000, 32000] });
-    expect((await getSponsorStats()).monthlyVisitors).toBe(31666);
-    // A bad lifetime row only costs the lifetime totals.
+    expect(await getSponsorStats()).toBeNull();
     sources({ lifetime: [900000] });
-    const result = await getSponsorStats();
-    expect(result.monthlyVisitors).toBe(32000);
-    expect(result.lifetimeVisitors).toBe(366235);
+    expect(await getSponsorStats()).toBeNull();
   });
 
   it("rejects inconsistent audience totals and invalid GitHub data", async () => {
     sources({ recent: [100, 32000, 28000, 58000, 12000, 8500] });
-    expect((await getSponsorStats()).asOf).toBe("2026-09-17T22:40:53.000Z");
+    expect(await getSponsorStats()).toBeNull();
     sources({ lifetime: [900000, 20000, trackedSince] });
-    expect((await getSponsorStats()).asOf).toBe("2026-09-17T22:40:53.000Z");
+    expect(await getSponsorStats()).toBeNull();
     sources({ lifetime: [900000, 380000, 0] });
-    expect((await getSponsorStats()).lifetimeVisitors).toBe(366235);
+    expect(await getSponsorStats()).toBeNull();
     sources({ stars: "unknown" });
-    expect((await getSponsorStats()).githubStars).toBe(16178);
+    expect(await getSponsorStats()).toBeNull();
   });
 
   it("waits for a query PostHog runs in the background", async () => {
@@ -196,29 +194,13 @@ describe("sponsor stats", () => {
       });
     });
     const result = await getSponsorStats();
-    expect(result.lifetimeVisitors).toBe(380000);
-    expect(result.monthlyVisitors).toBe(32000);
-  });
-
-  it("keeps fresh 30-day figures when the lifetime query fails", async () => {
-    request.mockImplementation(async (url, init) => {
-      if (String(url).includes("github.com"))
-        return Response.json({ stargazers_count: 16200 });
-      const { name } = JSON.parse(init!.body as string) as QueryBody;
-      return name === "sponsor-stats-lifetime"
-        ? new Response(null, { status: 504 })
-        : Response.json({ results: [recentRow] });
-    });
-    const result = await getSponsorStats();
-    expect(result.asOf).toBe("2026-09-17T23:00:00.000Z");
-    expect(result.monthlyVisitors).toBe(32000);
-    expect(result.lifetimeVisitors).toBe(366235);
-    expect(result.trackedSince).toBe("2024-12-26T12:39:22.000Z");
+    expect(result?.lifetimeVisitors).toBe(380000);
+    expect(result?.monthlyVisitors).toBe(32000);
   });
 
   it("does not send credentials to a malformed project URL", async () => {
     vi.stubEnv("POSTHOG_PROJECT_ID", "../other");
-    await getSponsorStats();
+    expect(await getSponsorStats()).toBeNull();
     expect(
       request.mock.calls.filter(([url]) => String(url).includes("posthog")),
     ).toEqual([]);

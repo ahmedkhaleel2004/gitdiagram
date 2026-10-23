@@ -47,10 +47,17 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
           <span>to your product.</span>
         </h1>
         <p className={styles.introduction}>
-          GitDiagram had{" "}
-          <strong>{content.monthlyVisitors} unique visitors</strong> in the last
-          30 days. Reach developers as they explore GitHub repositories, with
-          placements that link directly to your website.
+          {content.audience && (
+            <>
+              GitDiagram had{" "}
+              <strong>
+                {content.audience.monthlyVisitors} unique visitors
+              </strong>{" "}
+              in the last 30 days.{" "}
+            </>
+          )}
+          Reach developers as they explore GitHub repositories, with placements
+          that link directly to your website.
         </p>
         <p className={styles.offerSummary}>
           <span>
@@ -123,14 +130,34 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
         aria-labelledby="audience-title"
       >
         <h2 id="audience-title">Audience</h2>
-        <div className={styles.audienceColumns}>
-          <AudienceMetrics title="Last 30 days" metrics={content.monthly} />
-          <AudienceMetrics title="Lifetime" metrics={content.lifetime} />
-        </div>
+        {content.audience ? (
+          <div className={styles.audienceColumns}>
+            <AudienceMetrics
+              title="Last 30 days"
+              metrics={content.audience.monthly}
+            />
+            <AudienceMetrics
+              title="Lifetime"
+              metrics={content.audience.lifetime}
+            />
+          </div>
+        ) : (
+          <p className={styles.statsError} role="status">
+            The audience figures could not be loaded from PostHog right now.
+            They retry every few minutes; email Ahmed for current numbers.
+          </p>
+        )}
         <div className={styles.dataNote}>
           <p>
-            Source: PostHog and GitHub.{" "}
-            <time dateTime={content.asOf}>Updated {content.updatedAt}.</time>
+            Source: PostHog and GitHub.
+            {content.audience && (
+              <>
+                {" "}
+                <time dateTime={content.audience.asOf}>
+                  Updated {content.audience.updatedAt}.
+                </time>
+              </>
+            )}
           </p>
           <p>
             Figures refresh about every hour, lifetime totals daily. The 30-day
@@ -152,9 +179,11 @@ export function SponsorPageContent({ content }: { content: SponsorContent }) {
               <article key={surface.name}>
                 <div className={styles.placementHeading}>
                   <h3>{surface.name}</h3>
-                  <p>
-                    <span>{surface.metric.value}</span> {surface.metric.label}
-                  </p>
+                  {surface.metric && (
+                    <p>
+                      <span>{surface.metric.value}</span> {surface.metric.label}
+                    </p>
+                  )}
                 </div>
                 <p>{surface.description}</p>
                 <SponsorPlacementPreview

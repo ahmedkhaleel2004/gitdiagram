@@ -29,7 +29,7 @@ export const advertisers = [
 export type SponsorMetric = { label: string; value: string; detail: string };
 export type SponsorSurface = {
   name: string;
-  metric: { value: string; label: string };
+  metric: { value: string; label: string } | null;
   description: string;
   preview: {
     src: string;
@@ -129,7 +129,18 @@ export function createSponsorBooking(
   };
 }
 
-export function createSponsorContent(stats: SponsorStats, now = Date.now()) {
+export function createSponsorContent(
+  stats: SponsorStats | null,
+  now = Date.now(),
+) {
+  const booking = createSponsorBooking(now);
+  if (!stats) {
+    return {
+      ...booking,
+      audience: null,
+      surfaces: sponsorSurfaces(null),
+    };
+  }
   const monthly: SponsorMetric[] = [
     {
       label: "Unique visitors",
@@ -164,10 +175,25 @@ export function createSponsorContent(stats: SponsorStats, now = Date.now()) {
       detail: "Open-source developer reach",
     },
   ];
-  const surfaces: SponsorSurface[] = [
+  return {
+    ...booking,
+    audience: {
+      monthlyVisitors: format(stats.monthlyVisitors),
+      monthly,
+      lifetime,
+      asOf: stats.asOf,
+      updatedAt: `${date(stats.asOf, true)} ET`,
+    },
+    surfaces: sponsorSurfaces(stats),
+  };
+}
+function sponsorSurfaces(stats: SponsorStats | null): SponsorSurface[] {
+  const metric = (value: number | undefined, label: string) =>
+    value === undefined ? null : { value: format(value), label };
+  return [
     {
       name: "Repo diagram pages",
-      metric: { value: format(stats.repoPageviews), label: "pageviews" },
+      metric: metric(stats?.repoPageviews, "pageviews"),
       description:
         "An ad placement beneath generated architecture diagrams, with your logo, product description, and a link to your site.",
       preview: {
@@ -181,7 +207,7 @@ export function createSponsorContent(stats: SponsorStats, now = Date.now()) {
     },
     {
       name: "Homepage",
-      metric: { value: format(stats.homePageviews), label: "pageviews" },
+      metric: metric(stats?.homePageviews, "pageviews"),
       description:
         "Your product appears below the repository lookup controls, where developers start turning codebases into diagrams.",
       preview: {
@@ -195,7 +221,7 @@ export function createSponsorContent(stats: SponsorStats, now = Date.now()) {
     },
     {
       name: "Browse catalog",
-      metric: { value: format(stats.browsePageviews), label: "pageviews" },
+      metric: metric(stats?.browsePageviews, "pageviews"),
       description:
         "A dedicated ad row among the public repository listings, with your logo, description, and link.",
       preview: {
@@ -209,7 +235,7 @@ export function createSponsorContent(stats: SponsorStats, now = Date.now()) {
     },
     {
       name: "GitHub README",
-      metric: { value: format(stats.githubStars), label: "GitHub stars" },
+      metric: metric(stats?.githubStars, "GitHub stars"),
       description:
         "Included in the exclusive package: an ad near the top of GitDiagram’s GitHub README, linking directly to your product.",
       preview: {
@@ -222,14 +248,6 @@ export function createSponsorContent(stats: SponsorStats, now = Date.now()) {
       },
     },
   ];
-  return {
-    ...createSponsorBooking(now),
-    monthlyVisitors: format(stats.monthlyVisitors),
-    monthly,
-    lifetime,
-    surfaces,
-    asOf: stats.asOf,
-    updatedAt: `${date(stats.asOf, true)} ET`,
-  };
 }
+
 export type SponsorContent = ReturnType<typeof createSponsorContent>;

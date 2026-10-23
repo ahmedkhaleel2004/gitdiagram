@@ -8,7 +8,8 @@ import { getGitHubApiHeaders } from "~/server/github-auth";
 // scans a bounded window and refreshes hourly; the lifetime query scans all
 // history, so it refreshes daily. Both windows end on a rounded cutoff, so
 // repeated refreshes send identical queries that PostHog can answer from its
-// own cache. A failed refresh keeps serving the last success.
+// own cache. A failed refresh keeps the last success in Next's cache; with
+// none, the page says the figures could not be loaded (no stand-in numbers).
 const RECENT_CACHE_SECONDS = 60 * 60;
 const LIFETIME_CACHE_SECONDS = 24 * 60 * 60;
 const count = z.number().int().nonnegative();
@@ -34,22 +35,6 @@ export type SponsorStats = {
   homePageviews: number;
   browsePageviews: number;
   githubStars: number;
-};
-
-// A dated, verified snapshot keeps local builds and first-time outages usable.
-// Never give fallback data a new timestamp or cache it as a successful refresh.
-const VERIFIED_SNAPSHOT: SponsorStats = {
-  asOf: "2026-09-17T22:40:53.000Z",
-  trackedSince: "2024-12-26T12:39:22.000Z",
-  lifetimeVisitors: 366235,
-  lifetimePageviews: 846732,
-  monthlyVisitors: 31666,
-  monthlyPageviews: 81385,
-  repoVisitors: 27731,
-  repoPageviews: 57536,
-  homePageviews: 11605,
-  browsePageviews: 8350,
-  githubStars: 16178,
 };
 
 const pageviews = `event = '$pageview'
@@ -239,69 +224,51 @@ const readLifetimeStats = unstable_cache(
   { revalidate: LIFETIME_CACHE_SECONDS },
 );
 // Stars have their own cache, so a GitHub error or rate limit never discards
-// good PostHog figures: it keeps the last star count, or the snapshot's.
+// good PostHog figures: it keeps the last star count.
 const readGitHubStars = unstable_cache(
   refreshGitHubStars,
   ["sponsor-stats-stars-v1"],
   { revalidate: RECENT_CACHE_SECONDS },
 );
 
-export async function getSponsorStats(): Promise<SponsorStats> {
-  if (!process.env.POSTHOG_PERSONAL_API_KEY?.trim()) {
-    return VERIFIED_SNAPSHOT;
-  }
-
+// The live figures, or null with the reason logged.
+export async function getSponsorStats(): Promise<SponsorStats | null> {
   const [recent, lifetime, stars] = await Promise.allSettled([
     readRecentStats(),
     readLifetimeStats(),
     readGitHubStars(),
   ]);
-  if (stars.status === "rejected")
-    console.warn("Sponsor star count unavailable; using the snapshot's.");
-  const githubStars =
-    stars.status === "fulfilled" ? stars.value : VERIFIED_SNAPSHOT.githubStars;
-
-  if (recent.status === "rejected") {
-    console.warn(
-      "Sponsor analytics unavailable; serving the dated fallback snapshot.",
-      describe(recent.reason),
-    );
-    return { ...VERIFIED_SNAPSHOT, githubStars };
-  }
-  // The 30-day figures stay fresh when only the lifetime scan fails; the
-  // lifetime totals then come from the dated snapshot, which they only exceed.
-  let lifetimeStats: Pick<
-    SponsorStats,
-    "trackedSince" | "lifetimeVisitors" | "lifetimePageviews"
-  > = VERIFIED_SNAPSHOT;
-  if (lifetime.status === "fulfilled") {
-    lifetimeStats = lifetime.value;
-  } else {
-    console.warn(
-      "Sponsor lifetime totals unavailable; using the snapshot's.",
-      describe(lifetime.reason),
-    );
+  const failures = [
+    ["30-day figures", recent],
+    ["lifetime totals", lifetime],
+    ["GitHub stars", stars],
+  ].flatMap(([what, result]) =>
+    (result as PromiseSettledResult<unknown>).status === "rejected"
+      ? [`${what}: ${describe((result as PromiseRejectedResult).reason)}`]
+      : [],
+  );
+  if (
+    recent.status === "rejected" ||
+    lifetime.status === "rejected" ||
+    stars.status === "rejected"
+  ) {
+    console.error("Sponsor stats unavailable.", failures.join("; "));
+    return null;
   }
   // Lifetime totals end at the start of the UTC day, up to a day before the
   // 30-day window ends, but still far exceed it; a smaller one is bad data.
   if (
-    recent.value.monthlyVisitors > lifetimeStats.lifetimeVisitors ||
-    recent.value.monthlyPageviews > lifetimeStats.lifetimePageviews
+    recent.value.monthlyVisitors > lifetime.value.lifetimeVisitors ||
+    recent.value.monthlyPageviews > lifetime.value.lifetimePageviews
   ) {
-    console.warn(
-      "Sponsor analytics returned inconsistent totals; serving the dated fallback snapshot.",
-    );
-    return { ...VERIFIED_SNAPSHOT, githubStars };
+    console.error("Sponsor stats unavailable: inconsistent totals.");
+    return null;
   }
-  return {
-    ...recent.value,
-    trackedSince: lifetimeStats.trackedSince,
-    lifetimeVisitors: lifetimeStats.lifetimeVisitors,
-    lifetimePageviews: lifetimeStats.lifetimePageviews,
-    githubStars,
-  };
+  return { ...recent.value, ...lifetime.value, githubStars: stars.value };
 }
 
 function describe(error: unknown) {
-  return error instanceof Error ? `${error.name}: ${error.message}` : error;
+  return error instanceof Error
+    ? `${error.name}: ${error.message}`
+    : String(error);
 }

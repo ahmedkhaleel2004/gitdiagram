@@ -181,6 +181,15 @@
   font-weight: 700;
   letter-spacing: -0.035em;
 }
+.statsError {
+  margin-top: 28px;
+  padding: 14px 16px;
+  border: 2px solid var(--color-red-600);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.6;
+}
 .audienceColumns {
   display: grid;
   grid-template-columns: 1fr 1fr;
