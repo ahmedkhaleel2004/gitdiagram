@@ -34,6 +34,7 @@ GitDiagram can now turn a repository into a narrated video of about a minute. Th
 - **Jump to the code** by clicking any component's linked file or directory.
 - **Use private repositories** with a GitHub token via **Private Repos** in the header.
 - **Export diagrams** as PNG or copy the Mermaid source.
+- **Instant Browser Shortcut:** Replace `github.com` with `gitdiagram.com` in your browser's URL address bar on any repository page to instantly load its interactive layout.
 
 ## Use GitDiagram from AI agents
 
