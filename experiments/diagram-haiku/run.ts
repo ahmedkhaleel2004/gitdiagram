@@ -78,6 +78,7 @@ export const OUT = join(import.meta.dir, "out");
 const HAIKU = "claude-haiku-5-5";
 const HAIKU_OPENROUTER = "anthropic/claude-haiku-5.5";
 const LUNA = "gpt-6-luna";
+const TERRA = "gpt-6.1-terra";
 
 const [slug, samplesArg = "3", armsArg = "luna,haiku-low,haiku-medium"] =
   process.argv.slice(2);
@@ -171,9 +172,10 @@ async function callModel(params: {
       serviceTier: message.usage.service_tier ?? null,
     };
   } else {
-    const isLuna = params.arm.startsWith("luna");
+    const isTerra = params.arm.startsWith("terra");
+    const isLuna = params.arm.startsWith("luna") || isTerra;
     const provider = isLuna ? "openai" : "openrouter";
-    const model = isLuna ? LUNA : HAIKU_OPENROUTER;
+    const model = isTerra ? TERRA : isLuna ? LUNA : HAIKU_OPENROUTER;
     // openai.ts picks the priority tier only for GitDiagram's own key; passing
     // the same key explicitly is how a caller gets the default tier.
     const apiKey =
@@ -238,6 +240,7 @@ async function callModel(params: {
 function architectureEffort(arm: string): Effort {
   if (arm.startsWith("luna")) return getArchitectureReasoningEffort(LUNA);
   if (arm === "haiku-nothink") return "low";
+  if (arm.startsWith("terra")) return arm.split("-").at(-1) as Effort;
   return arm.split("-").at(-1) as Effort;
 }
 

@@ -53,5 +53,17 @@ export function callCostUsd(usage: CallUsage): number {
       1e6
     );
   }
+  if (/gpt-6\.1-terra/.test(usage.model)) {
+    const tier =
+      usage.serviceTier === "priority" || usage.serviceTier === "fast" ? 2 : 1;
+    return (
+      (tier *
+        (plain * 1.0 +
+          usage.cachedInputTokens * 0.05 +
+          usage.cacheWriteTokens * 1.25 +
+          usage.outputTokens * 5.0)) /
+      1e6
+    );
+  }
   throw new Error(`no price for ${usage.model}`);
 }
