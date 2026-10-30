@@ -16,6 +16,7 @@ import { resolveRequestCredentials } from "~/server/http/request-credentials";
 interface AdmittedGenerationRequest {
   username: string;
   repo: string;
+  branch?: string;
   apiKey?: string;
   githubPat?: string;
   githubStorageKey?: string;
@@ -83,6 +84,7 @@ export async function admitGenerationRequest(
   const {
     username,
     repo,
+    branch,
     session_id: requestedSessionId,
     cancel_token: cancelToken,
   } = parsed.data;
@@ -206,6 +208,7 @@ export async function admitGenerationRequest(
     value: {
       username,
       repo,
+      branch,
       apiKey,
       githubPat,
       githubStorageKey,

@@ -37,6 +37,7 @@ export class DiagramStreamHttpError extends Error {
 export async function getDiagramState(
   username: string,
   repo: string,
+  branch?: string,
 ): Promise<DiagramStateResponse> {
   await migrateLegacyCredentialStorage();
 
@@ -49,6 +50,7 @@ export async function getDiagramState(
     body: JSON.stringify({
       username,
       repo,
+      ...(branch ? { branch } : {}),
     }),
   });
 
@@ -121,6 +123,7 @@ export async function streamDiagramGeneration(
       body: JSON.stringify({
         username: params.username,
         repo: params.repo,
+        ...(params.branch ? { branch: params.branch } : {}),
         session_id: sessionId,
         cancel_token: cancelToken,
       }),

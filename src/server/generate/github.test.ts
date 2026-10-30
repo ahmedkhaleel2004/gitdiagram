@@ -686,4 +686,42 @@ describe("getGithubData repository input bounds", () => {
     ).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("fetches tree and readme for a specific branch when provided", async () => {
+    getGitHubApiHeaders.mockResolvedValue({});
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/demo")) {
+        return jsonResponse({
+          default_branch: "main",
+          private: false,
+          stargazers_count: 42,
+        });
+      }
+      if (url.includes("/git/trees/v5?recursive=1")) {
+        return jsonResponse({
+          tree: [{ path: "src/v5.ts", type: "blob" }],
+        });
+      }
+      if (url.includes("/repos/acme/demo/readme?ref=v5")) {
+        return jsonResponse({
+          size: 9,
+          content: Buffer.from("# V5 Demo").toString("base64"),
+          encoding: "base64",
+        });
+      }
+      throw new Error(`Unexpected GitHub URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const data = await getGithubData(
+      "acme",
+      "demo",
+      undefined,
+      undefined,
+      "v5",
+    );
+    expect(data.fileTree).toBe("src/v5.ts");
+    expect(data.readme).toBe("# V5 Demo");
+  });
 });

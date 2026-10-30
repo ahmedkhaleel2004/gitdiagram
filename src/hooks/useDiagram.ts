@@ -103,6 +103,7 @@ export function useDiagram(
   repo: string,
   initialState?: DiagramStateResponse | null,
   initialStateIsAuthoritative = false,
+  branch?: string,
 ) {
   const [loading, setLoading] = useState<boolean>(
     !Boolean(initialState?.diagram),
@@ -184,6 +185,7 @@ export function useDiagram(
     {
       username,
       repo,
+      branch,
       onComplete: onStreamComplete,
       initialState: toInitialStreamState(initialState),
     },
@@ -362,7 +364,11 @@ export function useDiagram(
       const startedAt = Date.now();
       let generationStarted = false;
       try {
-        const stateRecord = await getDiagramState(username, repo);
+        const stateRecord = await getDiagramState(
+          username,
+          repo,
+          ...(branch ? [branch] : []),
+        );
         if (!isCurrentSync()) {
           return;
         }
@@ -414,6 +420,7 @@ export function useDiagram(
       applyStoredState,
       beginBackgroundSync,
       beginForegroundOperation,
+      branch,
       finishForegroundOperation,
       isActiveBackgroundSync,
       isActiveForegroundOperation,

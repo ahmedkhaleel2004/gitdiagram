@@ -35,11 +35,13 @@ export async function getDiagramStateRecord(
   username: string,
   repo: string,
   githubPat?: string,
+  branch?: string,
 ): Promise<DiagramStateRecord> {
   const storedArtifactState = await getStoredDiagramState({
     username,
     repo,
     githubPat,
+    branch,
   });
   if (storedArtifactState) {
     return storedArtifactState;
@@ -49,6 +51,7 @@ export async function getDiagramStateRecord(
     username,
     repo,
     githubPat,
+    branch,
   });
   if (storedFailureState) {
     return storedFailureState;
@@ -67,6 +70,7 @@ export async function persistTerminalSessionAudit(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
   visibility?: ArtifactVisibility;
   audit: GenerationSessionAudit;
 }) {
@@ -80,6 +84,7 @@ export async function persistTerminalSessionAudit(params: {
     username: params.username,
     repo: params.repo,
     githubPat: params.githubPat,
+    branch: params.branch,
     visibility,
     latestSessionSummary: slimAudit,
   });
@@ -89,6 +94,7 @@ export async function persistTerminalSessionAudit(params: {
       username: params.username,
       repo: params.repo,
       githubPat: params.githubPat,
+      branch: params.branch,
       visibility,
       latestSessionSummary: slimAudit,
     });
@@ -100,6 +106,7 @@ export async function persistTerminalSessionAudit(params: {
       username: params.username,
       repo: params.repo,
       githubPat: params.githubPat,
+      branch: params.branch,
       visibility,
     });
   }
@@ -109,6 +116,7 @@ export async function saveSuccessfulDiagramState(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
   visibility: ArtifactVisibility;
   stargazerCount: number | null;
   explanation: string;
@@ -123,6 +131,7 @@ export async function saveSuccessfulDiagramState(params: {
     username: params.username,
     repo: params.repo,
     githubPat: params.githubPat,
+    branch: params.branch,
     visibility: params.visibility,
     stargazerCount: params.stargazerCount,
     diagram: params.diagram,
@@ -145,6 +154,7 @@ export async function clearSuccessfulDiagramFailureSummary(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
   visibility: ArtifactVisibility;
 }): Promise<void> {
   await clearFailureSummary(params);

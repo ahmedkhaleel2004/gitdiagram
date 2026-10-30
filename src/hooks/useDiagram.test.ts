@@ -770,4 +770,18 @@ describe("useDiagram analytics", () => {
       },
     ]);
   });
+
+  it("passes branch to getDiagramState when provided", async () => {
+    getDiagramState.mockResolvedValueOnce(storedDiagram);
+    const { result } = renderHook(() =>
+      useDiagram("acme", "demo", null, false, "feature/awesome"),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(getDiagramState).toHaveBeenCalledWith(
+      "acme",
+      "demo",
+      "feature/awesome",
+    );
+  });
 });

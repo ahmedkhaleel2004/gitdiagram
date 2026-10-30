@@ -46,6 +46,7 @@ function toOutcome(
 interface UseDiagramStreamOptions {
   username: string;
   repo: string;
+  branch?: string;
   initialState?: DiagramStreamState;
   onComplete: (result: {
     diagram: string;
@@ -59,6 +60,7 @@ interface UseDiagramStreamOptions {
 export function useDiagramStream({
   username,
   repo,
+  branch,
   initialState,
   onComplete,
 }: UseDiagramStreamOptions) {
@@ -251,6 +253,7 @@ export function useDiagramStream({
         {
           username,
           repo,
+          branch,
           signal: abortController.signal,
         },
         {
@@ -280,7 +283,7 @@ export function useDiagramStream({
     return abortController.signal.aborted || !buffers.outcome
       ? { status: "aborted" }
       : buffers.outcome;
-  }, [handleStreamMessage, repo, username]);
+  }, [branch, handleStreamMessage, repo, username]);
 
   const cancelGeneration = useCallback(() => {
     activeGenerationRef.current?.abort();
