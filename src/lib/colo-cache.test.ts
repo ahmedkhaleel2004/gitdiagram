@@ -838,9 +838,12 @@ describe("answerFromCopy", () => {
     // Asked for once, however many visitors come meanwhile.
     expect((await get())!.headers.get("x-opennext-cache")).toBe("STALE");
     // The clock moves on while real work (the entry's decompression) lands.
+    // Only while a timer waits: on a busy machine decompression takes many
+    // turns, and a fixed number of clock steps ran out first and left the
+    // next look unfired (CI timed out on it from 2026-10-06 to 10-30).
     const until = async (done: () => boolean) => {
-      for (let step = 0; step < 200 && !done(); step++) {
-        await vi.advanceTimersByTimeAsync(100);
+      for (let turn = 0; turn < 100_000 && !done(); turn++) {
+        if (vi.getTimerCount() > 0) await vi.advanceTimersByTimeAsync(100);
         await new Promise((resolve) => realImmediate(resolve));
       }
     };
