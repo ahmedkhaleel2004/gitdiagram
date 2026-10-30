@@ -1,3 +1,5 @@
+import { COMMIT_SHA_INVALID_ERROR } from "~/features/diagram/commit";
+
 /** Safe metadata from GitHub; never carries response bodies or credentials. */
 export class GitHubRequestError extends Error {
   constructor(
@@ -10,11 +12,50 @@ export class GitHubRequestError extends Error {
   }
 }
 
+export type CommitResolutionFailure = "invalid" | "not_found" | "ambiguous";
+
+/**
+ * A commit SHA that could not be turned into one full commit of the
+ * repository. Carries only the failure kind, never GitHub's response text.
+ * A repository the caller cannot read at all is not one of these: that stays
+ * "Repository not found." or the private-repository token error.
+ */
+export class CommitResolutionError extends Error {
+  constructor(readonly failure: CommitResolutionFailure) {
+    super(`Commit could not be resolved (${failure}).`);
+    this.name = "CommitResolutionError";
+  }
+}
+
 export function classifyGitHubError(
   error: unknown,
   hasCallerToken: boolean,
 ): { message: string; errorCode: string; status: number } | null {
   if (!(error instanceof Error)) return null;
+  if (error instanceof CommitResolutionError) {
+    switch (error.failure) {
+      case "invalid":
+        return {
+          message: COMMIT_SHA_INVALID_ERROR,
+          errorCode: "COMMIT_SHA_INVALID",
+          status: 400,
+        };
+      case "not_found":
+        return {
+          message:
+            "We couldn't find that commit in this repository. Check the SHA, and that the commit belongs to this repository.",
+          errorCode: "COMMIT_NOT_FOUND",
+          status: 404,
+        };
+      case "ambiguous":
+        return {
+          message:
+            "That short SHA matches more than one commit. Add more characters or use the full 40-character SHA.",
+          errorCode: "COMMIT_AMBIGUOUS",
+          status: 422,
+        };
+    }
+  }
   if (error.message === "Repository not found.")
     return {
       message:

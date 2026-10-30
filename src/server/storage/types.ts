@@ -7,6 +7,8 @@ export interface DiagramArtifact {
   visibility: ArtifactVisibility;
   username: string;
   repo: string;
+  /** Full SHA this diagram was generated at; absent for the default branch. */
+  commit?: string;
   stargazerCount: number | null;
   diagram: string;
   explanation: string;
@@ -30,5 +32,7 @@ export interface StoredFailureSummary {
   visibility: ArtifactVisibility;
   username: string;
   repo: string;
+  /** Full SHA of the commit that failed; absent for the default branch. */
+  commit?: string;
   latestSessionSummary: GenerationSessionAudit;
 }

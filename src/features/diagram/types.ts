@@ -70,6 +70,8 @@ export type RepositoryVisibility = "public" | "private";
 export interface StreamGenerationParams {
   username: string;
   repo: string;
+  /** A commit SHA (short or full) to diagram instead of the default branch. */
+  commit?: string;
   signal?: AbortSignal;
 }
 
@@ -81,4 +83,10 @@ export interface DiagramStateResponse {
   lastSuccessfulAt: string | null;
   /** Which store a saved diagram came from (absent when nothing is saved). */
   visibility?: RepositoryVisibility;
+  /**
+   * The full SHA the state is for. Present for every commit request (even when
+   * nothing is saved yet, so a short SHA is resolved once) and absent for the
+   * default branch.
+   */
+  commit?: string;
 }

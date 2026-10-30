@@ -405,4 +405,47 @@ describe("repository generation workspace", () => {
     finish("old");
     expect(screen.getByRole("button", { name: "Regenerate" })).toBeDisabled();
   });
+  it("shows the short SHA of a commit diagram as a link to the commit on GitHub", () => {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    render(<RepositoryWorkspace {...props} commit={sha} state={cached} />);
+    finish("old");
+
+    const links =
+      document.querySelectorAll<HTMLAnchorElement>("[data-commit-link]");
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toHaveTextContent("0123456");
+      expect(link).not.toHaveTextContent(sha);
+      expect(link).toHaveAttribute(
+        "href",
+        `https://github.com/acme/demo/commit/${sha}`,
+      );
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    }
+  });
+  it("shows nothing extra on a default-branch diagram", () => {
+    render(<RepositoryWorkspace {...props} state={cached} />);
+    finish("old");
+
+    expect(document.querySelector("[data-commit-link]")).toBeNull();
+  });
+  it("explains why a commit diagram cannot be regenerated", () => {
+    render(
+      <RepositoryWorkspace
+        {...props}
+        commit="0123456"
+        regenerateDisabled
+        regenerateDisabledReason="A commit's diagram never changes."
+        state={cached}
+      />,
+    );
+    finish("old");
+
+    const regenerate = screen.getByRole("button", { name: "Regenerate" });
+    expect(regenerate).toBeDisabled();
+    expect(regenerate).toHaveAttribute(
+      "title",
+      "A commit's diagram never changes.",
+    );
+  });
 });

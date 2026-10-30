@@ -19,9 +19,24 @@ export function getRequestedRepoPagePath(
   return `/${encodeURIComponent(username.trim())}/${encodeURIComponent(repo.trim())}`;
 }
 
+/** `/{owner}/{repo}/commit/{sha}`: the page of one commit's diagram. */
+export function getCommitPagePath(
+  username: string,
+  repo: string,
+  commit: string,
+): string {
+  return `${getRepoPagePath(username, repo)}/commit/${normalizeRepoPathSegment(commit)}`;
+}
+
+/**
+ * The tag of a cached public read. A commit has a tag of its own so that
+ * generating a commit never drops the default-branch page, or another commit.
+ */
 export function getPublicDiagramStateCacheTag(
   username: string,
   repo: string,
+  commit?: string,
 ): string {
-  return `public-diagram-state:${normalizeRepoPathSegment(username)}:${normalizeRepoPathSegment(repo)}`;
+  const base = `public-diagram-state:${normalizeRepoPathSegment(username)}:${normalizeRepoPathSegment(repo)}`;
+  return commit ? `${base}:commit:${normalizeRepoPathSegment(commit)}` : base;
 }

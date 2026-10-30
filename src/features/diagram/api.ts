@@ -37,6 +37,7 @@ export class DiagramStreamHttpError extends Error {
 export async function getDiagramState(
   username: string,
   repo: string,
+  commit?: string,
 ): Promise<DiagramStateResponse> {
   await migrateLegacyCredentialStorage();
 
@@ -49,10 +50,25 @@ export async function getDiagramState(
     body: JSON.stringify({
       username,
       repo,
+      ...(commit ? { commit } : {}),
     }),
   });
 
   if (!response.ok) {
+    // A commit that cannot be resolved (malformed, unknown, ambiguous, no
+    // access) comes with its own explanation and code; anything else is an
+    // outage and stays generic.
+    const body = await response
+      .json()
+      .then((data) => data as DiagramStreamMessage)
+      .catch(() => undefined);
+    if (body?.error && body.error_code) {
+      throw new DiagramStreamHttpError(
+        body.error,
+        response.status,
+        body.error_code,
+      );
+    }
     throw new Error("Diagram state is temporarily unavailable.");
   }
 
@@ -121,6 +137,7 @@ export async function streamDiagramGeneration(
       body: JSON.stringify({
         username: params.username,
         repo: params.repo,
+        ...(params.commit ? { commit: params.commit } : {}),
         session_id: sessionId,
         cancel_token: cancelToken,
       }),

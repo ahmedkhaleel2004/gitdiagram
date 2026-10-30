@@ -1,4 +1,5 @@
 import type { DiagramStreamState } from "~/features/diagram/types";
+import { commitErrorTitle } from "~/features/diagram/commit";
 import { githubAccessTitle } from "~/features/diagram/github-access";
 import { generationStep } from "./progress";
 
@@ -43,6 +44,7 @@ export function feedbackState(
         : renderFailed
           ? "Couldn’t display the diagram"
           : (githubAccessTitle(state.errorCode) ??
+            commitErrorTitle(state.errorCode) ??
             "Couldn’t generate the diagram"),
       description: cancelled ? "" : state.error,
     };

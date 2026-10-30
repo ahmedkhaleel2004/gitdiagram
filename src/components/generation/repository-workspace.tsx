@@ -25,6 +25,7 @@ const MermaidChart = dynamic(loadDiagramRenderer, { loading: () => null });
 
 export function RepositoryWorkspace({
   repository,
+  commit,
   state,
   loading,
   lastGenerated,
@@ -32,12 +33,15 @@ export function RepositoryWorkspace({
   onCancel,
   onRenderError,
   regenerateDisabled = false,
+  regenerateDisabledReason,
   recovery,
   video,
   info,
   readme,
 }: {
   repository: string;
+  /** Full SHA (or the SHA from the address until it is resolved) of the commit shown. */
+  commit?: string;
   state: DiagramStreamState;
   loading: boolean;
   lastGenerated?: Date;
@@ -45,13 +49,15 @@ export function RepositoryWorkspace({
   onCancel: () => void;
   onRenderError: (message: string) => void;
   regenerateDisabled?: boolean;
+  /** Why Regenerate is disabled, when it is not because of an example. */
+  regenerateDisabledReason?: string;
   recovery?: ReactNode;
   /** Optional explainer video panel; the diagram stays the default view. */
   video?: ReactNode;
   /** More lines for the Info panel, mounted only while it is open. */
   info?: ReactNode;
   /** A stored public diagram, which the Export menu offers for READMEs. */
-  readme?: { owner: string; repo: string };
+  readme?: { owner: string; repo: string; commit?: string };
 }) {
   const {
     presented,
@@ -137,6 +143,7 @@ export function RepositoryWorkspace({
         <div className={styles.foldClip}>
           <RepositoryToolbar
             repository={repository}
+            commit={commit}
             diagram={result.diagram}
             historyId={historyId}
             historyVisible={historyVisible}
@@ -145,6 +152,7 @@ export function RepositoryWorkspace({
             toggleZoom={() => setZooming((value) => !value)}
             onRegenerate={regenerateDiagram}
             regenerateDisabled={regenerateDisabled}
+            regenerateDisabledReason={regenerateDisabledReason}
             regenerateRef={regenerate}
             getSvg={getSvg}
             pending={!presented}
@@ -189,6 +197,7 @@ export function RepositoryWorkspace({
               {(!toolbarVisible || ready) && (
                 <RepositorySource
                   repository={repository}
+                  commit={commit}
                   active={active}
                   stopRef={stop}
                   onCancel={cancelGeneration}
@@ -223,6 +232,7 @@ export function RepositoryWorkspace({
                 <GenerationActivity
                   state={presented.state}
                   repository={repository}
+                  commit={commit}
                 />
                 <DiagramMetadata
                   lastGenerated={presented.lastGenerated}

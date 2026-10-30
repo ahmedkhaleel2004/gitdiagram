@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import type { DiagramReadout } from "~/features/diagram/readout";
 import { architectureLines } from "./architecture-prose";
+import { shortCommitSha } from "~/features/diagram/commit";
 import theme from "./workspace.module.css";
 import styles from "./readout.module.css";
 
@@ -27,10 +28,14 @@ export function RepositoryReadout({
   repository,
   readout,
   markdownPath,
+  commit,
 }: {
   repository: string;
   readout: DiagramReadout;
-  markdownPath: string;
+  /** The Markdown twin; a commit's diagram has none. */
+  markdownPath?: string;
+  /** Full SHA when the diagram is of one commit. */
+  commit?: string;
 }) {
   const date = formatDate(readout.lastSuccessfulAt);
   return (
@@ -40,7 +45,7 @@ export function RepositoryReadout({
       data-repository-readout
     >
       <h2 id="repository-readout-title" className={styles.title}>
-        How {repository} works
+        How {repository} works{commit && <> at {shortCommitSha(commit)}</>}
       </h2>
       {readout.explanation && (
         <div className={styles.prose}>
@@ -125,10 +130,13 @@ export function RepositoryReadout({
             <time dateTime={readout.lastSuccessfulAt ?? undefined}>{date}</time>
           </>
         )}{" "}
-        from the repository&apos;s file tree, README and source files.{" "}
-        <a href={markdownPath} type="text/markdown">
-          Read as Markdown
-        </a>
+        from the repository&apos;s file tree, README and source files
+        {commit ? "." : " "}
+        {markdownPath && (
+          <a href={markdownPath} type="text/markdown">
+            Read as Markdown
+          </a>
+        )}
       </p>
     </section>
   );

@@ -22,9 +22,13 @@ type SameOriginJsonRequestOptions<T> = {
 export type SameOriginJsonRequestResult<T> =
   { success: true; data: T } | { success: false; response: Response };
 
-export function jsonErrorResponse(error: string, status: number): Response {
+export function jsonErrorResponse(
+  error: string,
+  status: number,
+  errorCode?: string,
+): Response {
   return Response.json(
-    { ok: false, error },
+    { ok: false, error, ...(errorCode ? { error_code: errorCode } : {}) },
     { status, headers: NO_STORE_RESPONSE_HEADERS },
   );
 }

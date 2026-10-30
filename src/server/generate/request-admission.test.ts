@@ -91,6 +91,36 @@ describe("admitGenerationRequest", () => {
     });
   });
 
+  it("carries a normalized commit to the generation", async () => {
+    const result = await admitGenerationRequest(request({ commit: "ABC1234" }));
+
+    expect(result).toMatchObject({
+      admitted: true,
+      value: { username: "openai", repo: "openai-node", commit: "abc1234" },
+    });
+  });
+
+  it("does not add a commit to a default-branch request", async () => {
+    const result = await admitGenerationRequest(request());
+
+    expect(result.admitted && "commit" in result.value).toBe(false);
+  });
+
+  it("rejects a malformed commit before any limiter or session is spent", async () => {
+    const result = await admitGenerationRequest(request({ commit: "main" }));
+
+    expect(result.admitted).toBe(false);
+    if (!result.admitted) {
+      expect(result.response.status).toBe(400);
+      await expect(result.response.json()).resolves.toMatchObject({
+        error_code: "COMMIT_SHA_INVALID",
+      });
+    }
+    expect(mocks.consumeRateLimit).not.toHaveBeenCalled();
+    expect(mocks.consumeInfrastructureRateLimit).not.toHaveBeenCalled();
+    expect(mocks.registerActiveGeneration).not.toHaveBeenCalled();
+  });
+
   it("still infrastructure-limits a caller using their own model key", async () => {
     mocks.resolveRequestCredentials.mockResolvedValue({ apiKey: "sk-user" });
 

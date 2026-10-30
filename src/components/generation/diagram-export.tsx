@@ -32,7 +32,7 @@ export function DiagramExport({
   getSvg: () => SVGSVGElement | null;
   disabled?: boolean;
   /** Offered only for a stored public diagram. */
-  readme?: { owner: string; repo: string };
+  readme?: { owner: string; repo: string; commit?: string };
 }) {
   const [open, setOpen] = useState(false);
   const [pointerMotion, setPointerMotion] = useState(false);
@@ -47,7 +47,7 @@ export function DiagramExport({
   const copyReadme = async (kind: ReadmeEmbed) => {
     if (!readme) return;
     await navigator.clipboard.writeText(
-      readmeMarkdown(readme.owner, readme.repo, kind),
+      readmeMarkdown(readme.owner, readme.repo, kind, readme.commit),
     );
     shared(`readme_${kind}`);
   };

@@ -14,7 +14,10 @@ import {
 import { writePublicDiagramPreview } from "./artifact-store";
 import { canPersistVisibility } from "./cache-key";
 import { getRepoPagePath } from "./repo-page-cache";
-import { refreshDiagramPagesHere } from "./repo-page-refresh";
+import {
+  refreshCommitDiagramPagesHere,
+  refreshDiagramPagesHere,
+} from "./repo-page-refresh";
 import type { ArtifactVisibility } from "./types";
 
 export interface SuccessfulDiagramState {
@@ -27,6 +30,12 @@ export interface SuccessfulDiagramState {
 export async function persistGenerationResult(params: {
   username: string;
   repo: string;
+  /**
+   * Full SHA of the commit the run was pinned to; absent for the default
+   * branch. A commit result goes to its own keys and never touches the
+   * default-branch artifact, preview, browse index or search pings.
+   */
+  commit?: string;
   githubPat?: string;
   visibility: ArtifactVisibility;
   audit: GenerationSessionAudit;
@@ -61,6 +70,7 @@ export async function persistGenerationResult(params: {
       const artifactWritten = await saveSuccessfulDiagramState({
         username: params.username,
         repo: params.repo,
+        commit: params.commit,
         githubPat: params.githubPat,
         visibility: params.visibility,
         stargazerCount: successfulDiagramState.stargazerCount,
@@ -78,6 +88,7 @@ export async function persistGenerationResult(params: {
             await clearSuccessfulDiagramFailureSummary({
               username: params.username,
               repo: params.repo,
+              commit: params.commit,
               githubPat: params.githubPat,
               visibility: params.visibility,
             });
@@ -93,7 +104,22 @@ export async function persistGenerationResult(params: {
         });
       }
 
-      if (params.visibility === "public" && artifactWritten) {
+      if (params.commit && params.visibility === "public" && artifactWritten) {
+        const commit = params.commit;
+        params.postResponseTasks.push(async () => {
+          try {
+            refreshCommitDiagramPagesHere(params.username, params.repo, commit);
+          } catch (error) {
+            console.error(
+              JSON.stringify({
+                event: "generate.persistence.commit_page_refresh_failed",
+                session_id: params.audit.sessionId,
+                error: error instanceof Error ? error.message : "Unknown error",
+              }),
+            );
+          }
+        });
+      } else if (params.visibility === "public" && artifactWritten) {
         const lastSuccessfulAt =
           params.audit.updatedAt ?? new Date().toISOString();
         params.postResponseTasks.push(async () => {
@@ -144,6 +170,7 @@ export async function persistGenerationResult(params: {
       await persistTerminalSessionAudit({
         username: params.username,
         repo: params.repo,
+        commit: params.commit,
         githubPat: params.githubPat,
         visibility: params.visibility,
         audit: params.audit,

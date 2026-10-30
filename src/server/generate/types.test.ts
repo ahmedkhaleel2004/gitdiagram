@@ -133,3 +133,79 @@ describe("parseGenerateRequest", () => {
     });
   });
 });
+
+describe("parseGenerateRequest commit", () => {
+  const full = "0123456789abcdef0123456789abcdef01234567";
+
+  it("leaves the request without a commit exactly as before", async () => {
+    const result = await parseGenerateRequest(
+      jsonRequest({ username: "acme", repo: "demo" }),
+    );
+
+    expect(result).toEqual({
+      success: true,
+      data: { username: "acme", repo: "demo" },
+    });
+    expect(result.success && "commit" in result.data).toBe(false);
+  });
+
+  it("accepts a full or short SHA and normalizes it", async () => {
+    await expect(
+      parseGenerateRequest(
+        jsonRequest({
+          username: "acme",
+          repo: "demo",
+          commit: ` ${full.toUpperCase()} `,
+        }),
+      ),
+    ).resolves.toEqual({
+      success: true,
+      data: { username: "acme", repo: "demo", commit: full },
+    });
+    await expect(
+      parseGenerateRequest(
+        jsonRequest({ username: "acme", repo: "demo", commit: "ABC1234" }),
+      ),
+    ).resolves.toEqual({
+      success: true,
+      data: { username: "acme", repo: "demo", commit: "abc1234" },
+    });
+  });
+
+  it.each(["", "main", "abc123", "HEAD~1", `${full}0`, "a".repeat(300)])(
+    "rejects the malformed commit %j with its own error code",
+    async (commit) => {
+      await expect(
+        parseGenerateRequest(
+          jsonRequest({ username: "acme", repo: "demo", commit }),
+        ),
+      ).resolves.toMatchObject({
+        success: false,
+        status: 400,
+        errorCode: expect.stringMatching(
+          /^(COMMIT_SHA_INVALID|VALIDATION_ERROR)$/u,
+        ),
+      });
+    },
+  );
+
+  it("names a malformed SHA as one", async () => {
+    await expect(
+      parseGenerateRequest(
+        jsonRequest({ username: "acme", repo: "demo", commit: "main" }),
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      status: 400,
+      errorCode: "COMMIT_SHA_INVALID",
+    });
+  });
+
+  it("does not accept a non-string commit", async () => {
+    await expect(
+      parseGenerateRequest(
+        jsonRequest({ username: "acme", repo: "demo", commit: 1234567 }),
+      ),
+    ).resolves.toMatchObject({ success: false, status: 400 });
+  });
+});

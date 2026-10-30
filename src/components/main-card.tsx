@@ -6,6 +6,11 @@ import { ArrowRight, Sparkles, X } from "lucide-react";
 import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
 import { exampleRepos } from "~/lib/exampleRepos";
+import {
+  COMMIT_SHA_INVALID_ERROR,
+  MAX_COMMIT_INPUT_LENGTH,
+  parseCommitSha,
+} from "~/features/diagram/commit";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
 import { SponsorSlot } from "~/components/sponsor-slot";
 import {
@@ -23,13 +28,16 @@ const CHIP_CLASS =
  */
 export default function MainCard({ sponsor = true }: { sponsor?: boolean }) {
   const [repoUrl, setRepoUrl] = useState("");
+  const [commit, setCommit] = useState("");
   const recent = useRecentDiagrams();
   const [error, setError] = useState("");
+  const [commitError, setCommitError] = useState("");
   const router = useRouter();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setCommitError("");
 
     const parsed = parseGitHubRepoUrl(repoUrl);
     if (!parsed) {
@@ -40,6 +48,22 @@ export default function MainCard({ sponsor = true }: { sponsor?: boolean }) {
     const { username, repo } = parsed;
     const sanitizedUsername = encodeURIComponent(username);
     const sanitizedRepo = encodeURIComponent(repo);
+
+    // The Commit field wins over a commit in a pasted GitHub commit URL
+    // (github.com/owner/repo/commit/sha).
+    const typedCommit = commit.trim() || parsed.commit;
+    if (typedCommit !== undefined) {
+      const parsedCommit = parseCommitSha(typedCommit);
+      if (!parsedCommit) {
+        setCommitError(COMMIT_SHA_INVALID_ERROR);
+        return;
+      }
+      router.push(
+        `/${sanitizedUsername}/${sanitizedRepo}/commit/${parsedCommit.sha}`,
+      );
+      return;
+    }
+
     router.push(`/${sanitizedUsername}/${sanitizedRepo}`);
   };
 
@@ -51,23 +75,40 @@ export default function MainCard({ sponsor = true }: { sponsor?: boolean }) {
   return (
     <div className="neo-panel home-main-card relative w-full max-w-3xl rounded-lg !bg-[hsl(var(--neo-panel))] sm:p-8">
       <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-6">
-        <div className="flex gap-2.5 sm:gap-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 sm:flex sm:gap-4">
           <label htmlFor="repository-input" className="sr-only">
             GitHub repository
           </label>
           <Input
             id="repository-input"
             placeholder="owner/repo or GitHub URL"
-            className="neo-input h-14 min-w-0 flex-1 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 sm:h-10 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
+            className="neo-input h-14 min-w-0 flex-1 rounded-md px-4 py-0 text-base font-bold placeholder:text-base placeholder:font-normal placeholder:text-gray-700 max-sm:col-start-1 max-sm:row-start-1 sm:h-10 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
             aria-describedby={error ? "repository-input-error" : undefined}
             aria-invalid={Boolean(error)}
             required
           />
+          <label htmlFor="commit-input" className="sr-only">
+            Commit (optional)
+          </label>
+          <Input
+            id="commit-input"
+            placeholder="Commit (optional)"
+            className="neo-input h-14 min-w-0 rounded-md px-4 py-0 font-mono text-base font-bold placeholder:font-sans placeholder:text-base placeholder:font-normal placeholder:text-gray-700 max-sm:col-span-2 max-sm:row-start-2 sm:h-10 sm:w-44 sm:shrink-0 sm:px-4 sm:py-6 sm:text-lg sm:placeholder:text-lg dark:placeholder:text-neutral-400"
+            value={commit}
+            onChange={(e) => setCommit(e.target.value)}
+            maxLength={MAX_COMMIT_INPUT_LENGTH}
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-describedby={commitError ? "commit-input-error" : undefined}
+            aria-invalid={Boolean(commitError)}
+          />
           <Button
             type="submit"
-            className="neo-button size-14 shrink-0 p-0 text-base sm:h-10 sm:w-auto sm:p-6 sm:px-6 sm:text-lg [&_svg]:size-6"
+            className="neo-button size-14 shrink-0 p-0 text-base max-sm:col-start-2 max-sm:row-start-1 sm:h-10 sm:w-auto sm:p-6 sm:px-6 sm:text-lg [&_svg]:size-6"
           >
             <ArrowRight
               className="sm:hidden"
@@ -85,6 +126,15 @@ export default function MainCard({ sponsor = true }: { sponsor?: boolean }) {
             role="alert"
           >
             {error}
+          </p>
+        ) : null}
+        {commitError ? (
+          <p
+            id="commit-input-error"
+            className="status-message text-sm text-red-600"
+            role="alert"
+          >
+            {commitError}
           </p>
         ) : null}
 

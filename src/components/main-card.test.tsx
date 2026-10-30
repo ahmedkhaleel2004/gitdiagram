@@ -61,6 +61,100 @@ describe("MainCard", () => {
     );
   });
 
+  describe("commits", () => {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+
+    function submit(repository: string, commit?: string) {
+      render(<MainCard />);
+      fireEvent.change(
+        screen.getByRole("textbox", { name: "GitHub repository" }),
+        { target: { value: repository } },
+      );
+      if (commit !== undefined) {
+        fireEvent.change(
+          screen.getByRole("textbox", { name: "Commit (optional)" }),
+          { target: { value: commit } },
+        );
+      }
+      fireEvent.click(screen.getByRole("button", { name: "Diagram" }));
+    }
+
+    it("offers an optional commit field next to the repository", () => {
+      render(<MainCard />);
+
+      const commit = screen.getByRole("textbox", { name: "Commit (optional)" });
+      expect(commit).not.toBeRequired();
+      expect(
+        screen.getByRole("textbox", { name: "GitHub repository" }),
+      ).toBeRequired();
+    });
+
+    it("opens the commit route for a repository and a commit", () => {
+      submit("facebook/react", sha);
+
+      expect(push).toHaveBeenCalledWith(`/facebook/react/commit/${sha}`);
+    });
+
+    it("accepts a short SHA and normalizes it", () => {
+      submit("facebook/react", "  ABC1234  ");
+
+      expect(push).toHaveBeenCalledWith("/facebook/react/commit/abc1234");
+    });
+
+    it("keeps opening the default branch when the commit field is empty", () => {
+      submit("facebook/react", "   ");
+
+      expect(push).toHaveBeenCalledWith("/facebook/react");
+    });
+
+    it("navigates to the commit route for a pasted GitHub commit url", () => {
+      submit(`https://github.com/vercel/next.js/commit/${sha}`);
+
+      expect(push).toHaveBeenCalledWith(`/vercel/next.js/commit/${sha}`);
+    });
+
+    it("handles a pasted commit url with a short SHA and a suffix", () => {
+      submit("https://github.com/vercel/next.js/commit/ABC1234/files?w=1");
+
+      expect(push).toHaveBeenCalledWith("/vercel/next.js/commit/abc1234");
+    });
+
+    it("lets the commit field win over the commit in a pasted url", () => {
+      submit(`https://github.com/vercel/next.js/commit/${sha}`, "abc1234");
+
+      expect(push).toHaveBeenCalledWith("/vercel/next.js/commit/abc1234");
+    });
+
+    it("still opens the default branch for other pasted GitHub pages", () => {
+      submit("https://github.com/vercel/next.js/tree/canary/packages/next");
+
+      expect(push).toHaveBeenCalledWith("/vercel/next.js");
+    });
+
+    it.each(["main", "abc12", "HEAD~1", `${sha}0`])(
+      "does not navigate for the malformed commit %j and says why",
+      (commit) => {
+        submit("facebook/react", commit);
+
+        expect(push).not.toHaveBeenCalled();
+        const field = screen.getByRole("textbox", {
+          name: "Commit (optional)",
+        });
+        expect(field).toHaveAttribute("aria-invalid", "true");
+        expect(field).toHaveAccessibleDescription(
+          /valid commit SHA.*at least 7/u,
+        );
+      },
+    );
+
+    it("rejects a malformed SHA in a pasted commit url", () => {
+      submit("https://github.com/facebook/react/commit/not-a-sha");
+
+      expect(push).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(/valid commit SHA/u);
+    });
+  });
+
   it("lets example repositories navigate without submitting the required input", () => {
     render(<MainCard />);
 

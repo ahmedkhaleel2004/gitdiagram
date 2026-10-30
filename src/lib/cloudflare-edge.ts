@@ -196,15 +196,20 @@ const OWN_FIRST_SEGMENTS = new Set([
   "og-fonts",
 ]);
 
-/** `/owner/repo`, or with `images` its social pictures too. */
+/**
+ * `/owner/repo` or a commit's page (`/owner/repo/commit/sha`), or with
+ * `images` the repository's social pictures too. A commit page that is not
+ * cached yet costs a render and two R2 writes like a repository page, and
+ * there is no end of SHAs to ask for.
+ */
 function isRepositoryRoute(pathname: string, images: boolean): boolean {
   const match =
-    /^\/([^/]+)\/[^/]+(\/(?:opengraph-image|twitter-image))?\/?$/.exec(
+    /^\/([^/]+)\/[^/]+(\/commit\/[^/]+|\/(?:opengraph-image|twitter-image))?\/?$/.exec(
       pathname,
     );
   if (!match?.[1] || OWN_FIRST_SEGMENTS.has(match[1].toLowerCase()))
     return false;
-  return images || !match[2];
+  return images || !match[2] || match[2].startsWith("/commit/");
 }
 
 /**
@@ -431,7 +436,8 @@ export function runsWhereTheVisitorIs(method: string, url: URL): boolean {
 /**
  * Whether a path has the shape of one of the site's pages: the home page, a
  * single name without a dot (`/videos`, `/browse`), a repository
- * (`/owner/repo`) or its watch page. The edge Worker sends such a request
+ * (`/owner/repo`), its watch page or a commit's page
+ * (`/owner/repo/commit/sha`). The edge Worker sends such a request
  * straight to the placed server when it has no copy of the page; pictures,
  * text files and everything else go through the site's Worker.
  */
@@ -440,5 +446,6 @@ export function isPagePath(pathname: string): boolean {
   if (segments.length === 0) return true;
   if (segments.length === 1) return !segments[0]!.includes(".");
   if (segments.length === 2) return true;
-  return segments.length === 3 && segments[2] === "video";
+  if (segments.length === 3) return segments[2] === "video";
+  return segments.length === 4 && segments[2] === "commit";
 }

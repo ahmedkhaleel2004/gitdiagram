@@ -1161,4 +1161,142 @@ describe("POST /api/generate/stream", () => {
       vi.useRealTimers();
     }
   });
+  describe("for a commit", () => {
+    const fullSha = "0123456789abcdef0123456789abcdef01234567";
+
+    function mockSuccessfulRun() {
+      mockEstimate(100);
+      mocks.admitQuota.mockResolvedValue({
+        admitted: true,
+        reservation: {
+          reservationId: "reservation-1",
+          quotaBucket: "daily",
+          quotaDateUtc: "2026-07-13",
+          quotaResetAt: "2026-07-14T00:00:00.000Z",
+          reservedTokens: 10_000,
+        },
+      });
+      const usage = {
+        inputTokens: 80,
+        outputTokens: 20,
+        totalTokens: 100,
+      };
+      mocks.streamCompletion.mockResolvedValue({
+        stream: (async function* () {
+          yield "<explanation>Request flow at a commit.</explanation>";
+        })(),
+        usagePromise: Promise.resolve(usage),
+      });
+      const graph = {
+        groups: [],
+        nodes: [
+          {
+            id: "entrypoint",
+            label: "Entry point",
+            type: "TypeScript module",
+            description: null,
+            groupId: null,
+            path: "src/index.ts",
+            shape: "box",
+          },
+        ],
+        edges: [],
+      };
+      mocks.generateStructuredOutput.mockResolvedValue({
+        output: graph,
+        rawText: JSON.stringify(graph),
+        usage,
+      });
+      mocks.getGithubData.mockResolvedValue({
+        defaultBranch: "main",
+        commitSha: fullSha,
+        fileTree: "src/index.ts",
+        pathTypes: new Map([["src/index.ts", "blob"]]),
+        readme: "# OpenAI Node",
+        isPrivate: false,
+        stargazerCount: 10,
+      });
+    }
+
+    it("reads the repository at the commit and links the diagram to it", async () => {
+      mockSuccessfulRun();
+
+      const response = await POST(request({ commit: "ABC1234" }));
+      const events = readSseEvents(await response.text());
+      const terminal = events.find((event) => event.status === "complete");
+
+      expect(mocks.getGithubData).toHaveBeenCalledWith(
+        "openai",
+        "openai-node",
+        undefined,
+        expect.any(AbortSignal),
+        { commit: "abc1234" },
+      );
+      expect(terminal).toMatchObject({ status: "complete" });
+      expect(terminal?.diagram).toEqual(
+        expect.stringContaining(
+          `https://github.com/openai/openai-node/blob/${fullSha}/src/index.ts`,
+        ),
+      );
+      expect(terminal?.diagram).not.toContain("/blob/main/");
+    });
+
+    it("stores the diagram under the resolved SHA and leaves the default branch's extras alone", async () => {
+      mockSuccessfulRun();
+
+      const response = await POST(request({ commit: "abc1234" }));
+      await response.text();
+
+      expect(mocks.saveDiagram).toHaveBeenCalledWith(
+        expect.objectContaining({
+          username: "openai",
+          repo: "openai-node",
+          commit: fullSha,
+          visibility: "public",
+        }),
+      );
+      await mocks.afterCallback?.();
+      expect(mocks.clearFailureSummary).toHaveBeenCalledWith(
+        expect.objectContaining({ commit: fullSha }),
+      );
+      // The preview, browse index and search pings describe the default branch.
+      expect(mocks.writePublicPreview).not.toHaveBeenCalled();
+    });
+
+    it("rejects a malformed commit before any upstream work", async () => {
+      const response = await POST(request({ commit: "main" }));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error_code: "COMMIT_SHA_INVALID",
+      });
+      expect(mocks.getGithubData).not.toHaveBeenCalled();
+      expect(mocks.admitQuota).not.toHaveBeenCalled();
+    });
+
+    it("leaves a default-branch run without a commit in storage", async () => {
+      mockSuccessfulRun();
+      mocks.getGithubData.mockResolvedValue({
+        defaultBranch: "main",
+        fileTree: "src/index.ts",
+        pathTypes: new Map([["src/index.ts", "blob"]]),
+        readme: "# OpenAI Node",
+        isPrivate: false,
+        stargazerCount: 10,
+      });
+
+      const response = await POST(request());
+      await response.text();
+
+      expect(mocks.getGithubData).toHaveBeenCalledWith(
+        "openai",
+        "openai-node",
+        undefined,
+        expect.any(AbortSignal),
+      );
+      expect(mocks.saveDiagram).toHaveBeenCalledWith(
+        expect.not.objectContaining({ commit: expect.anything() }),
+      );
+    });
+  });
 });

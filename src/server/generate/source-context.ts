@@ -301,7 +301,10 @@ export async function fetchSourceContext(params: {
             } else {
               source = await readPublicSource({
                 ...params,
-                branch: params.githubData.defaultBranch,
+                // At the commit the tree was read at, else the default branch.
+                branch:
+                  params.githubData.commitSha ??
+                  params.githubData.defaultBranch,
                 path,
                 blob,
                 signal,

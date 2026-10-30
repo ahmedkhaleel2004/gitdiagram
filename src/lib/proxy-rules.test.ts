@@ -121,5 +121,17 @@ describe("proxyDecision", () => {
     expect(decide("/llms.txt").surface).toBe("llms.txt");
     expect(decide("/acme/demo/video").surface).toBe("watch");
     expect(decide("/videos").surface).toBe("videos");
+    // A commit page is not named after its owner.
+    expect(decide("/acme/demo/commit/0123abc").surface).toBe("repo-commit");
+    expect(decide("/acme/demo/commit/0123abc/").surface).toBe("repo-commit");
+  });
+
+  it("leaves a commit page to the page itself", () => {
+    expect(decide("/acme/demo/commit/0123abc").decision).toEqual({
+      action: "next",
+    });
+    expect(
+      decide("/acme/demo/commit/0123abc", { accept: "text/markdown" }).decision,
+    ).toEqual({ action: "next" });
   });
 });
