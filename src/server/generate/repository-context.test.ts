@@ -207,6 +207,16 @@ describe("repository evidence preparation", () => {
     data.treeTruncated = true;
     expect(prepareRepositoryContext(data).treeTruncated).toBe(true);
   });
+  it("filters paths using extraIgnorePatterns", () => {
+    const data = repository([
+      "src/main.ts",
+      "plugins/addon/router.ts",
+      "plugins/addon/index.ts",
+    ]);
+    const context = prepareRepositoryContext(data, ["plugins/"]);
+    expect(context.fileTree).toContain("src/main.ts");
+    expect(context.fileTree).not.toContain("plugins/addon/router.ts");
+  });
 });
 
 describe("analysis model routing", () => {

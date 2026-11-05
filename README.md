@@ -33,6 +33,7 @@ GitDiagram can now turn a repository into a narrated video of about a minute. Th
 - **Explore the architecture** with an AI-generated diagram and streamed explanation.
 - **Jump to the code** by clicking any component's linked file or directory.
 - **Use private repositories** with a GitHub token via **Private Repos** in the header.
+- **Ignore files and folders** by adding a `.gitdiagramignore` (or `.gitingestignore`) file in your repository root.
 - **Export diagrams** as PNG or copy the Mermaid source.
 
 ## Use GitDiagram from AI agents
