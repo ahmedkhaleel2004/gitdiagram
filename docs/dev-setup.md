@@ -42,6 +42,7 @@ Choose one AI provider:
 
 - OpenAI: `AI_PROVIDER=openai` and `OPENAI_API_KEY`
 - OpenRouter: `AI_PROVIDER=openrouter` and `OPENROUTER_API_KEY`
+- Requesty: `AI_PROVIDER=requesty` and `REQUESTY_API_KEY`
 
 Optional generation controls include:
 
@@ -52,6 +53,10 @@ Optional generation controls include:
 - `OPENROUTER_MODEL`
 - `OPENROUTER_SITE_URL`
 - `OPENROUTER_APP_NAME`
+- `REQUESTY_MODEL`
+- `REQUESTY_BASE_URL`
+- `REQUESTY_SITE_URL`
+- `REQUESTY_APP_NAME`
 - `GENERATION_RATE_LIMIT_MAX` / `GENERATION_RATE_LIMIT_WINDOW_SECONDS` (per-IP limit on server-funded runs, default 8 an hour)
 - `GENERATION_INFRASTRUCTURE_RATE_LIMIT_MAX` / `GENERATION_INFRASTRUCTURE_RATE_LIMIT_WINDOW_SECONDS` (per-IP limit on every caller, default 60 an hour)
 - `MCP_RATE_LIMIT_MAX` / `MCP_RATE_LIMIT_WINDOW_SECONDS` (per-network limit on tool calls to the MCP server at `/mcp`, default 120 an hour; per person, with 20 times that per network, when a chat app such as ChatGPT names the person)
@@ -92,6 +97,16 @@ OPENROUTER_API_KEY=...
 OPENROUTER_MODEL=openai/gpt-5.6-terra
 OPENROUTER_SITE_URL=http://localhost:3000
 OPENROUTER_APP_NAME=GitDiagram
+```
+
+A Requesty example:
+
+```dotenv
+AI_PROVIDER=requesty
+REQUESTY_API_KEY=...
+REQUESTY_MODEL=openai/gpt-5.6-terra
+REQUESTY_SITE_URL=http://localhost:3000
+REQUESTY_APP_NAME=GitDiagram
 ```
 
 ## Run
