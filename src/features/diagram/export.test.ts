@@ -109,7 +109,25 @@ describe("exportMermaidSvgAsPng", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
+  it.each([
+    ["facebook/react", "facebook-react.png"],
+    ["vercel/next.js", "vercel-next.js.png"],
+    ["acme/my_repo", "acme-my_repo.png"],
+    ["Facebook/React", "Facebook-React.png"],
+    ["react", "react.png"],
+    ["  facebook/react  ", "facebook-react.png"],
+    [undefined, "diagram.png"],
+    ["", "diagram.png"],
+    ["   ", "diagram.png"],
+  ])("downloads %s as %s", async (repository, filename) => {
+    const page = setup();
 
+    await exportMermaidSvgAsPng(page.svg, "white", repository);
+
+    expect(page.click).toHaveBeenCalledTimes(1);
+    const anchor = page.click.mock.contexts[0] as HTMLAnchorElement;
+    expect(anchor.download).toBe(filename);
+  });
   it.each([undefined, "#1a1520"])(
     "uses intrinsic bounds and the %s background while encoding asynchronously",
     async (background) => {
