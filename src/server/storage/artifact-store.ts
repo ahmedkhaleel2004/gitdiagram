@@ -129,6 +129,7 @@ export async function getStoredDiagramArtifact(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
 }): Promise<{
   artifact: DiagramArtifact;
   location: StorageLocation;
@@ -151,14 +152,16 @@ export async function getStoredDiagramArtifact(params: {
 export async function getPublicDiagramArtifact(
   username: string,
   repo: string,
+  branch?: string,
 ): Promise<DiagramArtifact | null> {
-  return getArtifactForLocation(getPublicLocation(username, repo));
+  return getArtifactForLocation(getPublicLocation(username, repo, branch));
 }
 
 export async function getStoredDiagramState(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
 }): Promise<DiagramStateResponse | null> {
   const result = await getStoredDiagramArtifact(params);
   if (!result) {
@@ -171,17 +174,18 @@ export async function getStoredDiagramState(params: {
 export async function getPublicDiagramPreview(params: {
   username: string;
   repo: string;
+  branch?: string;
   expectedLastSuccessfulAt?: string;
 }): Promise<{
   diagram: string;
   lastSuccessfulAt: string;
   source: "artifact" | "sidecar";
 } | null> {
-  const location = getPublicLocation(params.username, params.repo);
+  const location = getPublicLocation(params.username, params.repo, params.branch);
   if (params.expectedLastSuccessfulAt) {
     const preview = await getJsonObject<PublicDiagramPreview>(
       location.bucket,
-      getPublicPreviewKey(params.username, params.repo),
+      getPublicPreviewKey(params.username, params.repo, params.branch),
     );
     if (
       preview?.diagram &&
@@ -212,8 +216,9 @@ export async function writePublicDiagramPreview(params: {
   repo: string;
   diagram: string;
   lastSuccessfulAt: string;
+  branch?: string;
 }): Promise<boolean> {
-  const location = getPublicLocation(params.username, params.repo);
+  const location = getPublicLocation(params.username, params.repo, params.branch);
 
   // Deliberately reuses the canonical artifact's lock: the sidecar is only
   // valid while its artifact is canonical, so the read-check-write below must
@@ -236,7 +241,7 @@ export async function writePublicDiagramPreview(params: {
 
       await putJsonObject(
         location.bucket,
-        getPublicPreviewKey(params.username, params.repo),
+        getPublicPreviewKey(params.username, params.repo, params.branch),
         {
           version: 1,
           username: params.username.trim().toLowerCase(),
@@ -254,6 +259,7 @@ export async function writeDiagramArtifact(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
   visibility: ArtifactVisibility;
   stargazerCount: number | null;
   diagram: string;
@@ -309,6 +315,7 @@ export async function updateArtifactLatestSessionSummary(params: {
   githubPat?: string;
   visibility: ArtifactVisibility;
   latestSessionSummary: GenerationSessionAudit;
+  branch?: string;
 }): Promise<boolean> {
   const location = getWriteLocation(params);
 

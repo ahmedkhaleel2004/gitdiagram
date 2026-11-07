@@ -37,10 +37,21 @@ export default function MainCard({ sponsor = true }: { sponsor?: boolean }) {
       return;
     }
 
-    const { username, repo } = parsed;
+    const { username, repo, branch } = parsed;
     const sanitizedUsername = encodeURIComponent(username);
     const sanitizedRepo = encodeURIComponent(repo);
-    router.push(`/${sanitizedUsername}/${sanitizedRepo}`);
+    if (branch?.trim()) {
+      const sanitizedBranch = branch
+        .trim()
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/");
+      router.push(
+        `/${sanitizedUsername}/${sanitizedRepo}/tree/${sanitizedBranch}`,
+      );
+    } else {
+      router.push(`/${sanitizedUsername}/${sanitizedRepo}`);
+    }
   };
 
   const handleExampleClick = (repoPath: string, e: React.MouseEvent) => {

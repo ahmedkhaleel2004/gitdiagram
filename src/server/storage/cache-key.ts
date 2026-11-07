@@ -30,26 +30,34 @@ export interface StorageLocation {
   statusKey: string;
 }
 
-export function getPublicPreviewKey(username: string, repo: string): string {
+export function getPublicPreviewKey(
+  username: string,
+  repo: string,
+  branch?: string,
+): string {
   // The sidecar lives under its own prefix rather than a ".preview" suffix on
   // the repo segment: normalizeSegment leaves "." unescaped, so a suffix would
   // let the sidecar for repo "app" collide with the artifact for the legal
   // repo name "app.preview" and silently overwrite it.
-  return `public-preview/v1/${normalizeSegment(username)}/${normalizeSegment(repo)}.json`;
+  const branchPath = branch ? `/branch/${normalizeSegment(branch)}` : "";
+  return `public-preview/v1/${normalizeSegment(username)}/${normalizeSegment(repo)}${branchPath}.json`;
 }
 
 export function getPublicLocation(
   username: string,
   repo: string,
+  branch?: string,
 ): StorageLocation {
   const normalizedUsername = normalizeSegment(username);
   const normalizedRepo = normalizeSegment(repo);
+  const branchPath = branch ? `/branch/${normalizeSegment(branch)}` : "";
+  const branchStatus = branch ? `:${normalizeSegment(branch)}` : "";
 
   return {
     visibility: "public",
     bucket: readRequiredEnv("R2_PUBLIC_BUCKET"),
-    artifactKey: `public/v1/${normalizedUsername}/${normalizedRepo}.json`,
-    statusKey: `status:v1:public:${normalizedUsername}:${normalizedRepo}`,
+    artifactKey: `public/v1/${normalizedUsername}/${normalizedRepo}${branchPath}.json`,
+    statusKey: `status:v1:public:${normalizedUsername}:${normalizedRepo}${branchStatus}`,
   };
 }
 
@@ -57,16 +65,19 @@ export function getPrivateLocation(
   username: string,
   repo: string,
   githubPat: string,
+  branch?: string,
 ): StorageLocation {
   const normalizedUsername = normalizeSegment(username);
   const normalizedRepo = normalizeSegment(repo);
   const namespace = createPatNamespace(githubPat);
+  const branchPath = branch ? `/branch/${normalizeSegment(branch)}` : "";
+  const branchStatus = branch ? `:${normalizeSegment(branch)}` : "";
 
   return {
     visibility: "private",
     bucket: readRequiredEnv("R2_PRIVATE_BUCKET"),
-    artifactKey: `private/v1/${namespace}/${normalizedUsername}/${normalizedRepo}.json`,
-    statusKey: `status:v1:private:${namespace}:${normalizedUsername}:${normalizedRepo}`,
+    artifactKey: `private/v1/${namespace}/${normalizedUsername}/${normalizedRepo}${branchPath}.json`,
+    statusKey: `status:v1:private:${namespace}:${normalizedUsername}:${normalizedRepo}${branchStatus}`,
   };
 }
 
@@ -84,15 +95,17 @@ export function getWriteLocation(params: {
   repo: string;
   visibility: ArtifactVisibility;
   githubPat?: string;
+  branch?: string;
 }): StorageLocation {
   if (params.visibility !== "private") {
-    return getPublicLocation(params.username, params.repo);
+    return getPublicLocation(params.username, params.repo, params.branch);
   }
 
   return getPrivateLocation(
     params.username,
     params.repo,
     params.githubPat ?? "",
+    params.branch,
   );
 }
 
@@ -107,13 +120,21 @@ export function getReadLocations(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
 }): StorageLocation[] {
   const locations: StorageLocation[] = [];
   if (params.githubPat?.trim()) {
     locations.push(
-      getPrivateLocation(params.username, params.repo, params.githubPat),
+      getPrivateLocation(
+        params.username,
+        params.repo,
+        params.githubPat,
+        params.branch,
+      ),
     );
   }
-  locations.push(getPublicLocation(params.username, params.repo));
+  locations.push(
+    getPublicLocation(params.username, params.repo, params.branch),
+  );
   return locations;
 }

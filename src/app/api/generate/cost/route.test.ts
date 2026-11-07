@@ -118,6 +118,35 @@ describe("POST /api/generate/cost", () => {
     );
   });
 
+  it("passes branch to getGithubData when branch is specified", async () => {
+    const customRequest = new Request(
+      "https://gitdiagram.com/api/generate/cost",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://gitdiagram.com",
+          "Sec-Fetch-Site": "same-origin",
+        },
+        body: JSON.stringify({
+          username: "openai",
+          repo: "openai-node",
+          branch: "v5",
+        }),
+      },
+    );
+    const response = await POST(customRequest);
+
+    expect(response.status).toBe(200);
+    expect(mocks.getGithubData).toHaveBeenCalledWith(
+      "openai",
+      "openai-node",
+      undefined,
+      expect.any(AbortSignal),
+      "v5",
+    );
+  });
+
   it("rejects a cross-origin caller before touching GitHub", async () => {
     // Estimation runs the same GitHub ingestion as a real generation, so an
     // open endpoint drains the server's shared API budget.

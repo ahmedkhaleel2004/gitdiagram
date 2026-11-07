@@ -225,6 +225,7 @@ async function readPublicSource(params: {
 export async function fetchSourceContext(params: {
   username: string;
   repo: string;
+  branch?: string;
   githubData: GithubData;
   selectedPaths: string[];
   /** Read in full only for the source index's reference lists. */
@@ -301,7 +302,7 @@ export async function fetchSourceContext(params: {
             } else {
               source = await readPublicSource({
                 ...params,
-                branch: params.githubData.defaultBranch,
+                branch: params.branch?.trim() || params.githubData.defaultBranch,
                 path,
                 blob,
                 signal,

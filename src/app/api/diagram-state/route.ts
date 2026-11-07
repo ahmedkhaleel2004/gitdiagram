@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDiagramStateRecord } from "~/server/storage/diagram-state";
 import {
   credentialSchema,
+  githubBranchSchema,
   githubRepoSchema,
   githubUsernameSchema,
 } from "~/server/generate/types";
@@ -21,6 +22,7 @@ const MAX_DIAGRAM_STATE_REQUEST_BYTES = 4 * 1024;
 const diagramStateRequestSchema = z.strictObject({
   username: githubUsernameSchema,
   repo: githubRepoSchema,
+  branch: githubBranchSchema.optional(),
   github_pat: credentialSchema.optional(),
 });
 
@@ -42,6 +44,7 @@ export async function POST(request: Request): Promise<Response> {
       parsed.data.username,
       parsed.data.repo,
       githubStorageKey,
+      ...(parsed.data.branch ? [parsed.data.branch] : []),
     );
     return Response.json(state, { headers: NO_STORE_RESPONSE_HEADERS });
   } catch {

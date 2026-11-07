@@ -33,6 +33,41 @@ describe("parseGenerateRequest", () => {
     });
   });
 
+  it("accepts and trims valid branch names", async () => {
+    const result = await parseGenerateRequest(
+      jsonRequest({
+        username: "openai",
+        repo: "openai-node",
+        branch: "  feat/issue-101  ",
+      }),
+    );
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        username: "openai",
+        repo: "openai-node",
+        branch: "feat/issue-101",
+      },
+    });
+  });
+
+  it("rejects invalid branch names", async () => {
+    await expect(
+      parseGenerateRequest(
+        jsonRequest({
+          username: "openai",
+          repo: "openai-node",
+          branch: "../invalid",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      status: 400,
+      errorCode: "VALIDATION_ERROR",
+    });
+  });
+
   it("accepts only paired RFC-compliant session and cancellation IDs", async () => {
     const sessionId = "550e8400-e29b-41d4-a716-446655440000";
     const cancelToken = "f47ac10b-58cc-4372-a567-0e02b2c3d479";

@@ -474,13 +474,13 @@ describe("isPagePath", () => {
     "/acme/demo",
     "/vercel/next.js",
     "/acme/demo/video",
+    "/acme/demo/tree/main",
   ])("%s is a page", (path) => expect(isPagePath(path)).toBe(true));
   it.each([
     "/robots.txt",
     "/llms.txt",
     "/acme/demo/opengraph-image",
     "/acme/demo/diagram.png",
-    "/acme/demo/tree/main",
     "/sitemap/0.xml/x/y",
   ])("%s is not", (path) => expect(isPagePath(path)).toBe(false));
 });

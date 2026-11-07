@@ -25,6 +25,7 @@ const MermaidChart = dynamic(loadDiagramRenderer, { loading: () => null });
 
 export function RepositoryWorkspace({
   repository,
+  branch,
   state,
   loading,
   lastGenerated,
@@ -38,6 +39,7 @@ export function RepositoryWorkspace({
   readme,
 }: {
   repository: string;
+  branch?: string;
   state: DiagramStreamState;
   loading: boolean;
   lastGenerated?: Date;
@@ -137,6 +139,7 @@ export function RepositoryWorkspace({
         <div className={styles.foldClip}>
           <RepositoryToolbar
             repository={repository}
+            branch={branch}
             diagram={result.diagram}
             historyId={historyId}
             historyVisible={historyVisible}

@@ -91,6 +91,23 @@ describe("admitGenerationRequest", () => {
     });
   });
 
+  it("admits a request with a specified branch", async () => {
+    const result = await admitGenerationRequest(
+      request({
+        branch: "feature/awesome",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      admitted: true,
+      value: {
+        username: "openai",
+        repo: "openai-node",
+        branch: "feature/awesome",
+      },
+    });
+  });
+
   it("still infrastructure-limits a caller using their own model key", async () => {
     mocks.resolveRequestCredentials.mockResolvedValue({ apiKey: "sk-user" });
 

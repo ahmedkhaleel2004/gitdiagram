@@ -67,6 +67,26 @@ describe("bounded source ingestion", () => {
       headers: { Authorization: "Bearer private-caller-token" },
     });
   });
+  it("fetches public source from the specified branch if provided", async () => {
+    const text = "export const v2 = 2;";
+    const fetchMock = vi.fn(async () => new Response(text));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await fetchSourceContext({
+      username: "owner",
+      repo: "repo",
+      branch: "release/v2",
+      githubData: repo(["src/main.ts"], text),
+      selectedPaths: ["src/main.ts"],
+    });
+    expect(result.paths).toEqual(["src/main.ts"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://raw.githubusercontent.com/owner/repo/release%2Fv2/src/main.ts",
+      expect.objectContaining({
+        cache: "no-store",
+        redirect: "manual",
+      }),
+    );
+  });
   it("rejects private reads without caller authorization before any fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

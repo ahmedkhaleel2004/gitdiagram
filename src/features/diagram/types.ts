@@ -70,6 +70,7 @@ export type RepositoryVisibility = "public" | "private";
 export interface StreamGenerationParams {
   username: string;
   repo: string;
+  branch?: string;
   signal?: AbortSignal;
 }
 

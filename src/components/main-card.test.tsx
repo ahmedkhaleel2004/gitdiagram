@@ -46,6 +46,39 @@ describe("MainCard", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("accepts GitHub URL with branch path and navigates to tree route", () => {
+    render(<MainCard />);
+
+    const input = screen.getByRole("textbox", {
+      name: "GitHub repository",
+    });
+    fireEvent.change(input, {
+      target: { value: "https://github.com/testdriverai/testdriverai/tree/v5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Diagram" }));
+
+    expect(push).toHaveBeenCalledWith("/testdriverai/testdriverai/tree/v5");
+    expect(
+      screen.queryByText(
+        "Please enter a valid GitHub repository URL or owner/repo",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("accepts shorthand owner/repo@branch and navigates to tree route", () => {
+    render(<MainCard />);
+
+    const input = screen.getByRole("textbox", {
+      name: "GitHub repository",
+    });
+    fireEvent.change(input, {
+      target: { value: "owner/repo@feature/v2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Diagram" }));
+
+    expect(push).toHaveBeenCalledWith("/owner/repo/tree/feature/v2");
+  });
+
   it("associates invalid input feedback with the repository field", () => {
     render(<MainCard />);
 

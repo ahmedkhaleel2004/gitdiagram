@@ -43,6 +43,7 @@ export async function getStoredFailureState(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
 }): Promise<DiagramStateResponse | null> {
   for (const location of getReadLocations(params)) {
     const summary = await getSummaryForLocation(location);
@@ -58,6 +59,7 @@ export async function writeFailureSummary(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
   visibility: ArtifactVisibility;
   latestSessionSummary: GenerationSessionAudit;
 }): Promise<void> {
@@ -84,6 +86,7 @@ export async function clearFailureSummary(params: {
   username: string;
   repo: string;
   githubPat?: string;
+  branch?: string;
   visibility: ArtifactVisibility;
 }): Promise<void> {
   const location = getWriteLocation(params);

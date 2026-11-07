@@ -147,6 +147,23 @@ describe("POST /api/diagram-state", () => {
     );
   });
 
+  it("passes branch to getDiagramStateRecord when specified", async () => {
+    await POST(
+      request({
+        username: "openai",
+        repo: "openai-node",
+        branch: "feat/issue-101",
+      }),
+    );
+
+    expect(mocks.getDiagramStateRecord).toHaveBeenCalledWith(
+      "openai",
+      "openai-node",
+      undefined,
+      "feat/issue-101",
+    );
+  });
+
   it("rejects cross-origin and malformed requests before storage access", async () => {
     const crossOriginResponse = await POST(
       request(

@@ -488,11 +488,15 @@ async function getReadme(
   repo: string,
   headers: HeadersInit,
   signal?: AbortSignal,
+  branch?: string,
 ): Promise<string> {
   let data: GitHubReadmeResponse;
+  const url = branch
+    ? `https://api.github.com/repos/${username}/${repo}/readme?ref=${encodeURIComponent(branch)}`
+    : `https://api.github.com/repos/${username}/${repo}/readme`;
   try {
     data = await fetchJson<GitHubReadmeResponse>(
-      `https://api.github.com/repos/${username}/${repo}/readme`,
+      url,
       headers,
       MISSING_README_MESSAGE,
       signal,
@@ -537,11 +541,13 @@ async function fetchGithubData(
   repo: string,
   githubPat?: string,
   signal?: AbortSignal,
+  branch?: string,
 ): Promise<GithubData> {
   const hasCallerGithubPat = Boolean(githubPat?.trim());
   const headers = await getGitHubApiHeaders({ githubPat });
   const metadata = await getRepoMetadata(username, repo, headers, signal);
   const { defaultBranch, isPrivate } = metadata;
+  const targetBranch = branch?.trim() || defaultBranch;
 
   // GitHub App installation tokens and the server PAT pool may be able to read
   // private repositories. They improve public API rate limits, but they must
@@ -554,12 +560,12 @@ async function fetchGithubData(
     getFileTree(
       username,
       repo,
-      defaultBranch,
+      targetBranch,
       headers,
       !hasCallerGithubPat && !isPrivate,
       signal,
     ),
-    getReadme(username, repo, headers, signal).then(
+    getReadme(username, repo, headers, signal, branch?.trim()).then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error }),
     ),
@@ -585,9 +591,10 @@ export async function getGithubData(
   repo: string,
   githubPat?: string,
   signal?: AbortSignal,
+  branch?: string,
 ): Promise<GithubData> {
   try {
-    return await fetchGithubData(username, repo, githubPat, signal);
+    return await fetchGithubData(username, repo, githubPat, signal, branch);
   } catch (error) {
     if (
       !githubPat?.trim() ||
@@ -606,6 +613,7 @@ export async function getGithubData(
         repo,
         undefined,
         signal,
+        branch,
       );
       console.info(
         JSON.stringify({ event: "generate.github.public_fallback_succeeded" }),

@@ -18,6 +18,21 @@ export const githubRepoSchema = z
   // "." and ".." are legal under the character rule but resolve away when
   // interpolated into a GitHub API path, retargeting the request.
   .refine((value) => value !== "." && value !== "..");
+export const githubBranchSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .refine(
+    (branch) =>
+      !branch.startsWith("/") &&
+      !branch.endsWith("/") &&
+      !branch.includes("..") &&
+      !/[\s~^:?*\[\\]/.test(branch) &&
+      !branch.endsWith(".lock"),
+    { message: "Invalid branch name." },
+  );
+
 export const credentialSchema = z.string().trim().min(1).max(2_048);
 
 export const generationSessionIdSchema = z.uuid();
@@ -27,6 +42,7 @@ const generateRequestSchema = z
   .strictObject({
     username: githubUsernameSchema,
     repo: githubRepoSchema,
+    branch: githubBranchSchema.optional(),
     api_key: credentialSchema.optional(),
     github_pat: credentialSchema.optional(),
     session_id: generationSessionIdSchema.optional(),
