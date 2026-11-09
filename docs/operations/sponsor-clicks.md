@@ -12,8 +12,9 @@ GitHub README, no Markdown line), to `2027-02-17T05:00:00Z` ($3,499). Clicks go
 to `https://temporal.io/` with the site's default UTM tags
 (`utm_campaign=temporal_30_days` and `temporal_exclusive_30_days`) until
 Temporal sends its own link and button text. The line, button and horizontal
-wordmark are the ones previewed to them on October 19. If the invoice is not
-paid before December 19, both campaigns come off the schedule.
+wordmark are the ones previewed to them on October 19. Paid in full: BILL
+sent the US$4,498 by ACH on November 5, 2026 and it landed on November 9, 2026;
+the Stripe invoice is marked paid out of band.
 
 ## Sentry
 
