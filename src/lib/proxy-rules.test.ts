@@ -100,6 +100,16 @@ describe("proxyDecision", () => {
     expect(decide("/api/Private").decision).toEqual({ action: "next" });
   });
 
+  it("serves a comparison page's Markdown twin the same way", () => {
+    expect(decide("/compare/deepwiki.md").decision).toEqual({
+      action: "rewrite",
+      pathname: "/compare/deepwiki/llms.txt",
+    });
+    expect(
+      decide("/compare/deepwiki", { accept: "text/markdown" }).decision,
+    ).toEqual({ action: "rewrite", pathname: "/compare/deepwiki/llms.txt" });
+  });
+
   it("serves the Markdown twin by extension or by Accept", () => {
     expect(decide("/acme/demo.md")).toEqual({
       decision: { action: "rewrite", pathname: "/acme/demo/llms.txt" },

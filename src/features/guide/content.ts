@@ -10,7 +10,7 @@ export const GUIDE_TITLE =
   "How to visualize a codebase: an architecture diagram of any GitHub repo";
 export const GUIDE_DESCRIPTION =
   "Get an interactive architecture diagram of any GitHub repository in one step, see what it shows, use it from AI agents, and compare it honestly with DeepWiki, Sourcegraph, IDE graphs and Claude Code.";
-export const GUIDE_UPDATED = "2026-09-29";
+export const GUIDE_UPDATED = "2026-11-09";
 
 export interface GuideSection {
   id: string;
@@ -26,7 +26,7 @@ export interface GuideQuestion {
 }
 
 export const GUIDE_INTRODUCTION =
-  "The quickest way to understand an unfamiliar repository is a picture of its main parts and how they connect. This guide shows how to get one for any GitHub repository in one step, what it contains, how AI agents can use it, and when a different tool is the better choice.";
+  "To visualize a GitHub repository, replace `hub` with `diagram` in its URL: `github.com/fastapi/fastapi` becomes [gitdiagram.com/fastapi/fastapi](/fastapi/fastapi). GitDiagram reads the repository and shows an interactive architecture diagram of its main parts and how they connect, each part linked to its code, free and with nothing to install. For other jobs another tool is better: [dependency-cruiser](/compare/dependency-cruiser) or [Madge](/compare/madge) for an exact JavaScript import graph, [Mermaid](/compare/mermaid) or [Structurizr](/compare/structurizr) for diagrams you write yourself, [DeepWiki](/compare/deepwiki) for a written wiki and [Sourcegraph](/compare/sourcegraph) for code search; [this comparison](/best-codebase-visualization-tools) covers them all. The rest of this guide explains what the diagram contains, how AI agents can use it, and when to pick something else.";
 
 export function guideSections({ videos }: { videos: boolean }): GuideSection[] {
   return [
@@ -79,12 +79,12 @@ export function guideSections({ videos }: { videos: boolean }): GuideSection[] {
       id: "alternatives",
       heading: "Other ways to visualize a codebase",
       paragraphs: [
-        "GitDiagram is built for one job: a single picture of a whole repository, with no setup. Other tools do other jobs better:",
+        "GitDiagram is built for one job: a single picture of a whole repository, with no setup. Other tools do other jobs better. The [full comparison of codebase visualization tools](/best-codebase-visualization-tools) has each one's pricing, limits and sources.",
       ],
       entries: [
         {
           name: "DeepWiki",
-          text: "Replace `github` with `deepwiki` in a repository URL to get a generated wiki: many pages of documentation with diagrams, and a chat that answers questions about the code. Better when you want to read about a project in depth or ask it questions. GitDiagram is better when you want the whole system on one screen, each part linked to its code.",
+          text: "Replace `github` with `deepwiki` in a repository URL to get a generated wiki: many pages of documentation with diagrams, and a chat that answers questions about the code. Better when you want to read about a project in depth or ask it questions. GitDiagram is better when you want the whole system on one screen, each part linked to its code. [GitDiagram vs DeepWiki](/compare/deepwiki) compares them on the same repository.",
         },
         {
           name: "Claude Code, Codex or another coding agent",
@@ -92,15 +92,15 @@ export function guideSections({ videos }: { videos: boolean }): GuideSection[] {
         },
         {
           name: "Sourcegraph",
-          text: "Code search and navigation across many repositories, with precise go-to-definition and find-references. Better when you need exact answers, such as every caller of a function. It does not draw an architecture overview.",
+          text: "Code search and navigation across many repositories, with precise go-to-definition and find-references. Better when you need exact answers, such as every caller of a function. It does not draw an architecture overview ([GitDiagram vs Sourcegraph](/compare/sourcegraph)).",
         },
         {
           name: "IDE and language dependency graphs",
-          text: "JetBrains IDEs, and tools such as `madge` for JavaScript or `pydeps` for Python, draw graphs straight from the imports. Better when you need an exact and complete module graph. They show every import rather than the parts that matter, so graphs of large projects get hard to read.",
+          text: 'JetBrains IDEs, and tools such as [dependency-cruiser](/compare/dependency-cruiser) and [Madge](/compare/madge) for JavaScript or `pydeps` for Python, draw graphs straight from the imports. Better when you need an exact and complete module graph, or rules such as "no circular dependencies" checked in CI. They show every import rather than the parts that matter, so graphs of large projects get hard to read.',
         },
         {
           name: "Drawing it yourself",
-          text: "Writing a Mermaid, PlantUML or draw.io diagram by hand gives full control, and GitHub renders Mermaid inside Markdown files. Better for a diagram you maintain in your own docs. Exporting GitDiagram's Mermaid code is a quick first draft to edit.",
+          text: "Writing a [Mermaid](/compare/mermaid), PlantUML or draw.io diagram by hand gives full control, and GitHub renders Mermaid inside Markdown files; [Structurizr](/compare/structurizr) keeps a C4 architecture model as code. Better for a diagram you maintain in your own docs. Exporting GitDiagram's Mermaid code is a quick first draft to edit.",
         },
       ],
     },

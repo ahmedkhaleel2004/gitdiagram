@@ -31,9 +31,9 @@ vi.mock("~/server/explainer/catalog", () => ({
 vi.mock("~/lib/sitemaps", async (importOriginal) => ({
   ...(await importOriginal<typeof Sitemaps>()),
   // Small pages make the shard arithmetic visible.
-  SITEMAP_PAGE_SIZE: 10,
+  SITEMAP_PAGE_SIZE: 20,
   getSitemapCount: (routeCount: number, fixedRouteCount: number) =>
-    Math.max(1, Math.ceil((routeCount + fixedRouteCount) / 10)),
+    Math.max(1, Math.ceil((routeCount + fixedRouteCount) / 20)),
 }));
 
 import robots from "./robots";
@@ -141,16 +141,16 @@ describe("robots.txt", () => {
 
   it("never reads the whole browse index", async () => {
     // It renders on the placed server, which the whole index can kill.
-    // 25 repositories and the six fixed pages make four pages of ten.
-    store.browse = Array.from({ length: 25 }, (_, index) => entry(index));
-    expect((await robots()).sitemap).toHaveLength(5);
+    // 35 repositories and the 13 fixed pages make three pages of twenty.
+    store.browse = Array.from({ length: 35 }, (_, index) => entry(index));
+    expect((await robots()).sitemap).toHaveLength(4);
     expect(store.wholeIndexReads).toBe(0);
   });
 
   it("does not list an empty shard when videos are off", async () => {
-    // Four fixed pages and six repositories fill exactly one page of ten.
+    // Eleven fixed pages and nine repositories fill exactly one page of twenty.
     store.videosOn = false;
-    store.browse = Array.from({ length: 6 }, (_, index) => entry(index));
+    store.browse = Array.from({ length: 9 }, (_, index) => entry(index));
     expect(await generateSitemaps()).toHaveLength(1);
     store.videosOn = true;
     expect(await generateSitemaps()).toHaveLength(2);
@@ -159,14 +159,14 @@ describe("robots.txt", () => {
 
 describe("sitemap index", () => {
   it("lists every shard robots.txt lists, without the whole index", async () => {
-    store.browse = Array.from({ length: 25 }, (_, index) => entry(index));
+    store.browse = Array.from({ length: 35 }, (_, index) => entry(index));
     const response = await sitemapIndex();
     expect(response.headers.get("content-type")).toContain("application/xml");
     const body = await response.text();
     expect(body).toContain("<sitemapindex");
     const locs = [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
     expect(locs).toEqual(((await robots()).sitemap as string[]).slice(1));
-    expect(locs).toHaveLength(4);
+    expect(locs).toHaveLength(3);
     expect(store.wholeIndexReads).toBe(0);
   });
 });

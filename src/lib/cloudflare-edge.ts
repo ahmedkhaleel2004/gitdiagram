@@ -1,4 +1,5 @@
 import { normalizeBrowseQuery } from "../features/browse/catalog";
+import { isUnknownComparePath } from "../features/compare/slugs";
 
 // Pure helpers for the Cloudflare Worker entry (cloudflare/worker.ts). They
 // make a request on Cloudflare look to the app like one on Vercel, so the
@@ -194,6 +195,9 @@ const OWN_FIRST_SEGMENTS = new Set([
   "sponsors",
   "sponsor-previews",
   "og-fonts",
+  // The comparison pages (/compare/{tool}). GitHub reserves the name, so no
+  // owner is called "compare".
+  "compare",
 ]);
 
 /** `/owner/repo`, or with `images` its social pictures too. */
@@ -247,7 +251,8 @@ export function edgeDecision(
 ): EdgeDecision {
   const limit = RATE_LIMITED_PATHS[pathname];
   if (limit) return { action: "limit", limit };
-  if (isScannerPath(pathname)) return { action: "missing" };
+  if (isScannerPath(pathname) || isUnknownComparePath(pathname))
+    return { action: "missing" };
   const agent = userAgent ?? "";
   // 2026-07-08: ClaudeBot crawling thousands of unique repository pages.
   if (agent.includes("ClaudeBot") && isRepositoryRoute(pathname, false))

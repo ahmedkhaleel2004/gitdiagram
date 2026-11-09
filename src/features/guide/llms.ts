@@ -1,5 +1,16 @@
 import { GITHUB_REPO_URL, SITE_URL } from "~/lib/site";
 import {
+  COMPARE_PAGES,
+  ROUNDUP_DESCRIPTION,
+  ROUNDUP_PATH,
+  ROUNDUP_TITLE,
+  comparePath,
+} from "~/features/compare/content";
+import {
+  comparePageMarkdown,
+  roundupMarkdown,
+} from "~/features/compare/markdown";
+import {
   GUIDE_DESCRIPTION,
   GUIDE_PATH,
   guideMarkdown,
@@ -34,7 +45,15 @@ function llmsBody({ videos }: { videos: boolean }): string[] {
     "## Docs",
     "",
     `- [How to visualize a codebase](${SITE_URL}${GUIDE_PATH}): ${GUIDE_DESCRIPTION}`,
-    `- [Full text for language models](${SITE_URL}/llms-full.txt): this file plus the whole guide.`,
+    `- [Full text for language models](${SITE_URL}/llms-full.txt): this file plus the whole guide and every comparison.`,
+    "",
+    "## Comparisons",
+    "",
+    `- [${ROUNDUP_TITLE}](${SITE_URL}${ROUNDUP_PATH}): ${ROUNDUP_DESCRIPTION}`,
+    ...COMPARE_PAGES.map(
+      (page) =>
+        `- [GitDiagram vs ${page.tool}](${SITE_URL}${comparePath(page.slug)}): ${page.description} Markdown: ${SITE_URL}${comparePath(page.slug)}.md`,
+    ),
     "",
     "## Examples",
     "",
@@ -59,5 +78,12 @@ export function llmsText({ videos }: { videos: boolean }): string {
 }
 
 export function llmsFullText({ videos }: { videos: boolean }): string {
-  return `${[...llmsBody({ videos }), "", guideMarkdown({ videos })].join("\n")}\n`;
+  return `${[
+    ...llmsBody({ videos }),
+    "",
+    guideMarkdown({ videos }),
+    "",
+    roundupMarkdown(2),
+    ...COMPARE_PAGES.flatMap((page) => ["", comparePageMarkdown(page, 2)]),
+  ].join("\n")}\n`;
 }

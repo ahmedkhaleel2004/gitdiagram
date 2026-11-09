@@ -126,6 +126,21 @@ describe("edgeDecision", () => {
     }
   });
 
+  it("treats the comparison pages as the site's own, not repositories", () => {
+    expect(edgeDecision("/compare/deepwiki", "ClaudeBot/1.0")).toBeNull();
+    expect(edgeDecision("/compare/madge", "Amazonbot/0.1")).toBeNull();
+    expect(edgeDecision("/compare/mermaid", "Mozilla/5.0")).toBeNull();
+    expect(edgeDecision("/compare/mermaid.md", null)).toBeNull();
+    expect(edgeDecision("/compare/mermaid/llms.txt", null)).toBeNull();
+    // Any other /compare/ path is not a page (and not a repository).
+    for (const path of [
+      "/compare/nope",
+      "/compare/deepwiki/video",
+      "/compare/a/b/c",
+    ])
+      expect(edgeDecision(path, null)).toEqual({ action: "missing" });
+  });
+
   it("keeps the blocked crawlers off repository pages only", () => {
     const claude =
       "Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)";

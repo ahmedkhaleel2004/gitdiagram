@@ -5,6 +5,12 @@ import {
   getCachedBrowseIndexTotal,
 } from "~/server/browse-index-cache";
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
+import {
+  COMPARE_CHECKED,
+  COMPARE_PAGES,
+  ROUNDUP_PATH,
+  comparePath,
+} from "~/features/compare/content";
 import { GUIDE_UPDATED } from "~/features/guide/content";
 import { SITE_URL } from "~/lib/site";
 import { getSitemapCount, SITEMAP_PAGE_SIZE } from "~/lib/sitemaps";
@@ -81,6 +87,18 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.8,
     },
+    {
+      url: `${SITE_URL}${ROUNDUP_PATH}`,
+      lastModified: new Date(COMPARE_CHECKED),
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    ...COMPARE_PAGES.map((page) => ({
+      url: `${SITE_URL}${comparePath(page.slug)}`,
+      lastModified: new Date(COMPARE_CHECKED),
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    })),
     {
       url: `${SITE_URL}/advertise`,
       lastModified: new Date("2026-09-19"),
