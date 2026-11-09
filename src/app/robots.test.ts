@@ -63,7 +63,7 @@ describe("robots.txt", () => {
   });
 
   it("names the AI search and assistant crawlers with the same rules", async () => {
-    const [everyone, ai, bulk] = (await robots()).rules as Array<{
+    const [everyone, , ai, bulk] = (await robots()).rules as Array<{
       userAgent: string | string[];
       allow: string | string[];
       disallow: string[];
@@ -80,7 +80,6 @@ describe("robots.txt", () => {
         "Perplexity-User",
         "Google-Extended",
         "Applebot-Extended",
-        "bingbot",
       ]),
     );
     // Pages, /llms.txt and /{owner}/{repo}.md are all under "/".
@@ -89,6 +88,18 @@ describe("robots.txt", () => {
     // The bulk crawlers stay off repository pages.
     expect(bulk!.userAgent).toEqual(["Amazonbot", "Brightbot"]);
     expect(bulk!.disallow).toContain("/*/*");
+  });
+
+  it("lets search engines fetch sponsor links so they see noindex", async () => {
+    const [everyone, search] = (await robots()).rules as Array<{
+      userAgent: string[];
+      allow: string[];
+      disallow: string[];
+    }>;
+    expect(search!.userAgent).toEqual(["Googlebot", "bingbot"]);
+    expect(search!.allow).toEqual(everyone!.allow);
+    expect(search!.disallow).toEqual(["/api/"]);
+    expect(everyone!.disallow).toContain("/out/");
   });
 
   it("lists every sitemap shard, video pages included", async () => {

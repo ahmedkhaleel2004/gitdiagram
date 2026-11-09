@@ -15,8 +15,14 @@ const AI_CRAWLERS = [
   "Perplexity-User",
   "Google-Extended",
   "Applebot-Extended",
-  "bingbot",
 ];
+
+// Search engines also get /out/: each sponsor link answers with
+// X-Robots-Tag: noindex, which they can only see if they may fetch it.
+// Blocked, Google indexes the bare URL from the links pointing at it
+// ("Indexed, though blocked by robots.txt"). Their user agents contain "bot",
+// so their fetches are never counted as sponsor clicks.
+const SEARCH_ENGINES = ["Googlebot", "bingbot"];
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
   // The same pages the sitemap splits into, so every shard is listed.
@@ -30,6 +36,11 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
         // honor robots.txt before fetching og:image. The longer rule wins.
         allow: ["/", "/api/video/file"],
         disallow: ["/api/", "/out/"],
+      },
+      {
+        userAgent: SEARCH_ENGINES,
+        allow: ["/", "/api/video/file"],
+        disallow: ["/api/"],
       },
       {
         // AI search and assistant crawlers read the pages, /llms.txt and each

@@ -141,6 +141,11 @@ describe("sponsor click redirects", () => {
 
   it.each<Record<string, string>>([
     { "user-agent": "Googlebot" },
+    { "user-agent": "Mozilla/5.0 (compatible; Google-InspectionTool/1.0;)" },
+    {
+      "user-agent":
+        "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+    },
     { "user-agent": "Slackbot-LinkExpanding" },
     { "user-agent": "curl/8.0" },
     { "user-agent": "" },

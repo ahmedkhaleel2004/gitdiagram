@@ -14,7 +14,7 @@ import { errorText, logEvent } from "~/server/log";
 import { upstashEval } from "~/server/storage/upstash";
 
 const automatedAgent =
-  /bot|crawler|spider|slurp|preview|facebookexternalhit|facebot|whatsapp|telegram|discord|slack|curl|wget|python|httpclient|headless|lighthouse|pingdom|uptime|monitor/i;
+  /bot|crawler|spider|slurp|preview|facebookexternalhit|facebot|whatsapp|telegram|discord|slack|curl|wget|python|httpclient|headless|lighthouse|google-inspectiontool|googleother|pingdom|uptime|monitor/i;
 
 export function shouldRecordSponsorEvent(request: Request) {
   const { headers } = request;
