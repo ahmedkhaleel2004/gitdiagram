@@ -156,6 +156,7 @@ export const CRON_ROUTES: Record<string, string> = {
   // the week's questions are answered; later firings do nothing.
   "*/10 14-17 * * 1": "/api/internal/ai-panel",
   "30 7 * * *": "/api/internal/related-diagrams",
+  "45 7 * * *": "/api/internal/architecture-hubs",
 };
 
 // ---------------------------------------------------------------------------
@@ -205,6 +206,9 @@ const OWN_FIRST_SEGMENTS = new Set([
   "compare",
   // The situation guides (/guides/{slug}). GitHub reserves this name too.
   "guides",
+  // The architecture hubs (/architecture-examples/{hub}); no GitHub account
+  // has the name.
+  "architecture-examples",
 ]);
 
 /** `/owner/repo`, or with `images` its social pictures too. */

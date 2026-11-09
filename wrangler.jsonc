@@ -37,6 +37,7 @@
       "0 13 * * *",
       "*/10 14-17 * * 1",
       "30 7 * * *",
+      "45 7 * * *",
     ],
   },
   // No routes here: gitdiagram.com/* and www.gitdiagram.com/* belong to the

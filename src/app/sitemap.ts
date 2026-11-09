@@ -22,6 +22,8 @@ import {
   SITUATION_PAGES,
   situationPath,
 } from "~/features/situations/content";
+import { HUBS_PATH, hubPath } from "~/features/architecture-hubs/hubs";
+import { readArchitectureHubs } from "~/server/storage/architecture-hubs-read";
 import { SITE_URL } from "~/lib/site";
 import {
   getSitemapCount,
@@ -49,6 +51,30 @@ const getVideoRoutes = unstable_cache(
   ["sitemap-video-routes"],
   { revalidate: 3600 },
 );
+
+// The architecture hubs and every one of their pages (a few hundred URLs, from
+// one small cached object). Left out while it cannot be read.
+async function getHubRoutes(): Promise<MetadataRoute.Sitemap> {
+  const index = await readArchitectureHubs().catch(() => null);
+  if (!index?.hubs.length) return [];
+  const lastModified = new Date(index.updatedAt);
+  return [
+    {
+      url: `${SITE_URL}${HUBS_PATH}`,
+      lastModified,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    },
+    ...index.hubs.flatMap((hub) =>
+      Array.from({ length: hub.pages }, (_, page) => ({
+        url: `${SITE_URL}${hubPath(hub.slug, page + 1)}`,
+        lastModified,
+        changeFrequency: "weekly" as const,
+        priority: page === 0 ? 0.7 : 0.4,
+      })),
+    ),
+  ];
+}
 
 function toValidDate(value: string): Date | null {
   const timestamp = Date.parse(value);
@@ -146,8 +172,9 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
 export async function generateSitemaps() {
   const browseTotal = await getCachedBrowseIndexTotal().catch(() => null);
   const videoRoutes = await getVideoRoutes().catch(() => []);
+  const hubRoutes = await getHubRoutes();
   const sitemapCount = getSitemapCount(
-    (browseTotal ?? 0) + videoRoutes.length,
+    (browseTotal ?? 0) + videoRoutes.length + hubRoutes.length,
     getStaticRoutes(new Date()).length,
   );
 
@@ -179,6 +206,7 @@ export default async function sitemap(props: {
     ...getStaticRoutes(latestBrowseUpdate),
     ...popular.map((entry) => repoRoute(entry, 0.7)),
     ...(await getVideoRoutes().catch(() => [])),
+    ...(await getHubRoutes()),
   ];
   const start = sitemapId * SITEMAP_PAGE_SIZE;
   const end = start + SITEMAP_PAGE_SIZE;

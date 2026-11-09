@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { HUBS_PATH } from "~/features/architecture-hubs/hubs";
 import { richText } from "~/features/guide/rich-text";
 import { SITUATION_PAGES, situationPath } from "~/features/situations/content";
 import {
@@ -128,6 +129,14 @@ export function MoreComparisons({ current }: { current?: string }) {
             className="neo-link font-medium hover:underline"
           >
             How to visualize a codebase
+          </Link>
+        </li>
+        <li>
+          <Link
+            href={HUBS_PATH}
+            className="neo-link font-medium hover:underline"
+          >
+            Open-source architecture examples by language
           </Link>
         </li>
       </ul>

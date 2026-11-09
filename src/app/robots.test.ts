@@ -10,6 +10,10 @@ const store = vi.hoisted(() => ({
   videos: [] as Array<{ owner: string; repo: string; createdAt?: string }>,
   videosOn: true,
   wholeIndexReads: 0,
+  hubs: null as null | {
+    updatedAt: string;
+    hubs: Array<{ slug: string; pages: number }>;
+  },
 }));
 
 vi.mock("next/cache", () => ({
@@ -21,6 +25,9 @@ vi.mock("~/server/browse-index-cache", () => ({
     return store.browse;
   },
   getCachedBrowseIndexTotal: async () => store.browse.length,
+}));
+vi.mock("~/server/storage/architecture-hubs-read", () => ({
+  readArchitectureHubs: async () => store.hubs,
 }));
 vi.mock("~/server/explainer/config", () => ({
   isVideoExplainerEnabled: () => store.videosOn,
@@ -51,6 +58,7 @@ beforeEach(() => {
   store.videos = [];
   store.videosOn = true;
   store.wholeIndexReads = 0;
+  store.hubs = null;
 });
 
 describe("robots.txt", () => {
@@ -185,6 +193,30 @@ describe("sitemap", () => {
       (route) => route.url,
     );
     expect(without).not.toContain("https://gitdiagram.com/videos");
+  });
+
+  it("lists the architecture hubs and each of their pages", async () => {
+    store.hubs = {
+      updatedAt: "2026-11-09T07:45:00.000Z",
+      hubs: [
+        { slug: "python", pages: 2 },
+        { slug: "ai-agents", pages: 1 },
+      ],
+    };
+    const urls = (await sitemap({ id: Promise.resolve("0") })).map(
+      (route) => route.url,
+    );
+    expect(urls).toEqual(
+      expect.arrayContaining([
+        "https://gitdiagram.com/architecture-examples",
+        "https://gitdiagram.com/architecture-examples/python",
+        "https://gitdiagram.com/architecture-examples/python/2",
+        "https://gitdiagram.com/architecture-examples/ai-agents",
+      ]),
+    );
+    expect(urls).not.toContain(
+      "https://gitdiagram.com/architecture-examples/python/1",
+    );
   });
 });
 

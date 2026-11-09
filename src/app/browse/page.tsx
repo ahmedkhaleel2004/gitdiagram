@@ -59,6 +59,7 @@ const GUIDES: ReadonlyArray<readonly [string, string]> = [
   ["/compare/sourcegraph", "vs Sourcegraph"],
   ["/compare/mermaid", "vs Mermaid"],
   ["/best-codebase-visualization-tools", "all comparisons"],
+  ["/architecture-examples", "architecture examples"],
 ];
 
 function firstSearchParam(value: string | string[] | undefined) {

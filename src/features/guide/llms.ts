@@ -28,6 +28,12 @@ import {
   POPULAR_TITLE,
 } from "~/features/popular-repos/content";
 
+import {
+  HUBS_DESCRIPTION,
+  HUBS_TITLE,
+} from "~/features/architecture-hubs/content";
+import { HUBS_PATH } from "~/features/architecture-hubs/hubs";
+
 // /llms.txt (https://llmstxt.org): what GitDiagram is and how an agent uses
 // it, as Markdown. /llms-full.txt adds the whole guide.
 
@@ -60,6 +66,7 @@ function llmsBody({ videos }: { videos: boolean }): string[] {
     `- [Full text for language models](${SITE_URL}/llms-full.txt): this file plus the whole guide, every situation guide and every comparison.`,
     `- [${REPORT_TITLE}](${SITE_URL}${REPORT_PATH}.md): a data report from the stored diagrams of the most-starred repositories, with its method and a CSV dataset (${SITE_URL}${REPORT_DATASET.csv}).`,
     `- [${POPULAR_TITLE}](${SITE_URL}${POPULAR_PATH}.md): ${POPULAR_DESCRIPTION} Answers "how is {repo} structured" for the most-starred projects.`,
+    `- [${HUBS_TITLE}](${SITE_URL}${HUBS_PATH}): ${HUBS_DESCRIPTION} Markdown: ${SITE_URL}${HUBS_PATH}.md (each hub also has one, e.g. ${SITE_URL}${HUBS_PATH}/python.md).`,
     "",
     "## Guides by situation",
     "",

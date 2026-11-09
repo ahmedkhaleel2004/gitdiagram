@@ -14,6 +14,15 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import type { DiagramGraph } from "../../src/features/diagram/graph";
+import {
+  AGENT_ACTOR,
+  TRAIT_KEYS,
+  TRAITS,
+  WORKSPACE_DIRS,
+  graphNames,
+  topFolders,
+  type Trait,
+} from "../../src/features/architecture-report/traits";
 
 function flag(name: string, fallback?: string): string {
   const index = process.argv.indexOf(`--${name}`);
@@ -98,66 +107,7 @@ if (sample.length < sampleSize) {
 
 // ---- What each repository's diagram shows -------------------------------
 
-/** Text of every component and group name in a diagram, lowercased. */
-function names(graph: DiagramGraph): string {
-  return [
-    ...graph.nodes.map((node) => node.label),
-    ...graph.groups.map((group) => group.label),
-  ]
-    .join(" | ")
-    .toLowerCase();
-}
-
-/**
- * Traits read from component and group names. Each rule is a plain regular
- * expression over the names the diagram gives its parts; the page lists them.
- */
-const TRAITS = {
-  llm: {
-    label: "Has an LLM or AI-model component",
-    rule: /\b(llms?|language models?|model providers?|ai providers?|llm providers?|openai|anthropic|ollama|gemini|inference (api|providers?|backends?))\b/,
-  },
-  mcp: {
-    label: "Speaks MCP",
-    rule: /\bmcp\b|model context protocol/,
-  },
-  cli: {
-    label: "Has a command-line interface",
-    rule: /\bcli\b|command[- ]line|\bterminal (ui|interface|app)\b|\btui\b/,
-  },
-  web: {
-    label: "Has a web interface",
-    rule: /\bweb (ui|app|application|interface|client|frontend|dashboard|console)\b|\bfrontend\b|\bdashboard\b/,
-  },
-  desktop: {
-    label: "Has a desktop app",
-    rule: /\bdesktop\b|\belectron\b|\btauri\b/,
-  },
-  plugins: {
-    label: "Has a plugin or extension system",
-    rule: /\bplugins?\b|\bextensions?\b|\badd-?ons?\b/,
-  },
-} as const;
-type Trait = keyof typeof TRAITS;
-const TRAIT_KEYS = Object.keys(TRAITS) as Trait[];
-
-/** Folders that hold a workspace's packages, by convention. */
-const WORKSPACE_DIRS = ["packages", "apps", "crates", "libs", "services"];
-/**
- * An outside actor (a circle) named as an AI agent or assistant. Model APIs
- * drawn as circles ("LLM provider") are services, not users, so "llm" is out.
- */
-const AGENT_ACTOR =
-  /\bagents?\b|\bmcp clients?\b|\bassistants?\b|\bcopilot\b|\bclaude code\b|\bcodex\b/;
-
-function topFolders(graph: DiagramGraph): Set<string> {
-  const folders = new Set<string>();
-  for (const node of graph.nodes) {
-    const parts = node.path?.split("/") ?? [];
-    if (parts.length > 1 && parts[0]) folders.add(parts[0]);
-  }
-  return folders;
-}
+const names = graphNames;
 
 const rows = sample.map((item, position) => {
   const { graph } = item;

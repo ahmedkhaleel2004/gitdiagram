@@ -14,6 +14,7 @@ import {
   REPORT_TITLE,
   REPORT_URL,
 } from "~/features/architecture-report/content";
+import { HUBS_PATH } from "~/features/architecture-hubs/hubs";
 import { SITE_URL } from "~/lib/site";
 
 const OG_IMAGE = `${REPORT_PATH}/opengraph-image`;
@@ -429,6 +430,13 @@ export default function ArchitectureReportPage() {
               </tbody>
             </table>
           </div>
+          <p className="mt-3 leading-relaxed">
+            Hundreds more diagrams per language, with the same counts:{" "}
+            <Link href={HUBS_PATH} className={linkClass}>
+              architecture examples by language and kind of project
+            </Link>
+            .
+          </p>
         </Section>
 
         <Section id="layout" title="How repositories are laid out">
