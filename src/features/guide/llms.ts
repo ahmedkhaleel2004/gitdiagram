@@ -22,6 +22,11 @@ import {
 } from "~/features/architecture-report/content";
 import { SITUATION_PAGES, situationPath } from "~/features/situations/content";
 import { situationMarkdown } from "~/features/situations/markdown";
+import {
+  POPULAR_DESCRIPTION,
+  POPULAR_PATH,
+  POPULAR_TITLE,
+} from "~/features/popular-repos/content";
 
 // /llms.txt (https://llmstxt.org): what GitDiagram is and how an agent uses
 // it, as Markdown. /llms-full.txt adds the whole guide.
@@ -54,6 +59,7 @@ function llmsBody({ videos }: { videos: boolean }): string[] {
     `- [How to visualize a codebase](${SITE_URL}${GUIDE_PATH}): ${GUIDE_DESCRIPTION}`,
     `- [Full text for language models](${SITE_URL}/llms-full.txt): this file plus the whole guide, every situation guide and every comparison.`,
     `- [${REPORT_TITLE}](${SITE_URL}${REPORT_PATH}.md): a data report from the stored diagrams of the most-starred repositories, with its method and a CSV dataset (${SITE_URL}${REPORT_DATASET.csv}).`,
+    `- [${POPULAR_TITLE}](${SITE_URL}${POPULAR_PATH}.md): ${POPULAR_DESCRIPTION} Answers "how is {repo} structured" for the most-starred projects.`,
     "",
     "## Guides by situation",
     "",

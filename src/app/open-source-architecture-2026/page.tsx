@@ -281,7 +281,12 @@ export default function ArchitectureReportPage() {
           {r.sample.size.toLocaleString("en-US")} most-starred repositories
           among them, from {r.sample.maxStars.toLocaleString("en-US")} stars
           down to {r.sample.minStars.toLocaleString("en-US")}, and counted what
-          they are made of. Every repository named below links to its diagram.
+          they are made of. Every repository named below links to its diagram,
+          and a separate page lists the diagrams of{" "}
+          <Link href="/most-starred-repositories" className={linkClass}>
+            the most-starred GitHub repositories
+          </Link>
+          .
         </p>
 
         <Section id="findings" title="Key findings">

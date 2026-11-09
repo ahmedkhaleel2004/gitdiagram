@@ -149,9 +149,9 @@ describe("robots.txt", () => {
   });
 
   it("does not list an empty shard when videos are off", async () => {
-    // Twenty-one fixed pages and nine repositories fill exactly one page of thirty.
+    // Twenty-two fixed pages and eight repositories fill exactly one page of thirty.
     store.videosOn = false;
-    store.browse = Array.from({ length: 9 }, (_, index) => entry(index));
+    store.browse = Array.from({ length: 8 }, (_, index) => entry(index));
     expect(await generateSitemaps()).toHaveLength(1);
     store.videosOn = true;
     expect(await generateSitemaps()).toHaveLength(2);

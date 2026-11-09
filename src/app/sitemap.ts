@@ -15,6 +15,7 @@ import {
   REPORT_PATH,
   REPORT_PUBLISHED,
 } from "~/features/architecture-report/content";
+import { POPULAR, POPULAR_PATH } from "~/features/popular-repos/content";
 import { GUIDE_UPDATED } from "~/features/guide/content";
 import {
   SITUATIONS_CHECKED,
@@ -124,6 +125,12 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
       lastModified: new Date(REPORT_PUBLISHED),
       changeFrequency: "yearly",
       priority: 0.7,
+    },
+    {
+      url: `${SITE_URL}${POPULAR_PATH}`,
+      lastModified: new Date(POPULAR.checked),
+      changeFrequency: "weekly",
+      priority: 0.8,
     },
     {
       url: `${SITE_URL}/advertise`,

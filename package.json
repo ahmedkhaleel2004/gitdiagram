@@ -20,6 +20,7 @@
     "diagram:delete": "bun scripts/delete-diagram.ts",
     "report:fetch": "bun scripts/architecture-report/fetch.ts",
     "report:compute": "bun scripts/architecture-report/compute.ts",
+    "popular:build": "bun scripts/popular-repos/build.ts",
     "browse:backfill-languages": "bun scripts/backfill-browse-languages.ts",
     "ai-visibility:run": "bun --conditions=react-server scripts/ai-visibility-run.ts",
     "indexnow:submit-sitemap": "bun scripts/indexnow-submit-sitemap.ts",
