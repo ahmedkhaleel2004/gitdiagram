@@ -142,16 +142,16 @@ describe("robots.txt", () => {
 
   it("never reads the whole browse index", async () => {
     // It renders on the placed server, which the whole index can kill.
-    // 35 repositories and the 13 fixed pages make three pages of twenty.
+    // 35 repositories and the 14 fixed pages make three pages of twenty.
     store.browse = Array.from({ length: 35 }, (_, index) => entry(index));
     expect((await robots()).sitemap).toHaveLength(4);
     expect(store.wholeIndexReads).toBe(0);
   });
 
   it("does not list an empty shard when videos are off", async () => {
-    // Eleven fixed pages and nine repositories fill exactly one page of twenty.
+    // Twelve fixed pages and eight repositories fill exactly one page of twenty.
     store.videosOn = false;
-    store.browse = Array.from({ length: 9 }, (_, index) => entry(index));
+    store.browse = Array.from({ length: 8 }, (_, index) => entry(index));
     expect(await generateSitemaps()).toHaveLength(1);
     store.videosOn = true;
     expect(await generateSitemaps()).toHaveLength(2);
