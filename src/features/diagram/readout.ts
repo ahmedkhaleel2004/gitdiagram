@@ -171,6 +171,18 @@ export function diagramReadout(
 }
 
 /** Plain text of one line of the notes' Markdown subset. */
+/** A line that names something instead of saying something. */
+function isLabelLine(line: string): boolean {
+  const trimmed = line.trim().replace(/^[-*]\s+/, "");
+  const words = plainLine(trimmed).split(" ").filter(Boolean);
+  return (
+    words.length < 6 ||
+    /^\*\*[^*]+\*\*:?$/.test(trimmed) ||
+    /^\[[^\]]+\]:?$/.test(trimmed) ||
+    (/:$/.test(trimmed) && words.length < 10)
+  );
+}
+
 function plainLine(line: string): string {
   return line
     .replace(/^#{1,6}\s+/, "")
@@ -183,18 +195,23 @@ function plainLine(line: string): string {
 /**
  * The first sentences of an explanation, as a meta description of at most
  * `max` characters. Headings are skipped; a first sentence that is too long
- * is cut at a word with an ellipsis. Null when there is no prose.
+ * is cut at a word with an ellipsis. Null when there is no prose, or when
+ * the first line is a label rather than a sentence (fewer than six words,
+ * all bold, in brackets, or a short line ending in a colon), as in old diagrams' cleaned
+ * notes ("**Frontend (SvelteKit Application)**"): the page then uses its
+ * plain description instead.
  */
 export function explanationSummary(
   explanation: string,
   max = 160,
 ): string | null {
-  const paragraph = explanation
+  const first = explanation
     .split("\n")
     .filter((line) => line.trim() && !/^\s*#/.test(line))
-    .map(plainLine)
-    .find((line) => line.length > 30);
-  if (!paragraph) return null;
+    .find((line) => plainLine(line).length > 30);
+  if (!first || isLabelLine(first)) return null;
+  // "…rather than one integrated application:" ends a sentence here.
+  const paragraph = plainLine(first).replace(/:$/, ".");
   // "Node.js" and "v2.py" stay whole: a sentence ends at punctuation + space.
   const sentences = paragraph.split(/(?<=[.!?])\s+/);
   let summary = "";

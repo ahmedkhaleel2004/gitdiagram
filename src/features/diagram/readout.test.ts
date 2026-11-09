@@ -124,6 +124,20 @@ describe("diagramReadout", () => {
 });
 
 describe("explanationSummary", () => {
+  it("leaves labels to the plain description", () => {
+    for (const label of [
+      "**Frontend (SvelteKit Application)**",
+      "[Playback Layer (Web Workers & Worklets)]",
+      "Main services of the backend that matter here:",
+      "- Publisher and Subscriber components handling",
+    ])
+      expect(
+        explanationSummary(
+          `### Main\n${label}\n- Something longer that would fit.`,
+        ),
+      ).toBeNull();
+  });
+
   it("takes whole sentences up to the limit, skipping headings", () => {
     const text = [
       "# Overview",
