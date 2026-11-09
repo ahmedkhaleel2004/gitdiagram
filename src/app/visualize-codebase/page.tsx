@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { JsonLd } from "~/components/json-ld";
+import { articleMetadata } from "~/features/guide/article-metadata";
 import { richText } from "~/features/guide/rich-text";
 import {
   GUIDE_DESCRIPTION,
@@ -14,18 +15,12 @@ import {
 import { SITE_URL } from "~/lib/site";
 import { VIDEOS_ENABLED } from "~/lib/video-flag";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = articleMetadata({
+  path: GUIDE_PATH,
   title: "How to Visualize a Codebase: GitHub Architecture Diagrams",
+  headline: GUIDE_TITLE,
   description: GUIDE_DESCRIPTION,
-  alternates: { canonical: GUIDE_PATH },
-  openGraph: {
-    title: GUIDE_TITLE,
-    description: GUIDE_DESCRIPTION,
-    url: `${SITE_URL}${GUIDE_PATH}`,
-    siteName: "GitDiagram",
-    type: "article",
-  },
-};
+});
 
 function guideJsonLd(videos: boolean) {
   const url = `${SITE_URL}${GUIDE_PATH}`;
