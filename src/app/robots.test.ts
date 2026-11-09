@@ -81,11 +81,12 @@ describe("robots.txt", () => {
   });
 
   it("names the AI search and assistant crawlers with the same rules", async () => {
-    const [everyone, , ai, bulk] = (await robots()).rules as Array<{
+    const rules = (await robots()).rules as Array<{
       userAgent: string | string[];
       allow: string | string[];
       disallow: string[];
     }>;
+    const [everyone, , ai] = rules;
     expect(ai!.userAgent).toEqual(
       expect.arrayContaining([
         "OAI-SearchBot",
@@ -103,9 +104,9 @@ describe("robots.txt", () => {
     // Pages, /llms.txt and /{owner}/{repo}.md are all under "/".
     expect(ai!.allow).toEqual(everyone!.allow);
     expect(ai!.disallow).toEqual(everyone!.disallow);
-    // The bulk crawlers stay off repository pages.
-    expect(bulk!.userAgent).toEqual(["Amazonbot", "Brightbot"]);
-    expect(bulk!.disallow).toContain("/*/*");
+    // No crawler is kept off repository pages any more.
+    expect(rules).toHaveLength(3);
+    expect(JSON.stringify(rules)).not.toContain("/*/*");
   });
 
   it("lets search engines fetch sponsor links so they see noindex", async () => {

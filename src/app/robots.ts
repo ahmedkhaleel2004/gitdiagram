@@ -61,13 +61,6 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
         allow: ["/", ...API_ALLOW],
         disallow: ["/api/", "/out/", ...CRAWL_WASTE],
       },
-      {
-        // Bulk repo/image crawls create disproportionate origin
-        // traffic. Match the route-scoped WAF policy and prevent future crawls.
-        userAgent: ["Amazonbot", "Brightbot"],
-        allow: "/",
-        disallow: ["/api/", "/out/", "/*/*"],
-      },
     ],
     sitemap: [
       `${SITE_URL}/sitemap_index.xml`,

@@ -17,14 +17,12 @@ site moved to Cloudflare. They now live in two places.
 `edgeDecision` in `src/lib/cloudflare-edge.ts`, applied by `cloudflare/edge.ts`
 and `cloudflare/worker.ts`; `src/lib/cloudflare-edge.test.ts` covers it.
 
-| Rule | Matches | Action |
-| --- | --- | --- |
-| Generation rate limits | `/api/generate/stream` (20 a minute per address), `/api/generate/cost` and `/api/generate/cancel` (60), `/api/diagram-state` (120) | 429 |
-| Container wake-up limit | `/api/video/generate` and `/api/video/render` (30 a minute per address) | 429 |
-| Repository page limit | `/[username]/[repo]` pages and their social images, 120 a minute per address; search crawlers Cloudflare has verified are exempt | 429 |
-| ClaudeBot repository crawl | User agent contains `ClaudeBot`, on repository pages | Deny |
-| Amazonbot and Brightbot repository crawl | User agent contains `Amazonbot` or equals `Brightbot 1.0`, on repository pages and their social images | Deny |
-| Scanner paths | Paths only vulnerability scanners ask for | 404 |
+| Rule                    | Matches                                                                                                                            | Action |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Generation rate limits  | `/api/generate/stream` (20 a minute per address), `/api/generate/cost` and `/api/generate/cancel` (60), `/api/diagram-state` (120) | 429    |
+| Container wake-up limit | `/api/video/generate` and `/api/video/render` (30 a minute per address)                                                            | 429    |
+| Repository page limit   | `/[username]/[repo]` pages and their social images, 120 a minute per address; search crawlers Cloudflare has verified are exempt   | 429    |
+| Scanner paths           | Paths only vulnerability scanners ask for                                                                                          | 404    |
 
 The limits themselves are the `ratelimits` bindings in `wrangler.jsonc`.
 
@@ -32,11 +30,11 @@ The limits themselves are the `ratelimits` bindings in `wrangler.jsonc`.
 
 Managed separately from deployments.
 
-| Rule | Conditions | Action |
-| --- | --- | --- |
-| Machine endpoints | `/mcp`, the PostHog proxy path, `/api/internal/*`, `/api/admin/presence-feed` | Skip (never challenged) |
-| Repository scraper verification | Repository pages, from AS37963, AS212317 or AS213230, or with one of the two user agents below | Managed challenge |
-| Cost guardrail | One address making 100 requests that run the Worker in 10 seconds; static files, the machine endpoints and verified search crawlers are not counted | Block for 10 seconds |
+| Rule                            | Conditions                                                                                                                                          | Action                  |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| Machine endpoints               | `/mcp`, the PostHog proxy path, `/api/internal/*`, `/api/admin/presence-feed`                                                                       | Skip (never challenged) |
+| Repository scraper verification | Repository pages, from AS37963, AS212317 or AS213230, or with one of the two user agents below                                                      | Managed challenge       |
+| Cost guardrail                  | One address making 100 requests that run the Worker in 10 seconds; static files, the machine endpoints and verified search crawlers are not counted | Block for 10 seconds    |
 
 The challenge conditions were selected after observing repeated bulk
 repository crawls. The crawler rotated Safari and Chrome signatures, then
@@ -50,7 +48,7 @@ Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/14
 
 Real browsers matching those conditions must complete verification. Other
 ordinary traffic, Googlebot, Bingbot, and social link preview clients do not
-match. The Amazonbot robots policy also discourages future repository crawls.
+match. No crawler is refused by name since 2026-11-09 (ClaudeBot, Amazonbot and Brightbot were, while pages cost Vercel function time); they share the repository page limit.
 
 ## Changing a rule
 

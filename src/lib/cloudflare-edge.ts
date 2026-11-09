@@ -256,16 +256,11 @@ export function edgeDecision(
   if (limit) return { action: "limit", limit };
   if (isScannerPath(pathname) || isUnknownComparePath(pathname))
     return { action: "missing" };
-  const agent = userAgent ?? "";
-  // ClaudeBot was blocked here on Vercel (2026-07-08, page cost). On Workers
-  // a page costs about 150 ms of CPU and two R2 writes from the credits, and
-  // being read is how Claude learns GitDiagram; it gets the per-address limit
-  // below like everyone else.
-  // Sep 2026: 221k crawler requests a week on pages and social pictures.
-  if (agent.includes("Amazonbot") && isRepositoryRoute(pathname, true))
-    return { action: "deny", rule: "amazonbot-repository-crawl" };
-  if (agent === "Brightbot 1.0" && isRepositoryRoute(pathname, true))
-    return { action: "deny", rule: "brightbot-repository-crawl" };
+  // No crawler is refused by name. ClaudeBot, Amazonbot and Brightbot were
+  // denied repository pages while those pages cost Vercel function time
+  // (2026-07 to 2026-11). On Workers a page costs about 150 ms of CPU and two
+  // R2 writes from the credits, and being read is how AI assistants learn
+  // GitDiagram, so they get the per-address limit below like everyone else.
   // Not a Vercel rule. A repository page that is not cached yet costs a
   // render (about 150 ms of CPU) and two R2 writes, and there is no end of
   // names to ask for. 120 a minute is far above a person, and room for a

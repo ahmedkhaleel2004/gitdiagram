@@ -141,7 +141,7 @@ describe("edgeDecision", () => {
       expect(edgeDecision(path, null)).toEqual({ action: "missing" });
   });
 
-  it("keeps the blocked crawlers off repository pages only", () => {
+  it("refuses no crawler by name; they share the page limit", () => {
     const claude =
       "Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)";
     // ClaudeBot reads repository pages under the ordinary limit.
@@ -160,14 +160,12 @@ describe("edgeDecision", () => {
     );
 
     const amazon = "Mozilla/5.0 (compatible; Amazonbot/0.1)";
-    expect(edgeDecision("/a/b", amazon)?.action).toBe("deny");
-    expect(edgeDecision("/a/b/opengraph-image", amazon)?.action).toBe("deny");
-    expect(edgeDecision("/a/b/twitter-image", amazon)?.action).toBe("deny");
+    expect(edgeDecision("/a/b", amazon)?.action).toBe("limit");
+    expect(edgeDecision("/a/b/opengraph-image", amazon)?.action).toBe("limit");
     expect(edgeDecision("/a/b/diagram.png", amazon)).toBeNull();
-    expect(edgeDecision("/a/b", "Brightbot 1.0")?.action).toBe("deny");
-    expect(edgeDecision("/a/b", "Brightbot 1.0 extra")?.action).toBe("limit");
-    // A verified crawler is still refused where its rule says so.
-    expect(edgeDecision("/a/b", amazon, true)?.action).toBe("deny");
+    expect(edgeDecision("/a/b", "Brightbot 1.0")?.action).toBe("limit");
+    // A verified crawler is never held back.
+    expect(edgeDecision("/a/b", amazon, true)).toBeNull();
   });
 
   it("limits repository pages per address, except for verified crawlers", () => {
