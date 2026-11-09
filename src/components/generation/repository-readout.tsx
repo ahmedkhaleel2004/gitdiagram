@@ -1,6 +1,12 @@
+import { Fragment } from "react";
 import { ChevronDown } from "lucide-react";
-import type { DiagramReadout } from "~/features/diagram/readout";
+import type { RelatedDiagrams } from "~/features/browse/related";
+import {
+  entryPointNames,
+  type DiagramReadout,
+} from "~/features/diagram/readout";
 import { architectureLines } from "./architecture-prose";
+import { ReadmeBadgeLink } from "./readme-badge-link";
 import theme from "./workspace.module.css";
 import styles from "./readout.module.css";
 
@@ -24,15 +30,24 @@ function formatDate(value: string | null): string | null {
  * the page (readout.module.css), so the first screen is unchanged.
  */
 export function RepositoryReadout({
-  repository,
+  owner,
+  repo,
   readout,
   markdownPath,
+  related,
 }: {
-  repository: string;
+  owner: string;
+  repo: string;
   readout: DiagramReadout;
   markdownPath: string;
+  /** Other public diagrams in the same language (none: line left out). */
+  related?: RelatedDiagrams | null;
 }) {
+  const repository = `${owner}/${repo}`;
   const date = formatDate(readout.lastSuccessfulAt);
+  const entryNames = entryPointNames(
+    readout.entryPoints.map((entry) => entry.path),
+  );
   return (
     <section
       className={`${theme.controlsTheme} ${styles.readout}`}
@@ -46,6 +61,27 @@ export function RepositoryReadout({
         <div className={styles.prose}>
           {architectureLines(readout.explanation, styles.subheading)}
         </div>
+      )}
+      {readout.entryPoints.length > 0 && (
+        <p className={styles.entryPoints}>
+          <span className={styles.entryPointsLabel}>Main entry points:</span>{" "}
+          {readout.entryPoints.map((entry, index) => (
+            <Fragment key={entry.path}>
+              {index > 0 && (
+                <span className={styles.entrySeparator}> &nbsp;·&nbsp; </span>
+              )}
+              <a
+                href={entry.href}
+                title={entry.path}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <code>{entryNames[index]}</code>
+              </a>{" "}
+              <span className={styles.entryLabel}>{entry.label}</span>
+            </Fragment>
+          ))}
+        </p>
       )}
       {readout.groups.length > 0 && (
         <details className={styles.details}>
@@ -116,6 +152,19 @@ export function RepositoryReadout({
           </div>
         </details>
       )}
+      {related && (
+        <p className={styles.related}>
+          <span className={styles.relatedLabel}>
+            More {related.language} diagrams:
+          </span>{" "}
+          {related.repositories.map((name, index) => (
+            <Fragment key={name}>
+              {index > 0 && " · "}
+              <a href={`/${name}`}>{name}</a>
+            </Fragment>
+          ))}
+        </p>
+      )}
       <p className={styles.meta}>
         Drawn by GitDiagram
         {date && (
@@ -128,7 +177,8 @@ export function RepositoryReadout({
         from the repository&apos;s file tree, README and source files.{" "}
         <a href={markdownPath} type="text/markdown">
           Read as Markdown
-        </a>
+        </a>{" "}
+        · <ReadmeBadgeLink owner={owner} repo={repo} />
       </p>
     </section>
   );

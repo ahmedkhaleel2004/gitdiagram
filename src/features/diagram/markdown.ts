@@ -83,6 +83,18 @@ export function repositoryMarkdown(params: {
     lines.push("## Overview", "", overview, "");
   }
 
+  if (readout.entryPoints.length) {
+    lines.push(
+      `Main entry points: ${readout.entryPoints
+        .map(
+          (entry) =>
+            `[\`${entry.path}\`](${entry.href}) (${inline(entry.label)})`,
+        )
+        .join(", ")}`,
+      "",
+    );
+  }
+
   const mermaidFence = fence(diagram);
   lines.push(
     "## Diagram (Mermaid)",

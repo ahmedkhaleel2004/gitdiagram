@@ -31,7 +31,13 @@
   // cloudflare/worker.ts maps each schedule to its internal route (CRON_ROUTES
   // in src/lib/cloudflare-edge.ts; a test keeps the two in step).
   "triggers": {
-    "crons": ["*/5 * * * *", "*/15 * * * *", "0 13 * * *", "*/10 14-17 * * 1"],
+    "crons": [
+      "*/5 * * * *",
+      "*/15 * * * *",
+      "0 13 * * *",
+      "*/10 14-17 * * 1",
+      "30 7 * * *",
+    ],
   },
   // No routes here: gitdiagram.com/* and www.gitdiagram.com/* belong to the
   // small Worker in front of this one (`gitdiagram-edge`,

@@ -3,6 +3,7 @@ import type { DiagramStateResponse } from "~/features/diagram/types";
 import {
   diagramReadout,
   diagramSourceLinks,
+  entryPointNames,
   explanationSummary,
   UNGROUPED_LABEL,
 } from "./readout";
@@ -108,6 +109,33 @@ describe("diagramReadout", () => {
         description: "Over HTTPS",
         evidencePath: null,
       },
+    ]);
+  });
+
+  it("names the most connected components with files as entry points", () => {
+    // "Worker" has a path but no arrow; "User" has arrows but no file.
+    expect(diagramReadout(state(), "acme", "demo")!.entryPoints).toEqual([
+      {
+        label: "API server",
+        path: "api/server.py",
+        href: "https://github.com/acme/demo/blob/dev/api/server.py",
+      },
+    ]);
+  });
+
+  it("shows entry point files by name, with a folder when names repeat", () => {
+    expect(
+      entryPointNames([
+        "fastapi/routing.py",
+        "fastapi/dependencies/utils.py",
+        "fastapi/openapi/utils.py",
+        "./docs/",
+      ]),
+    ).toEqual([
+      "routing.py",
+      "dependencies/utils.py",
+      "openapi/utils.py",
+      "docs",
     ]);
   });
 

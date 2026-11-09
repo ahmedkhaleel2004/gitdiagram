@@ -2,15 +2,19 @@ import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { cachedReads, getStoredDiagramState, permanentRedirect } = vi.hoisted(
-  () => ({
-    cachedReads: [] as Array<{ key: string; revalidate: number }>,
-    getStoredDiagramState: vi.fn(),
-    permanentRedirect: vi.fn((path: string) => {
-      throw new Error(`redirect:${path}`);
-    }),
+const {
+  cachedReads,
+  getStoredDiagramState,
+  permanentRedirect,
+  readRelatedShard,
+} = vi.hoisted(() => ({
+  cachedReads: [] as Array<{ key: string; revalidate: number }>,
+  getStoredDiagramState: vi.fn(),
+  readRelatedShard: vi.fn(async (): Promise<unknown> => null),
+  permanentRedirect: vi.fn((path: string) => {
+    throw new Error(`redirect:${path}`);
   }),
-);
+}));
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({
@@ -27,6 +31,7 @@ vi.mock("next/cache", () => ({
 }));
 vi.mock("next/navigation", () => ({ permanentRedirect }));
 vi.mock("~/server/storage/artifact-store", () => ({ getStoredDiagramState }));
+vi.mock("~/server/storage/related-diagrams", () => ({ readRelatedShard }));
 vi.mock("./repo-page-client", () => ({ default: () => null }));
 
 import { JsonLd } from "~/components/json-ld";
@@ -183,6 +188,7 @@ describe("repository page", () => {
     // A good page keeps the 6-hour lifetime.
     expect(cachedReads).toEqual([
       { key: "public-diagram-state", revalidate: 21600 },
+      { key: "related-shard-v1", revalidate: 21600 },
     ]);
   });
 
@@ -207,6 +213,33 @@ describe("repository page", () => {
     expect(html).toContain('href="/acme/demo.md"');
     // Collapsed, not hidden: the lists sit in closed <details>.
     expect(html).not.toMatch(/display:\s*none|\shidden[=\s>]/);
+    expect(html).toContain("Add a badge to your README");
+    // No related shard for this repository: no line.
+    expect(html).not.toContain("diagrams:");
+  });
+
+  it("links a few public diagrams in the same language", async () => {
+    getStoredDiagramState.mockResolvedValue(storedState);
+    readRelatedShard.mockResolvedValueOnce({
+      version: 1,
+      updatedAt: "2026-11-09T00:00:00Z",
+      repositories: {
+        "acme/demo": {
+          language: "TypeScript",
+          repositories: ["vercel/next.js", "microsoft/vscode", "denoland/deno"],
+        },
+      },
+    });
+    const { client } = parts(
+      await Repo({
+        params: Promise.resolve({ username: "acme", repo: "demo" }),
+      }),
+    );
+    const html = renderToStaticMarkup(<>{client.props.readout}</>);
+
+    expect(html).toContain("More TypeScript diagrams:");
+    expect(html).toContain('<a href="/vercel/next.js">vercel/next.js</a>');
+    expect(html).toContain('<a href="/denoland/deno">denoland/deno</a>');
   });
 
   it("describes the page as a TechArticle about the repository", async () => {

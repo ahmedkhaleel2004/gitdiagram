@@ -86,6 +86,25 @@ describe("saveSuccessfulDiagramState", () => {
       repo: "Demo",
       lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
       stargazerCount: 42,
+      language: "Go",
+    });
+
+    expect(upsertBrowseIndexEntry).toHaveBeenCalledWith({
+      username: "Acme",
+      repo: "Demo",
+      lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+      stargazerCount: 42,
+      language: "Go",
+    });
+  });
+
+  it("leaves the language out of the browse index when GitHub has none", async () => {
+    await updatePublicBrowseIndexForSuccessfulDiagram({
+      username: "Acme",
+      repo: "Demo",
+      lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+      stargazerCount: 42,
+      language: null,
     });
 
     expect(upsertBrowseIndexEntry).toHaveBeenCalledWith({

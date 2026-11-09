@@ -53,6 +53,7 @@ const audit = {
 
 const successfulDiagramState = {
   stargazerCount: 3,
+  language: "TypeScript",
   explanation: "explanation",
   graph: { groups: [], nodes: [], edges: [] },
   diagram: "flowchart TD",

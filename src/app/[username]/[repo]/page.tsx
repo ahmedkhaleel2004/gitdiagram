@@ -12,6 +12,7 @@ import {
 } from "~/features/seo/repository-page";
 import { SITE_URL } from "~/lib/site";
 import { readPublicDiagramState } from "~/server/storage/public-diagram-state";
+import { readRelatedDiagrams } from "~/server/storage/related-diagrams-read";
 import { getRepoPagePath } from "~/server/storage/repo-page-cache";
 import { PlaceholderRepo, placeholderRepoMetadata } from "./placeholder-repo";
 import RepoPageClient from "./repo-page-client";
@@ -89,6 +90,7 @@ export default async function Repo({ params }: RepoPageProps) {
   // diagram itself, as it does for a new repo.
   const { state } = await readPublicDiagramState(username, repo);
   const readout = state ? diagramReadout(state, username, repo) : null;
+  const related = readout ? await readRelatedDiagrams(username, repo) : null;
 
   return (
     <>
@@ -109,9 +111,11 @@ export default async function Repo({ params }: RepoPageProps) {
         readout={
           readout ? (
             <RepositoryReadout
-              repository={`${username}/${repo}`}
+              owner={username}
+              repo={repo}
               readout={readout}
               markdownPath={repositoryMarkdownPath(username, repo)}
+              related={related}
             />
           ) : undefined
         }

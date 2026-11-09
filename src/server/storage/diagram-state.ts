@@ -155,11 +155,13 @@ export async function updatePublicBrowseIndexForSuccessfulDiagram(params: {
   repo: string;
   lastSuccessfulAt: string;
   stargazerCount: number | null;
+  language: string | null;
 }) {
   await upsertBrowseIndexEntry({
     username: params.username,
     repo: params.repo,
     lastSuccessfulAt: params.lastSuccessfulAt,
     stargazerCount: params.stargazerCount,
+    ...(params.language ? { language: params.language } : {}),
   });
 }

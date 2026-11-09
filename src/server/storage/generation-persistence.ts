@@ -19,6 +19,8 @@ import type { ArtifactVisibility } from "./types";
 
 export interface SuccessfulDiagramState {
   stargazerCount: number | null;
+  /** GitHub's primary language, kept in the browse index (related diagrams). */
+  language: string | null;
   explanation: string;
   graph: DiagramGraph;
   diagram: string;
@@ -122,6 +124,7 @@ export async function persistGenerationResult(params: {
               repo: params.repo,
               lastSuccessfulAt,
               stargazerCount: successfulDiagramState.stargazerCount,
+              language: successfulDiagramState.language,
             });
             revalidateBrowseIndexCache();
           } catch (error) {

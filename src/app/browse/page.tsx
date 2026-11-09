@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 
 import { getCachedBrowsePage } from "~/server/browse-index-cache";
@@ -49,6 +50,16 @@ export async function generateMetadata({
 }
 
 export const dynamic = "force-dynamic";
+
+// The guide and comparison pages, reached from here and nowhere else in the
+// site's chrome (one quiet line under the catalog).
+const GUIDES: ReadonlyArray<readonly [string, string]> = [
+  ["/visualize-codebase", "How to visualize a codebase"],
+  ["/compare/deepwiki", "GitDiagram vs DeepWiki"],
+  ["/compare/sourcegraph", "vs Sourcegraph"],
+  ["/compare/mermaid", "vs Mermaid"],
+  ["/best-codebase-visualization-tools", "all comparisons"],
+];
 
 function firstSearchParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -112,6 +123,18 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
         <Suspense fallback={<BrowseCatalogStreamingFallback />}>
           <BrowseCatalogWithInitialData initialQuery={initialQuery} />
         </Suspense>
+
+        <p className="mt-7 text-center text-[13px] leading-[1.9] text-[#6d5282] dark:text-neutral-400">
+          Guides:{" "}
+          {GUIDES.map(([href, label], index) => (
+            <span key={href}>
+              {index > 0 && " · "}
+              <Link href={href} className="neo-link hover:underline">
+                {label}
+              </Link>
+            </span>
+          ))}
+        </p>
       </div>
     </main>
   );

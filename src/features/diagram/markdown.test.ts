@@ -4,6 +4,13 @@ import type { DiagramReadout } from "./readout";
 
 const readout: DiagramReadout = {
   explanation: "## Overview\nDemo serves an API.",
+  entryPoints: [
+    {
+      label: "API server",
+      path: "src/server.ts",
+      href: "https://github.com/acme/demo/blob/main/src/server.ts",
+    },
+  ],
   groups: [
     {
       id: "backend",
@@ -53,6 +60,9 @@ describe("repositoryMarkdown", () => {
     });
 
     expect(markdown).toContain("# acme/demo architecture");
+    expect(markdown).toContain(
+      "Main entry points: [`src/server.ts`](https://github.com/acme/demo/blob/main/src/server.ts) (API server)",
+    );
     expect(markdown).toContain("(last updated 2026-09-19)");
     expect(markdown).toContain(
       "- Interactive diagram: https://gitdiagram.com/acme/demo",

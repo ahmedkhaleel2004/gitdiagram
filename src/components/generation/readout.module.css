@@ -125,3 +125,57 @@
     text-decoration: underline;
   }
 }
+.entryPoints {
+  margin-top: 12px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.9;
+}
+.entryPointsLabel {
+  font-weight: 600;
+}
+.entryPoints a {
+  font-weight: 550;
+  text-decoration: none;
+}
+.entryPoints code {
+  color: var(--accent);
+  font-size: 0.9em;
+  background: var(--wash);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.entryLabel {
+  color: var(--muted);
+}
+.entrySeparator {
+  color: var(--line);
+}
+.related {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.relatedLabel {
+  font-weight: 600;
+}
+.linkButton {
+  color: var(--accent);
+  font: inherit;
+  font-weight: 550;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.linkButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .entryPoints a:hover code {
+    text-decoration: underline;
+  }
+  .linkButton:hover {
+    text-decoration: underline;
+  }
+}
