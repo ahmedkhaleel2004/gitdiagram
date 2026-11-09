@@ -331,3 +331,97 @@ export async function createRepoSocialImage(data: RepoCardData) {
     headers: SOCIAL_IMAGE_CACHE_HEADERS,
   });
 }
+
+type ReportCardData = {
+  kicker: string;
+  title: string;
+  figures: Array<{ value: string; label: string }>;
+};
+
+function ReportCard({ kicker, title, figures }: ReportCardData) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        width: "100%",
+        height: "100%",
+        position: "relative",
+        background: colors.background,
+        color: colors.foreground,
+        fontFamily: "Geist, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 18,
+          background: `linear-gradient(90deg, ${colors.sky} 0%, ${colors.brand} 72%, ${colors.brandSoft} 100%)`,
+        }}
+      />
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          width: "100%",
+          height: "100%",
+          padding: "42px 56px 56px",
+        }}
+      >
+        <Wordmark />
+        <div
+          style={{
+            display: "flex",
+            marginTop: 28,
+            fontSize: 26,
+            fontWeight: 500,
+            color: colors.brand,
+          }}
+        >
+          {kicker}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            marginTop: 10,
+            maxWidth: 1060,
+            fontSize: 56,
+            fontWeight: 700,
+            lineHeight: 1.05,
+            letterSpacing: "-0.04em",
+            color: colors.strong,
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            marginTop: "auto",
+            gap: 64,
+          }}
+        >
+          {figures.map((figure) => (
+            <MetaItem
+              key={figure.label}
+              value={figure.value}
+              label={figure.label}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export async function createReportSocialImage(data: ReportCardData) {
+  const fonts = await getGeistFonts();
+
+  return new ImageResponse(<ReportCard {...data} />, {
+    ...socialImageSize,
+    fonts,
+    headers: SOCIAL_IMAGE_CACHE_HEADERS,
+  });
+}
