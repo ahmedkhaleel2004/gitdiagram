@@ -325,6 +325,23 @@ describe("browse diagram storage", () => {
     ]);
   });
 
+  it("takes the language off an old name of a renamed repository", async () => {
+    seedAtomicIndex([
+      {
+        username: "acme",
+        repo: "old-name",
+        lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
+        stargazerCount: 42,
+        language: "Go",
+      },
+    ]);
+
+    expect(
+      await applyBrowseIndexLanguages(new Map([["acme/old-name", null]])),
+    ).toBe(1);
+    expect((await readBrowseIndex())?.[0]).not.toHaveProperty("language");
+  });
+
   it("does not rewrite a committed snapshot for a stale repository update", async () => {
     seedAtomicIndex([
       {

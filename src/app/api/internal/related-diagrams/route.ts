@@ -1,4 +1,6 @@
+import { revalidateTag } from "next/cache";
 import { rebuildRelatedDiagrams } from "~/server/storage/related-diagrams";
+import { RELATED_SHARDS_TAG } from "~/server/storage/related-diagrams-read";
 
 // Daily cron (wrangler.jsonc): rebuilds the "More {language} diagrams" shards
 // from the browse index. Runs where the visitor is, like every internal route.
@@ -20,6 +22,9 @@ export async function GET(request: Request) {
 
   try {
     const result = await rebuildRelatedDiagrams();
+    // Pages that read a shard before it changed (or existed) pick up the new
+    // one on their next render; "max" serves the old copy once meanwhile.
+    revalidateTag(RELATED_SHARDS_TAG, "max");
     return Response.json(
       { ok: true, ...result },
       { headers: { "Cache-Control": "no-store" } },

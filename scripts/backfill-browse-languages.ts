@@ -39,7 +39,11 @@ const BATCH = 100;
 const CONCURRENCY = 1;
 const PAUSE_MS = 2_500;
 
-// key -> language, or "" when GitHub has none (or the repository is gone).
+// key -> language, "" when GitHub has none (or the repository is gone), or
+// RENAMED when GitHub answers under another name: the entry is an old name of
+// a repository the index also holds, so it gets no language (no related
+// links to or from a duplicate page).
+const RENAMED = "=renamed";
 const answered: Record<string, string> = existsSync(cachePath)
   ? (JSON.parse(readFileSync(cachePath, "utf8")) as Record<string, string>)
   : {};
@@ -52,7 +56,7 @@ const limitArgument = args.includes("--limit")
   ? Number(args[args.indexOf("--limit") + 1])
   : Number.POSITIVE_INFINITY;
 const missing = entries
-  .filter((entry) => !entry.language)
+  .slice()
   .sort(
     (left, right) => (right.stargazerCount ?? 0) - (left.stargazerCount ?? 0),
   )
@@ -67,7 +71,7 @@ async function lookUp(keys: string[], attempt = 1): Promise<void> {
   const fields = keys
     .map((key, index) => {
       const [owner, name] = key.split("/");
-      return `r${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { primaryLanguage { name } }`;
+      return `r${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { nameWithOwner primaryLanguage { name } }`;
     })
     .join("\n");
   let response: Response;
@@ -109,10 +113,21 @@ async function lookUp(keys: string[], attempt = 1): Promise<void> {
     );
   }
   const body = (await response.json()) as {
-    data?: Record<string, { primaryLanguage: { name: string } | null } | null>;
+    data?: Record<
+      string,
+      {
+        nameWithOwner: string;
+        primaryLanguage: { name: string } | null;
+      } | null
+    >;
   };
   keys.forEach((key, index) => {
-    answered[key] = body.data?.[`r${index}`]?.primaryLanguage?.name ?? "";
+    const repository = body.data?.[`r${index}`];
+    answered[key] = !repository
+      ? ""
+      : repository.nameWithOwner.toLowerCase() !== key
+        ? RENAMED
+        : (repository.primaryLanguage?.name ?? "");
   });
 }
 
@@ -135,8 +150,12 @@ async function worker() {
 await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 writeFileSync(cachePath, JSON.stringify(answered));
 
-const languages = new Map(
-  Object.entries(answered).filter(([, language]) => language),
+// A language to add where missing, or null to take one off a renamed copy.
+const languages = new Map<string, string | null>(
+  Object.entries(answered).flatMap(
+    ([key, language]): [string, string | null][] =>
+      language === RENAMED ? [[key, null]] : language ? [[key, language]] : [],
+  ),
 );
 console.log(`${languages.size} repositories have a language on GitHub.`);
 if (!apply) {

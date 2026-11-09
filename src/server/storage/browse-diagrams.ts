@@ -538,13 +538,14 @@ export async function removeBrowseIndexEntry(
 /**
  * Writes repositories' GitHub languages into the index (the one-off back-fill
  * for entries made before the index kept them; scripts/backfill-browse-
- * languages.ts). Only entries without a language are touched, nothing is
- * added or removed, and the manifest is written conditionally under the
- * index lock, so a generation finishing meanwhile is never lost. Returns how
- * many entries changed.
+ * languages.ts). A language is only added where none is set; null takes one
+ * off (an old name of a renamed repository, a duplicate of another entry).
+ * No entry is added or removed, and the manifest is written conditionally
+ * under the index lock, so a generation finishing meanwhile is never lost.
+ * Returns how many entries changed.
  */
 export async function applyBrowseIndexLanguages(
-  languages: ReadonlyMap<string, string>,
+  languages: ReadonlyMap<string, string | null>,
 ): Promise<number> {
   return withDistributedLock({
     key: PUBLIC_BROWSE_INDEX_LOCK_KEY,
@@ -555,7 +556,14 @@ export async function applyBrowseIndexLanguages(
       if (!stored?.activeSnapshotKey) throw new BrowseIndexNotFoundError();
       let changed = 0;
       const entries = stored.entries.map((entry) => {
-        const language = normalizeLanguage(languages.get(toRepoKey(entry)));
+        const key = toRepoKey(entry);
+        if (languages.get(key) === null && entry.language) {
+          changed++;
+          const rest = { ...entry };
+          delete rest.language;
+          return rest;
+        }
+        const language = normalizeLanguage(languages.get(key));
         if (entry.language || !language) return entry;
         changed++;
         return { ...entry, language };

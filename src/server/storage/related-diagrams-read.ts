@@ -9,12 +9,15 @@ import {
 import { errorText, logEvent } from "~/server/log";
 import { readRelatedShard } from "./related-diagrams";
 
-// Matches the repository page's `revalidate`: the shards change once a day.
+// Matches the repository page's `revalidate`: the shards change once a day,
+// and the rebuild drops every cached copy (RELATED_SHARDS_TAG).
 const RELATED_REVALIDATE_SECONDS = 21600;
+export const RELATED_SHARDS_TAG = "related-shards";
 
 function getCachedShard(id: string) {
   return unstable_cache(() => readRelatedShard(id), ["related-shard-v1", id], {
     revalidate: RELATED_REVALIDATE_SECONDS,
+    tags: [RELATED_SHARDS_TAG],
   })();
 }
 
