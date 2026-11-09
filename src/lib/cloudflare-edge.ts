@@ -151,6 +151,9 @@ export const CRON_ROUTES: Record<string, string> = {
   "*/5 * * * *": "/api/internal/browse-index/drain",
   "*/15 * * * *": "/api/internal/video-payments/sweep",
   "0 13 * * *": "/api/internal/ai-visibility",
+  // The weekly prompt panel: every 10 minutes on Monday afternoons (UTC) until
+  // the week's questions are answered; later firings do nothing.
+  "*/10 14-17 * * 1": "/api/internal/ai-panel",
 };
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import { PeoplePanel, usePeopleClock } from "./people-panel";
 import { StatusPill, TOUCH } from "./ui";
 import { useAdminState } from "./use-admin-state";
 import { useLiveSite } from "./use-live-site";
+import { PromptGapsPanel } from "./prompt-gaps-panel";
 import { VisibilityPanel } from "./visibility-panel";
 
 // Counters (budgets, balances) are polled (use-admin-state.ts); everything
@@ -212,6 +213,8 @@ export function AdminDashboard() {
       <AudiencePanels people={people} mismatched={mismatched} />
 
       <VisibilityPanel />
+
+      <PromptGapsPanel />
 
       <LiveFeed events={live.events} />
     </main>

@@ -13,6 +13,7 @@ import { priorityHint } from "./people-panel";
 
 // The Search & AI panel reads its own report (visibility-panel.test.tsx).
 vi.mock("./visibility-panel", () => ({ VisibilityPanel: () => null }));
+vi.mock("./prompt-gaps-panel", () => ({ PromptGapsPanel: () => null }));
 
 vi.mock("./use-live-site", async () => {
   const { EMPTY_SITE } = await import("~/features/admin/live-link");

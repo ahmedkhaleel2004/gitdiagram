@@ -111,7 +111,7 @@ They live in the site's Worker and both servers (`wrangler secret list`, also wi
 - Writes Vercel-style request headers from Cloudflare's data (`x-vercel-ip-*`, `x-forwarded-for`, `x-real-ip`, `x-forwarded-host/proto`) and drops a caller's own copies. The audience and limit rules read these.
 - Firewall: per-address rate limits (`ratelimits` bindings) on the generation routes and repository pages; Amazonbot and Brightbot blocked on repository pages (ClaudeBot allowed since 2026-11-09); scanner paths answered 404; `www` redirected to the apex.
 - Hands `/api/video/generate`, `/api/video/render` and `/api/video/render/segment` to the render containers, after answering wrong-method and cross-origin calls itself so a stray request never wakes one.
-- Runs the three crons (`triggers.crons` in `wrangler.jsonc`, to the same internal routes with `CRON_SECRET`). A test keeps `wrangler.jsonc` and the map (`CRON_ROUTES`) in step.
+- Runs the four crons (`triggers.crons` in `wrangler.jsonc`, to the same internal routes with `CRON_SECRET`). A test keeps `wrangler.jsonc` and the map (`CRON_ROUTES`) in step.
 - Adds `next.config.js` site-wide headers where OpenNext leaves them off, strips `s-maxage` and `Vercel-*` response headers, gives outgoing `fetch` a User-Agent (GitHub refuses requests without one), and adds `Server-Timing: edge;dur=...;desc="warm"|"new isolate"`.
 
 **The Next.js proxy is not in the Cloudflare build** (`scripts/cf-drop-proxy.mjs` removes it). `src/proxy.ts` (local, the render containers) and the Worker entry both apply the rules in `src/lib/proxy-rules.ts` (forged Server Actions, lowercase repository URLs, the Markdown twin, counting crawler fetches). Change the rules there, not in `proxy.ts`.
@@ -178,6 +178,11 @@ On in production (`VIDEO_EXPLAINER_ENABLED=1`, `NEXT_PUBLIC_VIDEO_EXPLAINER=1`).
 - **Runs that die** (`run-journal.ts`, `src/server/drain.ts`): an instance told to stop finishes its work first. A killed one runs no cleanup, so every run keeps a journal entry and holds its lock as a short lease; `reapOrphanedRuns` gives back the budget places of a silent run, and a payer's retry takes the payment over (`claimVideoPayment`).
 - **Feedback** (`/api/video/feedback`): emails `VIDEO_FEEDBACK_TO` through Resend from `feedback@mail.gitdiagram.com` (a standalone Resend account since 2026-10-07, Google sign-in as ahmed@gitdiagram.com; the older Vercel Marketplace account's key and DNS records are unused but still there).
 - **Analytics**: `video_started`, `video_progress`, `video_shared` (`watch-analytics.ts`), `video_paywall_viewed` and `video_checkout_clicked`, in PostHog (`docs/operations/posthog.md`).
+
+## AI visibility (in `/admin`)
+
+- **Daily cohort** (`src/server/visibility/ai-visibility.ts`, cron 13:00 UTC): the 12 fixed `AI_VISIBILITY_PROMPTS` to ChatGPT and Claude, with search and from memory, about $1 a day. Never reword or drop those prompts: their history is the trend.
+- **Weekly prompt panel** (`ai-panel.ts`, `ai-panel-prompts.ts`, `ai-panel-gaps.ts`; cron every 10 minutes Mondays 14:00-17:50 UTC, each firing answers what is still open): about 100 buyer-situation prompts to ChatGPT, Claude, Gemini and Perplexity, all with web search; Gemini (Google grounding) and Perplexity go through OpenRouter. Each miss gets a diagnosis and a fix in the "Prompt gaps" panel, plus the most-cited external URLs (the outreach list). A full week costs about $10.40 (cap `AI_PANEL_MAX_USD`, default $11). Gemini and Perplexity are skipped while the OpenRouter balance is under `AI_PANEL_OPENROUTER_FLOOR_USD` (default $15), because narration is paid from the same balance. When a page that answers a prompt ships, set that prompt's `page` in `ai-panel-prompts.ts`.
 
 ## Operator dashboard (`/admin`)
 
