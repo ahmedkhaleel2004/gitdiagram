@@ -5,16 +5,48 @@ import { getCachedBrowsePage } from "~/server/browse-index-cache";
 import { BrowseCatalog } from "~/components/browse-catalog";
 import { BrowseTabs } from "~/components/browse-tabs";
 import { Skeleton } from "~/components/ui/skeleton";
-import type { BrowseQuery } from "~/features/browse/catalog";
+import {
+  normalizeBrowseQuery,
+  type BrowseQuery,
+} from "~/features/browse/catalog";
 
-export const metadata: Metadata = {
-  title: "Browse Diagrams | GitDiagram",
-  description:
-    "Browse all public repositories with stored diagrams, sorted by recency or stars.",
-  alternates: {
-    canonical: "/browse",
-  },
+type BrowsePageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+const DESCRIPTION =
+  "Browse all public repositories with stored diagrams, sorted by recency or stars.";
+
+/**
+ * Plain pages of the newest diagrams (`?page=2`) are their own canonical, so
+ * search engines follow their links to every repository page (Previous and
+ * Next are links). Searches, filters and other sorts point at /browse.
+ */
+export async function generateMetadata({
+  searchParams,
+}: BrowsePageProps): Promise<Metadata> {
+  const params = await searchParams;
+  const query = normalizeBrowseQuery({
+    q: firstSearchParam(params.q),
+    sort: firstSearchParam(params.sort),
+    minStars: firstSearchParam(params.minStars),
+    page: firstSearchParam(params.page),
+  });
+  const plainPage =
+    !query.q && query.sort === "recent_desc" && query.minStars === 0
+      ? query.page
+      : 1;
+  return {
+    title:
+      plainPage > 1
+        ? `Browse Diagrams, page ${plainPage} | GitDiagram`
+        : "Browse Diagrams | GitDiagram",
+    description: DESCRIPTION,
+    alternates: {
+      canonical: plainPage > 1 ? `/browse?page=${plainPage}` : "/browse",
+    },
+  };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -56,11 +88,7 @@ async function BrowseCatalogWithInitialData({
   );
 }
 
-export default async function BrowsePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const params = await searchParams;
   const initialQuery: BrowseQuery = {
     q: firstSearchParam(params.q),

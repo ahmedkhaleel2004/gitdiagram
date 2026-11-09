@@ -161,6 +161,9 @@ export async function GET(request: Request): Promise<Response> {
           "Cache-Control":
             "public, max-age=0, s-maxage=60, stale-while-revalidate=600",
           "Vercel-Cache-Tag": videoResponseTag(username, repo),
+          // Crawlers may fetch this to render a watch page (robots.txt),
+          // but the answer itself is no page to list.
+          "X-Robots-Tag": "noindex",
         },
       },
     );
@@ -199,7 +202,7 @@ export async function GET(request: Request): Promise<Response> {
         // The operator previewing the page as a visitor from this country.
         viewingAs: viewAsCountry(request),
       },
-      { headers: NO_STORE_RESPONSE_HEADERS },
+      { headers: { ...NO_STORE_RESPONSE_HEADERS, "X-Robots-Tag": "noindex" } },
     ),
     visitor,
   );

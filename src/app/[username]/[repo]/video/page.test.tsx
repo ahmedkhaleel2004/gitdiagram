@@ -114,6 +114,8 @@ describe("video watch page with a video", () => {
       url: "https://gitdiagram.com/acme/demo/video",
       contentUrl: expect.stringContaining("format=landscape"),
       thumbnailUrl: [expect.stringContaining("format=poster")],
+      // The whole narration: the film itself is drawn in the browser.
+      transcript: "Demo draws diagrams. It reads the code first. Later.",
     });
   });
 

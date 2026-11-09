@@ -364,7 +364,12 @@ describe("BrowseCatalog", () => {
     );
 
     expect(await screen.findByText("Page 2 of 3")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    // Previous and Next are links crawlers can follow, with the filters kept.
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      "/browse?q=vercel&sort=stars_desc&minStars=100&page=3",
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Previous" }));
 
     expect(await screen.findByText("Page 1 of 3")).toBeInTheDocument();
     expect(window.location.search).toBe(

@@ -396,7 +396,8 @@ async function dropCopy(key: string, where: Where = {}) {
  * text. A copy is one more serialized string of the entry in the isolate's
  * memory (two bytes a character), next to the one R2 is given, and an
  * isolate that passes 128 MB is killed with every request it is running. The
- * 8 MB sitemap is the entry this is for; pages are 60 to 400 KB.
+ * sitemaps were the entry this was for (8 MB until 2026-11-09, now about
+ * 1.4 MB, see SITEMAP_PAGE_SIZE); pages are 60 to 400 KB.
  */
 const MAX_COPY_CHARS = 1_500_000;
 

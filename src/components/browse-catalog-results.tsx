@@ -5,9 +5,10 @@ import { ArrowRight, Clock3, Star } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { RefObject } from "react";
 
-import type {
-  BrowsePageResult,
-  BrowseIndexEntry,
+import {
+  buildBrowseHref,
+  type BrowsePageResult,
+  type BrowseIndexEntry,
 } from "~/features/browse/catalog";
 import { BrowseCatalogPagination } from "~/components/browse-catalog-pagination";
 import { BrowseDiagramPreview } from "~/components/browse-diagram-preview";
@@ -182,6 +183,7 @@ export function BrowseCatalogResults({
       </div>
 
       <BrowseCatalogPagination
+        hrefForPage={(page) => buildBrowseHref({ ...result, page })}
         onPageChange={handlePageChange}
         page={result.page}
         totalPages={result.totalPages}

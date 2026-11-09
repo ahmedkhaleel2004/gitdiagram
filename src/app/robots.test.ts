@@ -63,6 +63,23 @@ describe("robots.txt", () => {
     expect(everyone!.allow).toContain("/api/video/file");
   });
 
+  it("lets crawlers load what a watch page needs, not the analytics proxy", async () => {
+    for (const rule of (
+      (await robots()).rules as Array<{
+        allow: string | string[];
+        disallow: string[];
+      }>
+    ).slice(0, 3)) {
+      // A rendered watch page asks /api/video?username=…&repo=… for the video.
+      expect(rule.allow).toEqual(
+        expect.arrayContaining(["/api/video?", "/api/video/audio"]),
+      );
+      expect(rule.disallow).toEqual(
+        expect.arrayContaining(["/phx9a/", "/api/video/file?*format=still"]),
+      );
+    }
+  });
+
   it("names the AI search and assistant crawlers with the same rules", async () => {
     const [everyone, , ai, bulk] = (await robots()).rules as Array<{
       userAgent: string | string[];
@@ -99,7 +116,11 @@ describe("robots.txt", () => {
     }>;
     expect(search!.userAgent).toEqual(["Googlebot", "bingbot"]);
     expect(search!.allow).toEqual(everyone!.allow);
-    expect(search!.disallow).toEqual(["/api/"]);
+    expect(search!.disallow).toEqual([
+      "/api/",
+      "/phx9a/",
+      "/api/video/file?*format=still",
+    ]);
     expect(everyone!.disallow).toContain("/out/");
   });
 

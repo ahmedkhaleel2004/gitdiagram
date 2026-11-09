@@ -46,6 +46,13 @@ function getVideoSummary(username: string, repo: string) {
           .slice(0, 2)
           .map((beat) => beat.narration)
           .join(" "),
+        // The whole narration, for VideoObject.transcript: the player draws
+        // the film in the browser, so this is the watch page's text for
+        // search engines and agents.
+        transcript: video.plan.beats
+          .map((beat) => beat.narration)
+          .join(" ")
+          .trim(),
         seconds: Math.round(video.timing.DURATION),
         poster,
         mp4,
@@ -192,6 +199,8 @@ function videoJsonLd(username: string, repo: string, summary: VideoSummary) {
     },
     publisher: { "@type": "Organization", name: "GitDiagram", url: SITE_URL },
     // Summaries cached before `seconds` was recorded leave it out.
+    // Summaries cached before the transcript was recorded leave it out.
+    ...(summary.transcript ? { transcript: summary.transcript } : {}),
     ...(typeof summary.seconds === "number"
       ? { duration: `PT${summary.seconds}S` }
       : {}),
