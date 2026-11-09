@@ -105,7 +105,9 @@ export function buildRelatedShards(
 ): Map<string, RelatedShard> {
   const candidatesByLanguage = new Map<string, Candidate[]>();
   for (const entry of entries) {
-    if (!entry.language) continue;
+    // An old name of a renamed repository is never linked to: its page is a
+    // duplicate of the current one.
+    if (!entry.language || entry.renamed) continue;
     const stars = entry.stargazerCount ?? 0;
     if (stars < RELATED_MIN_STARS) continue;
     const list = candidatesByLanguage.get(entry.language) ?? [];
@@ -161,4 +163,26 @@ export function relatedFromShard(
         repositories: repositories.slice(0, RELATED_LINK_COUNT),
       }
     : null;
+}
+
+/**
+ * The shard to write: the new lists, plus every list the stored shard had for
+ * a repository that is still in the index but has none now (its language not
+ * known yet, or a smaller pool). A refresh can only add or replace lists,
+ * never make a page lose its line; a repository that left the index drops out.
+ */
+export function mergeRelatedShard(
+  fresh: RelatedShard | undefined,
+  stored: RelatedShard | null,
+  indexed: ReadonlySet<string>,
+  updatedAt: string,
+): RelatedShard {
+  const repositories: Record<string, RelatedDiagrams> = {};
+  for (const [key, value] of Object.entries(stored?.repositories ?? {})) {
+    if (indexed.has(key) && relatedFromShard(stored, key)) {
+      repositories[key] = value;
+    }
+  }
+  Object.assign(repositories, fresh?.repositories ?? {});
+  return { version: 1, updatedAt, repositories };
 }

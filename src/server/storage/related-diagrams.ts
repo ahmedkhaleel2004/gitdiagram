@@ -1,5 +1,7 @@
+import { toRepoKey } from "~/features/browse/catalog";
 import {
   buildRelatedShards,
+  mergeRelatedShard,
   RELATED_SHARD_COUNT,
   type RelatedShard,
 } from "~/features/browse/related";
@@ -26,9 +28,11 @@ export function readRelatedShard(id: string): Promise<RelatedShard | null> {
 }
 
 /**
- * Rebuilds every shard from the browse index. A shard with nobody in it is
- * written empty, so a repository that left the index (or lost its language)
- * stops showing links. Returns how many repositories have related diagrams.
+ * Rebuilds every shard from the browse index, merged over the stored one
+ * (mergeRelatedShard): a page keeps its line until a new list replaces it, so
+ * a rebuild from a partly back-filled index never empties a shard. A
+ * repository that left the index drops out. A shard that cannot be read is
+ * not written at all. Returns how many repositories have related diagrams.
  */
 export async function rebuildRelatedDiagrams(): Promise<{
   repositories: number;
@@ -38,22 +42,34 @@ export async function rebuildRelatedDiagrams(): Promise<{
   if (!entries) throw new Error("Browse index missing.");
   const updatedAt = new Date().toISOString();
   const shards = buildRelatedShards(entries, updatedAt);
+  const indexed = new Set(entries.map(toRepoKey));
   const ids = Array.from({ length: RELATED_SHARD_COUNT }, (_, index) =>
     index.toString(16).padStart(2, "0"),
   );
   const bucket = readRequiredEnv("R2_PUBLIC_BUCKET");
   let repositories = 0;
+  let failed = 0;
   for (let start = 0; start < ids.length; start += WRITE_CONCURRENCY) {
-    await Promise.all(
+    await Promise.allSettled(
       ids.slice(start, start + WRITE_CONCURRENCY).map(async (id) => {
-        const shard: RelatedShard = shards.get(id) ?? {
-          version: 1,
+        // A failed read throws: the shard is left as it is.
+        const stored = await readRelatedShard(id);
+        const shard = mergeRelatedShard(
+          shards.get(id),
+          stored,
+          indexed,
           updatedAt,
-          repositories: {},
-        };
-        repositories += Object.keys(shard.repositories).length;
+        );
         await putGzipJsonObject(bucket, relatedShardKey(id), shard);
+        repositories += Object.keys(shard.repositories).length;
       }),
+    ).then((results) => {
+      failed += results.filter((result) => result.status === "rejected").length;
+    });
+  }
+  if (failed > 0) {
+    throw new Error(
+      `${failed} related shards failed; the others were written.`,
     );
   }
   return { repositories, shards: ids.length };

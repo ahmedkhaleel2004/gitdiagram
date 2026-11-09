@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BrowseIndexEntry } from "./catalog";
 import {
   buildRelatedShards,
+  mergeRelatedShard,
   RELATED_SHARD_COUNT,
   relatedFromShard,
   relatedShardId,
@@ -85,6 +86,21 @@ describe("buildRelatedShards", () => {
     ).toEqual(["b/b", "c/c", "d/d"]);
   });
 
+  it("never links to an old name of a renamed repository, but still gives it links", () => {
+    const withAlias = [
+      ...python,
+      { ...entry("tiangolo/fastapi", 15000, "Python"), renamed: true as const },
+    ];
+    for (const { username, repo } of withAlias) {
+      expect(
+        relatedOf(withAlias, `${username}/${repo}`)?.repositories ?? [],
+      ).not.toContain("tiangolo/fastapi");
+    }
+    expect(relatedOf(withAlias, "tiangolo/fastapi")?.repositories).toHaveLength(
+      5,
+    );
+  });
+
   it("puts every repository in a stable shard", () => {
     const id = relatedShardId("FastAPI/FastAPI");
     expect(id).toBe(relatedShardId("fastapi/fastapi"));
@@ -117,5 +133,48 @@ describe("relatedFromShard", () => {
       ),
     ).toEqual({ language: "Go", repositories: ["b/b", "c/c", "d/d"] });
     expect(relatedFromShard(null, "a/a")).toBeNull();
+  });
+});
+
+describe("mergeRelatedShard", () => {
+  const list = (language: string, ...repositories: string[]) => ({
+    language,
+    repositories,
+  });
+  const stored = {
+    version: 1 as const,
+    updatedAt: "old",
+    repositories: {
+      "a/a": list("Go", "b/b", "c/c", "d/d"),
+      "gone/repo": list("Go", "b/b", "c/c", "d/d"),
+      "x/x": list("Go", "b/b", "c/c", "d/d"),
+    },
+  };
+
+  it("keeps a stored list a rebuild has nothing for, while the repo is indexed", () => {
+    const merged = mergeRelatedShard(
+      {
+        version: 1,
+        updatedAt: "new",
+        repositories: { "x/x": list("Go", "e/e", "f/f", "g/g") },
+      },
+      stored,
+      new Set(["a/a", "x/x"]),
+      "new",
+    );
+    expect(merged.repositories).toEqual({
+      "a/a": list("Go", "b/b", "c/c", "d/d"),
+      "x/x": list("Go", "e/e", "f/f", "g/g"),
+    });
+  });
+
+  it("never comes out emptier than the stored shard for indexed repos", () => {
+    const merged = mergeRelatedShard(
+      undefined,
+      stored,
+      new Set(["a/a", "gone/repo", "x/x"]),
+      "new",
+    );
+    expect(Object.keys(merged.repositories)).toHaveLength(3);
   });
 });

@@ -125,6 +125,7 @@ function normalizeBrowseIndexEntry(entry: BrowseIndexEntry): BrowseIndexEntry {
     // Left out when unknown: most of the index predates it, and an explicit
     // null on every entry would grow the snapshot by megabytes.
     ...(language ? { language } : {}),
+    ...(entry.renamed === true ? { renamed: true as const } : {}),
   };
 }
 
@@ -134,11 +135,17 @@ function mergeBrowseIndexEntries(
   incoming: BrowseIndexEntry,
 ): BrowseIndexEntry {
   const preferred = pickPreferredEntry(existing, incoming);
-  if (preferred.language) return preferred;
   const other = preferred === incoming ? existing : incoming;
-  return other?.language
-    ? { ...preferred, language: other.language }
-    : preferred;
+  const language = preferred.language ?? other?.language;
+  const renamed = preferred.renamed ?? other?.renamed;
+  if (preferred.language === language && preferred.renamed === renamed) {
+    return preferred;
+  }
+  return {
+    ...preferred,
+    ...(language ? { language } : {}),
+    ...(renamed ? { renamed } : {}),
+  };
 }
 
 function pickPreferredEntry(
@@ -535,17 +542,24 @@ export async function removeBrowseIndexEntry(
   });
 }
 
+/** What the back-fill learned about one repository from GitHub. */
+export interface BrowseIndexLanguage {
+  language: string | null;
+  /** GitHub answers under another name: an old name of the repository. */
+  renamed: boolean;
+}
+
 /**
  * Writes repositories' GitHub languages into the index (the one-off back-fill
  * for entries made before the index kept them; scripts/backfill-browse-
- * languages.ts). A language is only added where none is set; null takes one
- * off (an old name of a renamed repository, a duplicate of another entry).
- * No entry is added or removed, and the manifest is written conditionally
- * under the index lock, so a generation finishing meanwhile is never lost.
- * Returns how many entries changed.
+ * languages.ts). A language is only added where none is set, never removed;
+ * the renamed mark follows what GitHub said. No entry is added or removed,
+ * and the manifest is written conditionally under the index lock, so a
+ * generation finishing meanwhile is never lost. Returns how many entries
+ * changed.
  */
 export async function applyBrowseIndexLanguages(
-  languages: ReadonlyMap<string, string | null>,
+  languages: ReadonlyMap<string, BrowseIndexLanguage>,
 ): Promise<number> {
   return withDistributedLock({
     key: PUBLIC_BROWSE_INDEX_LOCK_KEY,
@@ -556,17 +570,22 @@ export async function applyBrowseIndexLanguages(
       if (!stored?.activeSnapshotKey) throw new BrowseIndexNotFoundError();
       let changed = 0;
       const entries = stored.entries.map((entry) => {
-        const key = toRepoKey(entry);
-        if (languages.get(key) === null && entry.language) {
-          changed++;
-          const rest = { ...entry };
-          delete rest.language;
-          return rest;
+        const learned = languages.get(toRepoKey(entry));
+        if (!learned) return entry;
+        const language =
+          entry.language ?? normalizeLanguage(learned.language) ?? undefined;
+        if (
+          language === entry.language &&
+          learned.renamed === (entry.renamed === true)
+        ) {
+          return entry;
         }
-        const language = normalizeLanguage(languages.get(key));
-        if (entry.language || !language) return entry;
         changed++;
-        return { ...entry, language };
+        const next: BrowseIndexEntry = { ...entry };
+        if (language) next.language = language;
+        if (learned.renamed) next.renamed = true;
+        else delete next.renamed;
+        return next;
       });
       if (changed > 0) {
         await writeBrowseIndex({

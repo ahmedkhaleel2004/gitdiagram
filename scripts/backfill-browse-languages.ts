@@ -15,6 +15,7 @@ import { toRepoKey } from "../src/features/browse/catalog";
 import {
   applyBrowseIndexLanguages,
   readBrowseIndex,
+  type BrowseIndexLanguage,
 } from "../src/server/storage/browse-diagrams";
 import { rebuildRelatedDiagrams } from "../src/server/storage/related-diagrams";
 
@@ -39,11 +40,12 @@ const BATCH = 100;
 const CONCURRENCY = 1;
 const PAUSE_MS = 2_500;
 
-// key -> language, "" when GitHub has none (or the repository is gone), or
-// RENAMED when GitHub answers under another name: the entry is an old name of
-// a repository the index also holds, so it gets no language (no related
-// links to or from a duplicate page).
-const RENAMED = "=renamed";
+// key -> language; "" when GitHub has none or says the repository does not
+// exist (NOT_FOUND); RENAMED + language when GitHub answers under another
+// name (an old name of a repository the index may also hold: its page still
+// shows links, but no page links to it). Anything else GitHub fails to answer
+// is left out and asked again on the next run, never guessed.
+const RENAMED = "=renamed:";
 const answered: Record<string, string> = existsSync(cachePath)
   ? (JSON.parse(readFileSync(cachePath, "utf8")) as Record<string, string>)
   : {};
@@ -61,7 +63,7 @@ const missing = entries
     (left, right) => (right.stargazerCount ?? 0) - (left.stargazerCount ?? 0),
   )
   .map(toRepoKey)
-  .filter((key) => !(key in answered))
+  .filter((key) => !(key in answered) || answered[key] === "=renamed")
   .slice(0, limitArgument);
 console.log(
   `${entries.length} entries, ${entries.filter((e) => e.language).length} with a language, ${missing.length} to ask GitHub.`,
@@ -119,16 +121,34 @@ async function lookUp(keys: string[], attempt = 1): Promise<void> {
         nameWithOwner: string;
         primaryLanguage: { name: string } | null;
       } | null
-    >;
+    > | null;
+    errors?: Array<{ type?: string; path?: unknown[] }>;
   };
+  const notFound = new Set(
+    (body.errors ?? [])
+      .filter((error) => error.type === "NOT_FOUND")
+      .map((error) => String(error.path?.[0] ?? "")),
+  );
+  let unanswered = 0;
   keys.forEach((key, index) => {
-    const repository = body.data?.[`r${index}`];
-    answered[key] = !repository
-      ? ""
-      : repository.nameWithOwner.toLowerCase() !== key
-        ? RENAMED
-        : (repository.primaryLanguage?.name ?? "");
+    const alias = `r${index}`;
+    const repository = body.data?.[alias];
+    if (!repository) {
+      if (notFound.has(alias)) answered[key] = "";
+      else unanswered++;
+      return;
+    }
+    const language = repository.primaryLanguage?.name ?? "";
+    answered[key] =
+      repository.nameWithOwner.toLowerCase() !== key
+        ? `${RENAMED}${language}`
+        : language;
   });
+  if (unanswered > 0) {
+    console.log(
+      `${unanswered} repositories unanswered (${JSON.stringify(body.errors?.slice(0, 2) ?? null).slice(0, 200)}); asked again next run`,
+    );
+  }
 }
 
 const batches: string[][] = [];
@@ -150,11 +170,16 @@ async function worker() {
 await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 writeFileSync(cachePath, JSON.stringify(answered));
 
-// A language to add where missing, or null to take one off a renamed copy.
-const languages = new Map<string, string | null>(
+const languages = new Map<string, BrowseIndexLanguage>(
   Object.entries(answered).flatMap(
-    ([key, language]): [string, string | null][] =>
-      language === RENAMED ? [[key, null]] : language ? [[key, language]] : [],
+    ([key, value]): [string, BrowseIndexLanguage][] => {
+      if (value === "=renamed") return []; // old format: asked again
+      const renamed = value.startsWith(RENAMED);
+      const language = renamed ? value.slice(RENAMED.length) : value;
+      return language || renamed
+        ? [[key, { language: language || null, renamed }]]
+        : [];
+    },
   ),
 );
 console.log(`${languages.size} repositories have a language on GitHub.`);

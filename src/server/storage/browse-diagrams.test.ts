@@ -312,9 +312,9 @@ describe("browse diagram storage", () => {
 
     const changed = await applyBrowseIndexLanguages(
       new Map([
-        ["acme/demo", "Python"],
-        ["acme/other", "Rust"],
-        ["not/listed", "C"],
+        ["acme/demo", { language: "Python", renamed: false }],
+        ["acme/other", { language: "Rust", renamed: false }],
+        ["not/listed", { language: "C", renamed: false }],
       ]),
     );
 
@@ -325,21 +325,33 @@ describe("browse diagram storage", () => {
     ]);
   });
 
-  it("takes the language off an old name of a renamed repository", async () => {
+  it("marks an old name of a renamed repository and keeps its language", async () => {
     seedAtomicIndex([
       {
-        username: "acme",
-        repo: "old-name",
+        username: "facebook",
+        repo: "react",
         lastSuccessfulAt: "2026-03-29T12:00:00.000Z",
         stargazerCount: 42,
-        language: "Go",
       },
     ]);
 
     expect(
-      await applyBrowseIndexLanguages(new Map([["acme/old-name", null]])),
+      await applyBrowseIndexLanguages(
+        new Map([
+          ["facebook/react", { language: "JavaScript", renamed: true }],
+        ]),
+      ),
     ).toBe(1);
-    expect((await readBrowseIndex())?.[0]).not.toHaveProperty("language");
+    expect((await readBrowseIndex())?.[0]).toMatchObject({
+      language: "JavaScript",
+      renamed: true,
+    });
+    // Learning it again changes nothing; a language is never taken off.
+    expect(
+      await applyBrowseIndexLanguages(
+        new Map([["facebook/react", { language: null, renamed: true }]]),
+      ),
+    ).toBe(0);
   });
 
   it("does not rewrite a committed snapshot for a stale repository update", async () => {

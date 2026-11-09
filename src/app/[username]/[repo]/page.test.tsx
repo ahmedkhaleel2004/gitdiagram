@@ -10,7 +10,11 @@ const {
 } = vi.hoisted(() => ({
   cachedReads: [] as Array<{ key: string; revalidate: number }>,
   getStoredDiagramState: vi.fn(),
-  readRelatedShard: vi.fn(async (): Promise<unknown> => null),
+  readRelatedShard: vi.fn(async (): Promise<unknown> => ({
+    version: 1,
+    updatedAt: "2026-11-09T00:00:00Z",
+    repositories: {},
+  })),
   permanentRedirect: vi.fn((path: string) => {
     throw new Error(`redirect:${path}`);
   }),
@@ -216,6 +220,23 @@ describe("repository page", () => {
     expect(html).toContain("Add a badge to your README");
     // No related shard for this repository: no line.
     expect(html).not.toContain("diagrams:");
+  });
+
+  it("caches a page briefly when the related shard cannot be read", async () => {
+    getStoredDiagramState.mockResolvedValue(storedState);
+    readRelatedShard.mockResolvedValueOnce(null);
+    const { client } = parts(
+      await Repo({
+        params: Promise.resolve({ username: "acme", repo: "demo" }),
+      }),
+    );
+    expect(renderToStaticMarkup(<>{client.props.readout}</>)).toContain(
+      "Main entry points",
+    );
+    expect(cachedReads).toContainEqual({
+      key: "repo-page-related-failure",
+      revalidate: 60,
+    });
   });
 
   it("links a few public diagrams in the same language", async () => {
