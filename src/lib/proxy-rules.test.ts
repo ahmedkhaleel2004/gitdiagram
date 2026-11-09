@@ -110,6 +110,19 @@ describe("proxyDecision", () => {
     ).toEqual({ action: "rewrite", pathname: "/compare/deepwiki/llms.txt" });
   });
 
+  it("serves a situation guide's Markdown twin the same way", () => {
+    expect(decide("/guides/legacy-codebase.md").decision).toEqual({
+      action: "rewrite",
+      pathname: "/guides/legacy-codebase/llms.txt",
+    });
+    expect(
+      decide("/guides/legacy-codebase", { accept: "text/markdown" }).decision,
+    ).toEqual({
+      action: "rewrite",
+      pathname: "/guides/legacy-codebase/llms.txt",
+    });
+  });
+
   it("serves the Markdown twin by extension or by Accept", () => {
     expect(decide("/acme/demo.md")).toEqual({
       decision: { action: "rewrite", pathname: "/acme/demo/llms.txt" },

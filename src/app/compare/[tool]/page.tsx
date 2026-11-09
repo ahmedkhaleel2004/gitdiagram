@@ -12,6 +12,7 @@ import {
   ArticleSection,
   CodeBlock,
   MoreComparisons,
+  MoreGuides,
   Sources,
   cellClass,
   checkedDate,
@@ -175,6 +176,7 @@ export default async function ComparePageView({ params }: Props) {
 
         <Sources sources={page.sources} />
         <MoreComparisons current={page.slug} />
+        <MoreGuides />
       </article>
     </main>
   );

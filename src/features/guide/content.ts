@@ -1,4 +1,5 @@
 import { GITHUB_REPO_URL, SITE_URL } from "~/lib/site";
+import { SITUATION_PAGES, situationPath } from "~/features/situations/content";
 
 // The /visualize-codebase guide, written once and rendered three ways: the
 // page (HTML), /llms-full.txt (Markdown) and the page's FAQPage JSON-LD.
@@ -75,6 +76,17 @@ export function guideSections({ videos }: { videos: boolean }): GuideSection[] {
         "Agents that speak the Model Context Protocol can connect to the read-only server at `https://gitdiagram.com/mcp` (streamable HTTP), for example to call `get_repository_diagram` with a repository such as `fastapi/fastapi`, or `find_repository_diagrams` to search the diagrams that already exist. In Claude Code: `claude mcp add --transport http gitdiagram https://gitdiagram.com/mcp`.",
         "[llms.txt](/llms.txt) sums this up for language models, and [llms-full.txt](/llms-full.txt) holds this whole guide. An agent helping someone understand a repository can read the `.md` version itself and give the person the interactive link, `https://gitdiagram.com/{owner}/{repo}`.",
       ],
+    },
+    {
+      id: "situations",
+      heading: "Guides for common situations",
+      paragraphs: [
+        "Step-by-step workflows for the moments people most often need to understand a repository, each with a real diagram from this site and the other tools that fit.",
+      ],
+      entries: SITUATION_PAGES.map((page) => ({
+        name: page.label,
+        text: `${page.description} [${page.title}](${situationPath(page.slug)}).`,
+      })),
     },
     {
       id: "alternatives",

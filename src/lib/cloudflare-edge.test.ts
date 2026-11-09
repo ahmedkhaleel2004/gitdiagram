@@ -141,6 +141,17 @@ describe("edgeDecision", () => {
       expect(edgeDecision(path, null)).toEqual({ action: "missing" });
   });
 
+  it("treats the situation guides as the site's own, not repositories", () => {
+    expect(
+      edgeDecision("/guides/understand-a-monorepo", "ClaudeBot/1.0"),
+    ).toBeNull();
+    expect(edgeDecision("/guides/legacy-codebase", "Mozilla/5.0")).toBeNull();
+    expect(edgeDecision("/guides/legacy-codebase.md", null)).toBeNull();
+    expect(edgeDecision("/guides/legacy-codebase/llms.txt", null)).toBeNull();
+    for (const path of ["/guides/nope", "/guides/legacy-codebase/video"])
+      expect(edgeDecision(path, null)).toEqual({ action: "missing" });
+  });
+
   it("refuses no crawler by name; they share the page limit", () => {
     const claude =
       "Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)";

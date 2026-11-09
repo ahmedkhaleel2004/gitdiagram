@@ -20,6 +20,8 @@ import {
   REPORT_PATH,
   REPORT_TITLE,
 } from "~/features/architecture-report/content";
+import { SITUATION_PAGES, situationPath } from "~/features/situations/content";
+import { situationMarkdown } from "~/features/situations/markdown";
 
 // /llms.txt (https://llmstxt.org): what GitDiagram is and how an agent uses
 // it, as Markdown. /llms-full.txt adds the whole guide.
@@ -50,8 +52,15 @@ function llmsBody({ videos }: { videos: boolean }): string[] {
     "## Docs",
     "",
     `- [How to visualize a codebase](${SITE_URL}${GUIDE_PATH}): ${GUIDE_DESCRIPTION}`,
-    `- [Full text for language models](${SITE_URL}/llms-full.txt): this file plus the whole guide and every comparison.`,
+    `- [Full text for language models](${SITE_URL}/llms-full.txt): this file plus the whole guide, every situation guide and every comparison.`,
     `- [${REPORT_TITLE}](${SITE_URL}${REPORT_PATH}.md): a data report from the stored diagrams of the most-starred repositories, with its method and a CSV dataset (${SITE_URL}${REPORT_DATASET.csv}).`,
+    "",
+    "## Guides by situation",
+    "",
+    ...SITUATION_PAGES.map(
+      (page) =>
+        `- [${page.title}](${SITE_URL}${situationPath(page.slug)}): ${page.description} Markdown: ${SITE_URL}${situationPath(page.slug)}.md`,
+    ),
     "",
     "## Comparisons",
     "",
@@ -89,6 +98,7 @@ export function llmsFullText({ videos }: { videos: boolean }): string {
     "",
     guideMarkdown({ videos }),
     "",
+    ...SITUATION_PAGES.flatMap((page) => [situationMarkdown(page, 2), ""]),
     roundupMarkdown(2),
     ...COMPARE_PAGES.flatMap((page) => ["", comparePageMarkdown(page, 2)]),
   ].join("\n")}\n`;

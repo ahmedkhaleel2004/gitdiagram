@@ -16,6 +16,11 @@ import {
   REPORT_PUBLISHED,
 } from "~/features/architecture-report/content";
 import { GUIDE_UPDATED } from "~/features/guide/content";
+import {
+  SITUATIONS_CHECKED,
+  SITUATION_PAGES,
+  situationPath,
+} from "~/features/situations/content";
 import { SITE_URL } from "~/lib/site";
 import {
   getSitemapCount,
@@ -105,6 +110,12 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
     ...COMPARE_PAGES.map((page) => ({
       url: `${SITE_URL}${comparePath(page.slug)}`,
       lastModified: new Date(COMPARE_CHECKED),
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    })),
+    ...SITUATION_PAGES.map((page) => ({
+      url: `${SITE_URL}${situationPath(page.slug)}`,
+      lastModified: new Date(SITUATIONS_CHECKED),
       changeFrequency: "monthly" as const,
       priority: 0.6,
     })),

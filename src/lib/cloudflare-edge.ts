@@ -1,5 +1,6 @@
 import { normalizeBrowseQuery } from "../features/browse/catalog";
 import { isUnknownComparePath } from "../features/compare/slugs";
+import { isUnknownGuidePath } from "../features/situations/slugs";
 
 // Pure helpers for the Cloudflare Worker entry (cloudflare/worker.ts). They
 // make a request on Cloudflare look to the app like one on Vercel, so the
@@ -202,6 +203,8 @@ const OWN_FIRST_SEGMENTS = new Set([
   // The comparison pages (/compare/{tool}). GitHub reserves the name, so no
   // owner is called "compare".
   "compare",
+  // The situation guides (/guides/{slug}). GitHub reserves this name too.
+  "guides",
 ]);
 
 /** `/owner/repo`, or with `images` its social pictures too. */
@@ -255,7 +258,11 @@ export function edgeDecision(
 ): EdgeDecision {
   const limit = RATE_LIMITED_PATHS[pathname];
   if (limit) return { action: "limit", limit };
-  if (isScannerPath(pathname) || isUnknownComparePath(pathname))
+  if (
+    isScannerPath(pathname) ||
+    isUnknownComparePath(pathname) ||
+    isUnknownGuidePath(pathname)
+  )
     return { action: "missing" };
   // No crawler is refused by name. ClaudeBot, Amazonbot and Brightbot were
   // denied repository pages while those pages cost Vercel function time

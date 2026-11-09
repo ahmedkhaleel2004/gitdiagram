@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { richText } from "~/features/guide/rich-text";
+import { SITUATION_PAGES, situationPath } from "~/features/situations/content";
 import {
   COMPARE_CHECKED,
   COMPARE_PAGES,
@@ -16,8 +17,8 @@ export const cellClass =
   "border-b border-neutral-200 py-2 pr-3 align-top leading-relaxed dark:border-neutral-800";
 export const headCellClass = `${cellClass} font-semibold`;
 
-export function checkedDate(): string {
-  return new Date(COMPARE_CHECKED).toLocaleDateString("en-US", {
+export function checkedDate(date: string = COMPARE_CHECKED): string {
+  return new Date(date).toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -67,11 +68,18 @@ export function CodeBlock({
   );
 }
 
-export function Sources({ sources }: { sources: CompareSource[] }) {
+export function Sources({
+  sources,
+  checked = COMPARE_CHECKED,
+}: {
+  sources: CompareSource[];
+  /** When the facts were checked. */
+  checked?: string;
+}) {
   return (
     <ArticleSection id="sources" heading="Sources">
       <p className="mt-3 leading-relaxed">
-        Checked on <time dateTime={COMPARE_CHECKED}>{checkedDate()}</time>.
+        Checked on <time dateTime={checked}>{checkedDate(checked)}</time>.
         Products change: if something here is out of date,{" "}
         {richText(
           "[open an issue](https://github.com/ahmedkhaleel2004/gitdiagram/issues).",
@@ -122,6 +130,27 @@ export function MoreComparisons({ current }: { current?: string }) {
             How to visualize a codebase
           </Link>
         </li>
+      </ul>
+    </nav>
+  );
+}
+
+/** Links to the situation guides (/guides/{slug}). */
+export function MoreGuides() {
+  return (
+    <nav aria-label="Guides by situation" className="mt-10">
+      <h2 className="text-xl font-semibold">Guides by situation</h2>
+      <ul className="mt-3 list-disc space-y-1 pl-5">
+        {SITUATION_PAGES.map((page) => (
+          <li key={page.slug}>
+            <Link
+              href={situationPath(page.slug)}
+              className="neo-link font-medium hover:underline"
+            >
+              {page.label}
+            </Link>
+          </li>
+        ))}
       </ul>
     </nav>
   );

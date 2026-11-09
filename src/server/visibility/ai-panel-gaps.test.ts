@@ -7,6 +7,7 @@ import {
   isThirdParty,
   normalizeUrl,
 } from "./ai-panel-gaps";
+import { SITUATION_SLUGS } from "~/features/situations/slugs";
 import { COMPARE_SLUGS } from "~/features/compare/slugs";
 import { AI_PANEL_PROMPTS, type PanelPrompt } from "./ai-panel-prompts";
 
@@ -60,6 +61,13 @@ describe("the prompt panel's prompts", () => {
     for (const p of AI_PANEL_PROMPTS) {
       const slug = /^\/compare\/(.+)$/.exec(p.page ?? "")?.[1];
       if (slug) expect(COMPARE_SLUGS).toContain(slug);
+    }
+  });
+
+  it("point only at situation guides that exist", () => {
+    for (const p of AI_PANEL_PROMPTS) {
+      const slug = /^\/guides\/(.+)$/.exec(p.page ?? "")?.[1];
+      if (slug) expect(SITUATION_SLUGS).toContain(slug);
     }
   });
 });

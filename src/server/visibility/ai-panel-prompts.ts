@@ -33,37 +33,37 @@ const situation: Ungrouped[] = [
   {
     id: "s-joined-monorepo",
     text: "I just joined a team with a huge monorepo. What's the fastest way to understand its architecture?",
-    page: GUIDE,
+    page: "/guides/understand-a-monorepo",
   },
   {
     id: "s-first-week-onboarding",
     text: "It's my first week as a developer at a new company and the codebase is massive. How do I get a mental model of it fast?",
-    page: GUIDE,
+    page: "/guides/understand-a-new-codebase",
   },
   {
     id: "s-onboard-open-source",
     text: "How do I onboard to an unfamiliar open source project before making my first contribution?",
-    page: GUIDE,
+    page: "/guides/understand-a-new-codebase",
   },
   {
     id: "s-inherited-legacy",
     text: "I inherited a legacy codebase with no documentation. How can I figure out how it's put together?",
-    page: GUIDE,
+    page: "/guides/legacy-codebase",
   },
   {
     id: "s-readme-architecture",
     text: "I want an architecture diagram for my project's README. What's the easiest way to make one?",
-    page: GUIDE,
+    page: "/guides/readme-architecture-diagram",
   },
   {
     id: "s-code-review-prep",
     text: "I have to review a big pull request in a repo I don't know. How can I quickly see how the pieces fit together first?",
-    page: GUIDE,
+    page: "/guides/review-an-unfamiliar-pull-request",
   },
   {
     id: "s-interview-prep",
     text: "I have a technical interview at a company with public GitHub repos. How can I quickly understand their codebase architecture to prepare?",
-    page: GUIDE,
+    page: "/guides/technical-interview-codebase-prep",
   },
   {
     id: "s-explain-to-pm",
@@ -103,12 +103,12 @@ const situation: Ungrouped[] = [
   {
     id: "s-docs-out-of-date",
     text: "Our architecture docs are always out of date. Is there a way to generate the architecture diagram straight from the repository?",
-    page: GUIDE,
+    page: "/guides/legacy-codebase",
   },
   {
     id: "s-ai-agent-context",
     text: "My AI coding agent keeps getting lost in our codebase. How can I give it a map of the repo's architecture?",
-    page: MCP,
+    page: "/guides/architecture-map-for-ai-coding-agents",
   },
   {
     id: "s-mcp-architecture",
@@ -118,7 +118,7 @@ const situation: Ungrouped[] = [
   {
     id: "s-learn-by-reading-code",
     text: "I'm a junior developer trying to learn by reading popular open source code. How do I figure out where to start in a big repo?",
-    page: GUIDE,
+    page: "/guides/understand-a-new-codebase",
   },
   {
     id: "s-video-explainer",
@@ -133,7 +133,7 @@ const situation: Ungrouped[] = [
   {
     id: "s-portfolio-project",
     text: "How can I add a professional-looking architecture diagram to my portfolio project on GitHub?",
-    page: GUIDE,
+    page: "/guides/readme-architecture-diagram",
   },
   {
     id: "s-microservices-map",
@@ -168,7 +168,7 @@ const situation: Ungrouped[] = [
   {
     id: "s-contractor-handoff",
     text: "A contractor handed over a codebase and left. How do I get an overview of its architecture quickly?",
-    page: GUIDE,
+    page: "/guides/legacy-codebase",
   },
 ];
 
@@ -287,7 +287,7 @@ const constraint: Ungrouped[] = [
   {
     id: "k-private-repo",
     text: "Is there a tool that can generate an architecture diagram of a private GitHub repository?",
-    page: HOME,
+    page: "/guides/private-repository-diagram",
   },
   {
     id: "k-no-signup",
@@ -302,7 +302,7 @@ const constraint: Ungrouped[] = [
   {
     id: "k-mermaid-export",
     text: "Tool that turns a GitHub repo into Mermaid code I can paste into my README?",
-    page: GUIDE,
+    page: "/guides/readme-architecture-diagram",
   },
   {
     id: "k-clickable-diagram",
@@ -423,7 +423,7 @@ const constraint: Ungrouped[] = [
   {
     id: "k-claude-code-diagram",
     text: "How can I get Claude Code or Cursor to produce an architecture diagram of my repo?",
-    page: MCP,
+    page: "/guides/architecture-map-for-ai-coding-agents",
   },
   {
     id: "k-c4-model",

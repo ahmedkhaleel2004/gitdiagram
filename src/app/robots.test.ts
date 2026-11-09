@@ -31,9 +31,9 @@ vi.mock("~/server/explainer/catalog", () => ({
 vi.mock("~/lib/sitemaps", async (importOriginal) => ({
   ...(await importOriginal<typeof Sitemaps>()),
   // Small pages make the shard arithmetic visible.
-  SITEMAP_PAGE_SIZE: 20,
+  SITEMAP_PAGE_SIZE: 30,
   getSitemapCount: (routeCount: number, fixedRouteCount: number) =>
-    Math.max(1, Math.ceil((routeCount + fixedRouteCount) / 20)),
+    Math.max(1, Math.ceil((routeCount + fixedRouteCount) / 30)),
 }));
 
 import robots from "./robots";
@@ -142,16 +142,16 @@ describe("robots.txt", () => {
 
   it("never reads the whole browse index", async () => {
     // It renders on the placed server, which the whole index can kill.
-    // 35 repositories and the 14 fixed pages make three pages of twenty.
-    store.browse = Array.from({ length: 35 }, (_, index) => entry(index));
+    // 45 repositories and the 23 fixed pages make three pages of thirty.
+    store.browse = Array.from({ length: 45 }, (_, index) => entry(index));
     expect((await robots()).sitemap).toHaveLength(4);
     expect(store.wholeIndexReads).toBe(0);
   });
 
   it("does not list an empty shard when videos are off", async () => {
-    // Twelve fixed pages and eight repositories fill exactly one page of twenty.
+    // Twenty-one fixed pages and nine repositories fill exactly one page of thirty.
     store.videosOn = false;
-    store.browse = Array.from({ length: 8 }, (_, index) => entry(index));
+    store.browse = Array.from({ length: 9 }, (_, index) => entry(index));
     expect(await generateSitemaps()).toHaveLength(1);
     store.videosOn = true;
     expect(await generateSitemaps()).toHaveLength(2);
@@ -160,7 +160,7 @@ describe("robots.txt", () => {
 
 describe("sitemap index", () => {
   it("lists every shard robots.txt lists, without the whole index", async () => {
-    store.browse = Array.from({ length: 35 }, (_, index) => entry(index));
+    store.browse = Array.from({ length: 45 }, (_, index) => entry(index));
     const response = await sitemapIndex();
     expect(response.headers.get("content-type")).toContain("application/xml");
     const body = await response.text();

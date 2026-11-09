@@ -17,6 +17,7 @@ import {
 import {
   ArticleSection,
   MoreComparisons,
+  MoreGuides,
   Sources,
   cellClass,
   checkedDate,
@@ -173,6 +174,7 @@ export default function BestCodebaseVisualizationToolsPage() {
           ]}
         />
         <MoreComparisons />
+        <MoreGuides />
       </article>
     </main>
   );
