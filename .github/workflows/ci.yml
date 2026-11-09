@@ -68,7 +68,16 @@ jobs:
         # (-c/--cmd), which nothing here runs: glob 10.3.3 is pinned exactly by
         # @node-minify/core, a build-time dependency of OpenNext, and Bun only
         # supports top-level overrides. Remove once node-minify moves past it.
-        run: bun audit --ignore=GHSA-vfj7-8cjw-p6xm --ignore=GHSA-5j98-mcp5-4vw2
+        # GHSA-g3hv-75wg-m249 (minimatch <11.0.1, slow on crafted patterns) and
+        # GHSA-3g3m-2fjr-6pw4 (glob <=14.0.1, AbortSignal ignored) only reach
+        # lint tooling and OpenNext's build step, which match our own fixed
+        # patterns and pass no abort signal. The fixes are new majors that
+        # @eslint/config-array (^10) and @opennextjs/cloudflare (^13) do not
+        # accept yet, and a top-level override would force them on every
+        # copy. Remove once those packages move.
+        run: >-
+          bun audit --ignore=GHSA-vfj7-8cjw-p6xm --ignore=GHSA-5j98-mcp5-4vw2
+          --ignore=GHSA-g3hv-75wg-m249 --ignore=GHSA-3g3m-2fjr-6pw4
       - name: Tests
         run: bun run test
         env:
