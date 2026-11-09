@@ -38,6 +38,7 @@ vi.mock("~/lib/sitemaps", async (importOriginal) => ({
 
 import robots from "./robots";
 import sitemap, { generateSitemaps } from "./sitemap";
+import { GET as sitemapIndex } from "./sitemap_index.xml/route";
 
 const entry = (index: number) => ({
   username: "acme",
@@ -111,6 +112,7 @@ describe("robots.txt", () => {
     const shards = await generateSitemaps();
     expect(shards).toHaveLength(2);
     expect((await robots()).sitemap).toEqual([
+      "https://gitdiagram.com/sitemap_index.xml",
       "https://gitdiagram.com/sitemap/0.xml",
       "https://gitdiagram.com/sitemap/1.xml",
     ]);
@@ -120,7 +122,7 @@ describe("robots.txt", () => {
     // It renders on the placed server, which the whole index can kill.
     // 25 repositories and the six fixed pages make four pages of ten.
     store.browse = Array.from({ length: 25 }, (_, index) => entry(index));
-    expect((await robots()).sitemap).toHaveLength(4);
+    expect((await robots()).sitemap).toHaveLength(5);
     expect(store.wholeIndexReads).toBe(0);
   });
 
@@ -131,6 +133,20 @@ describe("robots.txt", () => {
     expect(await generateSitemaps()).toHaveLength(1);
     store.videosOn = true;
     expect(await generateSitemaps()).toHaveLength(2);
+  });
+});
+
+describe("sitemap index", () => {
+  it("lists every shard robots.txt lists, without the whole index", async () => {
+    store.browse = Array.from({ length: 25 }, (_, index) => entry(index));
+    const response = await sitemapIndex();
+    expect(response.headers.get("content-type")).toContain("application/xml");
+    const body = await response.text();
+    expect(body).toContain("<sitemapindex");
+    const locs = [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+    expect(locs).toEqual(((await robots()).sitemap as string[]).slice(1));
+    expect(locs).toHaveLength(4);
+    expect(store.wholeIndexReads).toBe(0);
   });
 });
 

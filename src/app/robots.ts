@@ -58,6 +58,9 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
         disallow: ["/api/", "/out/", "/*/*"],
       },
     ],
-    sitemap: getSitemapUrls(SITE_URL, sitemaps.length),
+    sitemap: [
+      `${SITE_URL}/sitemap_index.xml`,
+      ...getSitemapUrls(SITE_URL, sitemaps.length),
+    ],
   };
 }
