@@ -17,15 +17,16 @@ export const repositoryMarkdownPath = (owner: string, repo: string) =>
   `${repoPath(owner, repo)}.md`;
 
 /**
- * "owner/repo architecture diagram: how it works | GitDiagram", shortened to
- * fit about 60 characters: the site name goes first, then "how it works".
+ * "deno architecture diagram: how denoland/deno is structured": the plain
+ * repository name first, because that is how people ask ("deno architecture",
+ * "how is deno structured"), shortened to fit about 60 characters.
  */
 export function repositoryPageTitle(owner: string, repo: string): string {
   const name = `${owner}/${repo}`;
   const candidates = [
-    `${name} architecture diagram: how it works | GitDiagram`,
-    `${name} architecture diagram: how it works`,
-    `${name} architecture diagram | GitDiagram`,
+    `${repo} architecture diagram: how ${name} is structured`,
+    `${repo} architecture diagram: how ${name} works`,
+    `${repo} architecture diagram (${name})`,
   ];
   return (
     candidates.find((title) => title.length <= MAX_TITLE_LENGTH) ??
@@ -74,7 +75,7 @@ export function repositoryJsonLd(params: {
     ? {
         "@type": "TechArticle",
         "@id": `${url}#article`,
-        headline: `${name} architecture diagram`,
+        headline: repositoryPageTitle(owner, repo),
         description,
         url,
         mainEntityOfPage: url,

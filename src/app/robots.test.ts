@@ -187,3 +187,28 @@ describe("sitemap", () => {
     expect(without).not.toContain("https://gitdiagram.com/videos");
   });
 });
+
+describe("sitemap order", () => {
+  it("opens the first page with the most-starred repositories, each once", async () => {
+    store.videos = [{ owner: "acme", repo: "video-0" }];
+    store.browse = Array.from({ length: 30 }, (_, index) => ({
+      ...entry(index),
+      stargazerCount: index === 25 ? 90_000 : index === 3 ? 50_000 : 10,
+    }));
+    const pages = [
+      ...(await sitemap({ id: Promise.resolve("0") })),
+      ...(await sitemap({ id: Promise.resolve("1") })),
+      ...(await sitemap({ id: Promise.resolve("2") })),
+    ];
+    const urls = pages.map((route) => route.url);
+    const repoUrls = urls.filter((url) => url.includes("/acme/repo-"));
+    // Every repository once, the starred ones first (all 30 fit the small
+    // test cap of 1,000 popular entries, so the order is by stars).
+    expect(new Set(repoUrls).size).toBe(30);
+    expect(repoUrls.slice(0, 2)).toEqual([
+      "https://gitdiagram.com/acme/repo-25",
+      "https://gitdiagram.com/acme/repo-3",
+    ]);
+    expect(urls).toHaveLength(new Set(urls).size);
+  });
+});

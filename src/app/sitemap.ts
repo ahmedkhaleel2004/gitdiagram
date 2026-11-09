@@ -17,7 +17,12 @@ import {
 } from "~/features/architecture-report/content";
 import { GUIDE_UPDATED } from "~/features/guide/content";
 import { SITE_URL } from "~/lib/site";
-import { getSitemapCount, SITEMAP_PAGE_SIZE } from "~/lib/sitemaps";
+import {
+  getSitemapCount,
+  mostStarredEntries,
+  POPULAR_SITEMAP_COUNT,
+  SITEMAP_PAGE_SIZE,
+} from "~/lib/sitemaps";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
 import { listVideoCards } from "~/server/explainer/catalog";
 
@@ -136,28 +141,39 @@ export default async function sitemap(props: {
 }): Promise<MetadataRoute.Sitemap> {
   const id = Number.parseInt(await props.id, 10);
   const sitemapId = Number.isFinite(id) && id >= 0 ? id : 0;
-  const browseEntries = await getCachedBrowseIndex().catch(() => null);
+  const browseEntries = (await getCachedBrowseIndex().catch(() => null)) ?? [];
   const latestBrowseUpdate = getLatestBrowseUpdate(browseEntries);
-  // Video watch pages ride on the first page, after the fixed routes.
-  const staticRoutes = [
+  const repoRoute = (entry: BrowseIndexEntry, priority: number) => ({
+    url: `${SITE_URL}/${entry.username}/${entry.repo}`,
+    lastModified: toValidDate(entry.lastSuccessfulAt) ?? latestBrowseUpdate,
+    changeFrequency: "monthly" as const,
+    priority,
+  });
+
+  // The order of every listed page across all shards: the fixed routes, the
+  // most-starred repositories, the video watch pages, then every other
+  // repository in the index's order. Each shard is one slice of it.
+  const popular = mostStarredEntries(browseEntries, POPULAR_SITEMAP_COUNT);
+  const popularKeys = new Set(
+    popular.map((entry) => `${entry.username}/${entry.repo}`),
+  );
+  const head: MetadataRoute.Sitemap = [
     ...getStaticRoutes(latestBrowseUpdate),
+    ...popular.map((entry) => repoRoute(entry, 0.7)),
     ...(await getVideoRoutes().catch(() => [])),
   ];
-
-  const staticRouteCount = staticRoutes.length;
-  const repoOffset = Math.max(
-    0,
-    sitemapId * SITEMAP_PAGE_SIZE - staticRouteCount,
-  );
-  const repoLimit =
-    sitemapId === 0 ? SITEMAP_PAGE_SIZE - staticRouteCount : SITEMAP_PAGE_SIZE;
-  const repoRoutes =
-    browseEntries?.slice(repoOffset, repoOffset + repoLimit).map((entry) => ({
-      url: `${SITE_URL}/${entry.username}/${entry.repo}`,
-      lastModified: toValidDate(entry.lastSuccessfulAt) ?? latestBrowseUpdate,
-      changeFrequency: "monthly" as const,
-      priority: 0.5,
-    })) ?? [];
-
-  return sitemapId === 0 ? [...staticRoutes, ...repoRoutes] : repoRoutes;
+  const start = sitemapId * SITEMAP_PAGE_SIZE;
+  const end = start + SITEMAP_PAGE_SIZE;
+  const routes = head.slice(start, end);
+  if (routes.length < SITEMAP_PAGE_SIZE) {
+    // Walk the rest of the index only as far as this shard reaches.
+    let position = head.length;
+    for (const entry of browseEntries) {
+      if (popularKeys.has(`${entry.username}/${entry.repo}`)) continue;
+      if (position >= end) break;
+      if (position >= start) routes.push(repoRoute(entry, 0.5));
+      position += 1;
+    }
+  }
+  return routes;
 }

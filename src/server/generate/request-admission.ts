@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 
 import { registerActiveGeneration } from "./cancellation";
 import {
@@ -34,6 +34,21 @@ interface AdmittedGenerationRequest {
    * window must expire with it rather than credit the next window's counter.
    */
   rateLimitedWindowStartSeconds: number;
+}
+
+/**
+ * The operator's own back-fill runs (regenerating old pages of popular
+ * repositories, one at a time) carry CRON_SECRET as a bearer token. They are
+ * paced and capped on the operator's side, so they skip the per-address
+ * limits that would otherwise make two such runs from one machine share
+ * eight generations an hour. Everything else about the run is unchanged.
+ */
+function isOperatorBackfillRequest(request: Request): boolean {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (!secret) return false;
+  const given = Buffer.from(request.headers.get("authorization") ?? "");
+  const wanted = Buffer.from(`Bearer ${secret}`);
+  return given.length === wanted.length && timingSafeEqual(given, wanted);
 }
 
 type GenerationRequestAdmission =
@@ -91,7 +106,9 @@ export async function admitGenerationRequest(
       apiKey: parsed.data.api_key,
       githubPat: parsed.data.github_pat,
     });
-  const clientIp = getClientIp(request);
+  const operatorBackfill = isOperatorBackfillRequest(request);
+  // An operator run is charged to no address bucket (null is never counted).
+  const clientIp = operatorBackfill ? null : getClientIp(request);
   const infrastructureRateLimit =
     await consumeGenerationInfrastructureRateLimit({ clientIp });
   if (!infrastructureRateLimit.allowed) {

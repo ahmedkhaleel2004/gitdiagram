@@ -36,10 +36,13 @@ vi.mock("~/server/http/request-credentials", () => ({
 
 import { admitGenerationRequest } from "./request-admission";
 
-function request(body: Record<string, unknown> = {}) {
+function request(
+  body: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+) {
   return new Request("https://gitdiagram.com/api/generate/stream", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify({ username: "openai", repo: "openai-node", ...body }),
   });
 }
@@ -67,6 +70,39 @@ describe("admitGenerationRequest", () => {
         explicit: { apiKey?: string; githubPat?: string },
       ) => explicit,
     );
+  });
+
+  it("charges an operator back-fill run to no address bucket", async () => {
+    vi.stubEnv("CRON_SECRET", "operator-secret");
+    try {
+      const result = await admitGenerationRequest(
+        request({}, { Authorization: "Bearer operator-secret" }),
+      );
+
+      expect(result.admitted).toBe(true);
+      expect(mocks.getClientIp).not.toHaveBeenCalled();
+      expect(mocks.consumeInfrastructureRateLimit).toHaveBeenCalledWith({
+        clientIp: null,
+      });
+      expect(mocks.consumeRateLimit).toHaveBeenCalledWith({ clientIp: null });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("limits a caller whose bearer token is not CRON_SECRET by address", async () => {
+    vi.stubEnv("CRON_SECRET", "operator-secret");
+    try {
+      await admitGenerationRequest(
+        request({}, { Authorization: "Bearer operator-secreT" }),
+      );
+
+      expect(mocks.consumeRateLimit).toHaveBeenCalledWith({
+        clientIp: "203.0.113.10",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("admits a complimentary caller with normalized request context", async () => {

@@ -6,22 +6,29 @@ import {
 } from "./repository-page";
 
 describe("repository page titles", () => {
-  it("keeps the full title when it fits about 60 characters", () => {
-    expect(repositoryPageTitle("acme", "demo")).toBe(
-      "acme/demo architecture diagram: how it works | GitDiagram",
+  it("leads with the repository name and how it is structured", () => {
+    expect(repositoryPageTitle("denoland", "deno")).toBe(
+      "deno architecture diagram: how denoland/deno is structured",
     );
   });
 
-  it("drops the site name, then 'how it works', for longer names", () => {
-    expect(repositoryPageTitle("fastapi", "fastapi")).toBe(
-      "fastapi/fastapi architecture diagram: how it works",
+  it("shortens to fit about 60 characters", () => {
+    expect(repositoryPageTitle("microsoft", "vscode")).toBe(
+      "vscode architecture diagram: how microsoft/vscode works",
     );
-    expect(repositoryPageTitle("tiangolo-labs", "sqlmodel-xyz")).toBe(
-      "tiangolo-labs/sqlmodel-xyz architecture diagram | GitDiagram",
+    expect(repositoryPageTitle("huggingface", "transformers")).toBe(
+      "transformers architecture diagram (huggingface/transformers)",
     );
     expect(repositoryPageTitle("langchain-ai", "langchain-community")).toBe(
       "langchain-ai/langchain-community architecture diagram",
     );
+    for (const [owner, repo] of [
+      ["denoland", "deno"],
+      ["microsoft", "vscode"],
+      ["huggingface", "transformers"],
+    ] as const) {
+      expect(repositoryPageTitle(owner, repo).length).toBeLessThanOrEqual(60);
+    }
   });
 
   it("describes a repository without a diagram plainly", () => {

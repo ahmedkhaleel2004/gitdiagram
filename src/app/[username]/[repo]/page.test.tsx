@@ -138,7 +138,7 @@ describe("repository page", () => {
     });
 
     expect(metadata.title).toBe(
-      "acme/demo architecture diagram: how it works | GitDiagram",
+      "demo architecture diagram: how acme/demo is structured",
     );
     expect(metadata.description).toBe(
       "Demo is a small service that stores notes. Requests enter the app and are written to the store.",
