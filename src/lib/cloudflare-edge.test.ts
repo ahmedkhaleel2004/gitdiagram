@@ -144,8 +144,9 @@ describe("edgeDecision", () => {
   it("keeps the blocked crawlers off repository pages only", () => {
     const claude =
       "Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)";
-    expect(edgeDecision("/vercel/next.js", claude)?.action).toBe("deny");
-    expect(edgeDecision("/vercel/next.js/", claude)?.action).toBe("deny");
+    // ClaudeBot reads repository pages under the ordinary limit.
+    expect(edgeDecision("/vercel/next.js", claude)?.action).toBe("limit");
+    expect(edgeDecision("/vercel/next.js/", claude)?.action).toBe("limit");
     expect(
       edgeDecision("/vercel/next.js/opengraph-image", claude)?.action,
     ).toBe("limit");

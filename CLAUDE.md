@@ -109,7 +109,7 @@ They live in the site's Worker and both servers (`wrangler secret list`, also wi
 `cloudflare/worker.ts` (pure logic and tests in `src/lib/cloudflare-edge.ts`):
 
 - Writes Vercel-style request headers from Cloudflare's data (`x-vercel-ip-*`, `x-forwarded-for`, `x-real-ip`, `x-forwarded-host/proto`) and drops a caller's own copies. The audience and limit rules read these.
-- Firewall: per-address rate limits (`ratelimits` bindings) on the generation routes and repository pages; ClaudeBot, Amazonbot and Brightbot blocked on repository pages; scanner paths answered 404; `www` redirected to the apex.
+- Firewall: per-address rate limits (`ratelimits` bindings) on the generation routes and repository pages; Amazonbot and Brightbot blocked on repository pages (ClaudeBot allowed since 2026-11-09); scanner paths answered 404; `www` redirected to the apex.
 - Hands `/api/video/generate`, `/api/video/render` and `/api/video/render/segment` to the render containers, after answering wrong-method and cross-origin calls itself so a stray request never wakes one.
 - Runs the three crons (`triggers.crons` in `wrangler.jsonc`, to the same internal routes with `CRON_SECRET`). A test keeps `wrangler.jsonc` and the map (`CRON_ROUTES`) in step.
 - Adds `next.config.js` site-wide headers where OpenNext leaves them off, strips `s-maxage` and `Vercel-*` response headers, gives outgoing `fetch` a User-Agent (GitHub refuses requests without one), and adds `Server-Timing: edge;dur=...;desc="warm"|"new isolate"`.

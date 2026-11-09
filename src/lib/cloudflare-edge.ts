@@ -254,9 +254,10 @@ export function edgeDecision(
   if (isScannerPath(pathname) || isUnknownComparePath(pathname))
     return { action: "missing" };
   const agent = userAgent ?? "";
-  // 2026-07-08: ClaudeBot crawling thousands of unique repository pages.
-  if (agent.includes("ClaudeBot") && isRepositoryRoute(pathname, false))
-    return { action: "deny", rule: "claudebot-repository-crawl" };
+  // ClaudeBot was blocked here on Vercel (2026-07-08, page cost). On Workers
+  // a page costs about 150 ms of CPU and two R2 writes from the credits, and
+  // being read is how Claude learns GitDiagram; it gets the per-address limit
+  // below like everyone else.
   // Sep 2026: 221k crawler requests a week on pages and social pictures.
   if (agent.includes("Amazonbot") && isRepositoryRoute(pathname, true))
     return { action: "deny", rule: "amazonbot-repository-crawl" };
