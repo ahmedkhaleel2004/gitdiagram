@@ -1,4 +1,3 @@
-import { REPORT_PATH } from "~/features/architecture-report/content";
 import { describe, expect, it } from "vitest";
 import { GUIDE_INTRODUCTION, guideSections } from "~/features/guide/content";
 import {
@@ -18,7 +17,6 @@ const SITE_PAGES = new Set([
   "/videos",
   "/reels",
   "/privacy",
-  REPORT_PATH,
   ROUNDUP_PATH,
   ...COMPARE_PAGES.map((page) => comparePath(page.slug)),
 ]);

@@ -11,10 +11,6 @@ import {
   ROUNDUP_PATH,
   comparePath,
 } from "~/features/compare/content";
-import {
-  REPORT_PATH,
-  REPORT_PUBLISHED,
-} from "~/features/architecture-report/content";
 import { GUIDE_UPDATED } from "~/features/guide/content";
 import { SITE_URL } from "~/lib/site";
 import { getSitemapCount, SITEMAP_PAGE_SIZE } from "~/lib/sitemaps";
@@ -103,12 +99,6 @@ function getStaticRoutes(latestBrowseUpdate: Date): MetadataRoute.Sitemap {
       changeFrequency: "monthly" as const,
       priority: 0.6,
     })),
-    {
-      url: `${SITE_URL}${REPORT_PATH}`,
-      lastModified: new Date(REPORT_PUBLISHED),
-      changeFrequency: "yearly",
-      priority: 0.7,
-    },
     {
       url: `${SITE_URL}/advertise`,
       lastModified: new Date("2026-09-19"),

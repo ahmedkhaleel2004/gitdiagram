@@ -11,6 +11,3 @@ experiments/*/out/
 # The Cloudflare build (OpenNext output).
 .open-next/
 .open-next-history/
-
-# Generated datasets of the architecture report (scripts/architecture-report).
-public/reports/

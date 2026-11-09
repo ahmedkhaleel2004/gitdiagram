@@ -45,7 +45,6 @@ export function guideSections({ videos }: { videos: boolean }): GuideSection[] {
         "An AI model reads the repository's file tree, its README and up to 12 of its source files. It writes a short explanation of the architecture, then a graph of the main components (at most 34), grouped into areas, with labeled connections between them. Every file path in the graph is checked against the real repository before the graph is compiled into a [Mermaid](https://mermaid.js.org) flowchart.",
         "Click a component to open its file or folder on GitHub. Info shows the written overview, Enable zoom lets you pan and zoom, and Export downloads a PNG or copies the Mermaid code for your own docs. Each repository page also lists its components and connections as text below the diagram.",
         "It is a map of the important parts, not a complete dependency graph. It can simplify or leave things out, and it shows the repository as it was when the diagram was made; Regenerate makes a fresh one.",
-        "For what 1,000 of these diagrams say about how the most-starred open-source repositories are built, see [the 2026 architecture report](/open-source-architecture-2026).",
       ],
     },
     {

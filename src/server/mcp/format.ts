@@ -1,6 +1,7 @@
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
 import type { DiagramGraph } from "~/features/diagram/graph";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
+import { storedExplanationText } from "~/features/diagram/legacy-explanation";
 import type { VideoArtifact } from "~/features/explainer/types";
 import { SITE_URL } from "~/lib/site";
 import {
@@ -145,8 +146,8 @@ export function formatDiagram(
   if (options.hasVideo)
     lines.push(`Narrated explainer video: ${videoUrl(ref)}`);
   lines.push(`Repository: ${facts.join(" · ")}`, "");
-  if (artifact.explanation.trim())
-    lines.push("## Explanation", "", artifact.explanation.trim(), "");
+  const explanation = storedExplanationText(artifact.explanation);
+  if (explanation) lines.push("## Explanation", "", explanation, "");
   if (artifact.graph) lines.push(...formatComponents(artifact.graph));
   lines.push(
     "## Mermaid diagram",

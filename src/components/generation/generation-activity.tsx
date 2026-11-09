@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import type { DiagramStreamState } from "~/features/diagram/types";
 import { ArchitectureNotes } from "./architecture-notes";
-import { architectureText } from "~/features/diagram/architecture-text";
+import { storedExplanationText } from "~/features/diagram/legacy-explanation";
 import { DiagramConnections } from "./diagram-connections";
 import { generationStep } from "./progress";
 import styles from "./workspace.module.css";
@@ -30,7 +30,7 @@ export function GenerationActivity({
     "explanation_chunk",
   ].includes(state.status);
   const explanation = state.explanation
-    ? architectureText(state.explanation)
+    ? storedExplanationText(state.explanation)
     : "";
   const excerpt = explanation
     ?.split("\n")

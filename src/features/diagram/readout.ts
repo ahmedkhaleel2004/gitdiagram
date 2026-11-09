@@ -1,4 +1,4 @@
-import { architectureText } from "~/features/diagram/architecture-text";
+import { storedExplanationText } from "~/features/diagram/legacy-explanation";
 import {
   normalizeDiagramText,
   type DiagramGraph,
@@ -94,7 +94,7 @@ export function diagramReadout(
   if (!state.diagram) return null;
   const graph: DiagramGraph | null = state.graph;
   const explanation = state.explanation
-    ? architectureText(state.explanation)
+    ? storedExplanationText(state.explanation)
     : "";
   if (!graph) {
     return {

@@ -15,11 +15,6 @@ import {
   GUIDE_PATH,
   guideMarkdown,
 } from "~/features/guide/content";
-import {
-  REPORT_DATASET,
-  REPORT_PATH,
-  REPORT_TITLE,
-} from "~/features/architecture-report/content";
 
 // /llms.txt (https://llmstxt.org): what GitDiagram is and how an agent uses
 // it, as Markdown. /llms-full.txt adds the whole guide.
@@ -51,7 +46,6 @@ function llmsBody({ videos }: { videos: boolean }): string[] {
     "",
     `- [How to visualize a codebase](${SITE_URL}${GUIDE_PATH}): ${GUIDE_DESCRIPTION}`,
     `- [Full text for language models](${SITE_URL}/llms-full.txt): this file plus the whole guide and every comparison.`,
-    `- [${REPORT_TITLE}](${SITE_URL}${REPORT_PATH}.md): a data report from the stored diagrams of the most-starred repositories, with its method and a CSV dataset (${SITE_URL}${REPORT_DATASET.csv}).`,
     "",
     "## Comparisons",
     "",
