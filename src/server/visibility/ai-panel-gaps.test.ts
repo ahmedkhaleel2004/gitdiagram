@@ -7,6 +7,7 @@ import {
   isThirdParty,
   normalizeUrl,
 } from "./ai-panel-gaps";
+import { COMPARE_SLUGS } from "~/features/compare/slugs";
 import { AI_PANEL_PROMPTS, type PanelPrompt } from "./ai-panel-prompts";
 
 const answer = (over: Partial<PanelAnswer>): PanelAnswer => ({
@@ -53,6 +54,13 @@ describe("the prompt panel's prompts", () => {
     );
     for (const p of AI_PANEL_PROMPTS)
       expect(p.page !== null || Boolean(p.wanted)).toBe(true);
+  });
+
+  it("point only at comparison pages that exist", () => {
+    for (const p of AI_PANEL_PROMPTS) {
+      const slug = /^\/compare\/(.+)$/.exec(p.page ?? "")?.[1];
+      if (slug) expect(COMPARE_SLUGS).toContain(slug);
+    }
   });
 });
 

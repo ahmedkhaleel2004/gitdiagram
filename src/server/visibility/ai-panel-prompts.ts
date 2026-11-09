@@ -8,7 +8,8 @@
 //
 // `page` is the gitdiagram.com page that should be the answer today, or null
 // when no page answers the question yet (a miss there is a missing page).
-// `wanted` names the page to build when `page` is null.
+// `wanted` names the page to build when `page` is null. When a page that
+// answers a prompt ships, point the prompt at it here.
 
 import type { PanelGroup } from "~/features/admin/ai-panel";
 
@@ -26,6 +27,7 @@ const HOME = "/";
 const GUIDE = "/visualize-codebase";
 const MCP = "/mcp";
 const VIDEOS = "/videos";
+const ROUNDUP = "/best-codebase-visualization-tools";
 
 const situation: Ungrouped[] = [
   {
@@ -174,19 +176,17 @@ const comparison: Ungrouped[] = [
   {
     id: "c-deepwiki-alternatives",
     text: "What are some DeepWiki alternatives?",
-    page: null,
-    wanted: "/compare/deepwiki",
+    page: "/compare/deepwiki",
   },
   {
     id: "c-gitdiagram-vs-deepwiki",
     text: "GitDiagram vs DeepWiki: which is better for understanding a repo?",
-    page: null,
-    wanted: "/compare/deepwiki",
+    page: "/compare/deepwiki",
   },
   {
     id: "c-best-free-codebase-visualizer",
     text: "What's the best free tool to visualize a codebase?",
-    page: GUIDE,
+    page: ROUNDUP,
   },
   {
     id: "c-codesee-alternatives",
@@ -197,22 +197,22 @@ const comparison: Ungrouped[] = [
   {
     id: "c-sourcegraph-vs",
     text: "Is Sourcegraph the best way to understand a large codebase, or are there simpler tools?",
-    page: GUIDE,
+    page: "/compare/sourcegraph",
   },
   {
     id: "c-mermaid-vs-ai",
     text: "Should I write Mermaid diagrams by hand or use an AI tool that generates them from my repo?",
-    page: GUIDE,
+    page: "/compare/mermaid",
   },
   {
     id: "c-ai-architecture-tools",
     text: "Which AI tools generate software architecture diagrams from code?",
-    page: GUIDE,
+    page: ROUNDUP,
   },
   {
     id: "c-repo-visualizer-tools",
     text: "Compare tools that visualize GitHub repositories.",
-    page: GUIDE,
+    page: ROUNDUP,
   },
   {
     id: "c-copilot-vs-tool",
@@ -233,12 +233,12 @@ const comparison: Ungrouped[] = [
   {
     id: "c-structurizr-vs-auto",
     text: "Structurizr vs auto-generated architecture diagrams: what should a small team use?",
-    page: GUIDE,
+    page: "/compare/structurizr",
   },
   {
     id: "c-dependency-graph-tools",
     text: "Best tools to generate a dependency graph or architecture view of a project in 2026?",
-    page: GUIDE,
+    page: "/compare/dependency-cruiser",
   },
   {
     id: "c-gitingest-vs",
@@ -249,13 +249,12 @@ const comparison: Ungrouped[] = [
   {
     id: "c-best-ai-repo-explainers",
     text: "Best AI tools that explain how a GitHub repository works, ranked.",
-    page: GUIDE,
+    page: ROUNDUP,
   },
   {
     id: "c-code-wiki-tools",
     text: "Google Code Wiki, DeepWiki and other AI repo documentation tools: which ones are worth using?",
-    page: null,
-    wanted: "/compare/deepwiki",
+    page: "/compare/deepwiki",
   },
   {
     id: "c-plantuml-from-code",
