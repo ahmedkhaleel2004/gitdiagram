@@ -14,20 +14,26 @@ import {
   type AIProvider,
 } from "~/server/generate/model-config";
 import { normalizeGenerationUsage } from "~/server/generate/pricing";
-import { modelFetchOption } from "~/server/model-fetch";
+import {
+  modelFetchOption,
+  relayedModelFetchOption,
+} from "~/server/model-fetch";
 
 export type ReasoningEffort = "low" | "medium" | "high";
 type TextVerbosity = "low" | "medium" | "high";
 
 const AI_REQUEST_TIMEOUT_MS = 150_000;
 const AI_MAX_RETRIES = 0;
+const API_KEY_ENV: Record<AIProvider, string> = {
+  openai: "OPENAI_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+  meta: "META_API_KEY",
+};
+// Meta's Model API speaks the Responses API this file already uses.
+const META_BASE_URL = "https://api.meta.ai/v1";
 
 function getEnvApiKey(provider: AIProvider): string | undefined {
-  if (provider === "openrouter") {
-    return process.env.OPENROUTER_API_KEY?.trim();
-  }
-
-  return process.env.OPENAI_API_KEY?.trim();
+  return process.env[API_KEY_ENV[provider]]?.trim();
 }
 
 function getOpenRouterHeaders(): Record<string, string> {
@@ -55,6 +61,16 @@ function createClient(provider: AIProvider, apiKey: string): OpenAI {
       maxRetries: AI_MAX_RETRIES,
       timeout: AI_REQUEST_TIMEOUT_MS,
       ...modelFetchOption(),
+    });
+  }
+
+  if (provider === "meta") {
+    return new OpenAI({
+      apiKey,
+      baseURL: META_BASE_URL,
+      maxRetries: AI_MAX_RETRIES,
+      timeout: AI_REQUEST_TIMEOUT_MS,
+      ...relayedModelFetchOption(),
     });
   }
 
@@ -89,10 +105,8 @@ function buildRequestOptions(params: {
 function resolveApiKey(provider: AIProvider, overrideApiKey?: string): string {
   const apiKey = overrideApiKey?.trim() || getEnvApiKey(provider);
   if (!apiKey) {
-    const envVarName =
-      provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
     throw new Error(
-      `Missing ${getProviderLabel(provider)} API key. Set ${envVarName} or provide api_key in request.`,
+      `Missing ${getProviderLabel(provider)} API key. Set ${API_KEY_ENV[provider]} or provide api_key in request.`,
     );
   }
   return apiKey;

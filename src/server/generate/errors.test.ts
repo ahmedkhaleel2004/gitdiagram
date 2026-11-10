@@ -34,6 +34,18 @@ describe("normalizeGenerationError", () => {
     expect(normalized.message).toContain("temporarily unavailable");
   });
 
+  it("says the default key is out of credit when Meta refuses for billing", () => {
+    const normalized = normalizeGenerationError({
+      provider: "meta",
+      message:
+        "402 Billing verification failed. Billing Issue. To use this API key, your team needs to resolve a billing issue first.",
+    });
+
+    expect(normalized.errorCode).toBe("DEFAULT_META_KEY_BILLING");
+    expect(normalized.message).toContain("temporarily unavailable");
+    expect(normalized.message).not.toContain("team");
+  });
+
   it("keeps quota exhaustion verbatim when the caller supplied the key", () => {
     const message = "insufficient_quota: your account is out of credits";
     const normalized = normalizeGenerationError({

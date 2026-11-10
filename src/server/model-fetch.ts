@@ -64,6 +64,21 @@ export function modelFetchOption(): { fetch?: typeof fetch } {
   return cloudflareContext() ? { fetch: modelFetch } : {};
 }
 
+/**
+ * For a model API that must always be called as the server. Meta's API is not
+ * behind Cloudflare, so it sees the address of whichever Cloudflare location
+ * the Worker runs in (the visitor's, for a diagram) and its availability
+ * depends on that place. Every call goes through the relay, which sends it
+ * from the United States the way a server in one place would.
+ */
+export function relayedModelFetchOption(): { fetch?: typeof fetch } {
+  if (!cloudflareContext()) return {};
+  return {
+    fetch: (input, init) =>
+      relayModelRequest(new Request(input, init)) ?? fetch(input, init),
+  };
+}
+
 export function resetModelFetchForTests() {
   refusedCountries.clear();
 }

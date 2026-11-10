@@ -33,7 +33,7 @@ vi.mock("~/server/generate/github", () => ({
 vi.mock("~/server/generate/model-config", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getModel: vi.fn(() => "gpt-5.6-terra"),
-  getProvider: vi.fn(() => "openai"),
+  getGenerationProvider: vi.fn(() => "openai"),
   shouldUseExactInputTokenCount: vi.fn(() => true),
 }));
 vi.mock("~/server/http/request-credentials", () => ({

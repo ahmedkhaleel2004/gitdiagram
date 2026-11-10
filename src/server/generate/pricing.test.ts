@@ -120,6 +120,27 @@ describe("mixed-model measured costs", () => {
       10,
     );
   });
+  it("prices Muse Ember with cheap cache reads and no cache-write premium", () => {
+    expect(resolvePricingModel("muse-ember-1.0")).toBe("muse-ember-1.0");
+    expect(resolvePricingModel("meta/muse-ember")).toBe("muse-ember-1.0");
+    const { amountUsd } = createCostSummary({
+      kind: "actual",
+      model: "muse-ember-1.0",
+      approximate: false,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 100,
+        totalTokens: 1100,
+        cachedInputTokens: 400,
+        cacheWriteTokens: 200,
+      },
+    });
+    // 600 input at $0.10 + 400 reads at $0.004 + output at $0.50.
+    expect(amountUsd).toBeCloseTo(
+      (600 * 0.1 + 400 * 0.004 + 100 * 0.5) / 1e6,
+      12,
+    );
+  });
   it("prices GPT-6.1 Sol cache reads at 0.05× input, GPT-6 Sol at 0.1×", () => {
     const cost = (model: string) =>
       createCostSummary({

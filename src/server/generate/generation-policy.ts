@@ -4,11 +4,15 @@ export const EXPLANATION_REASONING_EFFORT = "low" as const;
 // One recovery attempt leaves room for repository ingestion and rendering.
 export const ARCHITECTURE_SLOW_RETRY_MS = 18_000;
 // GPT-6 Luna overthinks this bounded extraction task at medium effort. Low
-// keeps its normal pass responsive; structural repairs still use medium.
+// keeps its normal pass responsive; structural repairs still use medium. Muse
+// Ember is the same: at medium it took 6.8 s against 5.3 s and needed repairs
+// low never did (experiments/diagram-ember). Its own default is max.
 export function getArchitectureReasoningEffort(
   model: string,
 ): "low" | "medium" {
-  return /^gpt-6-luna(?:-\d{4}-\d{2}-\d{2})?$/i.test(model.trim())
+  return /^(?:gpt-6-luna(?:-\d{4}-\d{2}-\d{2})?|muse-ember(?:-\d+(?:\.\d+)?)?)$/i.test(
+    model.trim(),
+  )
     ? "low"
     : "medium";
 }

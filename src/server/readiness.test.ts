@@ -60,6 +60,22 @@ describe("checkReadiness", () => {
     expect(checkUpstashConnection).toHaveBeenCalledOnce();
   });
 
+  it("asks for the Meta key when diagrams run on Meta", async () => {
+    vi.stubEnv("AI_PROVIDER", "meta");
+    vi.stubEnv("META_API_KEY", "");
+    await expect(checkReadiness()).resolves.toMatchObject({
+      ok: false,
+      checks: { provider: false },
+    });
+
+    vi.stubEnv("META_API_KEY", "meta-key");
+    await expect(checkReadiness()).resolves.toMatchObject({
+      ok: true,
+      checks: { provider: true },
+    });
+    vi.unstubAllEnvs();
+  });
+
   it("fails readiness without calling dependencies when configuration is incomplete", async () => {
     delete process.env.R2_ACCESS_KEY_ID;
 

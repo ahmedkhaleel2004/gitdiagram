@@ -20,7 +20,7 @@ import {
 } from "~/server/generate/github";
 import {
   getModel,
-  getProvider,
+  getGenerationProvider,
   shouldUseExactInputTokenCount,
 } from "~/server/generate/model-config";
 import {
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
         { status: 429, requestId },
       );
     }
-    const provider = getProvider();
+    const provider = getGenerationProvider({ apiKey });
     const model = getModel(provider);
     assertModelPricingAvailable(model);
 

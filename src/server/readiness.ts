@@ -17,7 +17,11 @@ export interface ReadinessResult {
 function hasProviderKey(): boolean {
   const provider = getProvider();
   const keyName =
-    provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
+    provider === "meta"
+      ? "META_API_KEY"
+      : provider === "openrouter"
+        ? "OPENROUTER_API_KEY"
+        : "OPENAI_API_KEY";
   return Boolean(process.env[keyName]?.trim());
 }
 

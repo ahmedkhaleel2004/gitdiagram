@@ -8,7 +8,7 @@
 - **Generation API:** same-origin Next.js Route Handlers
 - **Storage:** Cloudflare R2 for diagram artifacts
 - **Coordination:** Upstash Redis for quota accounting, cancellation, locks, and short-lived failure state
-- **AI:** OpenAI or OpenRouter through `AI_PROVIDER`
+- **AI:** OpenAI, OpenRouter or Meta through `AI_PROVIDER`
 - **Analytics:** PostHog
 - **Deployment:** Cloudflare Workers through OpenNext (four Workers from one build), with Cloudflare Containers for MP4 renders; an offline Railway/Docker recipe is retained for disaster recovery
 

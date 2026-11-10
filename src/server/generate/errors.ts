@@ -43,6 +43,8 @@ export function rethrowAsUpstreamProviderError(error: unknown): never {
 
 const DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR =
   "GitDiagram's default OpenAI key is temporarily unavailable because its upstream API quota is exhausted. I'm a solo student engineer running this free and open source, so please try again later or use your own OpenAI API key.";
+const DEFAULT_META_KEY_BILLING_ERROR =
+  "GitDiagram's default AI key is temporarily unavailable because its upstream credit is used up. I'm a solo student engineer running this free and open source, so please try again later or use your own OpenAI API key.";
 const REDACTED_UPSTREAM_ERROR =
   "The AI provider returned an error while generating this diagram. Please retry.";
 
@@ -84,6 +86,13 @@ function isOpenAiQuotaExhaustedError(message: string): boolean {
   );
 }
 
+/** Meta answers 402 `billing_not_configured` with no balance or payment method. */
+function isMetaBillingError(message: string): boolean {
+  return /^402\b|billing_not_configured|billing verification failed|insufficient balance/i.test(
+    message.trim(),
+  );
+}
+
 export function normalizeGenerationError(params: {
   provider: string;
   apiKey?: string;
@@ -119,6 +128,17 @@ export function normalizeGenerationError(params: {
     return {
       message: DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED_ERROR,
       errorCode: "DEFAULT_OPENAI_KEY_QUOTA_EXHAUSTED",
+    };
+  }
+
+  if (
+    params.provider === "meta" &&
+    !params.apiKey &&
+    isMetaBillingError(params.message)
+  ) {
+    return {
+      message: DEFAULT_META_KEY_BILLING_ERROR,
+      errorCode: "DEFAULT_META_KEY_BILLING",
     };
   }
 

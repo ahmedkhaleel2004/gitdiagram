@@ -4,6 +4,7 @@ import {
   isUnsupportedPlaceRefusal,
   modelFetch,
   modelFetchOption,
+  relayedModelFetchOption,
   resetModelFetchForTests,
 } from "./model-fetch";
 
@@ -104,6 +105,26 @@ describe("modelFetch", () => {
     expect(response.status).toBe(403);
     expect(await response.text()).toContain("invalid_api_key");
     expect(relayFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("relayedModelFetchOption", () => {
+  it("sets no client option off Workers", () => {
+    expect(relayedModelFetchOption()).toEqual({});
+  });
+
+  it("sends every call through the relay, whatever the visitor's country", async () => {
+    const { relayFetch } = onWorkers("CA");
+    const relayed = relayedModelFetchOption().fetch!;
+    const response = await relayed("https://api.meta.ai/v1/responses", {
+      method: "POST",
+      body: "{}",
+    });
+    expect(await response.text()).toBe("relayed");
+    expect(relayFetch.mock.calls[0]?.[0].url).toBe(
+      "https://api.meta.ai/v1/responses",
+    );
+    expect(directFetch).not.toHaveBeenCalled();
   });
 });
 

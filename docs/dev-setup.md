@@ -42,6 +42,7 @@ Choose one AI provider:
 
 - OpenAI: `AI_PROVIDER=openai` and `OPENAI_API_KEY`
 - OpenRouter: `AI_PROVIDER=openrouter` and `OPENROUTER_API_KEY`
+- Meta: `AI_PROVIDER=meta` and `META_API_KEY` (Muse Ember unless `META_MODEL` names another)
 
 Optional generation controls include:
 

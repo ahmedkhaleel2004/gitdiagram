@@ -65,7 +65,7 @@ import {
 import {
   getGenerationServiceTier,
   getModel,
-  getProvider,
+  getGenerationProvider,
   shouldUseExactInputTokenCount,
   usesSinglePassArchitecture,
 } from "~/server/generate/model-config";
@@ -293,7 +293,7 @@ export async function POST(request: Request) {
             session_id: audit.sessionId,
             message: "Fetching repository data...",
           });
-          const provider = getProvider();
+          const provider = getGenerationProvider({ apiKey });
           const model = getModel(provider);
           audit = { ...audit, provider, model };
           assertModelPricingAvailable(model);

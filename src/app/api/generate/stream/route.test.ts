@@ -91,7 +91,7 @@ vi.mock("~/server/generate/github", () => ({
 vi.mock("~/server/generate/model-config", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getModel: mocks.getModel,
-  getProvider: vi.fn(() => "openai"),
+  getGenerationProvider: vi.fn(() => "openai"),
   getProviderLabel: vi.fn(() => "OpenAI"),
   shouldUseExactInputTokenCount: vi.fn(() => true),
 }));

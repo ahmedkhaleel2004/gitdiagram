@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  getGenerationProvider,
   getModel,
   getProvider,
   getProviderLabel,
@@ -57,6 +58,31 @@ describe("getProvider", () => {
     expect(getProvider()).toBe("openrouter");
     expect(getProviderLabel("openrouter")).toBe("OpenRouter");
   });
+
+  it("recognizes Meta", () => {
+    process.env.AI_PROVIDER = "meta";
+
+    expect(getProvider()).toBe("meta");
+    expect(getProviderLabel("meta")).toBe("Meta");
+  });
+});
+
+describe("getGenerationProvider", () => {
+  it("sends a visitor's own key to OpenAI while the server runs on Meta", () => {
+    process.env.AI_PROVIDER = "meta";
+
+    expect(getGenerationProvider({})).toBe("meta");
+    expect(getGenerationProvider({ apiKey: "  " })).toBe("meta");
+    expect(getGenerationProvider({ apiKey: "sk-user" })).toBe("openai");
+  });
+
+  it("leaves the other providers as configured", () => {
+    process.env.AI_PROVIDER = "openrouter";
+    expect(getGenerationProvider({ apiKey: "sk-user" })).toBe("openrouter");
+
+    delete process.env.AI_PROVIDER;
+    expect(getGenerationProvider({ apiKey: "sk-user" })).toBe("openai");
+  });
 });
 
 describe("getModel", () => {
@@ -76,6 +102,14 @@ describe("getModel", () => {
     delete process.env.OPENROUTER_MODEL;
 
     expect(getModel("openrouter")).toBe("openai/gpt-5.6-terra");
+  });
+
+  it("uses Muse Ember on Meta unless META_MODEL names another", () => {
+    delete process.env.META_MODEL;
+    expect(getModel("meta")).toBe("muse-ember-1.0");
+
+    process.env.META_MODEL = "muse-spark-1.3";
+    expect(getModel("meta")).toBe("muse-spark-1.3");
   });
 });
 
@@ -138,4 +172,30 @@ describe("single-pass Luna architecture", () => {
       ).toBe(false);
     },
   );
+});
+
+describe("single-pass Muse Ember architecture", () => {
+  it.each(["muse-ember-1.0", "muse-ember", "Muse-Ember-1.0"])(
+    "draws %s in one pass on the server's Meta key only",
+    (model) => {
+      expect(usesSinglePassArchitecture({ provider: "meta", model })).toBe(
+        true,
+      );
+      expect(usesSinglePassArchitecture({ provider: "openai", model })).toBe(
+        false,
+      );
+      expect(
+        usesSinglePassArchitecture({ provider: "openrouter", model }),
+      ).toBe(false);
+      expect(getGenerationServiceTier({ provider: "meta", model })).toBe(
+        "default",
+      );
+    },
+  );
+
+  it("keeps other Meta models on two passes", () => {
+    expect(
+      usesSinglePassArchitecture({ provider: "meta", model: "muse-spark-1.3" }),
+    ).toBe(false);
+  });
 });

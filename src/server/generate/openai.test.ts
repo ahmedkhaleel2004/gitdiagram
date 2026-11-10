@@ -99,6 +99,38 @@ describe("OpenAI Responses text verbosity", () => {
       expect(graph.usage?.serviceTier).toBe("default");
     },
   );
+  it("calls Meta's Responses API with the server's Meta key and no OpenAI-only fields", async () => {
+    vi.stubEnv("META_API_KEY", "meta-key");
+    openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
+
+    const result = await streamCompletion({
+      provider: "meta",
+      model: "muse-ember-1.0",
+      systemPrompt: "system",
+      userPrompt: "user",
+      reasoningEffort: "low",
+      textVerbosity: "low",
+      clientRequestId: "session:explanation",
+    });
+
+    expect(await consume(result.stream)).toEqual(["done"]);
+    expect(openAiMocks.clientOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "meta-key",
+        baseURL: "https://api.meta.ai/v1",
+        maxRetries: 0,
+      }),
+    );
+    const [body, options] = openAiMocks.responsesCreate.mock.calls[0] ?? [];
+    expect(body).toMatchObject({
+      model: "muse-ember-1.0",
+      reasoning: { effort: "low" },
+    });
+    expect(body).not.toHaveProperty("service_tier");
+    expect(body).not.toHaveProperty("text");
+    expect(options).toBeUndefined();
+    vi.unstubAllEnvs();
+  });
   it("bounds costly requests and attaches a production correlation id", async () => {
     openAiMocks.responsesCreate.mockResolvedValue(completedEvents());
     const signal = new AbortController().signal;

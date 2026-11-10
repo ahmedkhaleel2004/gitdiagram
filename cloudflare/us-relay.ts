@@ -16,12 +16,17 @@
 // object per call matters: with several visitors' requests open in the same
 // object, about half the alarm's calls were seen as a visitor's again.
 //
-// Only src/server/model-fetch.ts calls this (binding US_RELAY), and only after
-// the direct call was refused for the visitor's country.
+// Only src/server/model-fetch.ts calls this (binding US_RELAY): for OpenAI and
+// OpenRouter only after the direct call was refused for the visitor's country,
+// for Meta on every call (relayedModelFetchOption).
 
 import { DurableObject } from "cloudflare:workers";
 
-const ALLOWED_HOSTS = new Set(["api.openai.com", "openrouter.ai"]);
+const ALLOWED_HOSTS = new Set([
+  "api.openai.com",
+  "openrouter.ai",
+  "api.meta.ai",
+]);
 
 interface Job {
   request: Request;
