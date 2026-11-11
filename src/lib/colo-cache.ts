@@ -462,7 +462,8 @@ const routesOnly = () =>
 // Sitemaps are cached pages, but megabytes each and asked for by crawlers
 // only: copying one into every location would cost the server's isolate tens
 // of megabytes at a time (see MAX_COPY_CHARS). The server answers them.
-const NEVER_PAGES = /^\/(?:api|phx9a|out|mcp|sitemap|__gitdiagram)(?:\/|$)/;
+const NEVER_PAGES =
+  /^\/(?:api|phx9a|out|mcp|sitemap|__gitdiagram)(?:\/|$)|^\/sitemap-\d+\.xml$/;
 
 /** The entry in a server Worker's answer (see `entryResponse`). */
 async function readEntry(response: Response): Promise<CurrentEntry | null> {

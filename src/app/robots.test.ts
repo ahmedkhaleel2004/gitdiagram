@@ -143,8 +143,8 @@ describe("robots.txt", () => {
     expect(shards).toHaveLength(2);
     expect((await robots()).sitemap).toEqual([
       "https://gitdiagram.com/sitemap_index.xml",
-      "https://gitdiagram.com/sitemap/0.xml",
-      "https://gitdiagram.com/sitemap/1.xml",
+      "https://gitdiagram.com/sitemap-0.xml",
+      "https://gitdiagram.com/sitemap-1.xml",
     ]);
   });
 

@@ -424,7 +424,7 @@ export function runsWhereTheVisitorIs(method: string, url: URL): boolean {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   if (path === "/api/generate/stream") return method === "POST";
   if (path.startsWith("/api/internal/")) return true;
-  if (path === "/mcp" || path.startsWith("/sitemap/")) return true;
+  if (path === "/mcp" || /^\/sitemap[/-]/.test(path)) return true;
   if (path === "/browse" || path === "/api/browse-index") {
     // The first pages in the default order come from a small "recent" index
     // (2,000 entries); anything else reads the whole one.

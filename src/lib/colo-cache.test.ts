@@ -922,5 +922,6 @@ describe("plainPageKey", () => {
     expect(key("/acme/de%6Do")).toBeNull();
     expect(key("/api/video")).toBeNull();
     expect(key("/sitemap/0.xml")).toBeNull();
+    expect(key("/sitemap-12.xml")).toBeNull();
   });
 });

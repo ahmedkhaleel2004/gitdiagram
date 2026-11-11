@@ -115,6 +115,14 @@ const config = {
   async rewrites() {
     return [
       ...indexNowRewrites,
+      // The sitemap shards' listed addresses. Google kept the Next.js paths
+      // (/sitemap/N.xml) marked "Couldn't fetch" from a failed read on
+      // 2026-10-11 and never fetched them again, though they answer 200;
+      // these fresh names carry the same files (2026-11-11).
+      {
+        source: "/sitemap-:id(\\d+).xml",
+        destination: "/sitemap/:id.xml",
+      },
       // OpenAI's plugin portal proves the MCP server's domain with a token.
       {
         source: "/.well-known/openai-apps-challenge",

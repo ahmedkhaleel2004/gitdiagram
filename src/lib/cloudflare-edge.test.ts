@@ -421,6 +421,7 @@ describe("runsWhereTheVisitorIs", () => {
     expect(local("GET", "/api/internal/video-payments/sweep")).toBe(true);
     expect(local("POST", "/mcp")).toBe(true);
     expect(local("GET", "/sitemap/0.xml")).toBe(true);
+    expect(local("GET", "/sitemap-0.xml")).toBe(true);
     expect(local("GET", "/browse?q=next")).toBe(true);
     expect(local("GET", "/browse?sort=stars_desc")).toBe(true);
     expect(local("GET", "/browse?minStars=100")).toBe(true);
