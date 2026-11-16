@@ -221,6 +221,7 @@ export async function askOpenQuestions(params: {
         continue;
       }
       reserved += RESERVE_USD[engine];
+      let answer: PanelAnswer;
       try {
         const result = await ask(
           engine,
@@ -229,18 +230,28 @@ export async function askOpenQuestions(params: {
         );
         spent += result.costUsd;
         asked += 1;
-        await params.save(toPanelAnswer(prompt, engine, result, attempts));
+        answer = toPanelAnswer(prompt, engine, result, attempts);
       } catch (error) {
-        await params.save(
-          failed(prompt, engine, errorText(error, 160), attempts),
-        );
+        answer = failed(prompt, engine, errorText(error, 160), attempts);
       } finally {
         reserved -= RESERVE_USD[engine];
       }
+      // A save that fails (a Redis timeout) loses this one answer, which the
+      // next firing asks again; it must not end the whole step.
+      await params.save(answer).catch((error: unknown) =>
+        logEvent("warn", "ai_panel.save_failed", {
+          prompt: prompt.id,
+          engine,
+          error: errorText(error),
+        }),
+      );
     }
   }
   await Promise.all(
-    Array.from({ length: Math.max(1, params.concurrency ?? 10) }, worker),
+    // A Worker request holds at most six connections open; ten long model
+    // calls left the Redis saves queued until their 5 s timeout fired, which
+    // failed every step from 2026-11-16 on. Four leaves room for them.
+    Array.from({ length: Math.max(1, params.concurrency ?? 4) }, worker),
   );
   return { asked, spent };
 }

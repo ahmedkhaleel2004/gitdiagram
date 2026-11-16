@@ -106,6 +106,22 @@ describe("askOpenQuestions", () => {
     });
   });
 
+  it("keeps asking when one save fails (a Redis timeout)", async () => {
+    let calls = 0;
+    const { asked } = await run({
+      save: async () => {
+        calls += 1;
+        if (calls === 1)
+          throw new DOMException(
+            "The operation was aborted due to timeout",
+            "TimeoutError",
+          );
+      },
+    });
+    expect(asked).toBe(8);
+    expect(calls).toBe(8);
+  });
+
   it("skips what is already answered and retries a failure once", async () => {
     const ok = { costUsd: 0.5, attempts: 1 } as PanelAnswer;
     const stored = new Map<string, PanelAnswer>([
