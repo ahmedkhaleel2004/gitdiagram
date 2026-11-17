@@ -36,6 +36,8 @@ const OPENAI_PRICES: Record<
   string,
   { input: number; output: number; cachedRead?: number }
 > = {
+  "gpt-6.2-sol": { input: 2, output: 10, cachedRead: 0.05 },
+  "gpt-6.2-astra": { input: 8, output: 40, cachedRead: 0.05 },
   "gpt-6.1-sol": { input: 2, output: 10, cachedRead: 0.05 },
   "gpt-6-sol": { input: 2, output: 10 },
   "gpt-6-luna": { input: 0.1, output: 0.5 },
@@ -47,7 +49,7 @@ const OPENAI_PRICES: Record<
 
 export function aiVisibilityModels(): Record<AiProvider, string> {
   return {
-    openai: process.env.AI_VISIBILITY_OPENAI_MODEL?.trim() || "gpt-6.1-sol",
+    openai: process.env.AI_VISIBILITY_OPENAI_MODEL?.trim() || "gpt-6.2-sol",
     anthropic:
       process.env.AI_VISIBILITY_ANTHROPIC_MODEL?.trim() || "claude-sonnet-5-5",
   };
@@ -117,9 +119,15 @@ async function askOpenAI(
       { signal },
     );
   // Flex processing halves the token price; nobody waits on this run. When
-  // flex has no capacity (429), the standard tier answers instead.
+  // flex has no capacity (429), or the model has no flex tier (GPT-6.2
+  // answers 400), the standard tier answers instead.
   const response = await request("flex").catch((error: unknown) => {
-    if (error instanceof OpenAI.RateLimitError && !signal.aborted)
+    if (
+      !signal.aborted &&
+      (error instanceof OpenAI.RateLimitError ||
+        (error instanceof OpenAI.BadRequestError &&
+          /service_tier=flex/.test(error.message)))
+    )
       return request("default");
     throw error;
   });

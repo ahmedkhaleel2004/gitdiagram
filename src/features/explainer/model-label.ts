@@ -6,6 +6,8 @@ const LABELS: Array<[RegExp, string]> = [
   [/^claude-sonnet-5/, "Claude Sonnet 5"],
   [/^claude-haiku-5-5/, "Claude Haiku 5.5"],
   [/^gpt-6-astra/, "GPT-6 Astra"],
+  [/^gpt-6\.2-astra/, "GPT-6.2 Astra"],
+  [/^gpt-6\.2-sol/, "GPT-6.2 Sol"],
   [/^gpt-6\.1-sol/, "GPT-6.1 Sol"],
   [/^gpt-6-sol/, "GPT-6 Sol"],
   [/^gpt-6-luna/, "GPT-6 Luna"],

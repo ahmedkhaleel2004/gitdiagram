@@ -33,6 +33,8 @@ interface RawResponseUsage {
 
 // Also the explainer videos' OpenAI prices (explainer/director.ts).
 const MODEL_PRICING: Record<string, ModelPricing> = {
+  "gpt-6.2-astra": { inputPerMillionUsd: 8.0, outputPerMillionUsd: 40.0 },
+  "gpt-6.2-sol": { inputPerMillionUsd: 2.0, outputPerMillionUsd: 10.0 },
   "gpt-6.1-sol": { inputPerMillionUsd: 2.0, outputPerMillionUsd: 10.0 },
   "gpt-6-sol": { inputPerMillionUsd: 2.0, outputPerMillionUsd: 10.0 },
   "gpt-6-luna": { inputPerMillionUsd: 0.1, outputPerMillionUsd: 0.5 },
@@ -63,10 +65,14 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   "muse-ember-1.0": { inputPerMillionUsd: 0.1, outputPerMillionUsd: 0.5 },
 };
 // GPT-5.6 and later: cache writes cost 1.25× input and reads 0.1× (0.05× on
-// GPT-6.1 Sol), and the priority tier doubles both.
+// GPT-6.1 and 6.2 Sol and 6.2 Astra), and the priority tier doubles both.
 const CACHE_PRICED_MODEL =
-  /^gpt-(?:5\.6-(?:luna|terra|sol)|6-(?:luna|sol)|6\.1-sol)$/;
-const CACHE_READ_RATE: Record<string, number> = { "gpt-6.1-sol": 0.05 };
+  /^gpt-(?:5\.6-(?:luna|terra|sol)|6-(?:luna|sol)|6\.1-sol|6\.2-(?:sol|astra))$/;
+const CACHE_READ_RATE: Record<string, number> = {
+  "gpt-6.1-sol": 0.05,
+  "gpt-6.2-sol": 0.05,
+  "gpt-6.2-astra": 0.05,
+};
 // Models whose cached input has its own rate and whose cache writes cost
 // nothing extra: Muse Ember reads at $0.004 against $0.10.
 const CACHE_READ_ONLY_RATE: Record<string, number> = { "muse-ember-1.0": 0.04 };
@@ -100,6 +106,8 @@ export function resolvePricingModel(model: string): string | null {
   const withoutDate = stripDateSnapshotSuffix(stripProviderPrefix(normalized));
   if (MODEL_PRICING[withoutDate]) return withoutDate;
 
+  if (withoutDate.startsWith("gpt-6.2-astra")) return "gpt-6.2-astra";
+  if (withoutDate.startsWith("gpt-6.2-sol")) return "gpt-6.2-sol";
   if (withoutDate.startsWith("gpt-6.1-sol")) return "gpt-6.1-sol";
   if (withoutDate.startsWith("gpt-6-sol")) return "gpt-6-sol";
   if (withoutDate.startsWith("gpt-6-luna")) return "gpt-6-luna";

@@ -45,13 +45,13 @@ function standardDesigner() {
 }
 
 /**
- * GPT-6.1 Sol (VIDEO_FALLBACK_MODEL), when `model` is on the other provider
+ * GPT-6.2 Sol (VIDEO_FALLBACK_MODEL), when `model` is on the other provider
  * and Sol's key is set: what fails one Claude model (no credit, an outage)
  * usually fails the others too.
  */
 function otherProvider(model: string) {
   const fallback = {
-    model: process.env.VIDEO_FALLBACK_MODEL?.trim() || "gpt-6.1-sol",
+    model: process.env.VIDEO_FALLBACK_MODEL?.trim() || "gpt-6.2-sol",
     effort: readEffort("VIDEO_FALLBACK_EFFORT", "medium"),
   };
   return isOpenAIModel(fallback.model) !== isOpenAIModel(model) &&
