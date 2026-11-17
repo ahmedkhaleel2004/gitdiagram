@@ -75,9 +75,14 @@ jobs:
         # @eslint/config-array (^10) and @opennextjs/cloudflare (^13) do not
         # accept yet, and a top-level override would force them on every
         # copy. Remove once those packages move.
+        # GHSA-fc5q-39xc-vjpf (picomatch <=4.0.7, slow on repeated extglobs)
+        # has no patched release yet. picomatch only arrives through vite,
+        # vitest, knip and micromatch (build and test tooling), matching our
+        # own fixed patterns. Remove once picomatch ships a fix.
         run: >-
           bun audit --ignore=GHSA-vfj7-8cjw-p6xm --ignore=GHSA-5j98-mcp5-4vw2
           --ignore=GHSA-g3hv-75wg-m249 --ignore=GHSA-3g3m-2fjr-6pw4
+          --ignore=GHSA-fc5q-39xc-vjpf
       - name: Tests
         run: bun run test
         env:
@@ -125,7 +130,8 @@ jobs:
             echo "No test script."
           fi
       - name: Dependency audit
-        run: bun audit
+        # GHSA-fc5q-39xc-vjpf: picomatch in test tooling only, no fix yet (see the app job).
+        run: bun audit --ignore=GHSA-fc5q-39xc-vjpf
 
   # The render containers' Worker code (the router and the container classes
   # the site's Worker imports) has its own lockfile and tsconfig too.
@@ -155,4 +161,5 @@ jobs:
             echo "No test script."
           fi
       - name: Dependency audit
-        run: bun audit
+        # GHSA-fc5q-39xc-vjpf: picomatch in test tooling only, no fix yet (see the app job).
+        run: bun audit --ignore=GHSA-fc5q-39xc-vjpf
