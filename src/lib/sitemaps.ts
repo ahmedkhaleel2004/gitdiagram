@@ -1,11 +1,15 @@
 import type { BrowseIndexEntry } from "~/features/browse/catalog";
 
-// About 177 bytes a listed page, so a shard of 8,000 is about 1.4 MB: under
-// the size each Cloudflare location keeps a copy of (MAX_COPY_CHARS in
-// colo-cache.ts), so shards answer from a nearby copy instead of the placed
-// server. At 45,000 a shard was 8 MB and took 2 to 4 s to start answering
-// when not cached. Search engines take up to 50,000 a file.
-export const SITEMAP_PAGE_SIZE = 8_000;
+// About 177 bytes a listed page, so a shard of 25,000 is about 4.4 MB (under
+// 1 MB gzipped). That is over the size each Cloudflare location keeps a copy
+// of (MAX_COPY_CHARS in colo-cache.ts), so a shard is answered by the server
+// (2 to 4 s cold), which search engines do not mind. Fewer, larger shards on
+// purpose: after the 2026-11-11 resubmission Google fetched only the first
+// ten /sitemap-N.xml files and has not touched sitemap-10 to sitemap-29 since,
+// so 25,000 keeps every page (about 235k) inside the ten it reads. Search
+// engines take up to 50,000 a file. At 8,000 (2026-11-09 to 11-16) there
+// were 30 shards.
+export const SITEMAP_PAGE_SIZE = 25_000;
 
 /**
  * How many sitemap pages hold `routeCount` listed pages (repositories and
