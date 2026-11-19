@@ -65,6 +65,13 @@ describe("getProvider", () => {
     expect(getProvider()).toBe("meta");
     expect(getProviderLabel("meta")).toBe("Meta");
   });
+
+  it("recognizes Requesty only when selected explicitly", () => {
+    process.env.AI_PROVIDER = "requesty";
+
+    expect(getProvider()).toBe("requesty");
+    expect(getProviderLabel("requesty")).toBe("Requesty");
+  });
 });
 
 describe("getGenerationProvider", () => {
@@ -110,6 +117,18 @@ describe("getModel", () => {
 
     process.env.META_MODEL = "muse-spark-1.3";
     expect(getModel("meta")).toBe("muse-spark-1.3");
+  });
+
+  it("uses GPT-5.6 Terra as the Requesty fallback", () => {
+    delete process.env.REQUESTY_MODEL;
+
+    expect(getModel("requesty")).toBe("openai/gpt-5.6-terra");
+  });
+
+  it("preserves an explicit Requesty model override", () => {
+    process.env.REQUESTY_MODEL = "anthropic/claude-sonnet-5-5";
+
+    expect(getModel("requesty")).toBe("anthropic/claude-sonnet-5-5");
   });
 });
 
