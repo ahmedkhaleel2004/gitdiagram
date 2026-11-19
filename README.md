@@ -11,9 +11,7 @@ Visualize any codebase: turn any public or private GitHub repository into an int
 
 <!-- sponsor:start -->
 
-> <a href="https://gitdiagram.com/out/coderabbit-2026-10?placement=readme"><picture><source media="(prefers-color-scheme: dark)" srcset="./public/sponsors/coderabbit-wordmark-white.svg" /><img src="./public/sponsors/coderabbit-wordmark.svg" alt="CodeRabbit" width="156" align="middle" /></picture></a>&nbsp;&nbsp; <sub>Sponsored</sub>
->
-> AI code reviews for your pull requests. [Try CodeRabbit →](https://gitdiagram.com/out/coderabbit-2026-10?placement=readme)
+> **Ad space** · [Advertise your product here.](https://gitdiagram.com/advertise)
 
 <!-- sponsor:end -->
 
