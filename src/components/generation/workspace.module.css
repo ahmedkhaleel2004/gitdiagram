@@ -13,11 +13,14 @@
 }
 .workspace {
   width: 100%;
-  max-width: 1200px;
   margin-inline: auto;
   padding: 32px 24px 48px;
   font-size: 13px;
   line-height: 1.5;
+}
+.workspace > :not(.diagram) {
+  max-width: 1152px;
+  margin-inline: auto;
 }
 :global(.dark) .workspace,
 :global(.dark) .controlsTheme {
