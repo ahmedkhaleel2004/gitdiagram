@@ -173,6 +173,8 @@ export async function exportMermaidSvgAsPng(
   }
   const footerText = repository ? `gitdiagram.com/${repository}` : undefined;
 
+  const repositoryName = repository?.trim().replaceAll("/", "-");
+  const filename = repositoryName ? `${repositoryName}.png` : "diagram.png";
   // A browser that cannot hold the canvas fails to encode it: try at half the
   // resolution before giving up.
   for (;;) {
@@ -185,7 +187,7 @@ export async function exportMermaidSvgAsPng(
         backgroundColor,
         footerText,
       );
-      downloadBlob(png, "diagram.png");
+      downloadBlob(png, filename);
       return;
     } catch (error) {
       if (scale / 2 < 1) throw error;
