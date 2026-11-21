@@ -55,8 +55,10 @@ export function repositoryJsonLd(params: {
   repo: string;
   description: string;
   readout: DiagramReadout | null;
+  /** The language's architecture-examples page, a step in the breadcrumb. */
+  hub?: { path: string; name: string } | null;
 }) {
-  const { owner, repo, description, readout } = params;
+  const { owner, repo, description, readout, hub } = params;
   const name = `${owner}/${repo}`;
   const url = `${SITE_URL}${repoPath(owner, repo)}`;
   const githubUrl = `https://github.com/${name}`;
@@ -124,7 +126,22 @@ export function repositoryJsonLd(params: {
             name: "GitDiagram",
             item: SITE_URL,
           },
-          { "@type": "ListItem", position: 2, name, item: url },
+          ...(hub
+            ? [
+                {
+                  "@type": "ListItem",
+                  position: 2,
+                  name: `${hub.name} architecture examples`,
+                  item: `${SITE_URL}${hub.path}`,
+                },
+              ]
+            : []),
+          {
+            "@type": "ListItem",
+            position: hub ? 3 : 2,
+            name,
+            item: url,
+          },
         ],
       },
     ],

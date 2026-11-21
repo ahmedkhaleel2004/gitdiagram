@@ -13,6 +13,7 @@ import {
 import { SITE_URL } from "~/lib/site";
 import { readPublicDiagramState } from "~/server/storage/public-diagram-state";
 import { readRelatedDiagrams } from "~/server/storage/related-diagrams-read";
+import { readLanguageHub } from "~/server/storage/architecture-hubs-read";
 import { getRepoPagePath } from "~/server/storage/repo-page-cache";
 import { PlaceholderRepo, placeholderRepoMetadata } from "./placeholder-repo";
 import RepoPageClient from "./repo-page-client";
@@ -91,6 +92,7 @@ export default async function Repo({ params }: RepoPageProps) {
   const { state } = await readPublicDiagramState(username, repo);
   const readout = state ? diagramReadout(state, username, repo) : null;
   const related = readout ? await readRelatedDiagrams(username, repo) : null;
+  const hub = related ? await readLanguageHub(related.language) : null;
 
   return (
     <>
@@ -100,6 +102,7 @@ export default async function Repo({ params }: RepoPageProps) {
           repo,
           description: repositoryPageDescription(username, repo, readout),
           readout,
+          hub,
         })}
       />
       <RepoPageClient
@@ -116,6 +119,7 @@ export default async function Repo({ params }: RepoPageProps) {
               readout={readout}
               markdownPath={repositoryMarkdownPath(username, repo)}
               related={related}
+              hubPath={hub?.path}
             />
           ) : undefined
         }

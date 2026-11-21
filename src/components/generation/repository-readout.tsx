@@ -35,6 +35,7 @@ export function RepositoryReadout({
   readout,
   markdownPath,
   related,
+  hubPath,
 }: {
   owner: string;
   repo: string;
@@ -42,6 +43,8 @@ export function RepositoryReadout({
   markdownPath: string;
   /** Other public diagrams in the same language (none: line left out). */
   related?: RelatedDiagrams | null;
+  /** The language's architecture-examples page, when it has one. */
+  hubPath?: string;
 }) {
   const repository = `${owner}/${repo}`;
   const date = formatDate(readout.lastSuccessfulAt);
@@ -155,7 +158,12 @@ export function RepositoryReadout({
       {related && (
         <p className={styles.related}>
           <span className={styles.relatedLabel}>
-            More {related.language} diagrams:
+            {hubPath ? (
+              <a href={hubPath}>More {related.language} diagrams</a>
+            ) : (
+              <>More {related.language} diagrams</>
+            )}
+            :
           </span>{" "}
           {related.repositories.map((name, index) => (
             <Fragment key={name}>

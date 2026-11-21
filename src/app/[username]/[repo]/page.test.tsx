@@ -6,10 +6,12 @@ const {
   cachedReads,
   getStoredDiagramState,
   permanentRedirect,
+  readHubIndex,
   readRelatedShard,
 } = vi.hoisted(() => ({
   cachedReads: [] as Array<{ key: string; revalidate: number }>,
   getStoredDiagramState: vi.fn(),
+  readHubIndex: vi.fn(async (): Promise<unknown> => null),
   readRelatedShard: vi.fn(async (): Promise<unknown> => ({
     version: 1,
     updatedAt: "2026-11-09T00:00:00Z",
@@ -36,6 +38,10 @@ vi.mock("next/cache", () => ({
 vi.mock("next/navigation", () => ({ permanentRedirect }));
 vi.mock("~/server/storage/artifact-store", () => ({ getStoredDiagramState }));
 vi.mock("~/server/storage/related-diagrams", () => ({ readRelatedShard }));
+vi.mock("~/server/storage/architecture-hubs", () => ({
+  readHubIndex,
+  readHubPage: vi.fn(),
+}));
 vi.mock("./repo-page-client", () => ({ default: () => null }));
 
 import { JsonLd } from "~/components/json-ld";
@@ -261,6 +267,69 @@ describe("repository page", () => {
     expect(html).toContain("More TypeScript diagrams:");
     expect(html).toContain('<a href="/vercel/next.js">vercel/next.js</a>');
     expect(html).toContain('<a href="/denoland/deno">denoland/deno</a>');
+  });
+
+  it("links the line to the language's architecture examples and adds it to the breadcrumb", async () => {
+    getStoredDiagramState.mockResolvedValue(storedState);
+    readRelatedShard.mockResolvedValueOnce({
+      version: 1,
+      updatedAt: "2026-11-09T00:00:00Z",
+      repositories: {
+        "acme/demo": {
+          language: "TypeScript",
+          repositories: ["vercel/next.js", "microsoft/vscode", "denoland/deno"],
+        },
+      },
+    });
+    readHubIndex.mockResolvedValueOnce({
+      version: 1,
+      updatedAt: "2026-11-09T00:00:00Z",
+      candidates: 100,
+      hubs: [
+        {
+          slug: "typescript",
+          kind: "language",
+          name: "TypeScript",
+          total: 90,
+          pages: 2,
+          patterns: null,
+          top: [],
+        },
+      ],
+    });
+    const { client, jsonLd } = parts(
+      await Repo({
+        params: Promise.resolve({ username: "acme", repo: "demo" }),
+      }),
+    );
+    const html = renderToStaticMarkup(<>{client.props.readout}</>);
+
+    expect(html).toContain(
+      '<a href="/architecture-examples/typescript">More TypeScript diagrams</a>:',
+    );
+    const breadcrumb = jsonLd.props.data["@graph"][2] as {
+      itemListElement: Array<{ position: number; name: string; item: string }>;
+    };
+    expect(breadcrumb.itemListElement).toEqual([
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "GitDiagram",
+        item: "https://gitdiagram.com",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "TypeScript architecture examples",
+        item: "https://gitdiagram.com/architecture-examples/typescript",
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: "acme/demo",
+        item: "https://gitdiagram.com/acme/demo",
+      },
+    ]);
   });
 
   it("describes the page as a TechArticle about the repository", async () => {

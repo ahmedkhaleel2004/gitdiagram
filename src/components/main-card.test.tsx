@@ -64,8 +64,9 @@ describe("MainCard", () => {
   it("lets example repositories navigate without submitting the required input", () => {
     render(<MainCard />);
 
-    const exampleButton = screen.getByRole("button", { name: "FastAPI" });
-    expect(exampleButton).toHaveAttribute("type", "button");
+    // A real link (search engines follow it), not a submit button.
+    const exampleButton = screen.getByRole("link", { name: "FastAPI" });
+    expect(exampleButton).toHaveAttribute("href", "/fastapi/fastapi");
 
     fireEvent.click(exampleButton);
 

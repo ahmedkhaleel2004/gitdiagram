@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Sparkles, X } from "lucide-react";
 import { Input } from "~/components/ui/input";
-import { Button } from "~/components/ui/button";
+import { Button, buttonClasses } from "~/components/ui/button";
 import { exampleRepos } from "~/lib/exampleRepos";
 import { parseGitHubRepoUrl } from "~/features/diagram/github-url";
 import { SponsorSlot } from "~/components/sponsor-slot";
@@ -43,7 +43,12 @@ export default function MainCard({ sponsor = true }: { sponsor?: boolean }) {
     router.push(`/${sanitizedUsername}/${sanitizedRepo}`);
   };
 
+  // Real links, so search engines follow them to the example diagrams; a
+  // plain click still navigates in the app, a new-tab click opens a tab.
   const handleExampleClick = (repoPath: string, e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+      return;
+    }
     e.preventDefault();
     router.push(repoPath);
   };
@@ -98,17 +103,19 @@ export default function MainCard({ sponsor = true }: { sponsor?: boolean }) {
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(exampleRepos).map(([name, path]) => (
-                <Button
+                <a
                   key={name}
-                  type="button"
-                  variant="outline"
-                  className={`${CHIP_CLASS} ${
-                    name === "GitDiagram" ? "hidden sm:inline-flex" : ""
-                  }`}
+                  href={path}
+                  className={buttonClasses(
+                    "outline",
+                    `${CHIP_CLASS} ${
+                      name === "GitDiagram" ? "hidden sm:inline-flex" : ""
+                    }`,
+                  )}
                   onClick={(e) => handleExampleClick(path, e)}
                 >
                   {name}
-                </Button>
+                </a>
               ))}
             </div>
           </div>

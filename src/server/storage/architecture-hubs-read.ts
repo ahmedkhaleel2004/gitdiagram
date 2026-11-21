@@ -1,7 +1,13 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
-import type { HubIndex, HubPage } from "~/features/architecture-hubs/hubs";
+import {
+  hasLanguageHub,
+  hubPath,
+  languageSlug,
+  type HubIndex,
+  type HubPage,
+} from "~/features/architecture-hubs/hubs";
 import { errorText, logEvent } from "~/server/log";
 import { readHubIndex, readHubPage } from "./architecture-hubs";
 
@@ -64,4 +70,21 @@ export async function loadArchitectureHub(slug: string, page: number) {
   const stored = await readArchitectureHubPage(slug, page);
   if (!stored) return null;
   return { index, hub, page: stored };
+}
+
+/**
+ * The published hub for a GitHub language (/architecture-examples/python),
+ * or null when it has none. A repository page links its "More Python
+ * diagrams" line to it; a failed read leaves the link out (already logged).
+ */
+export async function readLanguageHub(
+  language: string,
+): Promise<{ path: string; name: string } | null> {
+  if (!hasLanguageHub(language)) return null;
+  const slug = languageSlug(language);
+  const index = await readArchitectureHubs().catch(() => null);
+  const hub = index?.hubs.find(
+    (item) => item.kind === "language" && item.slug === slug,
+  );
+  return hub ? { path: hubPath(hub.slug), name: hub.name } : null;
 }

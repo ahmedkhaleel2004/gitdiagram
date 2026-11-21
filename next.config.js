@@ -87,6 +87,12 @@ const config = {
   transpilePackages: ["@aws-sdk/client-s3"],
   async redirects() {
     return [
+      // Crawlers and people guess /sitemap.xml; the index is at its own name.
+      {
+        source: "/sitemap.xml",
+        destination: "/sitemap_index.xml",
+        permanent: true,
+      },
       {
         source: "/sponsor",
         destination: "/advertise",
