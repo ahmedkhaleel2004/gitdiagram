@@ -153,8 +153,10 @@ export const CRON_ROUTES: Record<string, string> = {
   "*/15 * * * *": "/api/internal/video-payments/sweep",
   "0 13 * * *": "/api/internal/ai-visibility",
   // The weekly prompt panel: every 10 minutes on Monday afternoons (UTC) until
-  // the week's questions are answered; later firings do nothing.
-  "*/10 14-17 * * 1": "/api/internal/ai-panel",
+  // the week's questions are answered; later firings do nothing. MON, not 1:
+  // Cloudflare's day of week 1 is Sunday, which ran the panel on Sundays and
+  // filed it under the week before (found 2026-11-23).
+  "*/10 14-17 * * MON": "/api/internal/ai-panel",
   "30 7 * * *": "/api/internal/related-diagrams",
   "45 7 * * *": "/api/internal/architecture-hubs",
 };
