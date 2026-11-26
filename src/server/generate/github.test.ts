@@ -687,3 +687,142 @@ describe("getGithubData repository input bounds", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("getGithubData ignore rules", () => {
+  const ignoreSha = "1234567890abcdef1234567890abcdef12345678";
+
+  it("excludes files and directories specified in .gitdiagramignore (Issue #224)", async () => {
+    const tree = {
+      tree: [
+        { path: ".gitdiagramignore", type: "blob", sha: ignoreSha, size: 9 },
+        { path: "src/game/player.ts", type: "blob", size: 500 },
+        { path: "plugins/my_plugin/router.ts", type: "blob", size: 600 },
+        { path: "plugins/my_plugin/index.ts", type: "blob", size: 300 },
+      ],
+    };
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/demo")) {
+        return jsonResponse({
+          default_branch: "main",
+          private: false,
+          stargazers_count: 10,
+        });
+      }
+      if (url.includes("/git/trees/main?recursive=1")) {
+        return jsonResponse(tree);
+      }
+      if (url.endsWith(`/git/blobs/${ignoreSha}`)) {
+        return jsonResponse({
+          content: Buffer.from("plugins/\n").toString("base64"),
+          encoding: "base64",
+          size: 9,
+        });
+      }
+      if (url.endsWith("/repos/acme/demo/readme")) {
+        return jsonResponse({
+          content: Buffer.from("# Game").toString("base64"),
+          encoding: "base64",
+          size: 6,
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getGithubData("acme", "demo");
+    expect(result.fileTree).toContain("src/game/player.ts");
+    expect(result.fileTree).not.toContain("plugins/my_plugin/router.ts");
+    expect(result.fileTree).not.toContain("plugins/my_plugin/index.ts");
+    expect(result.pathTypes.has("src/game/player.ts")).toBe(true);
+    expect(result.pathTypes.has("plugins/my_plugin/router.ts")).toBe(false);
+  });
+
+  it("falls back to .gitingestignore if .gitdiagramignore is absent", async () => {
+    const tree = {
+      tree: [
+        { path: ".gitingestignore", type: "blob", sha: ignoreSha, size: 7 },
+        { path: "src/app.ts", type: "blob", size: 500 },
+        { path: "tools/codegen.ts", type: "blob", size: 600 },
+      ],
+    };
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/demo")) {
+        return jsonResponse({
+          default_branch: "main",
+          private: false,
+          stargazers_count: 5,
+        });
+      }
+      if (url.includes("/git/trees/main?recursive=1")) {
+        return jsonResponse(tree);
+      }
+      if (url.endsWith(`/git/blobs/${ignoreSha}`)) {
+        return jsonResponse({
+          content: Buffer.from("tools/\n").toString("base64"),
+          encoding: "base64",
+          size: 7,
+        });
+      }
+      if (url.endsWith("/repos/acme/demo/readme")) {
+        return jsonResponse({
+          content: Buffer.from("# App").toString("base64"),
+          encoding: "base64",
+          size: 5,
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getGithubData("acme", "demo");
+    expect(result.fileTree).toContain("src/app.ts");
+    expect(result.fileTree).not.toContain("tools/codegen.ts");
+    expect(result.pathTypes.has("tools/codegen.ts")).toBe(false);
+  });
+
+  it("applies extraIgnorePatterns passed programmatically", async () => {
+    const tree = {
+      tree: [
+        { path: "src/main.ts", type: "blob", size: 400 },
+        { path: "legacy/v1.ts", type: "blob", size: 300 },
+      ],
+    };
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/demo")) {
+        return jsonResponse({
+          default_branch: "main",
+          private: false,
+          stargazers_count: 5,
+        });
+      }
+      if (url.includes("/git/trees/main?recursive=1")) {
+        return jsonResponse(tree);
+      }
+      if (url.endsWith("/repos/acme/demo/readme")) {
+        return jsonResponse({
+          content: Buffer.from("# Main").toString("base64"),
+          encoding: "base64",
+          size: 6,
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getGithubData("acme", "demo", undefined, undefined, [
+      "legacy/",
+    ]);
+    expect(result.fileTree).toContain("src/main.ts");
+    expect(result.fileTree).not.toContain("legacy/v1.ts");
+    expect(result.pathTypes.has("legacy/v1.ts")).toBe(false);
+  });
+});

@@ -1,5 +1,6 @@
 import { getGitHubApiHeaders } from "../github-auth";
 import { GitHubRequestError } from "./github-errors";
+import { createPathFilter, parseIgnorePatterns } from "./ignore-rules";
 
 interface GitHubRepoResponse {
   default_branch?: string;
@@ -348,6 +349,41 @@ async function getMissingTopLevelEntries(
   }
 }
 
+const MAX_IGNORE_FILE_BYTES = 100_000;
+
+interface GitHubBlobResponse {
+  content?: unknown;
+  encoding?: unknown;
+  size?: unknown;
+}
+
+async function getIgnoreFileContent(
+  username: string,
+  repo: string,
+  sha: string,
+  headers: HeadersInit,
+  signal?: AbortSignal,
+): Promise<string> {
+  try {
+    const data = await fetchJson<GitHubBlobResponse>(
+      `https://api.github.com/repos/${username}/${repo}/git/blobs/${sha}`,
+      headers,
+      "Ignore file unavailable.",
+      signal,
+    );
+    if (typeof data.size === "number" && data.size > MAX_IGNORE_FILE_BYTES) {
+      return "";
+    }
+    if (data.encoding === "base64" && typeof data.content === "string") {
+      return Buffer.from(data.content, "base64").toString("utf-8");
+    }
+    return typeof data.content === "string" ? data.content : "";
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return "";
+  }
+}
+
 async function getFileTree(
   username: string,
   repo: string,
@@ -355,6 +391,7 @@ async function getFileTree(
   headers: HeadersInit,
   usePublicConditionalCache: boolean,
   signal?: AbortSignal,
+  extraIgnorePatterns?: readonly string[],
 ): Promise<{
   fileTree: string;
   pathTypes: ReadonlyMap<string, RepositoryPathType>;
@@ -365,7 +402,9 @@ async function getFileTree(
   // encodeURIComponent also encodes "/" as %2F, which the trees API accepts
   // in the {tree_sha} position; plain branch names are unchanged.
   const url = `https://api.github.com/repos/${username}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
-  const cached = usePublicConditionalCache
+  const canUsePublicConditionalCache =
+    usePublicConditionalCache && !extraIgnorePatterns?.length;
+  const cached = canUsePublicConditionalCache
     ? publicTreeCache.get(url)
     : undefined;
   if (cached) {
@@ -422,11 +461,54 @@ async function getFileTree(
       }),
     );
   }
+
+  const ignoreItem =
+    items.find(
+      (item) =>
+        item.type === "blob" &&
+        item.path === ".gitdiagramignore" &&
+        typeof item.sha === "string" &&
+        GIT_SHA.test(item.sha),
+    ) ??
+    items.find(
+      (item) =>
+        item.type === "blob" &&
+        item.path === ".gitingestignore" &&
+        typeof item.sha === "string" &&
+        GIT_SHA.test(item.sha),
+    );
+
+  let repoIgnorePatterns: string[] = [];
+  if (ignoreItem && typeof ignoreItem.sha === "string") {
+    const ignoreContent = await getIgnoreFileContent(
+      username,
+      repo,
+      ignoreItem.sha,
+      headers,
+      signal,
+    );
+    if (ignoreContent) {
+      repoIgnorePatterns = parseIgnorePatterns(ignoreContent);
+    }
+  }
+
+  const allIgnorePatterns = [
+    ...repoIgnorePatterns,
+    ...(extraIgnorePatterns ?? []),
+  ];
+  const isIgnored = allIgnorePatterns.length
+    ? createPathFilter(allIgnorePatterns)
+    : () => false;
+
   const paths: string[] = [];
   const pathTypes = new Map<string, RepositoryPathType>();
   const sourceBlobs = new Map<string, SourceBlob>();
   for (const item of items) {
-    if (typeof item.path === "string" && shouldIncludeFile(item.path)) {
+    if (
+      typeof item.path === "string" &&
+      shouldIncludeFile(item.path) &&
+      !isIgnored(item.path)
+    ) {
       paths.push(item.path);
       if (item.type === "blob" || item.type === "tree") {
         pathTypes.set(item.path, item.type);
@@ -450,7 +532,7 @@ async function getFileTree(
 
   const fileTree = paths.join("\n");
 
-  if (usePublicConditionalCache) {
+  if (canUsePublicConditionalCache) {
     deletePublicTreeCacheEntry(url);
     if (result.etag && fileTree.length <= MAX_PUBLIC_TREE_CACHE_CHARACTERS) {
       while (
@@ -537,6 +619,7 @@ async function fetchGithubData(
   repo: string,
   githubPat?: string,
   signal?: AbortSignal,
+  extraIgnorePatterns?: readonly string[],
 ): Promise<GithubData> {
   const hasCallerGithubPat = Boolean(githubPat?.trim());
   const headers = await getGitHubApiHeaders({ githubPat });
@@ -558,6 +641,7 @@ async function fetchGithubData(
       headers,
       !hasCallerGithubPat && !isPrivate,
       signal,
+      extraIgnorePatterns,
     ),
     getReadme(username, repo, headers, signal).then(
       (value) => ({ ok: true as const, value }),
@@ -585,9 +669,16 @@ export async function getGithubData(
   repo: string,
   githubPat?: string,
   signal?: AbortSignal,
+  extraIgnorePatterns?: readonly string[],
 ): Promise<GithubData> {
   try {
-    return await fetchGithubData(username, repo, githubPat, signal);
+    return await fetchGithubData(
+      username,
+      repo,
+      githubPat,
+      signal,
+      extraIgnorePatterns,
+    );
   } catch (error) {
     if (
       !githubPat?.trim() ||
@@ -606,6 +697,7 @@ export async function getGithubData(
         repo,
         undefined,
         signal,
+        extraIgnorePatterns,
       );
       console.info(
         JSON.stringify({ event: "generate.github.public_fallback_succeeded" }),
