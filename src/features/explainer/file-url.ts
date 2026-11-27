@@ -8,6 +8,8 @@ export interface VideoFileVersion {
   createdAt: string;
   /** When the poster and still were made; a remade one gets a fresh URL. */
   posterAt?: number | null;
+  /** A focused film's key: its files live apart from the repository's film. */
+  focus?: string;
 }
 
 /**
@@ -27,5 +29,6 @@ export function videoFileUrl(
   });
   if ((format === "poster" || format === "still") && video.posterAt)
     params.set("p", String(video.posterAt));
+  if (video.focus) params.set("focus", video.focus);
   return `${origin}/api/video/file?${params.toString()}`;
 }

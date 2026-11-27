@@ -17,6 +17,7 @@ import { beginWork } from "~/server/drain";
 import { refreshVideoPages } from "~/server/explainer/cache";
 import { openRun, reapOrphanedRuns } from "~/server/explainer/run-journal";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
+import { FOCUS_KEY } from "~/server/explainer/focus";
 import {
   isTrustedVideoCaller,
   reserveRenderSlot,
@@ -60,6 +61,9 @@ const requestSchema = z.strictObject({
   // tab loaded before this field existed, or the operator's poster call,
   // still works.
   v: z.iso.datetime().optional(),
+  // A focused film's key (focus.ts): its MP4s are made and kept in its own
+  // folder, never as the repository's.
+  focus: z.string().regex(FOCUS_KEY).optional(),
 });
 
 const STALE_MESSAGE =
@@ -84,8 +88,11 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
     crossOriginError: "Video downloads must come from GitDiagram.",
   });
   if (!parsed.success) return parsed.response;
-  const { username, repo, format, v } = parsed.data;
-  const artifact = await readVideoArtifact(username, repo);
+  const { username, repo, format, v, focus } = parsed.data;
+  // A focused film has no poster of its own: it is never previewed.
+  if (focus && format === "poster")
+    return jsonErrorResponse("A focused video has no poster.", 400);
+  const artifact = await readVideoArtifact(username, repo, focus);
   if (!artifact) return jsonErrorResponse("This video does not exist.", 404);
   // The viewer has an older version open: its MP4 would not match what they
   // watched, and its files are on their way out.
@@ -233,7 +240,7 @@ async function render(request: Request, visitor: Visitor): Promise<Response> {
           // A regenerated video replaced this one while it rendered: its
           // folder is no longer current, so the file is not kept. (If the
           // check itself fails, keeping a finished MP4 is the better bet.)
-          const current = await readVideoArtifact(username, repo).catch(
+          const current = await readVideoArtifact(username, repo, focus).catch(
             () => artifact,
           );
           if (current?.createdAt !== artifact.createdAt) {

@@ -12,6 +12,7 @@ import {
 import { logEvent } from "~/server/log";
 import { readRequiredEnv } from "~/server/storage/config";
 import type { TimeEdit } from "./feed-edit";
+import { FOCUS_KEY } from "./focus";
 import {
   assembleMp4,
   mixSoundtrack,
@@ -53,6 +54,8 @@ export const segmentJobSchema = z.strictObject({
     .min(1)
     .max(512)
     .optional(),
+  // A focused film's key (focus.ts): its files live in its own folder.
+  focus: z.string().regex(FOCUS_KEY).optional(),
 });
 
 export type SegmentJob = z.infer<typeof segmentJobSchema>;
@@ -112,6 +115,8 @@ function sign(job: SegmentJob): string {
     job.exp,
     // Only a feed cut carries an edit; it is signed with the rest.
     ...(job.edit ? [job.edit] : []),
+    // Only a focused film carries a key; a plain job signs as it always has.
+    ...(job.focus ? [`focus:${job.focus}`] : []),
   ]);
   return createHmac("sha256", signingKey()).update(payload).digest("hex");
 }
@@ -406,6 +411,7 @@ export async function renderMp4InSegments(params: {
           username: artifact.meta.owner,
           repo: artifact.meta.repo,
           v: artifact.createdAt,
+          ...(artifact.focus ? { focus: artifact.focus.key } : {}),
           format,
           from: range.from,
           to: range.to,
@@ -491,6 +497,7 @@ export async function remakePosterRemotely(
     username: artifact.meta.owner,
     repo: artifact.meta.repo,
     v: artifact.createdAt,
+    ...(artifact.focus ? { focus: artifact.focus.key } : {}),
     format: "poster",
     from: 0,
     to: 1,

@@ -134,6 +134,18 @@ describe("GET /api/video/file", () => {
     ).toBe(400);
   });
 
+  it("finds a focused film's MP4 in that film's own folder", async () => {
+    mocks.renderDownloadUrl.mockResolvedValue("https://r2.example/signed");
+    mocks.hasRender.mockResolvedValue(true);
+    const focus = "0123456789abcdef";
+    expect((await get({ format: "landscape", focus })).status).toBe(302);
+    expect(mocks.readVideoArtifact).toHaveBeenCalledWith(
+      "acme",
+      "widget",
+      focus,
+    );
+  });
+
   it("never caches an MP4 streamed from local storage", async () => {
     mocks.renderDownloadUrl.mockResolvedValue(null);
     mocks.readRender.mockResolvedValue(Buffer.from("mp4"));

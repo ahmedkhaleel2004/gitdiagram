@@ -153,6 +153,25 @@ describe("render segment signatures", () => {
     ).toBe(false);
   });
 
+  it("signs a focused film's key with the job, and a plain job as before", () => {
+    const plain = job();
+    const focused: SegmentJob = { ...plain, focus: "0123456789abcdef" };
+    const signature = createHmac(
+      "sha256",
+      createHmac("sha256", "secret").update("video-segment-key/v1").digest(),
+    )
+      .update(JSON.stringify([...fields(focused), "focus:0123456789abcdef"]))
+      .digest("hex");
+    expect(verifySegmentJob(focused, signature)).toBe(true);
+    // The plain job's signature cannot open the focused film, or the reverse.
+    expect(verifySegmentJob(focused, sign(plain))).toBe(false);
+    expect(verifySegmentJob(plain, signature)).toBe(false);
+    expect(verifySegmentJob(plain, sign(plain))).toBe(true);
+    expect(
+      segmentJobSchema.safeParse({ ...plain, focus: "../x" }).success,
+    ).toBe(false);
+  });
+
   it("rejects a signature made with the cache secret itself", () => {
     const value = job();
     const payload = JSON.stringify(fields(value));
@@ -270,6 +289,46 @@ describe("rendering in segments", () => {
     expect(mixSoundtrack).toHaveBeenCalledWith(
       expect.objectContaining({ edit }),
     );
+  });
+
+  it("names a focused film's key in every segment it sends", async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) =>
+      answer([{ type: "ready", sfx: [] }, done(String(bodyOf(init).from))]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await settle(
+      renderMp4InSegments({
+        artifact: {
+          ...artifact,
+          focus: { text: "x", key: "0123456789abcdef" },
+        } as VideoArtifact,
+        format: "landscape",
+        origin: "https://example.com",
+      }),
+    );
+    for (const [, init] of fetchMock.mock.calls) {
+      const sent = bodyOf(init);
+      expect(sent.focus).toBe("0123456789abcdef");
+      expect(
+        verifySegmentJob(
+          sent,
+          String(new Headers(init.headers).get("X-Video-Segment")),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("sends a plain film's jobs with no focus at all", async () => {
+    const fetchMock = vi.fn(async () =>
+      answer([{ type: "ready", sfx: [] }, done("A")]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await settle(render());
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
+    for (const [, init] of fetchMock.mock.calls as unknown as Array<
+      [string, RequestInit]
+    >)
+      expect(bodyOf(init)).not.toHaveProperty("focus");
   });
 
   it("leaves the landscape MP4 uncut", async () => {

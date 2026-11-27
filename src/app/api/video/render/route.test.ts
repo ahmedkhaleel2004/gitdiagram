@@ -133,6 +133,31 @@ describe("POST /api/video/render", () => {
     expect(mocks.closeRun).toHaveBeenCalledWith("complete", undefined);
   });
 
+  it("renders a focused film from its own folder, and never its poster", async () => {
+    const focus = "0123456789abcdef";
+    const response = await POST(
+      request({ format: "landscape", v: createdAt, focus }),
+    );
+    expect(await response.text()).toContain('"status":"complete"');
+    // Read to render, and read again before storing.
+    expect(mocks.readVideoArtifact.mock.calls).toEqual([
+      ["acme", "widget", focus],
+      ["acme", "widget", focus],
+    ]);
+    expect((await POST(request({ format: "poster", focus }))).status).toBe(400);
+    expect(
+      (await POST(request({ format: "landscape", focus: "ABC" }))).status,
+    ).toBe(400);
+  });
+
+  it("reads a plain film exactly as before", async () => {
+    await (await POST(request({ format: "landscape", v: createdAt }))).text();
+    expect(mocks.readVideoArtifact.mock.calls).toEqual([
+      ["acme", "widget", undefined],
+      ["acme", "widget", undefined],
+    ]);
+  });
+
   it("serves an MP4 another render stored while it waited for the lock", async () => {
     mocks.hasRender.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     const response = await POST(request({ format: "vertical", v: createdAt }));

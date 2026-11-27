@@ -121,6 +121,29 @@ describe("mixing the soundtrack", () => {
     ]);
   });
 
+  it("reads a focused film's narration from that film's own folder", async () => {
+    mocks.readVoiceClip.mockResolvedValue(voice);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Uint8Array(effect))),
+    );
+    await mixSoundtrack({
+      artifact: {
+        ...artifact(2),
+        focus: { text: "x", key: "0123456789abcdef" },
+      } as VideoArtifact,
+      sfx: [],
+      origin: "https://example.com",
+    });
+    expect(mocks.readVoiceClip).toHaveBeenCalledWith(
+      "acme",
+      "widget",
+      "2026-09-24T08:06:45.297Z",
+      0,
+      "0123456789abcdef",
+    );
+  });
+
   it("stops ffmpeg when the deadline passes", async () => {
     mocks.readVoiceClip.mockResolvedValue(voice);
     vi.stubGlobal(

@@ -9,7 +9,10 @@ import {
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ExplainerVideo } from "~/components/explainer/explainer-video";
+import {
+  ExplainerVideo,
+  FocusedExplainerVideo,
+} from "~/components/explainer/explainer-video";
 import { setAdminTools } from "~/features/admin/tools";
 import type { VideoArtifact } from "~/features/explainer/types";
 
@@ -75,6 +78,23 @@ async function showVideo() {
   render(<ExplainerVideo username="acme" repo="tiny" />);
   await screen.findByTestId("player");
 }
+
+describe("FocusedExplainerVideo", () => {
+  it("plays the focused film it is given, names its focus, and offers no regenerate", async () => {
+    act(() => setAdminTools(true));
+    const focused = {
+      ...video("2026-09-24T00:00:00.000Z"),
+      focus: { text: "the retry loop", key: "0123456789abcdef" },
+    } as VideoArtifact;
+    render(<FocusedExplainerVideo video={focused} />);
+    expect(screen.getByTestId("player").textContent).toBe(
+      "2026-09-24T00:00:00.000Z",
+    );
+    expect(screen.getByText(/the retry loop/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Regenerate/ })).toBeNull();
+    expect(api.fetchExplainerVideo).not.toHaveBeenCalled();
+  });
+});
 
 describe("ExplainerVideo regenerate", () => {
   it("stays hidden until admin controls are turned on", async () => {

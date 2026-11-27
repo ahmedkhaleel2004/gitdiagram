@@ -27,6 +27,7 @@ function siteSignature(job: SegmentJob): string {
     job.to,
     job.exp,
     ...(job.edit ? [job.edit] : []),
+    ...(job.focus ? [`focus:${job.focus}`] : []),
   ]);
   return createHmac("sha256", key).update(payload).digest("hex");
 }
@@ -73,6 +74,10 @@ describe("segment jobs", () => {
     const plain: SegmentJob = { ...job, format: "landscape" };
     delete plain.edit;
     expect(await segmentSignature(plain, SECRET)).toBe(siteSignature(plain));
+    const focused: SegmentJob = { ...plain, focus: "0123456789abcdef" };
+    const sent = parseSegmentJob(JSON.stringify(focused))!;
+    expect(await segmentSignature(sent, SECRET)).toBe(siteSignature(focused));
+    expect(siteSignature(focused)).not.toBe(siteSignature(plain));
   });
 
   it("pass only signed, unexpired, well-formed", async () => {

@@ -87,7 +87,7 @@ export async function GET(request: Request): Promise<Response> {
       },
     });
   }
-  const artifact = await readVideoArtifact(username, repo);
+  const artifact = await readVideoArtifact(username, repo, focus);
   if (!artifact) return jsonErrorResponse("This video does not exist.", 404);
   const version = { ...artifact, createdAt: v ?? artifact.createdAt };
   const name = FILES[format];
