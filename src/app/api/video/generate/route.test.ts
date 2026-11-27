@@ -334,6 +334,61 @@ describe("POST /api/video/generate", () => {
     });
   });
 
+  describe("a focused film", () => {
+    const focus = "  the retry loop\n that mints tokens ";
+
+    it("is made for the operator, under its own lock, and leaves the repository's pages alone", async () => {
+      mocks.verifyAdminRequest.mockResolvedValue(true);
+      mocks.readVideoArtifact.mockResolvedValue({ repository: "acme/demo" });
+      mocks.generateExplainerVideo.mockImplementation(
+        async (params: RunParams) => {
+          await params.onPaidWork();
+          return {
+            repository: "acme/demo",
+            focus: { text: "x", key: "0123456789abcdef" },
+          };
+        },
+      );
+      const { events } = await run(request(undefined, {}, { focus }));
+      expect(events.at(-1)).toMatchObject({ status: "complete" });
+      expect(mocks.generateExplainerVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          focus: "the retry loop that mints tokens",
+        }),
+      );
+      const [lock] = mocks.tryVideoLock.mock.calls[0]!;
+      expect(lock).toMatch(/^generate:acme\/demo:focus-[0-9a-f]{16}$/);
+      expect(mocks.refreshVideoPages).not.toHaveBeenCalled();
+      expect(mocks.remakePosterRemotely).not.toHaveBeenCalled();
+    });
+
+    it("is refused to anyone but the operator", async () => {
+      const { response } = await run(request(undefined, {}, { focus }));
+      expect(response.status).toBe(403);
+      expect(mocks.reserveVideoSlot).not.toHaveBeenCalled();
+      expect(mocks.generateExplainerVideo).not.toHaveBeenCalled();
+    });
+
+    it("is refused past its length limit, not cut short", async () => {
+      mocks.verifyAdminRequest.mockResolvedValue(true);
+      const { response } = await run(
+        request(undefined, {}, { focus: "a".repeat(281) }),
+      );
+      expect(response.status).toBe(400);
+      expect(mocks.generateExplainerVideo).not.toHaveBeenCalled();
+    });
+
+    it("leaves a run without one exactly as before", async () => {
+      mocks.verifyAdminRequest.mockResolvedValue(true);
+      succeed();
+      await run();
+      expect(mocks.generateExplainerVideo.mock.calls[0]![0]).not.toHaveProperty(
+        "focus",
+      );
+      expect(mocks.tryVideoLock.mock.calls[0]![0]).toBe("generate:acme/demo");
+    });
+  });
+
   it("refunds the reservation when the repository's lock is already held", async () => {
     mocks.tryVideoLock.mockResolvedValue(null);
     const { response, text } = await run();

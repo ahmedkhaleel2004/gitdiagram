@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   narrateBeats: vi.fn(),
   writeVideo: vi.fn(),
   pictureIds: ["img1", "img2"],
+  writerOptions: undefined as unknown,
 }));
 
 vi.mock("./repository", () => ({
@@ -16,15 +17,18 @@ vi.mock("./repository", () => ({
 }));
 vi.mock("./director", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  createFilmWriters: () => ({
-    model: "claude-opus-5-5",
-    usage: { calls: 1, inputTokens: 1, outputTokens: 1, costUsd: 0.1 },
-    direct: mocks.direct,
-    design: mocks.design,
-    get pictureIds() {
-      return mocks.pictureIds;
-    },
-  }),
+  createFilmWriters: (_input: unknown, _planner: unknown, options: unknown) => {
+    mocks.writerOptions = options;
+    return {
+      model: "claude-opus-5-5",
+      usage: { calls: 1, inputTokens: 1, outputTokens: 1, costUsd: 0.1 },
+      direct: mocks.direct,
+      design: mocks.design,
+      get pictureIds() {
+        return mocks.pictureIds;
+      },
+    };
+  },
 }));
 vi.mock("./narration", () => ({ narrateBeats: mocks.narrateBeats }));
 vi.mock("./store", () => ({ writeVideo: mocks.writeVideo }));
@@ -160,6 +164,33 @@ describe("generateExplainerVideo", () => {
     ]);
   });
 
+  it("hands a focus to the director and keeps the focused film apart", async () => {
+    mocks.readRepositoryForVideo.mockResolvedValue({
+      meta: {},
+      prompt: {},
+      facts: { name: "b", paths: [], sourceText: "", images: ["img1"] },
+      sourceFileCount: 3,
+      pictures: [picture("img1")],
+    });
+    mocks.pictureIds = ["img1"];
+    mocks.design.mockResolvedValue(new Map([[0, showing("img1")]]));
+    await generateExplainerVideo({
+      username: "a",
+      repo: "b",
+      focus: "the retry loop",
+      onEvent: () => undefined,
+    });
+    expect(mocks.writerOptions).toMatchObject({ focus: "the retry loop" });
+    const [artifact] = mocks.writeVideo.mock.calls[0]! as [VideoArtifact];
+    expect(artifact.focus).toEqual({
+      text: "the retry loop",
+      key: expect.stringMatching(/^[0-9a-f]{16}$/),
+    });
+    expect(artifact.plan.images!.img1).toBe(
+      `/api/video/file?username=a&repo=b&format=picture&id=img1&v=${encodeURIComponent(artifact.createdAt)}&focus=${artifact.focus!.key}`,
+    );
+  });
+
   it("stores no pictures when the film shows none", async () => {
     mocks.design.mockResolvedValue(new Map());
     await generateExplainerVideo({
@@ -174,6 +205,8 @@ describe("generateExplainerVideo", () => {
     ];
     expect(stored).toEqual([]);
     expect(artifact.plan.images).toBeUndefined();
+    expect(artifact).not.toHaveProperty("focus");
+    expect(mocks.writerOptions).not.toHaveProperty("focus");
     expect(artifact.plan.beats).toHaveLength(3);
   });
 

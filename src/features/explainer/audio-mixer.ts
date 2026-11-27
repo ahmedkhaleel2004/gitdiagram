@@ -25,6 +25,7 @@ function voiceClipUrl(artifact: VideoArtifact, index: number): string {
     beat: String(index),
     v: artifact.createdAt,
   });
+  if (artifact.focus) params.set("focus", artifact.focus.key);
   return `/api/video/audio?${params.toString()}`;
 }
 

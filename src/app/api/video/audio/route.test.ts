@@ -47,13 +47,38 @@ describe("GET /api/video/audio", () => {
     expect(Buffer.from(await response.arrayBuffer()).toString()).toBe(
       "mp3 bytes",
     );
-    expect(mocks.readVoiceClip).toHaveBeenCalledWith("acme", "widget", v, 0);
+    expect(mocks.readVoiceClip).toHaveBeenCalledWith(
+      "acme",
+      "widget",
+      v,
+      0,
+      undefined,
+    );
   });
 
   it("still serves an older video's later clips", async () => {
     mocks.readVoiceClip.mockResolvedValue(Buffer.from("mp3"));
     expect((await get({ beat: "5" })).status).toBe(200);
-    expect(mocks.readVoiceClip).toHaveBeenCalledWith("acme", "widget", v, 5);
+    expect(mocks.readVoiceClip).toHaveBeenCalledWith(
+      "acme",
+      "widget",
+      v,
+      5,
+      undefined,
+    );
+  });
+
+  it("reads a focused film's clip from that film's own folder", async () => {
+    mocks.readVoiceClip.mockResolvedValue(Buffer.from("mp3"));
+    expect((await get({ focus: "0123456789abcdef" })).status).toBe(200);
+    expect(mocks.readVoiceClip).toHaveBeenCalledWith(
+      "acme",
+      "widget",
+      v,
+      0,
+      "0123456789abcdef",
+    );
+    expect((await get({ focus: "../other" })).status).toBe(400);
   });
 
   it("answers 404 for a clip that is not stored", async () => {

@@ -209,6 +209,11 @@ export type VideoArtifact = {
   /** Version 1 (the template engine) is retired; only shot plans remain. */
   version: 2;
   plan: ShotPlan;
+  /**
+   * The part of the repository an operator asked this film to follow, and
+   * the key its files are stored under, apart from the repository's own film.
+   */
+  focus?: { text: string; key: string };
 };
 
 export type VideoGenerationStage =

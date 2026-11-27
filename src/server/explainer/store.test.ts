@@ -43,7 +43,12 @@ vi.mock("~/server/storage/r2", () => ({
 }));
 
 import type { VideoArtifact } from "~/features/explainer/types";
-import { staleVideoKeys, videoVersion, writeVideo } from "./store";
+import {
+  readVideoArtifact,
+  staleVideoKeys,
+  videoVersion,
+  writeVideo,
+} from "./store";
 
 const artifact = {
   createdAt: "2026-09-24T08:06:45.297Z",
@@ -146,6 +151,31 @@ describe("explainer video storage", () => {
       "list",
       `delete ${root}/1780000000000/beat-00.mp3`,
     ]);
+  });
+
+  it("stores a focused film in its own folder, never as the repository's film", async () => {
+    process.env.VIDEO_STORE = "r2";
+    process.env.R2_PUBLIC_BUCKET = "bucket";
+    const focused = {
+      ...artifact,
+      focus: { text: "the retry loop", key: "0123456789abcdef" },
+    } as VideoArtifact;
+    const own = `${root}/focus-0123456789abcdef`;
+    await writeVideo(focused, [Buffer.from("clip")]);
+    expect(mocks.calls).toEqual([
+      `get ${own}/artifact.json`,
+      `put ${own}/1790237205297/beat-00.mp3`,
+      `put ${own}/artifact.json`,
+      // Never in the gallery, the sitemap or search engines' queue.
+      "list",
+    ]);
+    // The repository's own film reads, and prunes, only its own files.
+    mocks.calls.length = 0;
+    expect(await readVideoArtifact("acme", "widget")).toBeNull();
+    expect(mocks.calls).toEqual([`get ${root}/artifact.json`]);
+    expect(
+      staleVideoKeys([`${own}/1780000000000/beat-00.mp3`], artifact, null),
+    ).toEqual([]);
   });
 
   it("prunes no older version when the published one cannot be read", async () => {

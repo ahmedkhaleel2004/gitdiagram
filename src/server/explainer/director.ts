@@ -22,7 +22,7 @@ import {
   type Script,
 } from "./script";
 import {
-  DIRECTOR_TASK,
+  directorTask,
   SHOT_SYSTEM,
   designerTask,
   repositoryContext,
@@ -460,6 +460,8 @@ export function createFilmWriters(
     images?: FilmImage[];
     /** A different system prompt, for experiments. */
     system?: string;
+    /** One part of the repository for the film to follow (see focus.ts). */
+    focus?: string;
   } = {},
 ) {
   let director: Role = { model: planner.model, effort: planner.effort };
@@ -600,7 +602,7 @@ export function createFilmWriters(
         signal,
         mayCall,
       );
-    const script = await write(DIRECTOR_TASK);
+    const script = await write(directorTask(options.focus));
     const words = scriptWordCount(script);
     if (words <= SCRIPT_WORD_LIMIT && script.beats.length <= MAX_BEATS)
       return script;

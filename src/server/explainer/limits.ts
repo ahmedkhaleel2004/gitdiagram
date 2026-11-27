@@ -589,9 +589,13 @@ export function tryVideoLock(
   });
 }
 
-/** The lock a repository's video generation holds while it runs. */
-export const generationLockName = (username: string, repo: string) =>
-  `generate:${username}/${repo}`.toLowerCase();
+/** The lock a repository's video generation (or a focused film's) holds while it runs. */
+export const generationLockName = (
+  username: string,
+  repo: string,
+  focus?: string,
+) =>
+  `generate:${username}/${repo}${focus ? `:focus-${focus}` : ""}`.toLowerCase();
 
 /** Whether someone holds the lock right now. False when Redis cannot say. */
 export async function isVideoLockHeld(name: string): Promise<boolean> {

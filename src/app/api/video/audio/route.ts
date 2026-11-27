@@ -6,6 +6,7 @@ import {
 } from "~/server/generate/types";
 import { jsonErrorResponse } from "~/server/http/same-origin-json";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
+import { FOCUS_KEY } from "~/server/explainer/focus";
 import { readVoiceClip } from "~/server/explainer/store";
 
 export const runtime = "nodejs";
@@ -21,6 +22,8 @@ const querySchema = z.object({
   beat: z.coerce.number().int().min(0).max(31),
   // The video's createdAt: clips live under their video's version folder.
   v: z.iso.datetime(),
+  // A focused film's key: its clips live in its own folder (see focus.ts).
+  focus: z.string().regex(FOCUS_KEY).optional(),
 });
 
 export async function GET(request: Request): Promise<Response> {
@@ -32,6 +35,7 @@ export async function GET(request: Request): Promise<Response> {
     repo: url.searchParams.get("repo"),
     beat: url.searchParams.get("beat"),
     v: url.searchParams.get("v"),
+    focus: url.searchParams.get("focus") ?? undefined,
   });
   if (!parsed.success)
     return jsonErrorResponse("Invalid narration request.", 400);
@@ -40,6 +44,7 @@ export async function GET(request: Request): Promise<Response> {
     parsed.data.repo,
     parsed.data.v,
     parsed.data.beat,
+    parsed.data.focus,
   );
   if (!clip) return jsonErrorResponse("Narration not found.", 404);
   return new Response(new Uint8Array(clip), {

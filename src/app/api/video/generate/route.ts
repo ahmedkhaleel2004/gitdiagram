@@ -28,6 +28,7 @@ import {
   isVideoExplainerEnabled,
 } from "~/server/explainer/config";
 import { VideoRefusalError } from "~/server/explainer/director";
+import { focusKey, focusSchema } from "~/server/explainer/focus";
 import { reportHeldBack } from "~/server/explainer/gate-notice";
 import { generateExplainerVideo } from "~/server/explainer/generate";
 import {
@@ -90,6 +91,8 @@ const requestSchema = z.strictObject({
   repo: githubRepoSchema,
   /** A paid checkout's session id: the run skips the free rules. */
   paid: z.string().regex(PAID_SESSION).optional(),
+  /** One part of the repository for the film to follow (operator only). */
+  focus: focusSchema.optional(),
 });
 
 const UNAVAILABLE_MESSAGE =
@@ -156,7 +159,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     return jsonErrorResponse("Explainer videos are not enabled.", 404);
   const parsed = await parseSameOriginJsonRequest(request, {
     schema: requestSchema,
-    maxBytes: 1024,
+    maxBytes: 4096,
     crossOriginError: "Video generation must come from GitDiagram.",
   });
   if (!parsed.success) return parsed.response;
@@ -167,6 +170,14 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   // Only the operator (or anyone, locally) skips the limits, and only they may
   // replace a video: once made, a video is everyone's.
   const trusted = await isTrustedVideoCaller(request);
+  // A focused film is the operator's alone: it is stored apart from the
+  // repository's film and never sold, listed or counted (see focus.ts).
+  const { focus } = parsed.data;
+  if (focus && !trusted)
+    return jsonErrorResponse(
+      "Only the operator may make a focused video.",
+      403,
+    );
   // A payer skips every free rule (see payments.ts). Their payment is claimed
   // first, and given back whenever the run does not go ahead or fails.
   const paidSession = trusted ? undefined : parsed.data.paid;
@@ -283,7 +294,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
     }
     if (production) {
       releaseLock = await tryVideoLock(
-        generationLockName(username, repo),
+        generationLockName(username, repo, focus && focusKey(focus)),
         RUN_TTL_MS,
       );
       if (!releaseLock)
@@ -392,6 +403,7 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
       job = generateExplainerVideo({
         username,
         repo,
+        ...(focus ? { focus } : {}),
         onEvent,
         // Paid runs at once are capped, and a run only takes its place here,
         // once it has read the repository, so runs that fail before any
@@ -506,7 +518,8 @@ async function generate(request: Request, visitor: Visitor): Promise<Response> {
   async function settle() {
     await job;
     const artifact = stored;
-    if (!artifact) return;
+    // A focused film has no watch page or poster of its own.
+    if (!artifact || artifact.focus) return;
     refreshVideoPages(username, repo);
     const left = FUNCTION_BUDGET_MS - (Date.now() - requestStartedAt);
     if (left < MIN_POSTER_MS) {
