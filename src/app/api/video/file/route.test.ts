@@ -101,12 +101,49 @@ describe("GET /api/video/file", () => {
     expect(found.status).toBe(200);
     expect(found.headers.get("content-type")).toBe("image/jpeg");
     expect(found.headers.get("cache-control")).toContain("immutable");
-    expect(mocks.readPicture).toHaveBeenCalledWith("acme", "widget", v, "img2");
+    expect(mocks.readPicture).toHaveBeenCalledWith(
+      "acme",
+      "widget",
+      v,
+      "img2",
+      undefined,
+    );
     expect((await get({ format: "picture", id: "../x" })).status).toBe(400);
     mocks.readPicture.mockResolvedValue(Buffer.from("<svg onload=alert(1)>"));
     expect((await get({ format: "picture", id: "img1" })).status).toBe(404);
     mocks.readPicture.mockResolvedValue(null);
     expect((await get({ format: "picture", id: "img1" })).status).toBe(404);
+  });
+
+  it("reads a focused film's picture from that film's own folder", async () => {
+    const jpeg = Buffer.alloc(40);
+    jpeg.set([0xff, 0xd8, 0xff, 0xc0, 0, 17, 8, 2, 88, 3, 32]);
+    mocks.readPicture.mockResolvedValue(jpeg);
+    const focus = "0123456789abcdef";
+    const found = await get({ format: "picture", id: "img2", focus });
+    expect(found.status).toBe(200);
+    expect(mocks.readPicture).toHaveBeenCalledWith(
+      "acme",
+      "widget",
+      v,
+      "img2",
+      focus,
+    );
+    expect(
+      (await get({ format: "picture", id: "img2", focus: "x" })).status,
+    ).toBe(400);
+  });
+
+  it("finds a focused film's MP4 in that film's own folder", async () => {
+    mocks.renderDownloadUrl.mockResolvedValue("https://r2.example/signed");
+    mocks.hasRender.mockResolvedValue(true);
+    const focus = "0123456789abcdef";
+    expect((await get({ format: "landscape", focus })).status).toBe(302);
+    expect(mocks.readVideoArtifact).toHaveBeenCalledWith(
+      "acme",
+      "widget",
+      focus,
+    );
   });
 
   it("never caches an MP4 streamed from local storage", async () => {

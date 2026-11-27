@@ -5,6 +5,7 @@ import type {
   VideoGenerationEvent,
 } from "~/features/explainer/types";
 import { createFilmWriters, designGroups, type Planner } from "./director";
+import { focusKey } from "./focus";
 import { narrateBeats } from "./narration";
 import { premiumPlanner } from "./planner";
 import { readRepositoryForVideo } from "./repository";
@@ -28,10 +29,13 @@ export async function generateExplainerVideo({
   onEvent,
   onPaidWork,
   choosePlanner,
+  focus,
   signal: deadline,
 }: {
   username: string;
   repo: string;
+  /** One part of the repository to follow (normalised; see focus.ts). */
+  focus?: string;
   onEvent: (event: VideoGenerationEvent) => void;
   onPaidWork?: () => void | Promise<void>;
   choosePlanner?: (repository: { stars: number }) => Promise<Planner>;
@@ -57,6 +61,7 @@ export async function generateExplainerVideo({
   // while the narration is recorded, since the voice only needs the words.
   const writers = createFilmWriters(repository.prompt, planner, {
     images: repository.pictures,
+    ...(focus ? { focus } : {}),
   });
   onEvent({
     status: "planning",
@@ -121,6 +126,7 @@ export async function generateExplainerVideo({
 
   onEvent({ status: "saving", elapsedMs: elapsedMs() });
   const createdAt = new Date().toISOString();
+  const filmFocus = focus ? { text: focus, key: focusKey(focus) } : undefined;
   // Only pictures the film shows are stored, beside its narration.
   const shown = new Set(
     plan.beats.flatMap((beat) =>
@@ -134,7 +140,7 @@ export async function generateExplainerVideo({
     plan.images = Object.fromEntries(
       pictures.map((picture) => [
         picture.id,
-        `/api/video/file?${new URLSearchParams({ username, repo, format: "picture", id: picture.id, v: createdAt })}`,
+        `/api/video/file?${new URLSearchParams({ username, repo, format: "picture", id: picture.id, v: createdAt, ...(filmFocus ? { focus: filmFocus.key } : {}) })}`,
       ]),
     );
   const artifact: VideoArtifact = {
@@ -160,6 +166,7 @@ export async function generateExplainerVideo({
       voice: narration.voice,
       warnings,
     },
+    ...(filmFocus ? { focus: filmFocus } : {}),
   };
   artifact.stats.totalMs = elapsedMs();
   await writeVideo(artifact, narration.clips, pictures);
@@ -167,6 +174,7 @@ export async function generateExplainerVideo({
     JSON.stringify({
       event: "video.generated",
       repository: artifact.repository,
+      focus: filmFocus?.key,
       totalMs: artifact.stats.totalMs,
       readMs,
       planMs,

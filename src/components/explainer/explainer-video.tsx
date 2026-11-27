@@ -18,7 +18,10 @@ import {
   useVideoRun,
   type VideoRun,
 } from "~/features/explainer/runs";
-import type { VideoGenerationStage } from "~/features/explainer/types";
+import type {
+  VideoArtifact,
+  VideoGenerationStage,
+} from "~/features/explainer/types";
 import { useAdminTools } from "~/features/admin/tools";
 import { modelLabel, modelLabels } from "~/features/explainer/model-label";
 import { ActivityMark } from "~/components/generation/activity-mark";
@@ -188,6 +191,30 @@ function PlayerSkeleton() {
           <span className={styles.shimmer}>Loading video</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A focused film (one part of a repository, made by the operator): already
+ * stored, so it only plays and downloads; it is never made or replaced here.
+ */
+export function FocusedExplainerVideo({ video }: { video: VideoArtifact }) {
+  const position = useRef(0);
+  const onTime = useCallback((time: number) => {
+    position.current = time;
+  }, []);
+  return (
+    <div className={`${styles.panel} ${styles.enter}`}>
+      <ExplainerPlayer artifact={video} onTime={onTime} />
+      <div className={styles.meta}>
+        <span>Follows: {video.focus?.text}</span>
+        <span>
+          {new Set(video.plan.beats.map((beat) => beat.scene)).size} scenes ·{" "}
+          {Math.round(video.timing.DURATION)}s
+        </span>
+      </div>
+      <ExplainerShare video={video} position={() => position.current} />
     </div>
   );
 }

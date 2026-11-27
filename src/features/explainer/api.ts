@@ -221,7 +221,10 @@ export async function streamExplainerRender(
   version: string,
   onEvent: (event: VideoRenderEvent) => void,
   signal?: AbortSignal,
-  { askAgainMs = RENDER_ASK_AGAIN_MS }: { askAgainMs?: number } = {},
+  {
+    askAgainMs = RENDER_ASK_AGAIN_MS,
+    focus,
+  }: { askAgainMs?: number; focus?: string } = {},
 ): Promise<void> {
   const started = Date.now();
   let unavailable = 0;
@@ -229,7 +232,7 @@ export async function streamExplainerRender(
     try {
       return await streamEvents(
         "/api/video/render",
-        { username, repo, format, v: version },
+        { username, repo, format, v: version, ...(focus ? { focus } : {}) },
         onEvent,
         "Could not make the MP4.",
         signal,
@@ -268,6 +271,7 @@ export function renderFileUrl(
       repo: video.meta.repo,
       createdAt: video.createdAt,
       posterAt,
+      focus: video.focus?.key,
     },
     format,
   );
@@ -276,4 +280,13 @@ export function renderFileUrl(
 /** The shareable watch page for a repository's video. */
 export function watchPath(username: string, repo: string): string {
   return `/${username.toLowerCase()}/${repo.toLowerCase()}/video`;
+}
+
+/** The watch page of a focused film (never listed or indexed). */
+export function focusedWatchPath(
+  username: string,
+  repo: string,
+  focus: string,
+): string {
+  return `${watchPath(username, repo)}/focus/${focus}`;
 }

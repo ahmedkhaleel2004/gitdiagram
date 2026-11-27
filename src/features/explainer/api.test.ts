@@ -2,11 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchExplainerVideo,
+  focusedWatchPath,
+  renderFileUrl,
   streamExplainerRender,
   streamExplainerVideo,
   VideoRequestError,
   VideoStreamEndedError,
 } from "~/features/explainer/api";
+import type { VideoArtifact } from "~/features/explainer/types";
 
 const encoder = new TextEncoder();
 
@@ -86,6 +89,44 @@ describe("explainer video streams", () => {
       format: "vertical",
       v: "2026-09-24T00:00:00.000Z",
     });
+  });
+});
+
+describe("a focused film's MP4", () => {
+  it("names the film's key in the render request and its download", async () => {
+    const fetchMock = vi.fn(async () => sse('data: {"status":"complete"}\n\n'));
+    vi.stubGlobal("fetch", fetchMock);
+    await streamExplainerRender(
+      "acme",
+      "tiny",
+      "landscape",
+      "2026-09-24T00:00:00.000Z",
+      () => undefined,
+      undefined,
+      { focus: "0123456789abcdef" },
+    );
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(JSON.parse(init.body as string)).toEqual({
+      username: "acme",
+      repo: "tiny",
+      format: "landscape",
+      v: "2026-09-24T00:00:00.000Z",
+      focus: "0123456789abcdef",
+    });
+    const video = {
+      createdAt: "2026-09-24T00:00:00.000Z",
+      meta: { owner: "acme", repo: "tiny" },
+      focus: { text: "x", key: "0123456789abcdef" },
+    } as unknown as VideoArtifact;
+    expect(renderFileUrl(video, "landscape")).toBe(
+      "/api/video/file?username=acme&repo=tiny&format=landscape&v=2026-09-24T00%3A00%3A00.000Z&focus=0123456789abcdef",
+    );
+    expect(focusedWatchPath("Acme", "Tiny", "0123456789abcdef")).toBe(
+      "/acme/tiny/video/focus/0123456789abcdef",
+    );
   });
 });
 

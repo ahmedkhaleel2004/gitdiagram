@@ -58,6 +58,7 @@ export type SegmentJob = {
   to: number;
   exp: number;
   edit?: unknown;
+  focus?: string;
 };
 
 export function parseSegmentJob(body: string): SegmentJob | null {
@@ -118,6 +119,7 @@ export async function segmentSignature(
     job.to,
     job.exp,
     ...(job.edit ? [job.edit] : []),
+    ...(job.focus ? [`focus:${job.focus}`] : []),
   ]);
   return hex(await hmac(key, payload));
 }

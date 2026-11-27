@@ -10,6 +10,7 @@
 //   node scripts/video-pipeline-test.mjs renders 3 --raw      ...one request each, no asking again when a stream is cut
 //   node scripts/video-pipeline-test.mjs stream owner/repo landscape   one render, every event timed
 //   node scripts/video-pipeline-test.mjs generate owner/repo [--abort s]   a real video (paid model calls)
+//   node scripts/video-pipeline-test.mjs generate owner/repo --focus "brief"   ...following one part of it (kept apart from its video)
 //   node scripts/video-pipeline-test.mjs generations 5 owner/repo   staging: 5 generations of one repository at once
 //                                                 (free with scripts/video-model-replay.mjs answering the model calls)
 //   node scripts/video-pipeline-test.mjs cancel owner/repo     staging: do abandoned segment renders free their Chromiums?
@@ -639,9 +640,15 @@ switch (command) {
     });
     break;
   }
-  case "generate":
-    await streamOne("/api/video/generate", { username, repo });
+  case "generate": {
+    const focus = flag("focus");
+    await streamOne("/api/video/generate", {
+      username,
+      repo,
+      ...(focus === undefined ? {} : { focus }),
+    });
     break;
+  }
   case "generations":
     await generations();
     break;

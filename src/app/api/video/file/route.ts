@@ -8,6 +8,7 @@ import { PICTURE_ID } from "~/features/explainer/types";
 import { jsonErrorResponse } from "~/server/http/same-origin-json";
 import { videoResponseTag } from "~/server/explainer/cache";
 import { isVideoExplainerEnabled } from "~/server/explainer/config";
+import { FOCUS_KEY } from "~/server/explainer/focus";
 import { probePicture } from "~/server/explainer/readme-images";
 import {
   hasRender,
@@ -29,6 +30,8 @@ const querySchema = z.object({
   format: z.enum(["landscape", "vertical", "poster", "still", "picture"]),
   // A README picture the film shows (format "picture").
   id: z.string().regex(PICTURE_ID).optional(),
+  // A focused film's key, for its pictures (see focus.ts).
+  focus: z.string().regex(FOCUS_KEY).optional(),
   // The video's createdAt: renders live under their video's version folder.
   // Only a poster may leave it out, for the latest video's poster (a README
   // picture that must keep working when the video is made again).
@@ -63,13 +66,14 @@ export async function GET(request: Request): Promise<Response> {
     Object.fromEntries(url.searchParams.entries()),
   );
   if (!parsed.success) return jsonErrorResponse("Invalid file request.", 400);
-  const { username, repo, format, v, p, id } = parsed.data;
+  const { username, repo, format, v, p, id, focus } = parsed.data;
   const latest = !v;
   if (latest && format !== "poster")
     return jsonErrorResponse("Invalid file request.", 400);
   if (format === "picture") {
     // Named by the video version, so the bytes behind a URL never change.
-    const body = id && v ? await readPicture(username, repo, v, id) : null;
+    const body =
+      id && v ? await readPicture(username, repo, v, id, focus) : null;
     // Its type comes from its own bytes, checked when it was stored.
     const picture = body && probePicture(body);
     if (!body || !picture)
@@ -83,7 +87,7 @@ export async function GET(request: Request): Promise<Response> {
       },
     });
   }
-  const artifact = await readVideoArtifact(username, repo);
+  const artifact = await readVideoArtifact(username, repo, focus);
   if (!artifact) return jsonErrorResponse("This video does not exist.", 404);
   const version = { ...artifact, createdAt: v ?? artifact.createdAt };
   const name = FILES[format];

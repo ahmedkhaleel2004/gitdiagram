@@ -5,11 +5,20 @@ import Link from "next/link";
 import { ArrowRight, ExternalLink } from "lucide-react";
 import controls from "~/components/generation/workspace.module.css";
 import styles from "~/components/explainer/explainer-video.module.css";
+import type { VideoArtifact } from "~/features/explainer/types";
 
 const ExplainerVideo = dynamic(
   () =>
     import("~/components/explainer/explainer-video").then(
       (module) => module.ExplainerVideo,
+    ),
+  { ssr: false, loading: () => <div className={styles.panel} /> },
+);
+
+const FocusedExplainerVideo = dynamic(
+  () =>
+    import("~/components/explainer/explainer-video").then(
+      (module) => module.FocusedExplainerVideo,
     ),
   { ssr: false, loading: () => <div className={styles.panel} /> },
 );
@@ -22,9 +31,12 @@ const ExplainerVideo = dynamic(
 export default function VideoWatchPageClient({
   username,
   repo,
+  video,
 }: {
   username: string;
   repo: string;
+  /** A focused film, read by the page: it is played as it is. */
+  video?: VideoArtifact;
 }) {
   return (
     <main className={`${controls.workspace} ${styles.watch}`}>
@@ -32,9 +44,15 @@ export default function VideoWatchPageClient({
         <h1 className={styles.watchTitle}>
           {username}/<strong>{repo}</strong>
         </h1>
-        <p className={styles.watchSub}>explained in about a minute</p>
+        <p className={styles.watchSub}>
+          {video ? "one part, explained" : "explained in about a minute"}
+        </p>
       </header>
-      <ExplainerVideo username={username} repo={repo} />
+      {video ? (
+        <FocusedExplainerVideo video={video} />
+      ) : (
+        <ExplainerVideo username={username} repo={repo} />
+      )}
       <nav
         className={styles.watchLinks}
         aria-label="More about this repository"

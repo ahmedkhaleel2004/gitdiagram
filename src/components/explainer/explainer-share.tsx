@@ -12,6 +12,7 @@ import {
   MessageSquareHeart,
 } from "lucide-react";
 import {
+  focusedWatchPath,
   renderFileUrl,
   streamExplainerRender,
   VideoRequestError,
@@ -79,7 +80,10 @@ export function ExplainerShare({
   const render = useRef<AbortController | null>(null);
   const copyTimer = useRef<number | undefined>(undefined);
   // Copied links point at the live site, even from a preview or localhost.
-  const url = `${SITE_URL}${watchPath(owner, repo)}`;
+  // A focused film has its own page, and no README badge or picture: those
+  // show the repository's own film.
+  const focus = video.focus?.key;
+  const url = `${SITE_URL}${focus ? focusedWatchPath(owner, repo, focus) : watchPath(owner, repo)}`;
   const canShare = typeof navigator.share === "function";
 
   // Leaving the video stops waiting for its MP4 (and its download).
@@ -115,6 +119,7 @@ export function ExplainerShare({
           else throw new Error(event.error);
         },
         controller.signal,
+        ...(focus ? [{ focus }] : []),
       );
       if (!finished) throw new Error(RENDER_FAILED);
       if (!controller.signal.aborted)
@@ -206,33 +211,37 @@ export function ExplainerShare({
             {copied === "link" ? "Link copied" : "Copy link"}
           </button>
         )}
-        <button
-          type="button"
-          className={controls.actionButton}
-          onClick={() => void copy(badge, "badge")}
-          title="Markdown for a README badge that opens this video"
-        >
-          {copied === "badge" ? (
-            <Check size={15} aria-hidden="true" />
-          ) : (
-            <Code2 size={15} aria-hidden="true" />
-          )}
-          {copied === "badge" ? "Badge copied" : "README badge"}
-        </button>
-        <button
-          type="button"
-          className={controls.actionButton}
-          onClick={() => void copy(picture, "picture")}
-          title="Markdown for a README picture that opens this video"
-        >
-          {copied === "picture" ? (
-            <Check size={15} aria-hidden="true" />
-          ) : (
-            <ImageIcon size={15} aria-hidden="true" />
-          )}
-          {copied === "picture" ? "Picture copied" : "README picture"}
-        </button>
-        {canFeedback && (
+        {!focus && (
+          <>
+            <button
+              type="button"
+              className={controls.actionButton}
+              onClick={() => void copy(badge, "badge")}
+              title="Markdown for a README badge that opens this video"
+            >
+              {copied === "badge" ? (
+                <Check size={15} aria-hidden="true" />
+              ) : (
+                <Code2 size={15} aria-hidden="true" />
+              )}
+              {copied === "badge" ? "Badge copied" : "README badge"}
+            </button>
+            <button
+              type="button"
+              className={controls.actionButton}
+              onClick={() => void copy(picture, "picture")}
+              title="Markdown for a README picture that opens this video"
+            >
+              {copied === "picture" ? (
+                <Check size={15} aria-hidden="true" />
+              ) : (
+                <ImageIcon size={15} aria-hidden="true" />
+              )}
+              {copied === "picture" ? "Picture copied" : "README picture"}
+            </button>
+          </>
+        )}
+        {canFeedback && !focus && (
           <button
             type="button"
             className={`${controls.actionButton} ${feedbackStyles.button}`}

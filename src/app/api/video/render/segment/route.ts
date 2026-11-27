@@ -85,7 +85,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   };
   try {
-    const artifact = await readVideoArtifact(job.username, job.repo);
+    const artifact = await readVideoArtifact(job.username, job.repo, job.focus);
     if (!artifact || artifact.createdAt !== job.v) {
       release();
       return jsonErrorResponse("This video version no longer exists.", 409);

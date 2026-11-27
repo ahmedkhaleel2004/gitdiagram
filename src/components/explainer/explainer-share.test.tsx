@@ -122,6 +122,56 @@ describe("ExplainerShare MP4 downloads", () => {
   });
 });
 
+describe("ExplainerShare for a focused film", () => {
+  const focused = {
+    ...video,
+    focus: { text: "the retry loop", key: "0123456789abcdef" },
+  } as VideoArtifact;
+
+  it("renders and downloads that film's own MP4", async () => {
+    api.streamExplainerRender.mockImplementation(
+      async (_o, _r, _f, _v, onEvent: (event: unknown) => void) =>
+        onEvent({ status: "complete" }),
+    );
+    render(<ExplainerShare video={focused} />);
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Download MP4" })),
+    );
+    expect(api.streamExplainerRender).toHaveBeenCalledWith(
+      "acme",
+      "tiny",
+      "landscape",
+      "2026-09-24T00:00:00.000Z",
+      expect.any(Function),
+      expect.any(AbortSignal),
+      { focus: "0123456789abcdef" },
+    );
+    expect(clicked).toEqual([
+      "/api/video/file?username=acme&repo=tiny&format=landscape&v=2026-09-24T00%3A00%3A00.000Z&focus=0123456789abcdef",
+    ]);
+  });
+
+  it("links to its own page and offers no README badge or picture of the repository's film", async () => {
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    try {
+      render(<ExplainerShare video={focused} />);
+      await act(async () =>
+        fireEvent.click(screen.getByRole("button", { name: "Copy link" })),
+      );
+      expect(writeText.mock.calls).toEqual([
+        ["https://gitdiagram.com/acme/tiny/video/focus/0123456789abcdef"],
+      ]);
+      expect(screen.queryByRole("button", { name: "README badge" })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "README picture" }),
+      ).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("ExplainerShare links", () => {
   it("copies links to the live site, wherever the page is open", async () => {
     const writeText = vi.fn(async () => undefined);

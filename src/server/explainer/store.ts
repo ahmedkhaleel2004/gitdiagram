@@ -40,8 +40,13 @@ import { indexVideo } from "./video-index";
 // deleted (see pruneVideoFiles).
 const segment = (value: string) =>
   encodeURIComponent(value.trim().toLowerCase());
-const prefix = (username: string, repo: string) =>
-  `video/v1/${segment(username)}/${segment(repo)}`;
+// A focused film (see focus.ts) lives in its own folder inside its
+// repository's: never at the repository's artifact key, and out of reach of
+// the repository's listing and pruning, which only look one level down.
+const prefix = (username: string, repo: string, focus?: string) =>
+  `video/v1/${segment(username)}/${segment(repo)}${focus ? `/focus-${segment(focus)}` : ""}`;
+const artifactPrefix = (artifact: VideoArtifact) =>
+  prefix(artifact.meta.owner, artifact.meta.repo, artifact.focus?.key);
 const clipName = (index: number) =>
   `beat-${String(index).padStart(2, "0")}.mp3`;
 const pictureName = (id: string) => `picture-${id}`;
@@ -68,11 +73,22 @@ function versionedKey(
   repo: string,
   createdAt: string,
   name: string,
+  focus?: string,
 ): string {
   const version = videoVersion(createdAt);
   if (!version) throw new Error("Invalid video version.");
-  return `${prefix(username, repo)}/${version}/${name}`;
+  return `${prefix(username, repo, focus)}/${version}/${name}`;
 }
+
+/** A file of this video's version. */
+const fileKey = (artifact: VideoArtifact, name: string) =>
+  versionedKey(
+    artifact.meta.owner,
+    artifact.meta.repo,
+    artifact.createdAt,
+    name,
+    artifact.focus?.key,
+  );
 
 /** Local disk in development so testing never writes production storage. */
 export function videoStoreBackend(): "local" | "r2" {
@@ -117,8 +133,9 @@ async function readObject(key: string): Promise<Buffer | null> {
 export async function readVideoArtifact(
   username: string,
   repo: string,
+  focus?: string,
 ): Promise<VideoArtifact | null> {
-  const key = `${prefix(username, repo)}/artifact.json`;
+  const key = `${prefix(username, repo, focus)}/artifact.json`;
   if (videoStoreBackend() === "local") {
     const body = await readLocal(key);
     return body ? (JSON.parse(body.toString("utf8")) as VideoArtifact) : null;
@@ -146,8 +163,11 @@ export async function readVoiceClip(
   repo: string,
   createdAt: string,
   index: number,
+  focus?: string,
 ): Promise<Buffer | null> {
-  return readObject(versionedKey(username, repo, createdAt, clipName(index)));
+  return readObject(
+    versionedKey(username, repo, createdAt, clipName(index), focus),
+  );
 }
 
 /** A README picture stored with a video (PNG, JPEG or WebP), by id. */
@@ -156,9 +176,12 @@ export async function readPicture(
   repo: string,
   createdAt: string,
   id: string,
+  focus?: string,
 ): Promise<Buffer | null> {
   if (!PICTURE_ID.test(id)) return null;
-  return readObject(versionedKey(username, repo, createdAt, pictureName(id)));
+  return readObject(
+    versionedKey(username, repo, createdAt, pictureName(id), focus),
+  );
 }
 
 /**
@@ -172,15 +195,14 @@ export async function writeVideo(
   pictures: Array<{ id: string; mediaType: string; bytes: Buffer }> = [],
 ) {
   const { owner, repo } = artifact.meta;
-  const clipKey = (index: number) =>
-    versionedKey(owner, repo, artifact.createdAt, clipName(index));
-  const pictureKey = (id: string) =>
-    versionedKey(owner, repo, artifact.createdAt, pictureName(id));
-  const artifactKey = `${prefix(owner, repo)}/artifact.json`;
+  const focus = artifact.focus?.key;
+  const clipKey = (index: number) => fileKey(artifact, clipName(index));
+  const pictureKey = (id: string) => fileKey(artifact, pictureName(id));
+  const artifactKey = `${artifactPrefix(artifact)}/artifact.json`;
   // The version this one replaces, read before it is overwritten: its files
   // stay, so tabs still showing it keep working. Null when there is none;
   // undefined when it cannot be read, and then no older folder is pruned.
-  const replaced = await readVideoArtifact(owner, repo).then(
+  const replaced = await readVideoArtifact(owner, repo, focus).then(
     (published) => (published ? videoVersion(published.createdAt) : null),
     () => undefined,
   );
@@ -200,11 +222,14 @@ export async function writeVideo(
       ),
     ]);
     await putJsonObject(bucket(), artifactKey, artifact);
-    await indexVideo(artifact);
-    // Best effort and never throws: search engines hear about the watch page.
-    void notifyIndexNow([
-      `${SITE_URL}/${owner.toLowerCase()}/${repo.toLowerCase()}/video`,
-    ]);
+    // A focused film has no watch page, gallery card or sitemap entry.
+    if (!focus) {
+      await indexVideo(artifact);
+      // Best effort and never throws: search engines hear about the watch page.
+      void notifyIndexNow([
+        `${SITE_URL}/${owner.toLowerCase()}/${repo.toLowerCase()}/video`,
+      ]);
+    }
   }
   await pruneVideoFiles(artifact, replaced);
 }
@@ -213,18 +238,14 @@ export async function readRender(
   artifact: VideoArtifact,
   name: RenderName,
 ): Promise<Buffer | null> {
-  const { owner, repo } = artifact.meta;
-  return readObject(
-    versionedKey(owner, repo, artifact.createdAt, renderFile(name)),
-  );
+  return readObject(fileKey(artifact, renderFile(name)));
 }
 
 export async function hasRender(
   artifact: VideoArtifact,
   name: RenderName,
 ): Promise<boolean> {
-  const { owner, repo } = artifact.meta;
-  const key = versionedKey(owner, repo, artifact.createdAt, renderFile(name));
+  const key = fileKey(artifact, renderFile(name));
   if (videoStoreBackend() === "local") {
     try {
       await stat(localPath(key));
@@ -245,8 +266,7 @@ export async function renderStamp(
   artifact: VideoArtifact,
   name: RenderName,
 ): Promise<number | null> {
-  const { owner, repo } = artifact.meta;
-  const key = versionedKey(owner, repo, artifact.createdAt, renderFile(name));
+  const key = fileKey(artifact, renderFile(name));
   if (videoStoreBackend() === "local") {
     const info = await stat(localPath(key)).catch(() => null);
     return info ? Math.round(info.mtimeMs) : null;
@@ -261,8 +281,7 @@ export async function writeRender(
   name: RenderName,
   body: Buffer,
 ) {
-  const { owner, repo } = artifact.meta;
-  const key = versionedKey(owner, repo, artifact.createdAt, renderFile(name));
+  const key = fileKey(artifact, renderFile(name));
   if (videoStoreBackend() === "local") await writeLocal(key, body);
   else
     await putBinaryObject(
@@ -291,7 +310,7 @@ export function staleVideoKeys(
 ): string[] {
   const version = videoVersion(artifact.createdAt);
   if (!version) return [];
-  const root = `${prefix(artifact.meta.owner, artifact.meta.repo)}/`;
+  const root = `${artifactPrefix(artifact)}/`;
   const engine = Number(ENGINE_VERSION);
   const files = keys.flatMap((key) => {
     if (!key.startsWith(root)) return [];
@@ -335,7 +354,7 @@ async function pruneVideoFiles(
   replaced?: string | null,
 ): Promise<number> {
   try {
-    const root = `${prefix(artifact.meta.owner, artifact.meta.repo)}/`;
+    const root = `${artifactPrefix(artifact)}/`;
     const stale = staleVideoKeys(await listVideoKeys(root), artifact, replaced);
     for (let index = 0; index < stale.length; index += 20)
       await Promise.all(
@@ -383,12 +402,10 @@ export async function renderDownloadUrl(
   filename: string,
 ): Promise<string | null> {
   if (videoStoreBackend() === "local") return null;
-  const { owner, repo } = artifact.meta;
-  return presignObjectDownload(
-    bucket(),
-    versionedKey(owner, repo, artifact.createdAt, renderFile(name)),
-    { filename, expiresInSeconds: 60 * 60 },
-  );
+  return presignObjectDownload(bucket(), fileKey(artifact, renderFile(name)), {
+    filename,
+    expiresInSeconds: 60 * 60,
+  });
 }
 
 /** Every repository with a stored video, newest first (for the sitemap). */

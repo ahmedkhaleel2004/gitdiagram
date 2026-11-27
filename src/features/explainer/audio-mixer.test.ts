@@ -139,6 +139,24 @@ afterEach(() => {
 });
 
 describe("ExplainerAudio", () => {
+  it("asks for a plain film's narration by repository and version", async () => {
+    await loaded();
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe(
+      "/api/video/audio?username=acme&repo=demo&beat=0&v=2026-09-25T00%3A00%3A00.000Z",
+    );
+  });
+
+  it("asks for a focused film's narration from that film's own folder", async () => {
+    const focused = {
+      ...artifact,
+      focus: { text: "the retry loop", key: "0123456789abcdef" },
+    } as VideoArtifact;
+    await new ExplainerAudio(focused, [], 2).load();
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe(
+      "/api/video/audio?username=acme&repo=demo&beat=0&v=2026-09-25T00%3A00%3A00.000Z&focus=0123456789abcdef",
+    );
+  });
+
   it("never runs the clock back before the point playback starts from", async () => {
     const { mixer, context } = await loaded();
     context.currentTime = 10;

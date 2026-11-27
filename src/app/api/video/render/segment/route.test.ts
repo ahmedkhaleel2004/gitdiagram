@@ -53,6 +53,7 @@ function request(overrides: Partial<SegmentJob> = {}, signal?: AbortSignal) {
         job.to,
         job.exp,
         ...(job.edit ? [job.edit] : []),
+        ...(job.focus ? [`focus:${job.focus}`] : []),
       ]),
     )
     .digest("hex");
@@ -103,6 +104,22 @@ describe("POST /api/video/render/segment", () => {
       events.filter((e) => e.type === "frames").map((e) => e.done),
     ).toEqual([10, 20, 25]);
     expect(events.at(-1)?.type).toBe("done");
+  });
+
+  it("draws a focused film from that film's own folder", async () => {
+    mocks.renderVideoSegment.mockResolvedValue(Buffer.from("mp4"));
+    await (await POST(request({ focus: "0123456789abcdef" }))).text();
+    expect(mocks.readVideoArtifact).toHaveBeenCalledWith(
+      "acme",
+      "widget",
+      "0123456789abcdef",
+    );
+    await (await POST(request())).text();
+    expect(mocks.readVideoArtifact).toHaveBeenLastCalledWith(
+      "acme",
+      "widget",
+      undefined,
+    );
   });
 
   it("draws a vertical segment on the feed cut it was signed with", async () => {

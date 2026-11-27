@@ -241,6 +241,7 @@ async function writeVoiceClips(
           artifact.meta.repo,
           artifact.createdAt,
           index,
+          artifact.focus?.key,
         ),
       ),
     ),
