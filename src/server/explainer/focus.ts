@@ -10,10 +10,10 @@ import { z } from "zod";
 
 export const FOCUS_MAX_LENGTH = 280;
 
-/** Trimmed, with control characters and runs of whitespace made one space. */
+/** Trimmed, with control and invisible format characters and runs of whitespace made one space. */
 export const focusSchema = z
   .string()
-  .transform((value) => value.replace(/[\p{Cc}\s]+/gu, " ").trim())
+  .transform((value) => value.replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim())
   .pipe(z.string().min(1).max(FOCUS_MAX_LENGTH));
 
 /** What names a focused film's files: a stable hash of its normalised brief. */

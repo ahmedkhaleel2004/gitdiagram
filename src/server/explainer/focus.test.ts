@@ -11,6 +11,14 @@ describe("a film's focus", () => {
     );
   });
 
+  it("has invisible format characters taken out", () => {
+    const zeroWidthSpace = String.fromCharCode(0x200b);
+    const rightToLeftOverride = String.fromCharCode(0x202e);
+    expect(
+      focusSchema.parse(`the${zeroWidthSpace}retry${rightToLeftOverride}loop`),
+    ).toBe("the retry loop");
+  });
+
   it("is refused past the limit rather than cut short", () => {
     const longest = "a".repeat(FOCUS_MAX_LENGTH);
     expect(focusSchema.parse(` ${longest} `)).toBe(longest);

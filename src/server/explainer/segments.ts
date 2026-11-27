@@ -497,7 +497,6 @@ export async function remakePosterRemotely(
     username: artifact.meta.owner,
     repo: artifact.meta.repo,
     v: artifact.createdAt,
-    ...(artifact.focus ? { focus: artifact.focus.key } : {}),
     format: "poster",
     from: 0,
     to: 1,
